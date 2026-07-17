@@ -11,6 +11,7 @@ import {
   LockOpen,
   LogOut,
   MessageSquareWarning,
+  Megaphone,
   Music2,
   Save,
   Search,
@@ -89,6 +90,7 @@ import {
 } from '../ui';
 import { CardImage } from '../components/CardImage';
 import { AdminOperationsPanel } from '../components/AdminOperationsPanel';
+import { AdminAnnouncementsPanel } from '../components/AdminAnnouncementsPanel';
 import '../components/AdminPanel.css';
 
 const ADMIN_TOKEN_KEY = 'zutomayo_admin_token';
@@ -147,7 +149,7 @@ const ABOUT_LANGS: Array<{ code: AboutPageLocale; label: string }> = I18N_LANGS.
   label: lang.label,
 }));
 
-type AdminTab = 'cards' | 'songs' | 'users' | 'matches' | 'chat' | 'operations' | 'about';
+type AdminTab = 'cards' | 'songs' | 'users' | 'matches' | 'chat' | 'operations' | 'about' | 'announcements';
 type CardEditorTab = 'overview' | 'official' | 'i18n' | 'engine';
 type ParsedCardMeta = {
   card: CardDef;
@@ -1695,6 +1697,7 @@ export function AdminPage() {
         { value: 'cards', label: '卡牌維護', icon: Library },
         { value: 'songs', label: '歌名翻譯', icon: Music2 },
         { value: 'about', label: 'About 設定', icon: Info },
+        { value: 'announcements', label: '公告', icon: Megaphone },
       ],
     },
     {
@@ -2580,6 +2583,12 @@ export function AdminPage() {
           {activeTab === 'about' && (
             <section className="admin-main flex-1 overflow-y-auto p-4">
               <AboutSettingsEditor />
+            </section>
+          )}
+
+          {activeTab === 'announcements' && (
+            <section className="admin-main flex-1 overflow-y-auto p-4">
+              <AdminAnnouncementsPanel />
             </section>
           )}
 

@@ -92,6 +92,9 @@ export async function validateOnlineSession(session: OnlineSession): Promise<Onl
       if (typeof data.platformSeatToken === 'string' && data.platformSeatToken) {
         session.platformSeatToken = data.platformSeatToken;
       }
+      if (typeof data.platformUserId === 'string' && data.platformUserId) {
+        session.platformUserId = data.platformUserId;
+      }
       saveOnlineSession(session);
       return { ok: true };
     }

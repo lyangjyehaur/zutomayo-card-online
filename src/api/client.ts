@@ -1212,6 +1212,68 @@ export interface ChatMessageTranslation {
   updatedAt: string;
 }
 
+export interface Announcement {
+  id: string;
+  title: string;
+  content: string;
+  sourceLanguage: string;
+  language: string;
+  status: 'draft' | 'published' | 'archived' | string;
+  contentVersion: number;
+  publishedAt: string | null;
+  expiresAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  translationStatus: 'source' | 'pending' | 'ready' | string;
+}
+
+export interface AnnouncementInput {
+  title: string;
+  content: string;
+  sourceLanguage: 'ja' | 'zh-tw' | 'zh-cn' | 'zh-hk' | 'en' | 'ko';
+  status: 'draft' | 'published' | 'archived';
+  publishedAt?: string | null;
+  expiresAt?: string | null;
+}
+
+export async function fetchAnnouncements(language: string, limit = 5): Promise<Announcement[]> {
+  const params = new URLSearchParams({ lang: language, limit: String(limit) });
+  const data = await request<{ announcements: Announcement[] }>(`/announcements?${params.toString()}`);
+  return data.announcements;
+}
+
+export async function adminGetAnnouncements(): Promise<Announcement[]> {
+  const data = await request<{ announcements: Announcement[] }>('/admin/announcements', {
+    headers: adminAuthHeaders(),
+  });
+  return data.announcements;
+}
+
+export async function adminCreateAnnouncement(input: AnnouncementInput): Promise<Announcement> {
+  const data = await request<{ announcement: Announcement }>('/admin/announcements', {
+    method: 'POST',
+    headers: adminAuthHeaders(),
+    body: JSON.stringify(input),
+  });
+  return data.announcement;
+}
+
+export async function adminUpdateAnnouncement(id: string, input: AnnouncementInput): Promise<Announcement> {
+  const data = await request<{ announcement: Announcement }>(`/admin/announcements/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    headers: adminAuthHeaders(),
+    body: JSON.stringify(input),
+  });
+  return data.announcement;
+}
+
+export async function adminDeleteAnnouncement(id: string): Promise<void> {
+  await request(`/admin/announcements/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: adminAuthHeaders(),
+  });
+}
+
 export interface ChatMessageInput {
   conversationType: ChatConversationType;
   subjectId: string;
@@ -1223,16 +1285,33 @@ export interface ChatMessageInput {
   sourceLanguage?: string;
 }
 
+export interface MatchChatAccess {
+  matchID: string;
+  playerID: string;
+  playerCredentials: string;
+}
+
+function matchChatAccessHeaders(access?: MatchChatAccess): Record<string, string> {
+  if (!access) return {};
+  return {
+    'X-Match-ID': access.matchID,
+    'X-Match-Player-ID': access.playerID,
+    'X-Match-Credentials': access.playerCredentials,
+  };
+}
+
 export async function fetchChatMessages({
   conversationType,
   subjectId,
   limit = 50,
   before,
+  matchAccess,
 }: {
   conversationType: ChatConversationType;
   subjectId: string;
   limit?: number;
   before?: string;
+  matchAccess?: MatchChatAccess;
 }): Promise<ChatMessage[]> {
   const params = new URLSearchParams({
     type: conversationType,
@@ -1240,16 +1319,22 @@ export async function fetchChatMessages({
     limit: String(limit),
   });
   if (before) params.set('before', before);
-  const data = await request<{ messages: ChatMessage[] }>(`/chat/messages?${params.toString()}`);
+  const data = await request<{ messages: ChatMessage[] }>(`/chat/messages?${params.toString()}`, {
+    headers: matchChatAccessHeaders(matchAccess),
+  });
   return data.messages;
 }
 
-export async function sendChatMessage(input: ChatMessageInput): Promise<{
+export async function sendChatMessage(
+  input: ChatMessageInput,
+  matchAccess?: MatchChatAccess,
+): Promise<{
   conversation: ChatConversation;
   message: ChatMessage;
 }> {
   return request('/chat/messages', {
     method: 'POST',
+    headers: matchChatAccessHeaders(matchAccess),
     body: JSON.stringify(input),
   });
 }
@@ -1274,9 +1359,11 @@ export async function fetchUnreadChat(limit = 20): Promise<ChatUnreadConversatio
 export async function requestChatTranslation(
   messageId: string,
   targetLanguage: string,
+  matchAccess?: MatchChatAccess,
 ): Promise<{ translation: ChatMessageTranslation; cached: boolean }> {
   return request(`/chat/messages/${encodeURIComponent(messageId)}/translate`, {
     method: 'POST',
+    headers: matchChatAccessHeaders(matchAccess),
     body: JSON.stringify({ targetLanguage }),
   });
 }

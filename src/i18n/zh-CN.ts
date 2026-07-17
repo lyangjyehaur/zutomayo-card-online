@@ -306,6 +306,12 @@ export const zhCN: Record<TranslationKey, string> = {
   'lobby.homeDeckCaption': '组成 20 张牌组，迎接夜与昼改写效果的战斗',
   'lobby.homeLeaderboardCaption': '查看玩家排名与 ELO，追踪当前对战表现',
   'lobby.homeHistoryCaption': '回顾近期对局结果，整理每场胜负与回合记录',
+  'announcement.title': '最新公告',
+  'announcement.loading': '正在加载公告',
+  'announcement.empty': '目前没有公告',
+  'community.title': '社区',
+  'community.caption': '进入公共大厅聊天，或与好友发送私信',
+  'community.loginRequired': '登录后才能使用公共大厅聊天和好友私信',
   'lobby.projectTitle': 'About ZUTOMAYO CARD ONLINE',
   'lobby.projectDescription':
     '这是一个由玩家维护的非官方在线对战项目，目标是让更多人能方便体验 ZUTOMAYO CARD 的夜昼攻防与牌组构筑。',

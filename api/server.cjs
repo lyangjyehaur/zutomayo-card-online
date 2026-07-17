@@ -165,10 +165,17 @@ const {
   listSeasonLeaderboard,
 } = require('./seasonService.cjs');
 const { createLegalHold, listLegalHolds, releaseLegalHold } = require('./legalHoldService.cjs');
-const { createChatTranslationProviderFromEnv } = require('./chatTranslationProvider.cjs');
+const {
+  createAnnouncement,
+  deleteAnnouncement,
+  listAdminAnnouncements,
+  listPublicAnnouncements,
+  updateAnnouncement,
+} = require('./announcementService.cjs');
+const { createTranslationServiceFromEnv } = require('./translationService.cjs');
 
 const pbkdf2 = util.promisify(crypto.pbkdf2);
-const translateChatMessage = createChatTranslationProviderFromEnv(process.env);
+const translateText = createTranslationServiceFromEnv(process.env);
 
 function readPackageVersion() {
   for (const packagePath of ['../package.json', './package.json']) {
@@ -736,6 +743,39 @@ async function initSchema() {
       file_size INTEGER NOT NULL DEFAULT 0,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       CHECK (post_id IS NOT NULL OR comment_id IS NOT NULL)
+    )`,
+
+    // ===== 公告與版本化翻譯快取 =====
+    `CREATE TABLE IF NOT EXISTS announcements (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      content TEXT NOT NULL,
+      source_language TEXT NOT NULL DEFAULT 'zh-tw',
+      status TEXT NOT NULL DEFAULT 'draft',
+      content_version INTEGER NOT NULL DEFAULT 1,
+      published_at TIMESTAMPTZ,
+      expires_at TIMESTAMPTZ,
+      created_by_user_id TEXT,
+      updated_by_user_id TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CHECK (status IN ('draft', 'published', 'archived') AND content_version > 0)
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_announcements_publication
+      ON announcements(status, published_at DESC)`,
+    `CREATE TABLE IF NOT EXISTS announcement_translations (
+      announcement_id TEXT NOT NULL REFERENCES announcements(id) ON DELETE CASCADE,
+      content_version INTEGER NOT NULL,
+      target_language TEXT NOT NULL,
+      translated_title TEXT NOT NULL DEFAULT '',
+      translated_content TEXT NOT NULL DEFAULT '',
+      provider TEXT NOT NULL DEFAULT '',
+      model TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'ready',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (announcement_id, content_version, target_language),
+      CHECK (status IN ('pending', 'ready'))
     )`,
 
     // ===== 聊天功能 schema：持久化聊天、未讀、舉報、LLM 翻譯與審核事件 =====
@@ -1521,6 +1561,33 @@ async function getAuthUserId(req) {
     return verifyToken(cookieToken);
   }
   return null;
+}
+
+function firstRequestHeader(req, name) {
+  const value = req.headers[name];
+  return Array.isArray(value) ? value[0] || '' : typeof value === 'string' ? value : '';
+}
+
+async function getChatActor(req, expectedMatchId = '') {
+  const accountUserId = await getAuthUserId(req);
+  if (accountUserId) return { userId: accountUserId, accountBacked: true };
+
+  const matchId = firstRequestHeader(req, 'x-match-id').trim().slice(0, 300);
+  const playerId = firstRequestHeader(req, 'x-match-player-id').trim();
+  const credentials = firstRequestHeader(req, 'x-match-credentials');
+  if (!matchId || (playerId !== '0' && playerId !== '1') || !credentials || credentials.length > 500) return null;
+  if (expectedMatchId && matchId !== expectedMatchId) return null;
+
+  const credentialHash = crypto.createHash('sha256').update(credentials).digest('hex');
+  const { rows } = await pool.query(
+    `SELECT user_id
+       FROM bjg_match_seats
+      WHERE match_id = $1 AND player_id = $2 AND credential_hash = $3
+      LIMIT 1`,
+    [matchId, playerId, credentialHash],
+  );
+  const userId = typeof rows[0]?.user_id === 'string' ? rows[0].user_id : '';
+  return userId.startsWith('guest:match:') ? { userId, accountBacked: false } : null;
 }
 
 function getClientCountry(req) {
@@ -4071,22 +4138,37 @@ function handleRequest(req, res) {
       return;
     }
 
+    if (pathname === '/api/announcements' && method === 'GET') {
+      const result = await listPublicAnnouncements({
+        pool,
+        language: url.searchParams.get('lang'),
+        limit: url.searchParams.get('limit'),
+        translateText,
+      });
+      res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+      serviceJson(result);
+      return;
+    }
+
     // ===== Chat Routes =====
 
     // GET /api/chat/messages?type=match&subjectId=... — 對話歷史同步。
     if (pathname === '/api/chat/messages' && method === 'GET') {
-      const userId = await getAuthUserId(req);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const conversationType = url.searchParams.get('type');
+      const subjectId = url.searchParams.get('subjectId');
+      const actor = await getChatActor(req, conversationType === 'match' ? subjectId || '' : '');
+      if (!actor || (!actor.accountBacked && conversationType !== 'match')) return json({ error: 'Unauthorized' }, 401);
       const result = await listChatMessages({
         pool,
-        userId,
-        conversationType: url.searchParams.get('type'),
-        subjectId: url.searchParams.get('subjectId'),
+        userId: actor.userId,
+        conversationType,
+        subjectId,
         limit: url.searchParams.get('limit'),
         before: url.searchParams.get('before'),
         enforceDirectFriendship: true,
         enforceMatchParticipation: true,
         enforceRoomParticipation: true,
+        allowPresenceOnlyUserId: !actor.accountBacked,
       });
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);
@@ -4095,14 +4177,16 @@ function handleRequest(req, res) {
 
     // POST /api/chat/messages — 持久化訊息；Colyseus 只負責後續 preview 廣播。
     if (pathname === '/api/chat/messages' && method === 'POST') {
-      const userId = await getAuthUserId(req);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
       const __body = await readBody(32 * 1024);
       const __parsed = validateBody(S.chatMessageCreateSchema, __body);
       if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
+      const actor = await getChatActor(req, __parsed.data.conversationType === 'match' ? __parsed.data.subjectId : '');
+      if (!actor || (!actor.accountBacked && __parsed.data.conversationType !== 'match')) {
+        return json({ error: 'Unauthorized' }, 401);
+      }
       const result = await sendChatMessage({
         pool,
-        authorUserId: userId,
+        authorUserId: actor.userId,
         body: __parsed.data,
         sanitizeText,
         generateMessageId: () => 'chat_msg_' + crypto.randomBytes(12).toString('hex'),
@@ -4112,6 +4196,7 @@ function handleRequest(req, res) {
         enforceMatchParticipation: true,
         enforceRoomParticipation: true,
         allowedAuthorRoles: ['player', 'spectator'],
+        allowPresenceOnlyUserId: !actor.accountBacked,
       });
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body, 201);
@@ -4157,23 +4242,24 @@ function handleRequest(req, res) {
 
     const chatTranslationRoute = pathname.match(/^\/api\/chat\/messages\/([^/]+)\/translate$/);
     if (chatTranslationRoute && method === 'POST') {
-      const userId = await getAuthUserId(req);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const actor = await getChatActor(req);
+      if (!actor) return json({ error: 'Unauthorized' }, 401);
       const __body = await readBody(32 * 1024);
       const __parsed = validateBody(S.chatTranslationRequestSchema, __body);
       if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
       const result = await requestChatTranslation({
         pool,
-        userId,
+        userId: actor.userId,
         messageId: chatTranslationRoute[1],
         body: __parsed.data,
         sanitizeText,
-        translateText: translateChatMessage,
+        translateText,
         providerName: process.env.CHAT_TRANSLATION_PROVIDER || '',
         modelName: process.env.CHAT_TRANSLATION_MODEL || '',
         enforceDirectFriendship: true,
         enforceMatchParticipation: true,
         enforceRoomParticipation: true,
+        allowPresenceOnlyUserId: !actor.accountBacked,
       });
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body, result.body.translation?.status === 'ready' ? 200 : 202);
@@ -4412,6 +4498,56 @@ function handleRequest(req, res) {
         reason: parsed.data.reason,
       });
       serviceJson(result);
+      return;
+    }
+
+    if (pathname === '/api/admin/announcements' && method === 'GET') {
+      if (!(await authorizeAdmin(req, 'config:write'))) return json({ error: 'Unauthorized' }, 401);
+      serviceJson(await listAdminAnnouncements({ pool }));
+      return;
+    }
+
+    if (pathname === '/api/admin/announcements' && method === 'POST') {
+      const admin = await authorizeAdmin(req, 'config:write');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
+      const body = await readBody(32 * 1024);
+      const parsed = validateBody(S.announcementWriteSchema, body);
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      serviceJson(
+        await createAnnouncement({
+          pool,
+          id: 'announcement_' + crypto.randomBytes(12).toString('hex'),
+          adminUserId: admin.adminUserId,
+          body: parsed.data,
+          sanitizeText,
+        }),
+        201,
+      );
+      return;
+    }
+
+    const adminAnnouncementRoute = pathname.match(/^\/api\/admin\/announcements\/([^/]+)$/);
+    if (adminAnnouncementRoute && method === 'PUT') {
+      const admin = await authorizeAdmin(req, 'config:write');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
+      const body = await readBody(32 * 1024);
+      const parsed = validateBody(S.announcementWriteSchema, body);
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      serviceJson(
+        await updateAnnouncement({
+          pool,
+          id: decodeURIComponent(adminAnnouncementRoute[1]),
+          adminUserId: admin.adminUserId,
+          body: parsed.data,
+          sanitizeText,
+        }),
+      );
+      return;
+    }
+
+    if (adminAnnouncementRoute && method === 'DELETE') {
+      if (!(await authorizeAdmin(req, 'config:write'))) return json({ error: 'Unauthorized' }, 401);
+      serviceJson(await deleteAnnouncement({ pool, id: decodeURIComponent(adminAnnouncementRoute[1]) }));
       return;
     }
 

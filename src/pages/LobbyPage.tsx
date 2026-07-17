@@ -6,6 +6,7 @@ import {
   ExternalLink,
   Github,
   LayoutGrid,
+  Megaphone,
   Menu,
   MessageCircle,
   Palette,
@@ -25,7 +26,9 @@ import { OnlinePresenceBadge } from '../components/OnlinePresenceBadge';
 import { useOnlinePresence } from '../hooks/useOnlinePresence';
 import {
   DEFAULT_ABOUT_PAGE_I18N_CONFIG,
+  fetchAnnouncements,
   fetchAboutPage,
+  type Announcement,
   type AboutPageConfig,
   type AboutPageLink,
 } from '../api/client';
@@ -86,6 +89,13 @@ const CHANNELS: Channel[] = [
     captionKey: 'lobby.homeHistoryCaption',
     Icon: ScrollText,
   },
+  {
+    to: '/community',
+    no: '06',
+    titleKey: 'community.title',
+    captionKey: 'community.caption',
+    Icon: MessageCircle,
+  },
 ];
 
 const PROJECT_CREDITS = [
@@ -139,6 +149,8 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
   const [showDeckIntro, setShowDeckIntro] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const { onlineCount } = useOnlinePresence();
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [announcementsLoading, setAnnouncementsLoading] = useState(true);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [aboutConfig, setAboutConfig] = useState<AboutPageConfig>(DEFAULT_ABOUT_PAGE_I18N_CONFIG[locale]);
   const [backgroundImage, setBackgroundImage] = useState(
@@ -149,6 +161,26 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
     const seen = localStorage.getItem('zutomayo_deck_intro_seen');
     if (!seen) setShowDeckIntro(true);
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setAnnouncementsLoading(true);
+    void fetchAnnouncements(locale, 3)
+      .then(
+        (items) => {
+          if (!cancelled) setAnnouncements(items);
+        },
+        () => {
+          if (!cancelled) setAnnouncements([]);
+        },
+      )
+      .finally(() => {
+        if (!cancelled) setAnnouncementsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [locale]);
 
   useEffect(() => {
     let cancelled = false;
@@ -386,6 +418,50 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
           </div>
         </section>
 
+        <section
+          className="mx-auto w-full max-w-6xl shrink-0 border-y border-border-soft bg-surface-base/45 px-4 py-3 backdrop-blur-md"
+          aria-labelledby="home-announcements-title"
+        >
+          <div className="flex items-center gap-2">
+            <Megaphone className="size-4 text-accent-primary" strokeWidth={1.5} aria-hidden="true" />
+            <h2
+              id="home-announcements-title"
+              className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-muted"
+            >
+              {t('announcement.title')}
+            </h2>
+          </div>
+          {announcementsLoading ? (
+            <p className="mt-2 text-caption text-content-dim">{t('announcement.loading')}</p>
+          ) : announcements.length === 0 ? (
+            <p className="mt-2 text-caption text-content-dim">{t('announcement.empty')}</p>
+          ) : (
+            <div className="mt-2 grid gap-x-6 gap-y-3 md:grid-cols-3">
+              {announcements.map((announcement) => (
+                <article key={announcement.id} className="min-w-0 border-l-2 border-accent-primary/45 pl-3">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <h3 className="truncate text-body font-semibold text-content-primary">{announcement.title}</h3>
+                    {announcement.publishedAt && (
+                      <time
+                        className="shrink-0 font-mono text-[10px] text-content-dim"
+                        dateTime={announcement.publishedAt}
+                      >
+                        {new Date(announcement.publishedAt).toLocaleDateString(locale, {
+                          month: '2-digit',
+                          day: '2-digit',
+                        })}
+                      </time>
+                    )}
+                  </div>
+                  <p className="mt-1 line-clamp-2 text-caption leading-relaxed text-content-muted">
+                    {announcement.content}
+                  </p>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+
         {/* ===== 頻道列：模式入口 ===== */}
         <nav className="shrink-0 pb-6 pt-8 md:pb-8" aria-label={t('lobby.menu')}>
           <div className="mb-3 flex items-baseline gap-3">
@@ -394,7 +470,7 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
             </span>
             <span className="h-px flex-1 bg-border-soft" aria-hidden="true" />
           </div>
-          <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5 lg:gap-3">
+          <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-6 lg:gap-3">
             {CHANNELS.map(({ to, no, titleKey, captionKey, Icon }) => (
               <li key={to} className="min-w-0">
                 <button

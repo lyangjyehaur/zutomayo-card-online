@@ -21,6 +21,7 @@ import {
   type ChatAuthorRole,
   type ChatMessageTranslation,
   type ChatMessage,
+  type MatchChatAccess,
   type ProfileResponse,
 } from '../api/client';
 import {
@@ -36,7 +37,7 @@ import {
   type OnlineStateSnapshot,
 } from '../onlineStateGuard';
 import { didOnlineStateAdvance, ONLINE_MOVE_ACK_TIMEOUT_MS, shouldTrackOnlineMove } from '../onlineMoveAck';
-import { type PlatformMatchShellPresence, type PlatformMatchShellRoom } from '../platformClient';
+import type { PlatformMatchShellRoom } from '../platformClient';
 import {
   connectPlatformMatchShellWithRetry,
   type PlatformMatchShellConnectionState,
@@ -60,7 +61,6 @@ interface OnlineGameProps {
 type ConnectionStatus = 'reconnecting' | 'disconnected' | 'rejoined' | null;
 
 type MatchDataMember = { id: number; name?: string } | undefined;
-type PlatformShellStatus = (PlatformMatchShellPresence & { connected: boolean }) | null;
 type ChatStatus = 'loading' | 'ready' | 'unavailable' | 'login_required' | 'sending';
 type OnlineChatEntry = {
   id: string;
@@ -95,6 +95,7 @@ function chatTimeLabel(createdAt: string): string {
 
 function mapChatMessage(message: ChatMessage, localUserId: string, localDisplayName: string): OnlineChatEntry {
   const sameUser = Boolean(localUserId && message.authorUserId === localUserId);
+  const sameGuest = Boolean(localUserId && message.metadata.guestSeatUserId === localUserId);
   const sameDisplayName = Boolean(!localUserId && localDisplayName && message.authorDisplayName === localDisplayName);
   return {
     id: message.id,
@@ -103,7 +104,7 @@ function mapChatMessage(message: ChatMessage, localUserId: string, localDisplayN
     content: message.content,
     createdAt: message.createdAt,
     persisted: true,
-    self: sameUser || sameDisplayName,
+    self: sameUser || sameGuest || sameDisplayName,
   };
 }
 
@@ -251,7 +252,6 @@ export function OnlineGame({
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('reconnecting');
   const [clientSyncNonce, setClientSyncNonce] = useState(0);
   const [resyncingState, setResyncingState] = useState(false);
-  const [platformShellStatus, setPlatformShellStatus] = useState<PlatformShellStatus>(null);
   const [platformShellConnectionState, setPlatformShellConnectionState] =
     useState<PlatformMatchShellConnectionState>('connecting');
   const [platformShellEvidenceReady, setPlatformShellEvidenceReady] = useState(false);
@@ -265,7 +265,14 @@ export function OnlineGame({
   const [chatAccountLoaded, setChatAccountLoaded] = useState(false);
   const fallbackDisplayName = participantDisplayName(playerID, spectator);
   const chatDisplayName = chatAccount?.nickname || platformDisplayName || fallbackDisplayName;
-  const chatUserId = chatAccount?.id || '';
+  const hasPlayerSeat = !spectator && (playerID === '0' || playerID === '1') && Boolean(playerCredentials);
+  const matchAccess = useMemo<MatchChatAccess | undefined>(
+    () =>
+      hasPlayerSeat
+        ? { matchID, playerID: playerID as string, playerCredentials: playerCredentials as string }
+        : undefined,
+    [hasPlayerSeat, matchID, playerCredentials, playerID],
+  );
   const localPlatformUserId =
     platformUserId && !spectator
       ? platformUserId
@@ -276,6 +283,7 @@ export function OnlineGame({
           spectator,
           anonymousToken: spectatorPlatformUserId.current,
         });
+  const chatUserId = chatAccount?.id || localPlatformUserId;
 
   // 線上對戰模式標記，便於 Sentry 後台區分錯誤來源模式。
   useEffect(() => {
@@ -360,11 +368,16 @@ export function OnlineGame({
   }, []);
 
   const loadMatchChatEntries = useCallback(async (): Promise<OnlineChatEntry[]> => {
-    const messages = await fetchChatMessages({ conversationType: 'match', subjectId: matchID, limit: 50 });
+    const messages = await fetchChatMessages({
+      conversationType: 'match',
+      subjectId: matchID,
+      limit: 50,
+      matchAccess,
+    });
     return messages
       .filter((message) => canShowChatMessage(message))
       .map((message) => mapChatMessage(message, chatUserId, chatDisplayName));
-  }, [chatDisplayName, chatUserId, matchID]);
+  }, [chatDisplayName, chatUserId, matchAccess, matchID]);
 
   useEffect(() => {
     let cancelled = false;
@@ -372,7 +385,7 @@ export function OnlineGame({
     setChatMessages([]);
     setReportedMessageIds(new Set());
 
-    const accessStatus = matchChatAccessStatus(chatAccountLoaded, chatAccount);
+    const accessStatus = matchChatAccessStatus(chatAccountLoaded, chatAccount, hasPlayerSeat);
     if (accessStatus === 'loading') {
       return () => {
         cancelled = true;
@@ -416,6 +429,7 @@ export function OnlineGame({
   }, [
     chatAccount,
     chatAccountLoaded,
+    hasPlayerSeat,
     loadMatchChatEntries,
     matchID,
     platformShellEvidenceReady,
@@ -423,7 +437,7 @@ export function OnlineGame({
   ]);
 
   useEffect(() => {
-    if (chatStatus !== 'ready') return;
+    if (chatStatus !== 'ready' || !chatAccount) return;
     const latestPersisted = [...chatMessages].reverse().find((message) => message.persisted);
     if (!latestPersisted) return;
     void markChatRead({
@@ -431,7 +445,7 @@ export function OnlineGame({
       subjectId: matchID,
       lastReadMessageId: latestPersisted.id,
     }).catch(() => undefined);
-  }, [chatMessages, chatStatus, matchID]);
+  }, [chatAccount, chatMessages, chatStatus, matchID]);
 
   useEffect(() => {
     if (!chatAccountLoaded) return;
@@ -456,16 +470,14 @@ export function OnlineGame({
         onRoomChange: (nextRoom) => {
           if (!cancelled) platformRoomRef.current = nextRoom;
         },
-        onPresence: (presence) => {
+        onPresence: () => {
           if (!cancelled) {
-            setPlatformShellStatus({ ...presence, connected: true });
             setPlatformShellEvidenceReady(true);
             setPlatformShellUnavailable(false);
           }
         },
         onChatPreview: () => {
           if (cancelled) return;
-          if (!chatAccount) return;
           void loadMatchChatEntries().then(
             (entries) => {
               if (!cancelled) setChatMessages(entries);
@@ -482,7 +494,6 @@ export function OnlineGame({
         },
         onDisconnect: () => {
           if (!cancelled) {
-            setPlatformShellStatus(null);
             setPlatformShellEvidenceReady(false);
           }
         },
@@ -494,7 +505,6 @@ export function OnlineGame({
             data: { match_id: matchID, error: err instanceof Error ? err.message : String(err) },
           });
           if (!cancelled) {
-            setPlatformShellStatus(null);
             setPlatformShellUnavailable(true);
           }
         },
@@ -504,7 +514,6 @@ export function OnlineGame({
     return () => {
       cancelled = true;
       platformRoomRef.current = null;
-      setPlatformShellStatus(null);
       setPlatformShellConnectionState('stopped');
       setPlatformShellEvidenceReady(false);
       setPlatformShellUnavailable(false);
@@ -619,8 +628,8 @@ export function OnlineGame({
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
       const content = chatDraft.trim();
-      if (!canSubmitMatchChat({ account: chatAccount, content, status: chatStatus })) return;
-      const authorRole = matchChatAuthorRole(chatAccount, spectator);
+      if (!canSubmitMatchChat({ account: chatAccount, hasPlayerSeat, content, status: chatStatus })) return;
+      const authorRole = matchChatAuthorRole(chatAccount, spectator, hasPlayerSeat);
       if (!authorRole) {
         setChatStatus('login_required');
         return;
@@ -628,14 +637,17 @@ export function OnlineGame({
 
       setChatStatus('sending');
       try {
-        const result = await sendChatMessage({
-          conversationType: 'match',
-          subjectId: matchID,
-          content,
-          authorDisplayName: chatDisplayName,
-          authorRole,
-          clientMessageId: `client:${Date.now()}:${Math.random().toString(36).slice(2)}`,
-        });
+        const result = await sendChatMessage(
+          {
+            conversationType: 'match',
+            subjectId: matchID,
+            content,
+            authorDisplayName: chatDisplayName,
+            authorRole,
+            clientMessageId: `client:${Date.now()}:${Math.random().toString(36).slice(2)}`,
+          },
+          matchAccess,
+        );
         if (canShowChatMessage(result.message)) {
           appendChatEntry(mapChatMessage(result.message, chatUserId, chatDisplayName));
         }
@@ -657,7 +669,18 @@ export function OnlineGame({
         setChatStatus(err instanceof ApiError && err.status === 401 ? 'login_required' : 'ready');
       }
     },
-    [appendChatEntry, chatAccount, chatDisplayName, chatDraft, chatStatus, chatUserId, matchID, spectator],
+    [
+      appendChatEntry,
+      chatAccount,
+      chatDisplayName,
+      chatDraft,
+      chatStatus,
+      chatUserId,
+      hasPlayerSeat,
+      matchAccess,
+      matchID,
+      spectator,
+    ],
   );
 
   const handleChatReport = useCallback(
@@ -689,7 +712,7 @@ export function OnlineGame({
       const targetLanguage = locale.toLowerCase();
       applyChatTranslation(message.id, { status: 'loading', targetLanguage });
       try {
-        const result = await requestChatTranslation(message.id, targetLanguage);
+        const result = await requestChatTranslation(message.id, targetLanguage, matchAccess);
         applyChatTranslation(message.id, {
           status: result.translation.status,
           targetLanguage: result.translation.targetLanguage,
@@ -705,7 +728,7 @@ export function OnlineGame({
         });
       }
     },
-    [applyChatTranslation, locale, matchID],
+    [applyChatTranslation, locale, matchAccess, matchID],
   );
 
   const onlineBoardRuntimeRef = useRef({
@@ -784,17 +807,6 @@ export function OnlineGame({
           </span>
         </div>
       )}
-      {platformShellStatus && (
-        <div className="absolute left-6 top-1.5 z-[var(--z-modal)]">
-          <span
-            className="online-platform-status font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70"
-            aria-label={`Platform room connected, ${platformShellStatus.players} players, ${platformShellStatus.spectators} spectators`}
-            data-platform-connection-status="connected"
-          >
-            P {platformShellStatus.players} / S {platformShellStatus.spectators}
-          </span>
-        </div>
-      )}
       {platformShellConnectionState !== 'connected' && platformShellConnectionState !== 'stopped' && (
         <div
           className="absolute left-6 top-7 z-[var(--z-modal)]"
@@ -844,7 +856,7 @@ export function OnlineGame({
                             onClick={() => void handleChatTranslate(message)}
                           />
                         )}
-                        {message.persisted && !message.self && (
+                        {chatAccount && message.persisted && !message.self && (
                           <IconButton
                             label={reportedMessageIds.has(message.id) ? t('chat.matchReported') : t('chat.matchReport')}
                             icon={<Flag className="size-3" aria-hidden="true" />}

@@ -81,6 +81,16 @@ describe('schema migrations', () => {
     expect(linkScript).toContain('DELETE FROM admin_users WHERE user_id = $1 RETURNING id');
   });
 
+  it('stores versioned announcement translations separately from source content', () => {
+    const migration = readRepoFile('migrations/000032_announcements.js');
+    const schemaGate = readRepoFile('api/schemaGate.cjs');
+
+    expect(migration).toContain("'announcements',");
+    expect(migration).toContain("'announcement_translations',");
+    expect(migration).toContain("primaryKey: ['announcement_id', 'content_version', 'target_language']");
+    expect(schemaGate).toContain("'announcement_translations'");
+  });
+
   it('backfills the reward entitlement ledger for every existing grant', () => {
     const consistencyMigration = readRepoFile('migrations/000021_season_result_consistency.js');
     expect(consistencyMigration).toContain('SELECT season_id, user_id, reward_tier, reward_payload, granted_at');
