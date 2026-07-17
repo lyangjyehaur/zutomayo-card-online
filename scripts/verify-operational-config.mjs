@@ -352,6 +352,21 @@ export function validateOperationalConfig() {
     'refuses to run against production',
     'npm run chaos:probe',
   ]);
+  requireFragments('scripts/e2e-game-process-restart-smoke.sh', [
+    'RESTART_SMOKE_CONFIRM',
+    'docker compose',
+    'restart game platform',
+    'StartedAt',
+    'game-process-restart.restarted.json',
+  ]);
+  requireFragments('e2e/game-process-restart.spec.ts', [
+    'data-game-step="turnSet"',
+    'waitForBoardgameReconnect',
+    'getAuthenticatedMatchHistory',
+    'hostCount: 1',
+    'guestCount: 1',
+    'sameHistory: true',
+  ]);
   requireFragments('load-tests/operational-soak.js', [
     'OBSERVED_PEAK_RPS must be the measured',
     'PEAK_MULTIPLIER || 2',

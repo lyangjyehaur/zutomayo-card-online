@@ -182,6 +182,7 @@ describe('operational shell scripts', () => {
     expect(packageJson.scripts.verify).toContain('npm run dependency:patches');
     expect(packageJson.scripts['dependency:patches']).toBe('patch-package --error-on-fail');
     expect(packageJson.scripts.postinstall).toBe('patch-package');
+    expect(packageJson.scripts['e2e:game-restart']).toContain('e2e-game-process-restart-smoke.sh');
     expect(packageJson.scripts['db:migrate:release']).toContain('scripts/backfill-legacy-deleted-accounts-pg.cjs');
     expect(packageJson.scripts['platform:relationship-race:pg-smoke']).toContain(
       'scripts/platform-relationship-race-pg-smoke.ts',
