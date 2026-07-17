@@ -39,8 +39,8 @@ jobs:
       METRICS_TOKEN: e2e-test-metrics-token
       PGSSLMODE: disable
       E2E_BROWSER_MATRIX: full
-      EXPECTED_SCHEMA_MIGRATION: 000031_official_card_data_releases
-      EXPECTED_SCHEMA_CHECKSUM: 172b810651446e91d5ba371e4ee7d6b046c2b76aa8a131dfec014e7fd742b4b8
+      EXPECTED_SCHEMA_MIGRATION: 000033_admin_linked_auth_contract
+      EXPECTED_SCHEMA_CHECKSUM: 3e1140398d4b9de39cf3e95dfac626fc50ac587127c5c556e9e9ad3b63489c45
 
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5

@@ -49,7 +49,11 @@ const { createAccountExportStorageFromEnv } = require('./accountExportStorage.cj
 const { deliverAccountAction } = require('./accountNotificationService.cjs');
 const { consumeAccountStepUp, issueAccountStepUp } = require('./accountStepUpService.cjs');
 const { AccountSessionUnavailableError, issueAccountRefreshToken } = require('./authSessionService.cjs');
-const { LOGTO_ACCOUNT_DELETION_SCOPE, validateLogtoAccountDeletionConfig } = require('./accountDeletionConfig.cjs');
+const {
+  LOGTO_ACCOUNT_DELETION_SCOPE,
+  accountDeletionRecoveryEnabled,
+  validateLogtoAccountDeletionConfig,
+} = require('./accountDeletionConfig.cjs');
 const {
   listRecoverableAccountDeletions,
   markProviderDeleted,
@@ -61,8 +65,13 @@ const {
 const { resolveBackgroundWorkersEnabled } = require('./backgroundWorkerConfig.cjs');
 const { apiRateLimitConfig } = require('./rateLimitConfig.cjs');
 const { upsertCard, upsertCardI18n, upsertGameConfig } = require('./adminCardService.cjs');
-const { listAdminUsers, resetUserElo } = require('./adminService.cjs');
-const { authenticateAdmin, revokeAdminSession, verifyAdminSession } = require('./adminAuthService.cjs');
+const { listAdminUsers, resetUserElo, updateLinkedAdminRole } = require('./adminService.cjs');
+const {
+  authenticateAdmin,
+  createLinkedAdminSession,
+  revokeAdminSession,
+  verifyAdminSession,
+} = require('./adminAuthService.cjs');
 const { assertRuntimeSchema } = require('./schemaGate.cjs');
 const { fetchWithResilience } = require('./oauthHttp.cjs');
 const {
@@ -290,6 +299,7 @@ const LOGTO_M2M_APP_ID = process.env.LOGTO_M2M_APP_ID || '';
 const LOGTO_M2M_APP_SECRET = process.env.LOGTO_M2M_APP_SECRET || '';
 const LOGTO_MANAGEMENT_RESOURCE = process.env.LOGTO_MANAGEMENT_RESOURCE || '';
 const LOGTO_MANAGEMENT_SCOPE = process.env.LOGTO_MANAGEMENT_SCOPE || '';
+const ACCOUNT_DELETION_RECOVERY_ENABLED = accountDeletionRecoveryEnabled(process.env);
 const ACCOUNT_DELETION_RECOVERY_INTERVAL_MS = Math.max(
   10_000,
   Math.min(Number(process.env.ACCOUNT_DELETION_RECOVERY_INTERVAL_MS) || 60_000, 60 * 60 * 1000),
@@ -2486,6 +2496,7 @@ function recoverAccountDeletions() {
 }
 
 function startAccountDeletionRecovery() {
+  if (!ACCOUNT_DELETION_RECOVERY_ENABLED) return;
   if (accountDeletionRecoveryTimer) return;
   void recoverAccountDeletions();
   accountDeletionRecoveryTimer = setInterval(
@@ -3865,6 +3876,9 @@ function handleRequest(req, res) {
       // A linked Logto principal must be removed before local anonymization,
       // including hybrid accounts that also have a local password.
       if (capabilities.body.hasLogtoIdentity) {
+        if (!ACCOUNT_DELETION_RECOVERY_ENABLED) {
+          return json({ error: 'Logto account deletion is not enabled' }, 503);
+        }
         const prepared = await prepareLogtoAccountDeletion({ pool, userId });
         if (!prepared.ok) return json({ error: prepared.error }, prepared.status);
         let deletionRequest = prepared.body.request;
@@ -4590,6 +4604,22 @@ function handleRequest(req, res) {
 
     // ===== Admin API (P0-3 + P2-12) =====
 
+    // A signed-in user with an explicitly linked role may exchange the normal
+    // account session for the same persisted, revocable admin session format.
+    if (pathname === '/api/admin/session' && method === 'POST') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const result = await createLinkedAdminSession({
+        pool,
+        userId,
+        createSessionToken: createAdminToken,
+        sessionTtlSeconds: ADMIN_SESSION_TTL_SECONDS,
+      });
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
+      return;
+    }
+
     // Admin 登入
     if (pathname === '/api/admin/login' && method === 'POST') {
       const __body = await readBody();
@@ -4620,8 +4650,33 @@ function handleRequest(req, res) {
 
     // Admin：使用者列表
     if (pathname === '/api/admin/users' && method === 'GET') {
-      if (!(await authorizeAdmin(req, 'users:read'))) return json({ error: 'Unauthorized' }, 401);
-      json(await listAdminUsers(pool, url.searchParams.get('limit')));
+      const admin = await authorizeAdmin(req, 'users:read');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
+      const parsed = validateBody(S.adminUserListQuerySchema, Object.fromEntries(url.searchParams.entries()));
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      json(
+        await listAdminUsers(pool, parsed.data.limit, {
+          query: parsed.data.q,
+          includeAdminRoles: admin.role === 'admin',
+          currentAdminUserId: admin.role === 'admin' ? admin.adminUserId : '',
+        }),
+      );
+      return;
+    }
+
+    const adminUserRoleRoute = pathname.match(/^\/api\/admin\/users\/([^/]+)\/admin-role$/);
+    if (adminUserRoleRoute && method === 'PUT') {
+      const admin = await authorizeAdmin(req, 'admins:manage');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
+      const __body = await readBody();
+      const __parsed = validateBody(S.adminRoleUpdateSchema, __body);
+      if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
+      const result = await updateLinkedAdminRole(pool, {
+        targetUserId: decodeURIComponent(adminUserRoleRoute[1]),
+        role: __parsed.data.role,
+        actorAdminUserId: admin.adminUserId,
+      });
+      serviceJson(result);
       return;
     }
 

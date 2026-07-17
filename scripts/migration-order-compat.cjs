@@ -8,6 +8,9 @@ const LEGACY_CARD_MIGRATIONS = Object.freeze([
 
 const LEGACY_CARD_MIGRATION_IGNORE_PATTERN =
   '(?:000007_card_official_texts_i18n|000008_card_official_errata|000009_card_official_errata_english_source)\\.js';
+const LEGACY_OFFICIAL_CARD_DATA_MIGRATION = '000031_official_card_data_releases';
+const LEGACY_OFFICIAL_CARD_DATA_IGNORE_PATTERN = `${LEGACY_OFFICIAL_CARD_DATA_MIGRATION}\\.js`;
+const DEFAULT_MIGRATION_IGNORE_PATTERN = `(?:${LEGACY_CARD_MIGRATION_IGNORE_PATTERN}|${LEGACY_OFFICIAL_CARD_DATA_IGNORE_PATTERN})`;
 
 const PRE_CARD_HARDENING_BASELINE = Object.freeze([
   '000001_init_schema',
@@ -50,12 +53,24 @@ const KNOWN_OUT_OF_ORDER_HISTORY = new Set([
   ...LEGACY_CARD_MIGRATIONS,
   ...DEFERRED_HARDENING_MIGRATIONS,
   ...CANONICAL_CARD_MIGRATIONS,
-  '000031_official_card_data_releases',
+  LEGACY_OFFICIAL_CARD_DATA_MIGRATION,
+  '000031_user_linked_admins',
+  '000032_official_card_data_releases',
+  '000033_admin_linked_auth_contract',
 ]);
 
 function migrationIgnorePatternForApplied(appliedNames) {
   const applied = new Set(Array.isArray(appliedNames) ? appliedNames : []);
-  return LEGACY_CARD_MIGRATIONS.some((name) => applied.has(name)) ? undefined : LEGACY_CARD_MIGRATION_IGNORE_PATTERN;
+  const ignorePatterns = [];
+  if (!LEGACY_CARD_MIGRATIONS.some((name) => applied.has(name))) {
+    ignorePatterns.push(LEGACY_CARD_MIGRATION_IGNORE_PATTERN);
+  }
+  if (!applied.has(LEGACY_OFFICIAL_CARD_DATA_MIGRATION)) {
+    ignorePatterns.push(LEGACY_OFFICIAL_CARD_DATA_IGNORE_PATTERN);
+  }
+  if (ignorePatterns.length === 0) return undefined;
+  if (ignorePatterns.length === 2) return DEFAULT_MIGRATION_IGNORE_PATTERN;
+  return ignorePatterns[0];
 }
 
 /**
@@ -163,9 +178,12 @@ async function listAppliedMigrationNames(pool) {
 
 module.exports = {
   CANONICAL_CARD_MIGRATIONS,
+  DEFAULT_MIGRATION_IGNORE_PATTERN,
   DEFERRED_HARDENING_MIGRATIONS,
   LEGACY_CARD_MIGRATIONS,
   LEGACY_CARD_MIGRATION_IGNORE_PATTERN,
+  LEGACY_OFFICIAL_CARD_DATA_IGNORE_PATTERN,
+  LEGACY_OFFICIAL_CARD_DATA_MIGRATION,
   PRE_CARD_HARDENING_BASELINE,
   assertAppliedMigrationOrder,
   assertOutOfOrderBackfillApplied,

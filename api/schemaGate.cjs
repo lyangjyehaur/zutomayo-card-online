@@ -269,6 +269,7 @@ const REQUIRED_RUNTIME_COLUMNS = Object.freeze({
   ],
   admin_users: [
     'id',
+    'user_id',
     'username',
     'password_hash',
     'salt',
@@ -613,12 +614,19 @@ const REQUIRED_RUNTIME_COLUMN_CONTRACTS = Object.freeze([
   },
   {
     tableName: 'admin_users',
-    columnName: 'password_hash',
+    columnName: 'user_id',
     udtName: 'text',
-    nullable: false,
+    nullable: true,
     defaultToken: null,
   },
-  { tableName: 'admin_users', columnName: 'salt', udtName: 'text', nullable: false, defaultToken: null },
+  {
+    tableName: 'admin_users',
+    columnName: 'password_hash',
+    udtName: 'text',
+    nullable: true,
+    defaultToken: null,
+  },
+  { tableName: 'admin_users', columnName: 'salt', udtName: 'text', nullable: true, defaultToken: null },
   {
     tableName: 'admin_users',
     columnName: 'totp_secret_ciphertext',
@@ -1149,6 +1157,17 @@ const REQUIRED_RUNTIME_CONSTRAINTS = Object.freeze([
   { tableName: 'admin_users', constraintType: 'u', fragments: ['unique (username)'] },
   {
     tableName: 'admin_users',
+    constraintType: 'f',
+    fragments: ['foreign key (user_id)', 'references users(id)', 'on delete cascade'],
+  },
+  {
+    tableName: 'admin_users',
+    constraintName: 'admin_users_auth_mode_check',
+    constraintType: 'c',
+    fragments: ['user_id is null', 'password_hash is not null', 'salt is not null', 'user_id is not null'],
+  },
+  {
+    tableName: 'admin_users',
     constraintType: 'c',
     fragments: ['role', 'viewer', 'moderator', 'operator', 'admin'],
   },
@@ -1398,6 +1417,11 @@ const REQUIRED_BOARDGAME_RUNTIME_CONSTRAINTS = Object.freeze([
 ]);
 
 const REQUIRED_RUNTIME_INDEXES = Object.freeze([
+  {
+    tableName: 'admin_users',
+    indexName: 'uq_admin_users_user_id',
+    fragments: ['unique index', '(user_id)'],
+  },
   {
     tableName: 'users',
     indexName: 'idx_users_deleted_identity_pending',

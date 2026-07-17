@@ -125,14 +125,14 @@ describe('operational shell scripts', () => {
     expect(workflow).toContain('"${compose[@]}" build');
     expect(workflow).toContain('"${compose[@]}" run --rm e2e');
     expect(workflow).toContain('PG_BOOTSTRAP_USER: zutomayo_e2e_bootstrap');
-    expect(workflow).toContain('EXPECTED_SCHEMA_MIGRATION: 000031_official_card_data_releases');
+    expect(workflow).toContain('EXPECTED_SCHEMA_MIGRATION: 000033_admin_linked_auth_contract');
     expect(workflow).toContain(
-      'EXPECTED_SCHEMA_CHECKSUM: 172b810651446e91d5ba371e4ee7d6b046c2b76aa8a131dfec014e7fd742b4b8',
+      'EXPECTED_SCHEMA_CHECKSUM: 3e1140398d4b9de39cf3e95dfac626fc50ac587127c5c556e9e9ad3b63489c45',
     );
     expect(browserMatrix).toContain('PG_BOOTSTRAP_USER: zutomayo_e2e_bootstrap');
-    expect(browserMatrix).toContain('EXPECTED_SCHEMA_MIGRATION: 000031_official_card_data_releases');
+    expect(browserMatrix).toContain('EXPECTED_SCHEMA_MIGRATION: 000033_admin_linked_auth_contract');
     expect(browserMatrix).toContain(
-      'EXPECTED_SCHEMA_CHECKSUM: 172b810651446e91d5ba371e4ee7d6b046c2b76aa8a131dfec014e7fd742b4b8',
+      'EXPECTED_SCHEMA_CHECKSUM: 3e1140398d4b9de39cf3e95dfac626fc50ac587127c5c556e9e9ad3b63489c45',
     );
     expect(browserMatrix).not.toContain('export EXPECTED_SCHEMA_MIGRATION=');
     expect(workflow).not.toContain('--abort-on-container-exit');
@@ -191,6 +191,32 @@ describe('operational shell scripts', () => {
     expect(deploy).toContain('node --import tsx "$SCRIPT_DIR/platform-deployment-smoke.ts"');
     expect(deploy).toContain('--expected-public-address "$platform_public_address"');
     expect(deploy).toContain('--bootstrap');
+  });
+
+  it('ships private battle assets alongside every immutable deployment', () => {
+    const deploy = readFileSync(resolve('scripts/deploy-server4.sh'), 'utf8');
+    const smoke = readFileSync(resolve('scripts/deploy-smoke.mjs'), 'utf8');
+    const assetChecksums = readFileSync(resolve('scripts/battle-assets.sha256'), 'utf8').trim().split('\n');
+    const composeFiles = [
+      'docker-compose.server4.yml',
+      'docker-compose.server4-slot.yml',
+      'docker-compose.staging.yml',
+    ].map((path) => readFileSync(resolve(path), 'utf8'));
+
+    expect(deploy).toContain('verify_local_battle_assets');
+    expect(deploy).toContain('COPYFILE_DISABLE=1 tar');
+    expect(deploy).toContain('copy_battle_assets');
+    expect(deploy).toContain("sha256sum --check '$REMOTE_DIR/.battle-assets.sha256.incoming'");
+    expect(deploy).toContain('$REMOTE_DIR/backups/battle-assets/previous');
+    expect(deploy).toContain('--check-battle-assets true');
+    expect(smoke).toContain('/battle/chronos.svg');
+    expect(smoke).toContain('/battle/medal.png');
+    for (const compose of composeFiles) {
+      expect(compose).toContain('${BATTLE_ASSET_DIR:-./public/battle}');
+      expect(compose).toContain('/app/dist/battle');
+    }
+    expect(assetChecksums).toHaveLength(22);
+    expect(assetChecksums.every((line) => /^[a-f0-9]{64} {2}[A-Za-z0-9._/-]+\.(png|svg)$/.test(line))).toBe(true);
   });
 
   it('imports and gates the signed official card dataset before server4 applications start', () => {
@@ -264,7 +290,7 @@ describe('operational shell scripts', () => {
       'RELEASE_SHA=' + 'a'.repeat(40),
       'APP_VERSION=1.2.3',
       'GAME_RULES_VERSION=1.2.3',
-      'EXPECTED_SCHEMA_MIGRATION=000031_official_card_data_releases',
+      'EXPECTED_SCHEMA_MIGRATION=000033_admin_linked_auth_contract',
       'EXPECTED_SCHEMA_CHECKSUM=' + 'b'.repeat(64),
       ...['game', 'api', 'platform', 'migrate', 'retention', 'gateway'].map(
         (app) => app.toUpperCase() + '_IMAGE=' + image(app),

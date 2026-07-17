@@ -15,6 +15,8 @@ Authorization: Bearer <token>
 
 User tokens are returned by `POST /api/register` and `POST /api/login` for backward compatibility. Admin tokens are returned by `POST /api/admin/login`; they carry an individual admin identity, role, and persisted jti with a configurable one-hour default lifetime.
 
+A signed-in user whose account is explicitly linked to an admin role may instead exchange the normal user session through `POST /api/admin/session`. Both admin login paths issue the same persisted, revocable admin token and enforce the same role permissions.
+
 Cookie-authenticated `POST`, `PUT`, and `DELETE` requests use double-submit CSRF protection. Fetch `GET /api/csrf-token`, retain the `zutomayo_csrf` cookie, and send the same value in `X-CSRF-Token`. Login, registration, OAuth session exchange, and admin login are intentionally exempt because they establish authentication rather than consume an existing user session.
 
 ## Rate Limiting / 速率限制
@@ -430,7 +432,14 @@ Response:
 
 ## Admin / 管理後台
 
-All admin endpoints require an admin token in the `Authorization: Bearer <token>` header, obtained from `POST /api/admin/login`. Each request checks the persisted jti, account role, expiry, revocation, and disabled state. Admin accounts are provisioned in PostgreSQL with the transaction-safe `admin:create`, `admin:rotate`, and `admin:recover` commands documented in [DEPLOYMENT.md](./DEPLOYMENT.md#admin-bootstrap-rotation-and-recovery); the legacy shared `ADMIN_PASSWORD` is ignored.
+Except for the two session-establishment endpoints, admin endpoints require an admin token in the `Authorization: Bearer <token>` header. Each request checks the persisted jti, account role, expiry, revocation, and disabled state. Credential-based admin accounts are provisioned in PostgreSQL with the transaction-safe `admin:create`, `admin:rotate`, and `admin:recover` commands documented in [DEPLOYMENT.md](./DEPLOYMENT.md#admin-bootstrap-rotation-and-recovery); the legacy shared `ADMIN_PASSWORD` is ignored.
+
+| Role        | Access                                                                                        |
+| ----------- | --------------------------------------------------------------------------------------------- |
+| `viewer`    | Read users, matches, audit records, and seasons.                                              |
+| `moderator` | Viewer access plus chat and feedback moderation.                                              |
+| `operator`  | Moderator access plus ELO, card, configuration, and season writes, and legal-hold reads.      |
+| `admin`     | All admin permissions, including granting, changing, and revoking linked-account admin roles. |
 
 ### `POST /api/admin/login`
 
@@ -458,6 +467,26 @@ Response:
 
 Errors: `401` (unknown/disabled account, wrong password, invalid MFA, or credentials changed concurrently), `403` (MFA is not configured), `503` (admin TOTP encryption is not configured).
 
+### `POST /api/admin/session`
+
+Exchange the current signed-in user session for a persisted admin session when that user has an active linked admin role. Cookie-authenticated requests must include the normal double-submit CSRF token. No admin password or TOTP is required because the account session has already authenticated the linked user.
+
+Response:
+
+```json
+{
+  "token": "<admin-token>",
+  "role": "moderator",
+  "expiresIn": 3600
+}
+```
+
+Errors: `401` (no valid user session), `403` (the active user has no linked admin role).
+
+### `POST /api/admin/logout`
+
+Revoke the persisted jti for the supplied admin bearer token. Response: `{ "revoked": true }`. Errors: `401`.
+
 ### `GET /api/admin/users`
 
 List registered users, newest first. Requires an admin token.
@@ -465,6 +494,7 @@ List registered users, newest first. Requires an admin token.
 Query:
 
 - `limit`: optional, defaults to `100`, maximum `500`.
+- `q`: optional case-insensitive user ID, email, or nickname search, truncated to 200 characters.
 
 Response:
 
@@ -479,13 +509,42 @@ Response:
       "matchCount": 0,
       "wins": 0,
       "winRate": 0,
-      "createdAt": "2026-06-26 00:00:00"
+      "createdAt": "2026-06-26 00:00:00",
+      "adminRole": "moderator",
+      "isCurrentAdmin": false
     }
   ]
 }
 ```
 
 Errors: `401`.
+
+Only an `admin` receives populated `adminRole` and `isCurrentAdmin` metadata. Other roles receive `null` and `false`, respectively.
+
+### `PUT /api/admin/users/:id/admin-role`
+
+Grant, change, or revoke a normal user's linked admin role. Requires the `admin` role.
+
+Request:
+
+```json
+{
+  "role": "operator"
+}
+```
+
+Allowed values are `viewer`, `moderator`, `operator`, `admin`, or `null` to revoke access. The role change, active-session revocation, and audit record are committed in one transaction. An admin cannot change their own role through this endpoint.
+
+Response:
+
+```json
+{
+  "id": "u_...",
+  "adminRole": "operator"
+}
+```
+
+Errors: `400` (invalid role), `401` (missing permission), `404` (active user not found), `409` (attempted self-role change).
 
 ### `GET /api/admin/matches`
 

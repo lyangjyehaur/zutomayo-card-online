@@ -2,8 +2,15 @@ import { createRequire } from 'node:module';
 import { describe, expect, it, vi } from 'vitest';
 
 const require = createRequire(import.meta.url);
-const { authenticateAdmin, hasAdminPermission, revokeAdminSession, totpCode, verifyAdminSession, verifyTotp } =
-  require('../adminAuthService.cjs') as Record<string, (...args: unknown[]) => unknown>;
+const {
+  authenticateAdmin,
+  createLinkedAdminSession,
+  hasAdminPermission,
+  revokeAdminSession,
+  totpCode,
+  verifyAdminSession,
+  verifyTotp,
+} = require('../adminAuthService.cjs') as Record<string, (...args: unknown[]) => unknown>;
 
 function createPool(handler: (sql: string, params?: unknown[]) => { rows: Record<string, unknown>[] }) {
   const query = vi.fn(async (sql: string, params?: unknown[]) => handler(sql, params));
@@ -105,6 +112,76 @@ describe('admin auth service', () => {
         passwordIterations: 100_000,
       }),
     ).resolves.toEqual({ ok: false, status: 403, error: 'Admin MFA is not configured' });
+  });
+
+  it('does not allow a linked account through the legacy password flow', async () => {
+    const pool = createPool((sql) =>
+      sql.includes('FROM admin_users')
+        ? {
+            rows: [
+              {
+                id: 'admin_linked',
+                username: 'user:u_1',
+                password_hash: null,
+                salt: null,
+                role: 'admin',
+                totp_secret_ciphertext: null,
+              },
+            ],
+          }
+        : { rows: [] },
+    );
+    const hashPassword = vi.fn(async () => 'hash');
+
+    await expect(
+      authenticateAdmin({
+        pool,
+        body: { username: 'user:u_1', password: 'password', totpCode: '123456' },
+        hashPassword,
+        decryptTotpSecret: async () => '',
+        createSessionToken: () => 'token',
+        passwordIterations: 100_000,
+      }),
+    ).resolves.toEqual({ ok: false, status: 401, error: 'Invalid admin credentials' });
+    expect(hashPassword).not.toHaveBeenCalled();
+  });
+
+  it('issues an admin session for a linked signed-in user', async () => {
+    const pool = createPool((sql) => {
+      if (sql.includes('JOIN users u')) return { rows: [{ id: 'admin_1', role: 'operator' }] };
+      return { rows: [] };
+    });
+
+    await expect(
+      createLinkedAdminSession({
+        pool,
+        userId: 'u_1',
+        createSessionToken: ({ adminUserId, role }: { adminUserId: string; role: string }) =>
+          `token:${adminUserId}:${role}`,
+        generateJti: () => 'linked-jti',
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      body: { token: 'token:admin_1:operator', role: 'operator', expiresIn: 3600 },
+    });
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('a.user_id = $1'), ['u_1']);
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO admin_sessions'), [
+      'linked-jti',
+      'admin_1',
+      'operator',
+      3600,
+    ]);
+  });
+
+  it('does not elevate an unlinked signed-in user', async () => {
+    const pool = createPool(() => ({ rows: [] }));
+    await expect(
+      createLinkedAdminSession({
+        pool,
+        userId: 'u_regular',
+        createSessionToken: () => 'token',
+      }),
+    ).resolves.toEqual({ ok: false, status: 403, error: 'Account does not have admin access' });
   });
 
   it('checks the persisted session and permission on every admin request', async () => {

@@ -61,6 +61,8 @@ services:
       - '4000:3000'
     secrets:
       - postgres_ca
+    volumes:
+      - ${BATTLE_ASSET_DIR:-./public/battle}:/app/dist/battle:ro
     environment:
       - PORT=3000
       - NODE_ENV=production
@@ -187,6 +189,7 @@ services:
       - GITHUB_OAUTH_CLIENT_SECRET=${GITHUB_OAUTH_CLIENT_SECRET:-}
       - DISCORD_OAUTH_CLIENT_ID=${DISCORD_OAUTH_CLIENT_ID:-}
       - DISCORD_OAUTH_CLIENT_SECRET=${DISCORD_OAUTH_CLIENT_SECRET:-}
+      - ACCOUNT_DELETION_RECOVERY_ENABLED=${ACCOUNT_DELETION_RECOVERY_ENABLED:-true}
       - ACCOUNT_DELETION_RECOVERY_INTERVAL_MS=${ACCOUNT_DELETION_RECOVERY_INTERVAL_MS:-60000}
       - ACCOUNT_EXPORT_STORAGE_MODE=s3
       - ACCOUNT_EXPORT_S3_BUCKET=${ACCOUNT_EXPORT_S3_BUCKET:?Set the private account export S3 bucket}

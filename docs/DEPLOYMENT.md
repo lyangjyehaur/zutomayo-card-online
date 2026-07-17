@@ -415,7 +415,7 @@ Schema changes are managed by [node-pg-migrate](https://github.com/salsita/node-
 
 The wrapper [`scripts/db-migrate.cjs`](../scripts/db-migrate.cjs) bridges the project's `PG_*` environment variables to node-pg-migrate's `databaseUrl`. If `DATABASE_URL` is set it takes precedence; otherwise the wrapper assembles a `pg.ClientConfig` from `PG_HOST` / `PG_PORT` / `PG_USER` / `PG_PASSWORD` / `PG_DATABASE`.
 
-Server4 may keep using its existing `zutomayo_card` PostgreSQL database; this release does not require copying data to a new database or cluster. Bootstrap the migration owner, runtime-role ownership/ACLs, and migration history in place, then run the signed migration image against that same database. After the existing schema is baselined, [`000026_account_export_jobs.js`](../migrations/000026_account_export_jobs.js) adds the durable DSAR job/audit tables, [`000027_account_deletion_anonymization.js`](../migrations/000027_account_deletion_anonymization.js) makes retained season, export, deletion, and relationship evidence explicitly anonymizable, canonical append-only [`000028`](../migrations/000028_card_official_texts_i18n.js)–[`000030`](../migrations/000030_card_official_errata_english_source.js) add official/localized card text and errata schema, and [`000031_official_card_data_releases.js`](../migrations/000031_official_card_data_releases.js) records the signed extraction/errata/review-provenance digests and first applying release SHA. The migration wrapper keeps the master-only legacy `000007`–`000009` chain visible only when that chain is already present in `schema_migrations`; fresh databases and existing P0–P5 histories skip those superseded files and apply `000028`–`000031`, preserving `checkOrder=true` and never replacing pre-existing reviewed localized rows.
+Server4 may keep using its existing `zutomayo_card` PostgreSQL database; this release does not require copying data to a new database or cluster. Bootstrap the migration owner, runtime-role ownership/ACLs, and migration history in place, then run the signed migration image against that same database. After the existing schema is baselined, [`000026_account_export_jobs.js`](../migrations/000026_account_export_jobs.js) adds the durable DSAR job/audit tables, [`000027_account_deletion_anonymization.js`](../migrations/000027_account_deletion_anonymization.js) makes retained season, export, deletion, and relationship evidence explicitly anonymizable, canonical append-only [`000028`](../migrations/000028_card_official_texts_i18n.js)–[`000030`](../migrations/000030_card_official_errata_english_source.js) add official/localized card text and errata schema, [`000031_user_linked_admins.js`](../migrations/000031_user_linked_admins.js) links normal accounts to revocable RBAC admin sessions, [`000032_official_card_data_releases.js`](../migrations/000032_official_card_data_releases.js) records the signed extraction/errata/review-provenance digests and first applying release SHA, and [`000033_admin_linked_auth_contract.js`](../migrations/000033_admin_linked_auth_contract.js) enforces mutually exclusive credential and linked-account authentication modes. The migration wrapper keeps the master-only legacy `000007`–`000009` chain and the superseded `000031_official_card_data_releases` filename visible only when each entry is already present in `schema_migrations`; fresh databases and existing P0–P5 histories skip those superseded files and apply canonical `000028`–`000033`, preserving `checkOrder=true` and never replacing pre-existing reviewed localized rows.
 
 The server4 migrate service sets `REQUIRE_OFFICIAL_CARD_DATA=true` and passes the manifest's full `RELEASE_SHA`. The reviewed source JSON is not tracked by Git and is not copied into the migration image. Before running Compose, place the four reviewed files in a private host directory, set `CARD_DATA_DIR` to its absolute path, and keep that directory outside the repository checkout. Compose mounts it read-only at `/run/card-data`; the migrate service reads `card-english-extraction.json`, `card-english-human-reviews.json`, `card-official-errata.json`, and `card-english-ocr-overrides.json` from that mount. Restrict the host directory to the deployment operator and do not upload it as a CI artifact or include it in a Docker build context.
 
@@ -836,6 +836,21 @@ OpenResty cutover，也不會代替 `activate-retention` 將既有 systemd timer
 parallel runtime 的 stable manifest。`*_KNOWN_HOSTS` 必須是預先核對過的 server host key，
 部署流程不使用 `ssh-keyscan` 動態信任未知主機。
 
+### Private battle assets / 私有對戰素材
+
+The PNG/SVG files under `public/battle` are intentionally ignored by Git and are not present in release images. They are a required private deployment input, not optional source data. The tracked [`scripts/battle-assets.sha256`](../scripts/battle-assets.sha256) inventory is the deployment contract for the exact 22 required paths and bytes.
+
+Before a real deployment, provide the asset directory through `BATTLE_ASSET_DIR` or use the default `public/battle` in the deployment checkout. When deploying from the deferred-hardening worktree, point it at the private assets in the main worktree:
+
+```bash
+BATTLE_ASSET_DIR=/Users/danersaka/Projects/zutomayo-card-online/public/battle \
+  ./scripts/deploy-server4.sh --manifest .release.env --confirm
+```
+
+`--dry-run` does not require the private files. A real rollout fails before upload when the directory is absent, a checksum differs, or the PNG/SVG inventory has extra or missing files. The deploy script streams only listed assets with macOS metadata disabled, removes any `._*` files, verifies checksums and the file count in a remote staging directory, then atomically replaces `/opt/zutomayo-card-online/public/battle`. All server4/staging Compose variants bind-mount that directory read-only into `/app/dist/battle`.
+
+Before switching application traffic, deployment smoke must retrieve `/battle/chronos.svg` as SVG and `/battle/medal.png` as PNG with non-empty bodies. A normal rollout snapshots the active private asset directory beside the previous immutable manifest and Compose files. Automatic or manual rollback refuses to proceed without that snapshot and restores the previous application release and private assets together; the failed asset set is retained under `backups/battle-assets/failed` for diagnosis.
+
 ## Rollback 流程 / Rollback
 
 部署腳本 [scripts/deploy-server4.sh](../scripts/deploy-server4.sh) 會在遠端保留
@@ -853,7 +868,7 @@ immutable release files，不建立或拉取 mutable rollback tag。
 
 ### 注意事項
 
-- 缺少 `.release.previous.env`、任一 `.previous` Compose 或 `scripts/postgres-init-roles.sh.previous` 時，rollback 會拒絕執行。
+- 缺少 `.release.previous.env`、任一 `.previous` Compose、`scripts/postgres-init-roles.sh.previous` 或上一版私有 battle 素材 snapshot 時，rollback 會拒絕執行。
 - 首次 immutable cutover 必須明確使用 `--bootstrap`，並保留人工回退方案；成功後後續部署才會有可驗證的 `.release.previous.env`。
 - Rollback 不執行 destructive down migration；schema 必須採 expand/contract，或先發布向後相容修復。
 - 每次 rollout/rollback 應保留 manifest、migration、操作者、時間與 smoke 結果。

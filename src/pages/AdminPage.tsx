@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { LogOut, SlidersHorizontal } from 'lucide-react';
+import { LogOut, Search, ShieldCheck, SlidersHorizontal } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { t } from '../i18n';
 import { getAllCardDefs, refreshCards } from '../game/cards/loader';
@@ -14,11 +14,13 @@ import {
   adminGetMatches,
   adminGetUsers,
   adminLogin,
+  adminLoginWithAccount,
   adminLogout,
   adminRevokeChatUserSanction,
   adminReviewChatMessageModeration,
   adminReviewChatReport,
   adminResetElo,
+  adminUpdateUserRole,
   adminUpdateAboutPage,
   adminUpdateCard,
   adminUpdateCardI18n,
@@ -31,6 +33,7 @@ import type {
   AboutPageI18nConfig,
   AboutPageLocale,
   AdminMatch,
+  AdminRole,
   AdminUser,
   ChatConversation,
   ChatMessage,
@@ -46,6 +49,7 @@ import {
   Dialog,
   EmptyState,
   Input,
+  SearchInput,
   Alert,
   LoadingState,
   PageShell,
@@ -62,6 +66,28 @@ import { AdminOperationsPanel } from '../components/AdminOperationsPanel';
 import '../components/AdminPanel.css';
 
 const ADMIN_TOKEN_KEY = 'zutomayo_admin_token';
+const ADMIN_ROLE_KEY = 'zutomayo_admin_role';
+
+const ADMIN_ROLES: AdminRole[] = ['viewer', 'moderator', 'operator', 'admin'];
+
+function isAdminRole(value: unknown): value is AdminRole {
+  return typeof value === 'string' && ADMIN_ROLES.includes(value as AdminRole);
+}
+
+function readStoredAdminRole(): AdminRole | null {
+  const stored = sessionStorage.getItem(ADMIN_ROLE_KEY);
+  if (isAdminRole(stored)) return stored;
+  const token = sessionStorage.getItem(ADMIN_TOKEN_KEY);
+  if (!token) return null;
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))) as {
+      role?: unknown;
+    };
+    return isAdminRole(payload.role) ? payload.role : null;
+  } catch {
+    return null;
+  }
+}
 
 const ELEMENT_OPTIONS: Element[] = ['闇', '炎', '電気', '風', 'カオス'];
 const TYPE_OPTIONS: CardType[] = ['Character', 'Enchant', 'Area Enchant'];
@@ -815,8 +841,14 @@ export function AdminPage() {
   const [totpCode, setTotpCode] = useState('');
   const [error, setError] = useState('');
   const [loggingIn, setLoggingIn] = useState(false);
+  const [checkingLinkedAdmin, setCheckingLinkedAdmin] = useState(() => !sessionStorage.getItem(ADMIN_TOKEN_KEY));
+  const [currentAdminRole, setCurrentAdminRole] = useState<AdminRole | null>(readStoredAdminRole);
   const [activeTab, setActiveTab] = useState<AdminTab>('cards');
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [userSearch, setUserSearch] = useState('');
+  const [userRoleEdits, setUserRoleEdits] = useState<Record<string, AdminRole | 'none'>>({});
+  const [roleSavingId, setRoleSavingId] = useState<string | null>(null);
+  const [adminNotice, setAdminNotice] = useState('');
   const [matches, setMatches] = useState<AdminMatch[]>([]);
   const [chatReports, setChatReports] = useState<ChatReport[]>([]);
   const [chatReportStatus, setChatReportStatus] = useState<'open' | 'reviewing' | 'resolved' | 'dismissed'>('open');
@@ -941,8 +973,10 @@ export function AdminPage() {
     setLoggingIn(true);
     setError('');
     try {
-      const { token: tok } = await adminLogin({ username, password, totpCode });
+      const { token: tok, role } = await adminLogin({ username, password, totpCode });
       sessionStorage.setItem(ADMIN_TOKEN_KEY, tok);
+      sessionStorage.setItem(ADMIN_ROLE_KEY, role);
+      setCurrentAdminRole(role);
       setAuthenticated(true);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : '登入失敗');
@@ -951,25 +985,91 @@ export function AdminPage() {
     }
   }, [password, totpCode, username]);
 
+  useEffect(() => {
+    if (sessionStorage.getItem(ADMIN_TOKEN_KEY)) {
+      setCheckingLinkedAdmin(false);
+      return;
+    }
+    let cancelled = false;
+    void adminLoginWithAccount()
+      .then(({ token: linkedToken, role }) => {
+        if (cancelled) return;
+        sessionStorage.setItem(ADMIN_TOKEN_KEY, linkedToken);
+        sessionStorage.setItem(ADMIN_ROLE_KEY, role);
+        setCurrentAdminRole(role);
+        setAuthenticated(true);
+      })
+      .catch((adminError: unknown) => {
+        if (cancelled) return;
+        if (
+          !(adminError instanceof ApiError) ||
+          (adminError.status !== 401 && adminError.status !== 403 && adminError.status !== 404)
+        ) {
+          setError(adminError instanceof Error ? adminError.message : '管理員身分驗證失敗');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setCheckingLinkedAdmin(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const handleLogout = useCallback(async () => {
     if (token) await adminLogout(token).catch(() => undefined);
     sessionStorage.removeItem(ADMIN_TOKEN_KEY);
+    sessionStorage.removeItem(ADMIN_ROLE_KEY);
+    setCurrentAdminRole(null);
     setAuthenticated(false);
   }, [token]);
 
-  const refreshUsers = useCallback(async () => {
-    if (!token) return;
-    setAdminLoading(true);
-    setAdminError('');
-    try {
-      const { users: u } = await adminGetUsers(token);
-      setUsers(u);
-    } catch (e) {
-      setAdminError(e instanceof Error ? e.message : '載入失敗');
-    } finally {
-      setAdminLoading(false);
-    }
-  }, [token]);
+  const refreshUsers = useCallback(
+    async (query = '') => {
+      if (!token) return;
+      setAdminLoading(true);
+      setAdminError('');
+      try {
+        const { users: u } = await adminGetUsers(token, { query });
+        setUsers(u);
+        setUserRoleEdits(
+          Object.fromEntries(u.map((user) => [user.id, user.adminRole ?? 'none'])) as Record<
+            string,
+            AdminRole | 'none'
+          >,
+        );
+      } catch (e) {
+        setAdminError(e instanceof Error ? e.message : '載入失敗');
+      } finally {
+        setAdminLoading(false);
+      }
+    },
+    [token],
+  );
+
+  const updateUserRole = useCallback(
+    async (user: AdminUser) => {
+      if (!token || currentAdminRole !== 'admin' || user.isCurrentAdmin) return;
+      const selectedRole = userRoleEdits[user.id] ?? user.adminRole ?? 'none';
+      const nextRole = selectedRole === 'none' ? null : selectedRole;
+      if (nextRole === user.adminRole) return;
+      if (nextRole === null && !window.confirm(`確定撤回 ${user.email} 的管理權限？`)) return;
+
+      setRoleSavingId(user.id);
+      setAdminError('');
+      setAdminNotice('');
+      try {
+        await adminUpdateUserRole(token, user.id, nextRole);
+        setAdminNotice(nextRole ? `已將 ${user.email} 設為 ${nextRole}` : `已撤回 ${user.email} 的管理權限`);
+        await refreshUsers(userSearch);
+      } catch (e) {
+        setAdminError(e instanceof Error ? e.message : '管理權限更新失敗');
+      } finally {
+        setRoleSavingId(null);
+      }
+    },
+    [currentAdminRole, refreshUsers, token, userRoleEdits, userSearch],
+  );
 
   const refreshMatches = useCallback(async () => {
     if (!token) return;
@@ -1150,6 +1250,14 @@ export function AdminPage() {
     }
     if (cardLoadStatus === 'idle') void loadAdminCards();
   }, [activeTab, allCards.length, authenticated, cardLoadStatus, loadAdminCards]);
+
+  if (checkingLinkedAdmin) {
+    return (
+      <PageShell className="flex items-center justify-center p-4">
+        <LoadingState label="驗證管理員身分中…" />
+      </PageShell>
+    );
+  }
 
   if (!authenticated) {
     return (
@@ -1534,73 +1642,145 @@ export function AdminPage() {
 
       {activeTab === 'users' && (
         <section className="admin-table-section flex-1 overflow-auto p-4">
+          <form
+            className="mb-4 flex flex-wrap items-center gap-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              setAdminNotice('');
+              void refreshUsers(userSearch);
+            }}
+          >
+            <SearchInput
+              className="min-w-0"
+              containerClassName="admin-search-input"
+              icon={<Search className="size-4 shrink-0 text-content-dim" aria-hidden="true" />}
+              aria-label="搜尋使用者"
+              placeholder="搜尋 Email、暱稱或 ID"
+              value={userSearch}
+              onChange={(event) => setUserSearch(event.target.value)}
+            />
+            <Button type="submit" size="sm">
+              搜尋
+            </Button>
+            <Badge>{users.length} 位</Badge>
+          </form>
           {adminLoading && <LoadingState className="mb-3" label="載入中…" />}
+          {adminNotice && (
+            <Alert className="mb-3" tone="success">
+              {adminNotice}
+            </Alert>
+          )}
           {adminError && (
             <Alert className="mb-3" tone="danger" role="alert">
               {adminError}
             </Alert>
           )}
-          <DataListTable className="admin-responsive-table">
-            <thead className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">
-              <tr className="border-b border-content-primary/10">
-                <th className="px-3 py-2">ID</th>
-                <th className="px-3 py-2">Email</th>
-                <th className="px-3 py-2">暱稱</th>
-                <th className="px-3 py-2">ELO</th>
-                <th className="px-3 py-2">場次</th>
-                <th className="px-3 py-2">勝率</th>
-                <th className="px-3 py-2">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.map((u) => (
-                <tr key={u.id} className="odd:bg-surface-base/50">
-                  <DataListCell label="ID" className="max-w-32 truncate font-mono text-xs opacity-70">
-                    {u.id}
-                  </DataListCell>
-                  <DataListCell label="Email">{u.email}</DataListCell>
-                  <DataListCell label="暱稱">{u.nickname}</DataListCell>
-                  <DataListCell label="ELO">
-                    <div className="admin-elo-field flex items-center gap-2">
-                      {eloEdits[u.id] ?? u.elo}
-                      <Input
-                        className="w-20"
-                        value={eloEdits[u.id] ?? ''}
-                        placeholder={String(u.elo)}
-                        onChange={(e) => setEloEdits((prev) => ({ ...prev, [u.id]: e.target.value }))}
-                      />
-                    </div>
-                  </DataListCell>
-                  <DataListCell label="場次">{u.matchCount}</DataListCell>
-                  <DataListCell label="勝率">{u.winRate}%</DataListCell>
-                  <DataListCell label="操作">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      disabled={eloSavingId === u.id}
-                      onClick={() => {
-                        const v = Number(eloEdits[u.id]);
-                        if (!Number.isFinite(v)) return;
-                        void adminResetElo(token, u.id, Math.trunc(v))
-                          .then(refreshUsers)
-                          .then(() =>
-                            setEloEdits((p) => {
-                              const n = { ...p };
-                              delete n[u.id];
-                              return n;
-                            }),
-                          );
-                        setEloSavingId(u.id);
-                        setTimeout(() => setEloSavingId(null), 1500);
-                      }}
-                    >
-                      {eloSavingId === u.id ? '已更新' : '更新 ELO'}
-                    </Button>
-                  </DataListCell>
+          {!adminLoading && users.length === 0 ? (
+            <EmptyState className="min-h-48" title="找不到使用者" />
+          ) : (
+            <DataListTable className="admin-responsive-table admin-users-table">
+              <thead className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">
+                <tr className="border-b border-content-primary/10">
+                  <th className="px-3 py-2">ID</th>
+                  <th className="px-3 py-2">Email</th>
+                  <th className="px-3 py-2">暱稱</th>
+                  <th className="px-3 py-2">ELO</th>
+                  <th className="px-3 py-2">場次</th>
+                  <th className="px-3 py-2">勝率</th>
+                  {currentAdminRole === 'admin' && <th className="px-3 py-2">管理權限</th>}
+                  <th className="px-3 py-2">操作</th>
                 </tr>
-              ))}
-            </tbody>
-          </DataListTable>
+              </thead>
+              <tbody>
+                {users.map((u) => (
+                  <tr key={u.id} className="odd:bg-surface-base/50">
+                    <DataListCell label="ID" className="max-w-32 truncate font-mono text-xs opacity-70">
+                      {u.id}
+                    </DataListCell>
+                    <DataListCell label="Email">{u.email}</DataListCell>
+                    <DataListCell label="暱稱">{u.nickname}</DataListCell>
+                    <DataListCell label="ELO">
+                      <div className="admin-elo-field flex items-center gap-2">
+                        {eloEdits[u.id] ?? u.elo}
+                        <Input
+                          className="w-20"
+                          value={eloEdits[u.id] ?? ''}
+                          placeholder={String(u.elo)}
+                          onChange={(e) => setEloEdits((prev) => ({ ...prev, [u.id]: e.target.value }))}
+                        />
+                      </div>
+                    </DataListCell>
+                    <DataListCell label="場次">{u.matchCount}</DataListCell>
+                    <DataListCell label="勝率">{u.winRate}%</DataListCell>
+                    {currentAdminRole === 'admin' && (
+                      <DataListCell label="管理權限">
+                        <div className="admin-role-field flex items-center gap-2">
+                          <Select
+                            className="min-w-36"
+                            aria-label={`${u.email} 的管理權限`}
+                            disabled={u.isCurrentAdmin || roleSavingId === u.id}
+                            value={userRoleEdits[u.id] ?? u.adminRole ?? 'none'}
+                            onChange={(event) =>
+                              setUserRoleEdits((previous) => ({
+                                ...previous,
+                                [u.id]: event.target.value as AdminRole | 'none',
+                              }))
+                            }
+                          >
+                            <option value="none">無管理權限</option>
+                            <option value="viewer">viewer</option>
+                            <option value="moderator">moderator</option>
+                            <option value="operator">operator</option>
+                            <option value="admin">admin</option>
+                          </Select>
+                          {u.isCurrentAdmin ? (
+                            <Badge tone="gold">目前帳號</Badge>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              leftIcon={<ShieldCheck className="size-4" aria-hidden="true" />}
+                              disabled={
+                                roleSavingId === u.id ||
+                                (userRoleEdits[u.id] ?? u.adminRole ?? 'none') === (u.adminRole ?? 'none')
+                              }
+                              onClick={() => void updateUserRole(u)}
+                            >
+                              {roleSavingId === u.id ? '套用中…' : '套用'}
+                            </Button>
+                          )}
+                        </div>
+                      </DataListCell>
+                    )}
+                    <DataListCell label="操作">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={eloSavingId === u.id}
+                        onClick={() => {
+                          const v = Number(eloEdits[u.id]);
+                          if (!Number.isFinite(v)) return;
+                          void adminResetElo(token, u.id, Math.trunc(v))
+                            .then(() => refreshUsers(userSearch))
+                            .then(() =>
+                              setEloEdits((p) => {
+                                const n = { ...p };
+                                delete n[u.id];
+                                return n;
+                              }),
+                            );
+                          setEloSavingId(u.id);
+                          setTimeout(() => setEloSavingId(null), 1500);
+                        }}
+                      >
+                        {eloSavingId === u.id ? '已更新' : '更新 ELO'}
+                      </Button>
+                    </DataListCell>
+                  </tr>
+                ))}
+              </tbody>
+            </DataListTable>
+          )}
         </section>
       )}
 

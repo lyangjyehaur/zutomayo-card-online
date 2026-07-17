@@ -37,6 +37,7 @@ COPY scripts/postgres-role-tls-smoke.cjs ./scripts/postgres-role-tls-smoke.cjs
 COPY scripts/db-schema-gate.cjs ./scripts/db-schema-gate.cjs
 COPY scripts/card-data-gate.cjs ./scripts/card-data-gate.cjs
 COPY scripts/release-card-data.cjs ./scripts/release-card-data.cjs
+COPY scripts/link-admin-user.cjs ./scripts/link-admin-user.cjs
 COPY scripts/audit-card-official-texts.ts ./scripts/audit-card-official-texts.ts
 COPY scripts/import-card-official-texts-pg.ts ./scripts/import-card-official-texts-pg.ts
 COPY scripts/verify-compose-role-env.mjs ./scripts/verify-compose-role-env.mjs

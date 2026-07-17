@@ -168,6 +168,19 @@ const adminEloSchema = z.object({
   elo: z.number().int().min(0).max(9999),
 });
 
+const adminUserListQuerySchema = z
+  .object({
+    limit: z.coerce.number().int().min(1).max(500).optional(),
+    q: z.string().trim().max(200).optional(),
+  })
+  .strict();
+
+const adminRoleUpdateSchema = z
+  .object({
+    role: z.enum(['viewer', 'moderator', 'operator', 'admin']).nullable(),
+  })
+  .strict();
+
 const seasonIdSchema = z.string().regex(/^[a-zA-Z0-9._:-]{3,80}$/);
 const seasonRewardTierSchema = z
   .object({
@@ -288,6 +301,8 @@ module.exports = {
   chatTranslationRequestSchema,
   adminLoginSchema,
   adminEloSchema,
+  adminUserListQuerySchema,
+  adminRoleUpdateSchema,
   seasonIdSchema,
   adminSeasonCreateSchema,
   adminSeasonListQuerySchema,

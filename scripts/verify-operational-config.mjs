@@ -329,7 +329,7 @@ export function validateOperationalConfig() {
     'ACCOUNT_EXPORT_S3_LIFECYCLE_CONFIRMED',
     'Public Access Block',
     's3:DeleteObjectVersion',
-    '000031_official_card_data_releases',
+    '000033_admin_linked_auth_contract',
     'LEGACY_TOMBSTONE_BACKFILL_APPROVED',
     'identity_anonymized_at IS NULL',
     '256 MiB',
@@ -377,16 +377,15 @@ export function validateOperationalConfig() {
   requireFragments('load-tests/matchmaking-load.js', ['mm_legacy_retired', 'legacy matchmaking returns 410']);
   requireFragments('package.json', ['"load:matchmaking": "npm run load:matchmaking-retirement"']);
   requireFragments('load-tests/auth-load.js', ['auth_refresh_success']);
-  for (const workflow of ['.github/workflows/ci.yml', '.github/workflows/cd.yml']) {
-    requireFragments(workflow, [
-      'npm run ops:config',
-      'docker-compose.yml -f docker-compose.retention.yml config --quiet',
-      'PG_RETENTION_HOST:',
-      'PG_RETENTION_USER:',
-      'PG_RETENTION_PASSWORD:',
-      'PG_RETENTION_SSLMODE:',
-    ]);
-  }
+  requireFragments('.github/workflows/ci.yml', ['npm run ops:config']);
+  requireFragments('.github/workflows/cd.yml', [
+    'npm run ops:config',
+    'docker-compose.yml -f docker-compose.retention.yml config --quiet',
+    'PG_RETENTION_HOST:',
+    'PG_RETENTION_USER:',
+    'PG_RETENTION_PASSWORD:',
+    'PG_RETENTION_SSLMODE:',
+  ]);
   return true;
 }
 

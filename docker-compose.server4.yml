@@ -44,6 +44,10 @@ services:
         target: /run/secrets/zutomayo-service-ca.crt
         read_only: true
       - type: bind
+        source: ${BATTLE_ASSET_DIR:-./public/battle}
+        target: /app/dist/battle
+        read_only: true
+      - type: bind
         source: ${CARD_DATA_DIR:?Set CARD_DATA_DIR to the private reviewed card-data directory}
         target: /run/card-data
         read_only: true
@@ -183,6 +187,7 @@ services:
       - LOGTO_M2M_APP_SECRET=${LOGTO_M2M_APP_SECRET:-}
       - LOGTO_MANAGEMENT_RESOURCE=${LOGTO_MANAGEMENT_RESOURCE:-}
       - LOGTO_MANAGEMENT_SCOPE=${LOGTO_MANAGEMENT_SCOPE:-}
+      - ACCOUNT_DELETION_RECOVERY_ENABLED=${ACCOUNT_DELETION_RECOVERY_ENABLED:-true}
       - ACCOUNT_DELETION_RECOVERY_INTERVAL_MS=${ACCOUNT_DELETION_RECOVERY_INTERVAL_MS:-60000}
       - ACCOUNT_EXPORT_STORAGE_MODE=s3
       - ACCOUNT_EXPORT_S3_BUCKET=${ACCOUNT_EXPORT_S3_BUCKET:?Set the private account export S3 bucket}

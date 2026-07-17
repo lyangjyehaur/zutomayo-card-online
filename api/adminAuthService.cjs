@@ -83,6 +83,19 @@ function sameCredentialSnapshot(current, authenticated) {
   );
 }
 
+async function issueAdminSession({ queryable, adminUserId, role, createSessionToken, sessionTtlSeconds, generateJti }) {
+  const jti = generateJti();
+  const ttl = Math.max(300, Math.min(Number(sessionTtlSeconds) || 3600, 8 * 60 * 60));
+  const token = createSessionToken({ adminUserId, role, jti, expiresIn: ttl });
+  await queryable.query(
+    `INSERT INTO admin_sessions (jti, admin_user_id, role, expires_at)
+     VALUES ($1, $2, $3, NOW() + ($4 * INTERVAL '1 second'))`,
+    [jti, adminUserId, role, ttl],
+  );
+  await queryable.query('UPDATE admin_users SET last_login_at = NOW() WHERE id = $1', [adminUserId]);
+  return { ok: true, body: { token, role, expiresIn: ttl } };
+}
+
 async function authenticateAdmin({
   pool,
   body,
@@ -105,6 +118,9 @@ async function authenticateAdmin({
     )
   ).rows[0];
   if (!user) return { ok: false, status: 401, error: 'Invalid admin credentials' };
+  if (!user.password_hash || !user.salt) {
+    return { ok: false, status: 401, error: 'Invalid admin credentials' };
+  }
 
   const computedHash = await hashPassword(body.password, user.salt, passwordIterations);
   if (!timingSafeTextEqual(computedHash, user.password_hash)) {
@@ -135,18 +151,66 @@ async function authenticateAdmin({
       return { ok: false, status: 401, error: 'Invalid admin credentials' };
     }
 
-    const jti = generateJti();
-    const ttl = Math.max(300, Math.min(Number(sessionTtlSeconds) || 3600, 8 * 60 * 60));
-    const token = createSessionToken({ adminUserId: user.id, role: user.role, jti, expiresIn: ttl });
-    await client.query(
-      `INSERT INTO admin_sessions (jti, admin_user_id, role, expires_at)
-       VALUES ($1, $2, $3, NOW() + ($4 * INTERVAL '1 second'))`,
-      [jti, user.id, user.role, ttl],
-    );
-    await client.query('UPDATE admin_users SET last_login_at = NOW() WHERE id = $1', [user.id]);
+    const result = await issueAdminSession({
+      queryable: client,
+      adminUserId: user.id,
+      role: user.role,
+      createSessionToken,
+      sessionTtlSeconds,
+      generateJti,
+    });
     await client.query('COMMIT');
     transactionOpen = false;
-    return { ok: true, body: { token, role: user.role, expiresIn: ttl } };
+    return result;
+  } catch (error) {
+    if (transactionOpen) await client.query('ROLLBACK').catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function createLinkedAdminSession({
+  pool,
+  userId,
+  createSessionToken,
+  sessionTtlSeconds = 60 * 60,
+  generateJti = () => crypto.randomBytes(18).toString('hex'),
+}) {
+  if (typeof pool.connect !== 'function') throw new Error('linked admin authentication requires a PostgreSQL pool');
+  const client = await pool.connect();
+  let transactionOpen = false;
+  try {
+    await client.query('BEGIN');
+    transactionOpen = true;
+    const admin = (
+      await client.query(
+        `SELECT a.id, a.role
+         FROM admin_users a
+         JOIN users u ON u.id = a.user_id
+         WHERE a.user_id = $1
+           AND a.disabled_at IS NULL
+           AND u.deleted_at IS NULL
+         FOR UPDATE OF a`,
+        [userId],
+      )
+    ).rows[0];
+    if (!admin) {
+      await client.query('ROLLBACK');
+      transactionOpen = false;
+      return { ok: false, status: 403, error: 'Account does not have admin access' };
+    }
+    const result = await issueAdminSession({
+      queryable: client,
+      adminUserId: admin.id,
+      role: admin.role,
+      createSessionToken,
+      sessionTtlSeconds,
+      generateJti,
+    });
+    await client.query('COMMIT');
+    transactionOpen = false;
+    return result;
   } catch (error) {
     if (transactionOpen) await client.query('ROLLBACK').catch(() => undefined);
     throw error;
@@ -190,6 +254,7 @@ async function revokeAdminSession({ pool, jti, adminUserId }) {
 module.exports = {
   ROLE_PERMISSIONS,
   authenticateAdmin,
+  createLinkedAdminSession,
   decodeBase32,
   hasAdminPermission,
   revokeAdminSession,

@@ -21,6 +21,9 @@ RETENTION_COMPOSE_FILE="${RETENTION_COMPOSE_FILE:-docker-compose.retention.yml}"
 ROLE_TLS_SMOKE_COMPOSE_FILE="${ROLE_TLS_SMOKE_COMPOSE_FILE:-docker-compose.postgres-role-smoke.yml}"
 POSTGRES_OPS_COMPOSE_FILE="${POSTGRES_OPS_COMPOSE_FILE:-docker-compose.postgres-ops.yml}"
 RETENTION_SERVICE_GROUP="${RETENTION_SERVICE_GROUP:-zutomayo-retention}"
+BATTLE_ASSET_DIR="${BATTLE_ASSET_DIR:-$PROJECT_DIR/public/battle}"
+BATTLE_ASSET_CHECKSUMS="${BATTLE_ASSET_CHECKSUMS:-$PROJECT_DIR/scripts/battle-assets.sha256}"
+REMOTE_BATTLE_ASSET_DIR="${REMOTE_BATTLE_ASSET_DIR:-$REMOTE_DIR/public/battle}"
 GAME_PORT="${GAME_PORT:-3000}"
 API_PORT="${API_PORT:-3001}"
 PLATFORM_PORT="${PLATFORM_PORT:-3002}"
@@ -66,6 +69,41 @@ die() { printf '[%s] ERROR: %s\n' "$(date +%H:%M:%S)" "$*" >&2; exit 1; }
 ssh_run() { ssh -p "$SERVER_PORT" "$SERVER_USER@$SERVER_HOST" "$@"; }
 
 [[ "$RETENTION_SERVICE_GROUP" =~ ^[a-z_][a-z0-9_-]*$ ]] || die 'RETENTION_SERVICE_GROUP is invalid'
+[[ "$REMOTE_BATTLE_ASSET_DIR" =~ ^/[A-Za-z0-9._/-]+$ ]] || die 'REMOTE_BATTLE_ASSET_DIR contains unsupported characters'
+[[ "$REMOTE_BATTLE_ASSET_DIR" == "$REMOTE_DIR/"* ]] || die 'REMOTE_BATTLE_ASSET_DIR must be inside REMOTE_DIR'
+
+sha256_file() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  else
+    shasum -a 256 "$1" | awk '{print $1}'
+  fi
+}
+
+verify_local_battle_assets() {
+  local expected relative extra actual expected_count=0 actual_count
+  [[ -d "$BATTLE_ASSET_DIR" ]] || die "private battle asset directory is missing: $BATTLE_ASSET_DIR"
+  [[ -f "$BATTLE_ASSET_CHECKSUMS" ]] || die "battle asset checksum file is missing: $BATTLE_ASSET_CHECKSUMS"
+
+  while read -r expected relative extra; do
+    [[ -n "${expected:-}" ]] || continue
+    [[ "$expected" =~ ^[a-f0-9]{64}$ ]] || die "invalid battle asset checksum: $expected"
+    [[ -z "${extra:-}" ]] || die "battle asset checksum entry contains unsupported whitespace: $relative"
+    [[ "$relative" =~ ^[A-Za-z0-9._/-]+\.(png|svg)$ ]] || die "invalid battle asset path: $relative"
+    [[ "$relative" != /* && "$relative" != ../* && "$relative" != */../* && "$relative" != */.. ]] || \
+      die "battle asset path escapes its directory: $relative"
+    [[ -f "$BATTLE_ASSET_DIR/$relative" ]] || die "required battle asset is missing: $relative"
+    actual="$(sha256_file "$BATTLE_ASSET_DIR/$relative")"
+    [[ "$actual" == "$expected" ]] || die "battle asset checksum mismatch: $relative"
+    expected_count=$((expected_count + 1))
+  done < "$BATTLE_ASSET_CHECKSUMS"
+
+  actual_count="$(find "$BATTLE_ASSET_DIR" -type f \( -iname '*.png' -o -iname '*.svg' \) | wc -l | tr -d '[:space:]')"
+  [[ "$expected_count" -gt 0 ]] || die 'battle asset checksum file is empty'
+  [[ "$actual_count" == "$expected_count" ]] || \
+    die "battle asset inventory mismatch: checksums=$expected_count files=$actual_count"
+  BATTLE_ASSET_COUNT="$expected_count"
+}
 
 validate_manifest() {
   local file="$1" allow_legacy_six="${2:-false}" key value app ops_seen=false seen_keys='|'
@@ -175,17 +213,43 @@ copy_release_files() {
   scp -P "$SERVER_PORT" "$role_projection_source" "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/.role-env-projection.incoming"
 }
 
+copy_battle_assets() {
+  local remote_stage="$REMOTE_DIR/.battle-assets.incoming"
+  scp -P "$SERVER_PORT" "$BATTLE_ASSET_CHECKSUMS" \
+    "$SERVER_USER@$SERVER_HOST:$REMOTE_DIR/.battle-assets.sha256.incoming"
+  awk 'NF { print $2 }' "$BATTLE_ASSET_CHECKSUMS" \
+    | COPYFILE_DISABLE=1 tar -C "$BATTLE_ASSET_DIR" -cf - -T - \
+    | ssh -p "$SERVER_PORT" "$SERVER_USER@$SERVER_HOST" "set -euo pipefail;
+        rm -rf '$remote_stage';
+        install -d -m 0755 '$remote_stage';
+        tar -xf - -C '$remote_stage';
+        find '$remote_stage' -type f -name '._*' -delete;
+        find '$remote_stage' -type d -exec chmod 0755 {} +;
+        find '$remote_stage' -type f -exec chmod 0644 {} +;
+        cd '$remote_stage';
+        sha256sum --check '$REMOTE_DIR/.battle-assets.sha256.incoming';
+        actual_count=\$(find . -type f \( -iname '*.png' -o -iname '*.svg' \) | wc -l | tr -d '[:space:]');
+        test \"\$actual_count\" = '$BATTLE_ASSET_COUNT'"
+}
+
 remote_deploy() {
   ssh_run "set -euo pipefail;
     cd '$REMOTE_DIR';
     test -f .env;
     command -v jq >/dev/null || { echo 'jq is required for secret-safe Compose role validation' >&2; exit 1; };
     getent group '$RETENTION_SERVICE_GROUP' >/dev/null || { echo 'retention service group is missing' >&2; exit 1; };
+    test -d '$REMOTE_DIR/.battle-assets.incoming' || { echo 'verified battle asset staging directory is missing' >&2; exit 1; };
+    install -d -m 0755 '$REMOTE_DIR/backups/battle-assets';
+    if test '$HAS_PREVIOUS' = true; then
+      test -d '$REMOTE_BATTLE_ASSET_DIR' || { echo 'active private battle assets are missing' >&2; exit 1; };
+      rm -rf '$REMOTE_DIR/backups/battle-assets/previous';
+      cp -a '$REMOTE_BATTLE_ASSET_DIR' '$REMOTE_DIR/backups/battle-assets/previous';
+    fi;
     if test -f .release.env; then case '$ROLLBACK_MANIFEST_FORMAT' in current-seven|legacy-six) ;; *) echo 'active release manifest format was not validated' >&2; exit 1;; esac; cp -p .release.env .release.previous.env; chgrp '$RETENTION_SERVICE_GROUP' .release.previous.env; chmod 0640 .release.previous.env; printf '%s\n' '$ROLLBACK_MANIFEST_FORMAT' > .release.previous.format; fi;
     if test -f '$COMPOSE_FILE'; then cp -p '$COMPOSE_FILE' '$COMPOSE_FILE.previous'; fi;
     if test -f '$RETENTION_COMPOSE_FILE'; then cp -p '$RETENTION_COMPOSE_FILE' '$RETENTION_COMPOSE_FILE.previous'; fi;
     if test -f scripts/postgres-init-roles.sh; then cp -p scripts/postgres-init-roles.sh scripts/postgres-init-roles.sh.previous; fi;
-    if test -s .release.previous.env && test -s .release.previous.format && test -s '$COMPOSE_FILE.previous' && test -s '$RETENTION_COMPOSE_FILE.previous' && test -s scripts/postgres-init-roles.sh.previous; then touch .release.rollback-ready; fi;
+    if test -s .release.previous.env && test -s .release.previous.format && test -s '$COMPOSE_FILE.previous' && test -s '$RETENTION_COMPOSE_FILE.previous' && test -s scripts/postgres-init-roles.sh.previous && test -d '$REMOTE_DIR/backups/battle-assets/previous'; then touch .release.rollback-ready; fi;
     install -m 0640 .release.env.incoming .release.env;
     chgrp '$RETENTION_SERVICE_GROUP' .release.env;
     printf '%s\n' current-seven > .release.format;
@@ -196,7 +260,10 @@ remote_deploy() {
     install -d -m 0755 scripts;
     install -m 0755 .postgres-init-roles.incoming scripts/postgres-init-roles.sh;
     install -m 0644 .role-env-projection.incoming scripts/project-compose-role-env.jq;
-    rm -f .release.env.incoming .compose.incoming .retention-compose.incoming .role-tls-smoke-compose.incoming .postgres-ops-compose.incoming .postgres-init-roles.incoming .role-env-projection.incoming;
+    install -m 0644 .battle-assets.sha256.incoming scripts/battle-assets.sha256;
+    rm -rf '$REMOTE_BATTLE_ASSET_DIR';
+    mv '$REMOTE_DIR/.battle-assets.incoming' '$REMOTE_BATTLE_ASSET_DIR';
+    rm -f .release.env.incoming .compose.incoming .retention-compose.incoming .role-tls-smoke-compose.incoming .postgres-ops-compose.incoming .postgres-init-roles.incoming .role-env-projection.incoming .battle-assets.sha256.incoming;
     set -a; . ./.release.env; set +a;
     docker compose -f '$COMPOSE_FILE' -f '$RETENTION_COMPOSE_FILE' config --quiet;
     PG_DEPLOY_GATE_HOST=\$(docker compose -f '$COMPOSE_FILE' config --format json | jq -er '.services.migrate.environment.PG_HOST | select(type == \"string\" and length > 0)');
@@ -249,6 +316,10 @@ remote_rollback() {
     cp -p '$RETENTION_COMPOSE_FILE.previous' '$RETENTION_COMPOSE_FILE';
     cp -p scripts/postgres-init-roles.sh scripts/postgres-init-roles.sh.failed 2>/dev/null || true;
     cp -p scripts/postgres-init-roles.sh.previous scripts/postgres-init-roles.sh;
+    test -d '$REMOTE_DIR/backups/battle-assets/previous' || { echo 'no previous private battle assets' >&2; exit 1; };
+    rm -rf '$REMOTE_DIR/backups/battle-assets/failed';
+    if test -d '$REMOTE_BATTLE_ASSET_DIR'; then mv '$REMOTE_BATTLE_ASSET_DIR' '$REMOTE_DIR/backups/battle-assets/failed'; fi;
+    mv '$REMOTE_DIR/backups/battle-assets/previous' '$REMOTE_BATTLE_ASSET_DIR';
     set -a; . ./.release.env; set +a;
     docker compose -f '$COMPOSE_FILE' -f '$RETENTION_COMPOSE_FILE' config --quiet;
     docker compose -f '$COMPOSE_FILE' -f '$RETENTION_COMPOSE_FILE' pull --quiet retention;
@@ -287,7 +358,8 @@ run_smoke() {
     --game-port "$SMOKE_LOCAL_GAME_PORT" \
     --api-port "$SMOKE_LOCAL_API_PORT" \
     --platform-port "$SMOKE_LOCAL_PLATFORM_PORT" \
-    --expected-build-id "$RELEASE_SHA"
+    --expected-build-id "$RELEASE_SHA" \
+    --check-battle-assets true
   status=$?
   if [[ "$status" -eq 0 ]]; then
     node --import tsx "$SCRIPT_DIR/platform-deployment-smoke.ts" \
@@ -339,9 +411,11 @@ verify_manifest_artifacts
 confirm_action "deploy $(sed -n 's/^RELEASE_SHA=//p' "$MANIFEST_FILE" | cut -c1-12)"
 if [[ "$DRY_RUN" == true ]]; then
   log "[dry-run] would upload $MANIFEST_FILE and deploy immutable images"
+  log '[dry-run] would verify and synchronize private battle assets'
   exit 0
 fi
 
+verify_local_battle_assets
 ssh_run 'echo connected' >/dev/null || die 'SSH connection failed'
 ssh_run "test -d '$REMOTE_DIR' && test -f '$REMOTE_DIR/.env'" || die 'remote deployment directory or .env is missing'
 ssh_run "test ! -e '$REMOTE_DIR/.release.rollback-ready'" || die 'an incomplete prior rollout requires manual inspection or rollback'
@@ -362,6 +436,7 @@ if [[ "$HAS_PREVIOUS" != true && "$BOOTSTRAP" != true ]]; then
   die 'no verified previous release is present; use --bootstrap for the one-time cutover with a manual rollback plan'
 fi
 copy_release_files "$MANIFEST_FILE"
+copy_battle_assets
 if ! remote_deploy; then
   if [[ "$HAS_PREVIOUS" == true ]]; then
     if ssh_run "test -e '$REMOTE_DIR/.release.rollback-ready'"; then

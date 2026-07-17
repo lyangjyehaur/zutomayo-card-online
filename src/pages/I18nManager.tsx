@@ -7,7 +7,7 @@ import { zhCN } from '../i18n/zh-CN';
 import { ja } from '../i18n/ja';
 import { en } from '../i18n/en';
 import { ko } from '../i18n/ko';
-import { ApiError, adminLogin } from '../api/client';
+import { ApiError, adminLogin, adminLoginWithAccount } from '../api/client';
 import {
   BackButton,
   Alert,
@@ -20,6 +20,7 @@ import {
   FormActions,
   FormField,
   Input,
+  LoadingState,
   PageShell,
   Panel,
   SegmentedControl,
@@ -30,6 +31,7 @@ import {
 import '../components/I18nManager.css';
 
 const ADMIN_TOKEN_KEY = 'zutomayo_admin_token';
+const ADMIN_ROLE_KEY = 'zutomayo_admin_role';
 
 const allDictionaries: Record<string, Record<string, string>> = {
   'zh-TW': zhTW as unknown as Record<string, string>,
@@ -66,6 +68,7 @@ export function I18nManager() {
   const [totpCode, setTotpCode] = useState('');
   const [error, setError] = useState('');
   const [loggingIn, setLoggingIn] = useState(false);
+  const [checkingLinkedAdmin, setCheckingLinkedAdmin] = useState(() => !sessionStorage.getItem(ADMIN_TOKEN_KEY));
   const [selectedLocale, setSelectedLocale] = useState<Locale>('zh-TW');
   const [filterMissing, setFilterMissing] = useState(false);
   const [searchText, setSearchText] = useState('');
@@ -96,8 +99,9 @@ export function I18nManager() {
     setError('');
     setLoggingIn(true);
     try {
-      const { token } = await adminLogin({ username, password, totpCode });
+      const { token, role } = await adminLogin({ username, password, totpCode });
       sessionStorage.setItem(ADMIN_TOKEN_KEY, token);
+      sessionStorage.setItem(ADMIN_ROLE_KEY, role);
       setAuthenticated(true);
       setPassword('');
     } catch (err) {
@@ -108,8 +112,39 @@ export function I18nManager() {
     }
   }, [password, totpCode, username]);
 
+  useEffect(() => {
+    if (sessionStorage.getItem(ADMIN_TOKEN_KEY)) {
+      setCheckingLinkedAdmin(false);
+      return;
+    }
+    let cancelled = false;
+    void adminLoginWithAccount()
+      .then(({ token, role }) => {
+        if (cancelled) return;
+        sessionStorage.setItem(ADMIN_TOKEN_KEY, token);
+        sessionStorage.setItem(ADMIN_ROLE_KEY, role);
+        setAuthenticated(true);
+      })
+      .catch((adminError: unknown) => {
+        if (cancelled) return;
+        if (
+          !(adminError instanceof ApiError) ||
+          (adminError.status !== 401 && adminError.status !== 403 && adminError.status !== 404)
+        ) {
+          setError(adminError instanceof Error ? adminError.message : t('admin.loginFailed'));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setCheckingLinkedAdmin(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const handleLogout = useCallback(() => {
     sessionStorage.removeItem(ADMIN_TOKEN_KEY);
+    sessionStorage.removeItem(ADMIN_ROLE_KEY);
     setAuthenticated(false);
   }, []);
 
@@ -122,6 +157,14 @@ export function I18nManager() {
     setEditKey(null);
     setEditValue('');
   }, []);
+
+  if (checkingLinkedAdmin) {
+    return (
+      <PageShell variant="scroll" className="admin-page i18n-page flex min-h-screen items-center justify-center">
+        <LoadingState label={t('admin.verifying')} />
+      </PageShell>
+    );
+  }
 
   if (!authenticated) {
     return (

@@ -15,6 +15,7 @@ test.describe('牌組編輯器頁面', () => {
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => {
       localStorage.setItem('zutomayo_deck_intro_seen', 'true');
+      localStorage.setItem('zutomayo_locale', 'zh-TW');
     });
   });
 
@@ -67,6 +68,7 @@ test.describe('牌組編輯 — 卡牌操作 @requires-backend', () => {
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => {
       localStorage.setItem('zutomayo_deck_intro_seen', 'true');
+      localStorage.setItem('zutomayo_locale', 'zh-TW');
     });
   });
 

@@ -19,6 +19,7 @@ const ports = {
   platform: args.get('platform-port') || process.env.PLATFORM_PORT || '3002',
 };
 const expectedBuildId = args.get('expected-build-id') || process.env.EXPECTED_BUILD_ID || '';
+const checkBattleAssets = (args.get('check-battle-assets') || process.env.CHECK_BATTLE_ASSETS || 'false') === 'true';
 const timeoutMs = Number(args.get('timeout-ms') || process.env.SMOKE_TIMEOUT_MS || 8_000);
 const attempts = Number(args.get('attempts') || process.env.SMOKE_ATTEMPTS || 12);
 const retryDelayMs = Number(args.get('retry-delay-ms') || process.env.SMOKE_RETRY_DELAY_MS || 5_000);
@@ -63,6 +64,38 @@ async function requestWithRetry(service, pathname) {
   throw lastError;
 }
 
+async function requestAsset(pathname, expectedContentType) {
+  const url = endpoint('game', pathname);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { signal: controller.signal, headers: { Accept: expectedContentType } });
+    const contentType = response.headers.get('content-type') || '';
+    const body = await response.arrayBuffer();
+    if (!response.ok) throw new Error(`game${pathname} returned HTTP ${response.status}`);
+    if (!contentType.toLowerCase().startsWith(expectedContentType)) {
+      throw new Error(`game${pathname} returned unexpected content type: ${contentType || 'missing'}`);
+    }
+    if (body.byteLength === 0) throw new Error(`game${pathname} returned an empty asset`);
+    return body.byteLength;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function requestAssetWithRetry(pathname, expectedContentType) {
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await requestAsset(pathname, expectedContentType);
+    } catch (error) {
+      lastError = error;
+      if (attempt < attempts) await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+    }
+  }
+  throw lastError;
+}
+
 function assertHealthy(service, pathname, body) {
   if (body?.ok === false || body?.status === 'down' || body?.status === 'degraded') {
     throw new Error(`${service}${pathname} is unhealthy: ${JSON.stringify(body)}`);
@@ -96,3 +129,13 @@ if (expectedBuildId && buildIds[0] !== expectedBuildId) {
   throw new Error(`runtime build ID ${buildIds[0]} does not match release ${expectedBuildId}`);
 }
 console.log(`smoke ok: buildId=${buildIds[0]}`);
+
+if (checkBattleAssets) {
+  for (const [pathname, contentType] of [
+    ['/battle/chronos.svg', 'image/svg+xml'],
+    ['/battle/medal.png', 'image/png'],
+  ]) {
+    const bytes = await requestAssetWithRetry(pathname, contentType);
+    console.log(`smoke ok: game${pathname} (${bytes} bytes)`);
+  }
+}

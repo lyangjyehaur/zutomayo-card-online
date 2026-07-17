@@ -29,8 +29,8 @@ docs/responsive-visual-smoke-screenshots/
 # Card images (on R2 CDN)
 public/cards/
 
-# Optional local battle art. These files may contain licensed/copyrighted artwork;
-# the battle UI has CSS/React fallbacks so deployments work without them.
+# Private battle art. The files stay outside GitHub and are synchronized to
+# server4 by scripts/deploy-server4.sh; scripts/battle-assets.sha256 is tracked.
 public/battle/*.svg
 public/battle/*.png
 public/battle/chronos-slots/

@@ -69,6 +69,24 @@ describe('schema migrations', () => {
     expect(initSchema, 'initSchema fallback missing verified chat membership column').toContain('access_verified');
   });
 
+  it('links administrator roles to signed-in user accounts', () => {
+    const migration = readRepoFile('migrations/000031_user_linked_admins.js');
+    const authContract = readRepoFile('migrations/000033_admin_linked_auth_contract.js');
+    const schemaGate = readRepoFile('api/schemaGate.cjs');
+    const linkScript = readRepoFile('scripts/link-admin-user.cjs');
+
+    expect(migration).toContain("references: 'users(id)'");
+    expect(migration).toContain("name: 'uq_admin_users_user_id'");
+    expect(authContract).toContain("'admin_users_auth_mode_check'");
+    expect(authContract).toContain('user_id IS NULL');
+    expect(authContract).toContain('password_hash IS NOT NULL');
+    expect(authContract).toContain('user_id IS NOT NULL');
+    expect(authContract).toContain('password_hash IS NULL');
+    expect(schemaGate).toContain("'user_id'");
+    expect(linkScript).toContain('ON CONFLICT (user_id)');
+    expect(linkScript).toContain('DELETE FROM admin_users WHERE user_id = $1 RETURNING id');
+  });
+
   it('backfills the reward entitlement ledger for every existing grant', () => {
     const consistencyMigration = readRepoFile('migrations/000021_season_result_consistency.js');
     expect(consistencyMigration).toContain('SELECT season_id, user_id, reward_tier, reward_payload, granted_at');
@@ -227,7 +245,7 @@ describe('schema migrations', () => {
   });
 
   it('creates an irreversible signed official-card dataset ledger', () => {
-    const migration = readRepoFile('migrations/000031_official_card_data_releases.js');
+    const migration = readRepoFile('migrations/000032_official_card_data_releases.js');
 
     for (const column of [
       'dataset_sha256',

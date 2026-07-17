@@ -222,8 +222,24 @@ describe('production schema gate', () => {
       fragments: ['(deleted_at)', 'deleted_at is not null', 'identity_anonymized_at is null'],
     });
     expect(REQUIRED_RUNTIME_COLUMNS.admin_users).toEqual(
-      expect.arrayContaining(['password_hash', 'salt', 'totp_secret_ciphertext', 'updated_at', 'disabled_at']),
+      expect.arrayContaining([
+        'user_id',
+        'password_hash',
+        'salt',
+        'totp_secret_ciphertext',
+        'updated_at',
+        'disabled_at',
+      ]),
     );
+    for (const columnName of ['user_id', 'password_hash', 'salt']) {
+      expect(REQUIRED_RUNTIME_COLUMN_CONTRACTS).toContainEqual({
+        tableName: 'admin_users',
+        columnName,
+        udtName: 'text',
+        nullable: true,
+        defaultToken: null,
+      });
+    }
     expect(REQUIRED_RUNTIME_COLUMNS.admin_sessions).toEqual(
       expect.arrayContaining(['jti', 'admin_user_id', 'expires_at', 'revoked_at', 'last_seen_at']),
     );
@@ -235,9 +251,30 @@ describe('production schema gate', () => {
       indexName: 'idx_admin_sessions_user_expiry',
       fragments: ['admin_user_id', 'expires_at'],
     });
+    expect(REQUIRED_RUNTIME_INDEXES).toContainEqual({
+      tableName: 'admin_users',
+      indexName: 'uq_admin_users_user_id',
+      fragments: ['unique index', '(user_id)'],
+    });
     expect(REQUIRED_RUNTIME_CONSTRAINTS).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ tableName: 'admin_users', constraintType: 'u', fragments: ['unique (username)'] }),
+        expect.objectContaining({
+          tableName: 'admin_users',
+          constraintType: 'f',
+          fragments: expect.arrayContaining(['foreign key (user_id)', 'references users(id)', 'on delete cascade']),
+        }),
+        expect.objectContaining({
+          tableName: 'admin_users',
+          constraintName: 'admin_users_auth_mode_check',
+          constraintType: 'c',
+          fragments: expect.arrayContaining([
+            'user_id is null',
+            'password_hash is not null',
+            'salt is not null',
+            'user_id is not null',
+          ]),
+        }),
         expect.objectContaining({
           tableName: 'admin_sessions',
           constraintType: 'f',
@@ -452,7 +489,7 @@ describe('production schema gate', () => {
     await expect(
       assertRuntimeSchema({
         pool: { query },
-        expectedMigration: '000031_official_card_data_releases',
+        expectedMigration: '000033_admin_linked_auth_contract',
         expectedChecksum: CHECKSUM,
       }),
     ).rejects.toThrow('2 legacy deleted accounts pending identity anonymization');
@@ -544,7 +581,7 @@ describe('production schema gate', () => {
     await expect(
       assertRuntimeSchema({
         pool: { query },
-        expectedMigration: '000031_official_card_data_releases',
+        expectedMigration: '000033_admin_linked_auth_contract',
         expectedChecksum: CHECKSUM,
       }),
     ).rejects.toThrow('card_official_errata_english_source_check');
@@ -588,7 +625,7 @@ describe('production schema gate', () => {
 });
 
 describe('boardgame runtime schema gate', () => {
-  const expectedMigration = '000031_official_card_data_releases';
+  const expectedMigration = '000033_admin_linked_auth_contract';
   const allTablesPresent = () => REQUIRED_BOARDGAME_RUNTIME_TABLES.map((table_name) => ({ table_name, present: true }));
   const allColumnsPresent = () =>
     Object.entries(REQUIRED_BOARDGAME_RUNTIME_COLUMNS).flatMap(([table_name, columns]) =>

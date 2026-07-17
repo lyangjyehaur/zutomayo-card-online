@@ -35,6 +35,12 @@ const CANONICAL_CARD_MIGRATIONS = [
   '000029_card_official_errata',
   '000030_card_official_errata_english_source',
 ];
+const LEGACY_OFFICIAL_CARD_DATA_MIGRATION = '000031_official_card_data_releases';
+const POST_CARD_MIGRATIONS = [
+  '000031_user_linked_admins',
+  '000032_official_card_data_releases',
+  '000033_admin_linked_auth_contract',
+];
 
 function migrationFilePattern(names) {
   return `(?:${names.join('|')})\\.js`;
@@ -100,13 +106,14 @@ async function main() {
       throw new Error('migration lineage smoke requires a fresh disposable database');
     }
 
-    const legacyAndDeferred = [
+    const preCardSetupIgnore = [
       ...LEGACY_CARD_MIGRATIONS,
       ...PRE_CARD_HARDENING,
       ...CANONICAL_CARD_MIGRATIONS,
-      '000031_official_card_data_releases',
+      LEGACY_OFFICIAL_CARD_DATA_MIGRATION,
+      ...POST_CARD_MIGRATIONS,
     ];
-    await runSetupMigrations(migrationFilePattern(legacyAndDeferred));
+    await runSetupMigrations(migrationFilePattern(preCardSetupIgnore));
 
     // Historical initSchema created these fields before the corresponding
     // deferred migration files existed. Exercise adoption instead of only an
@@ -119,7 +126,12 @@ async function main() {
     `);
 
     await runSetupMigrations(
-      migrationFilePattern([...LEGACY_CARD_MIGRATIONS, ...PRE_CARD_HARDENING, '000031_official_card_data_releases']),
+      migrationFilePattern([
+        ...LEGACY_CARD_MIGRATIONS,
+        ...PRE_CARD_HARDENING,
+        LEGACY_OFFICIAL_CARD_DATA_MIGRATION,
+        ...POST_CARD_MIGRATIONS,
+      ]),
     );
     const cardFirstHistory = await listAppliedMigrationNames(pool);
     for (const migration of CANONICAL_CARD_MIGRATIONS) {
@@ -127,6 +139,9 @@ async function main() {
     }
     if (cardFirstHistory.some((name) => PRE_CARD_HARDENING.includes(name))) {
       throw new Error('historical setup unexpectedly applied deferred hardening migrations');
+    }
+    if (cardFirstHistory.some((name) => POST_CARD_MIGRATIONS.includes(name))) {
+      throw new Error('historical setup unexpectedly applied post-card migrations');
     }
 
     runActualWrapper('card-first compatibility run');
@@ -137,7 +152,7 @@ async function main() {
     const expectedNames = readdirSync(MIGRATIONS_DIR)
       .filter((name) => name.endsWith('.js'))
       .map((name) => name.replace(/\.js$/, ''))
-      .filter((name) => !LEGACY_CARD_MIGRATIONS.has(name))
+      .filter((name) => !LEGACY_CARD_MIGRATIONS.has(name) && name !== LEGACY_OFFICIAL_CARD_DATA_MIGRATION)
       .sort();
     if (JSON.stringify(appliedNames) !== JSON.stringify(expectedNames)) {
       throw new Error('normalized migration history does not match the canonical release file set');
