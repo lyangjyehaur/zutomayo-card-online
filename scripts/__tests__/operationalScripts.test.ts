@@ -66,6 +66,10 @@ describe('operational shell scripts', () => {
     expect(compose).toContain('POSTGRES_USER: ${PG_BOOTSTRAP_USER:-${PG_MIGRATION_USER:-zutomayo}}');
     expect(smoke).toContain("grep -qx '1'");
     expect(smoke).toContain('migrate npm run relationship:outbox:pg-smoke');
+    expect(smoke).toContain('migrate npm run db:migration-lineage:smoke');
+    expect(smoke).toContain('migrate npm run db:platform-schema:smoke');
+    expect(smoke).toContain('lineage_database="${PG_DATABASE}_lineage"');
+    expect(smoke).toContain('--env REQUIRE_APP_ROLE_GATE=false');
     expect(smoke).toContain('REDIS_DB="${REDIS_DB:-7}"');
     expect(smoke).toContain('--env REDIS_DB="$REDIS_DB"');
     expect(smoke).toContain('api node social-concurrency-pg-smoke.cjs');
@@ -174,6 +178,7 @@ describe('operational shell scripts', () => {
     const workflow = readFileSync(resolve('.github/workflows/ci.yml'), 'utf8');
 
     expect(packageJson.scripts.verify).toContain('npm run data:policy');
+    expect(packageJson.scripts['db:migrate:release']).toContain('scripts/backfill-legacy-deleted-accounts-pg.cjs');
     expect(packageJson.scripts['db:migrate:release']).toContain('scripts/release-card-data.cjs');
     expect(server4).toContain('REQUIRE_OFFICIAL_CARD_DATA=true');
     expect(server4).toContain('RELEASE_SHA=${RELEASE_SHA:');
@@ -182,6 +187,10 @@ describe('operational shell scripts', () => {
     expect(staging).toContain('REQUIRE_OFFICIAL_CARD_DATA=true');
     expect(staging).toContain('RELEASE_SHA=${RELEASE_SHA:');
     expect(localCompose).toContain('REQUIRE_OFFICIAL_CARD_DATA=${REQUIRE_OFFICIAL_CARD_DATA:-false}');
+    for (const compose of [server4, server4Slot, staging, localCompose]) {
+      expect(compose).toContain('LEGACY_TOMBSTONE_BACKFILL_APPROVED');
+      expect(compose).toContain('LEGACY_TOMBSTONE_BACKFILL_EXPECTED_COUNT');
+    }
     expect(importer).toContain("assertPostgresExpectedRole(process.env, 'PG_MIGRATION_USER')");
     expect(importer).toContain('postgresConnectionString(process.env)');
     expect(importer).toContain('ssl: postgresSslConfig(process.env)');

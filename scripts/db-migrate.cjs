@@ -20,7 +20,13 @@ const {
   postgresSslConfig,
 } = require('../api/runtimeSecurityConfig.cjs');
 const { recordMigrationChecksums } = require('./migration-checksums.cjs');
-const { listAppliedMigrationNames, migrationIgnorePatternForApplied } = require('./migration-order-compat.cjs');
+const {
+  assertAppliedMigrationOrder,
+  assertOutOfOrderBackfillApplied,
+  listAppliedMigrationNames,
+  migrationOrderPolicyForApplied,
+  normalizeAppliedMigrationOrder,
+} = require('./migration-order-compat.cjs');
 const { enforceRuntimeRolePrivileges } = require('./postgres-role-gate.cjs');
 
 async function main() {
@@ -64,15 +70,20 @@ async function main() {
   const direction = subCommand;
 
   const historyPool = new Pool(databaseConfig);
-  let ignorePattern;
+  let migrationPolicy;
   try {
     const appliedNames = await listAppliedMigrationNames(historyPool);
-    ignorePattern = migrationIgnorePatternForApplied(appliedNames);
+    migrationPolicy = migrationOrderPolicyForApplied(appliedNames);
   } finally {
     await historyPool.end();
   }
-  if (ignorePattern) {
+  if (migrationPolicy.ignorePattern) {
     console.log('Using canonical append-only card migrations 000028-000030');
+  }
+  if (migrationPolicy.outOfOrderBackfill.length > 0) {
+    console.log(
+      `Applying reviewed deferred-hardening lineage compatibility: ${migrationPolicy.outOfOrderBackfill.join(', ')}`,
+    );
   }
 
   await runner({
@@ -81,13 +92,24 @@ async function main() {
     direction,
     migrationsTable: 'schema_migrations',
     schema: 'public',
-    ignorePattern,
-    checkOrder: true,
+    ignorePattern: migrationPolicy.ignorePattern,
+    checkOrder: migrationPolicy.checkOrder,
     count: direction === 'down' ? 1 : Infinity,
     log: (msg) => console.log(msg),
   });
   const checksumPool = new Pool(databaseConfig);
   try {
+    if (migrationPolicy.outOfOrderBackfill.length > 0) {
+      const appliedNames = await listAppliedMigrationNames(checksumPool);
+      assertOutOfOrderBackfillApplied(migrationPolicy.outOfOrderBackfill, appliedNames);
+      console.log('Deferred-hardening lineage compatibility completed');
+    }
+    if (migrationPolicy.normalizeOrder) {
+      await normalizeAppliedMigrationOrder(checksumPool);
+      const normalizedNames = await listAppliedMigrationNames(checksumPool);
+      assertAppliedMigrationOrder(normalizedNames);
+      console.log('Migration metadata normalized to canonical filename order');
+    }
     await recordMigrationChecksums(checksumPool, migrationsDir);
     if (process.env.REQUIRE_APP_ROLE_GATE === 'true') {
       const roleUsers = {

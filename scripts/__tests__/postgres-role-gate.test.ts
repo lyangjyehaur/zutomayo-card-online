@@ -232,7 +232,7 @@ describe('PostgreSQL runtime role gate', () => {
     );
     expect(statements).toContain('GRANT UPDATE ("elo", "match_count", "wins") ON TABLE public."users" TO "z_game"');
     expect(statements).toContain(
-      'GRANT SELECT ("id", "auth_version", "deleted_at") ON TABLE public."users" TO "z_platform"',
+      'GRANT SELECT ("id", "auth_version", "deleted_at", "identity_anonymized_at") ON TABLE public."users" TO "z_platform"',
     );
   });
 

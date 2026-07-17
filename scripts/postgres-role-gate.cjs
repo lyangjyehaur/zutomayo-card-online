@@ -257,7 +257,7 @@ function tableRulesFor(roleUsers, requiredRoleTypes) {
 
   grant('platform', PLATFORM_READ_TABLES, ['SELECT']);
   grant('platform', PLATFORM_WRITE_TABLES, ['SELECT', 'INSERT', 'UPDATE']);
-  grantColumns('platform', 'users', { SELECT: ['id', 'auth_version', 'deleted_at'] });
+  grantColumns('platform', 'users', { SELECT: ['id', 'auth_version', 'deleted_at', 'identity_anonymized_at'] });
 
   grantTableRules('retention', RETENTION_TABLE_PRIVILEGES);
   grantColumns('retention', 'users', { SELECT: ['id', 'deleted_at'] });

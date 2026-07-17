@@ -634,6 +634,8 @@ async function deleteAccount({
   stepUpVerified = false,
   beforeDelete,
   deletionRequestId,
+  legacyBackfill = false,
+  emitRelationshipEvent = true,
 }) {
   if (requireStepUp && stepUpVerified !== true) {
     return { ok: false, status: 401, error: 'Recent password verification required' };
@@ -643,10 +645,28 @@ async function deleteAccount({
     // the same lock here prevents a delete from racing a retention batch that
     // could otherwise remove or inspect the account's evidence concurrently.
     try {
-      await acquireAccountMutationLocks(client, [userId], { includeRetention: true });
+      await acquireAccountMutationLocks(client, [userId], {
+        includeRetention: true,
+        requireLiveUsers: !legacyBackfill,
+      });
     } catch (error) {
       if (error instanceof AccountMutationError) return { ok: false, status: 404, error: 'User not found' };
       throw error;
+    }
+    if (legacyBackfill) {
+      const tombstone = (
+        await client.query(
+          `SELECT id, identity_anonymized_at
+             FROM users
+            WHERE id = $1 AND deleted_at IS NOT NULL
+            FOR UPDATE`,
+          [userId],
+        )
+      ).rows[0];
+      if (!tombstone) return { ok: false, status: 404, error: 'Legacy deleted account not found' };
+      if (tombstone.identity_anonymized_at) {
+        return { ok: true, body: { deleted: true, alreadyBackfilled: true } };
+      }
     }
     const activeLegalHold = await findActiveLegalHoldForAccount(client, userId);
     if (activeLegalHold) {
@@ -659,7 +679,9 @@ async function deleteAccount({
     // transaction. Without an id, reject any in-flight saga so callers cannot
     // bypass the provider tombstone protocol.
     let deletionRequest = null;
-    if (deletionRequestId) {
+    if (legacyBackfill) {
+      deletionRequest = null;
+    } else if (deletionRequestId) {
       deletionRequest = (
         await client.query(
           `SELECT id, user_id, provider, status
@@ -731,7 +753,8 @@ async function deleteAccount({
            elo = 1000,
            match_count = 0,
            wins = 0,
-           deleted_at = NOW()
+           deleted_at = COALESCE(deleted_at, NOW()),
+           identity_anonymized_at = NOW()
        WHERE id = $1`,
       [userId, `deleted+${emailRef}@invalid.local`, `deleted:${crypto.randomBytes(24).toString('hex')}`],
     );
@@ -899,10 +922,21 @@ async function deleteAccount({
       [userId, deletionRequestRef, providerRequestRef],
     );
     await redactRelationshipChangesForDeletedUser(client, userId);
-    await enqueueRelationshipChange(client, 'account_deleted', [userId], {
-      idempotencyKey: `account_deleted:${userId}`,
-    });
+    if (emitRelationshipEvent) {
+      await enqueueRelationshipChange(client, 'account_deleted', [userId], {
+        idempotencyKey: `account_deleted:${userId}`,
+      });
+    }
     return { ok: true, body: { deleted: true } };
+  });
+}
+
+async function backfillLegacyDeletedAccount({ pool, userId }) {
+  return deleteAccount({
+    pool,
+    userId,
+    legacyBackfill: true,
+    emitRelationshipEvent: false,
   });
 }
 
@@ -911,6 +945,7 @@ module.exports = {
   DEFAULT_ACCOUNT_EXPORT_MAX_ROWS_PER_COLLECTION,
   DEFAULT_TOKEN_TTL_SECONDS,
   MIN_PASSWORD_LENGTH,
+  backfillLegacyDeletedAccount,
   deleteAccount,
   exportAccountData,
   hashAccountToken,

@@ -59,8 +59,8 @@ import type { PlatformRelationshipChange } from './rooms/types';
 import { createRelationshipChangeProcessor, createRelationshipRecoveryLoop } from './relationshipEventProcessor';
 
 const require = createRequire(import.meta.url);
-const { assertRuntimeSchema } = require('../../api/schemaGate.cjs') as {
-  assertRuntimeSchema: (options: {
+const { assertPlatformRuntimeSchema: assertPlatformSchemaGate } = require('../../api/schemaGate.cjs') as {
+  assertPlatformRuntimeSchema: (options: {
     pool: Pick<Pool, 'query'>;
     expectedMigration: string | undefined;
     expectedChecksum: string | undefined;
@@ -103,7 +103,7 @@ export async function assertPlatformRuntimeSchema(
 ): Promise<void> {
   if (!platformRequiresRuntimeSchema(env)) return;
   if (!pool) throw new Error('Platform production schema gate requires PostgreSQL');
-  await assertRuntimeSchema({
+  await assertPlatformSchemaGate({
     pool,
     expectedMigration: env.EXPECTED_SCHEMA_MIGRATION,
     expectedChecksum: env.EXPECTED_SCHEMA_CHECKSUM,

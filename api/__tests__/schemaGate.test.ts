@@ -208,6 +208,19 @@ describe('production schema gate', () => {
   });
 
   it('requires the credential, revocation, and durable admin audit schema contracts', () => {
+    expect(REQUIRED_RUNTIME_COLUMNS.users).toContain('identity_anonymized_at');
+    expect(REQUIRED_RUNTIME_COLUMN_CONTRACTS).toContainEqual({
+      tableName: 'users',
+      columnName: 'identity_anonymized_at',
+      udtName: 'timestamptz',
+      nullable: true,
+      defaultToken: null,
+    });
+    expect(REQUIRED_RUNTIME_INDEXES).toContainEqual({
+      tableName: 'users',
+      indexName: 'idx_users_deleted_identity_pending',
+      fragments: ['(deleted_at)', 'deleted_at is not null', 'identity_anonymized_at is null'],
+    });
     expect(REQUIRED_RUNTIME_COLUMNS.admin_users).toEqual(
       expect.arrayContaining(['password_hash', 'salt', 'totp_secret_ciphertext', 'updated_at', 'disabled_at']),
     );
@@ -411,7 +424,8 @@ describe('production schema gate', () => {
       .mockResolvedValueOnce({ rows: allColumnsPresent() })
       .mockResolvedValueOnce({ rows: allColumnContractsValid() })
       .mockResolvedValueOnce({ rows: allConstraintsPresent() })
-      .mockResolvedValueOnce({ rows: allIndexesPresent() });
+      .mockResolvedValueOnce({ rows: allIndexesPresent() })
+      .mockResolvedValueOnce({ rows: [{ pending_count: '0' }] });
 
     await expect(
       assertRuntimeSchema({
@@ -421,6 +435,27 @@ describe('production schema gate', () => {
       }),
     ).resolves.toEqual({ expectedMigration: '000015_game_seats_result_outbox', expectedChecksum: CHECKSUM });
     expect(query.mock.calls.every(([sql]) => !/^\s*(CREATE|ALTER|DROP)/i.test(String(sql)))).toBe(true);
+  });
+
+  it('rejects a fully migrated schema while legacy deleted accounts still await anonymization', async () => {
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({ rows: [{ '?column?': 1 }] })
+      .mockResolvedValueOnce({ rows: [{ sha256: CHECKSUM }] })
+      .mockResolvedValueOnce({ rows: allTablesPresent() })
+      .mockResolvedValueOnce({ rows: allColumnsPresent() })
+      .mockResolvedValueOnce({ rows: allColumnContractsValid() })
+      .mockResolvedValueOnce({ rows: allConstraintsPresent() })
+      .mockResolvedValueOnce({ rows: allIndexesPresent() })
+      .mockResolvedValueOnce({ rows: [{ pending_count: '2' }] });
+
+    await expect(
+      assertRuntimeSchema({
+        pool: { query },
+        expectedMigration: '000031_official_card_data_releases',
+        expectedChecksum: CHECKSUM,
+      }),
+    ).rejects.toThrow('2 legacy deleted accounts pending identity anonymization');
   });
 
   it('rejects a table with a missing post-migration column', async () => {

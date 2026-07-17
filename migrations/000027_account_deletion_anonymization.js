@@ -4,15 +4,6 @@ export const shorthands = undefined;
 /** @param pgm {import('node-pg-migrate').MigrationBuilder} */
 export const up = (pgm) => {
   pgm.sql(`
-    DO $account_deletion_anonymization$
-    BEGIN
-      IF EXISTS (SELECT 1 FROM users WHERE deleted_at IS NOT NULL) THEN
-        RAISE EXCEPTION
-          '000027 requires a reviewed legacy tombstone backfill before migration; deleted users still exist';
-      END IF;
-    END
-    $account_deletion_anonymization$;
-
     ALTER TABLE season_match_results
       ALTER COLUMN winner_user_id DROP NOT NULL,
       ALTER COLUMN loser_user_id DROP NOT NULL;
@@ -34,6 +25,7 @@ export const up = (pgm) => {
   });
 
   pgm.addColumns('season_match_results', { identity_anonymized_at: { type: 'timestamptz' } }, { ifNotExists: true });
+  pgm.addColumns('users', { identity_anonymized_at: { type: 'timestamptz' } }, { ifNotExists: true });
   pgm.addColumns('account_export_jobs', { identity_anonymized_at: { type: 'timestamptz' } }, { ifNotExists: true });
   pgm.addColumns('account_export_audit', { identity_anonymized_at: { type: 'timestamptz' } }, { ifNotExists: true });
   pgm.addColumns('admin_audit_log', { identity_anonymized_at: { type: 'timestamptz' } }, { ifNotExists: true });
@@ -51,6 +43,11 @@ export const up = (pgm) => {
     ifNotExists: true,
     name: 'idx_season_match_results_winner_user',
     where: 'winner_user_id IS NOT NULL',
+  });
+  pgm.createIndex('users', ['deleted_at'], {
+    ifNotExists: true,
+    name: 'idx_users_deleted_identity_pending',
+    where: 'deleted_at IS NOT NULL AND identity_anonymized_at IS NULL',
   });
   pgm.createIndex('season_match_results', ['loser_user_id'], {
     ifNotExists: true,

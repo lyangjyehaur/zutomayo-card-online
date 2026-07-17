@@ -71,7 +71,7 @@ const REQUIRED_RUNTIME_COLUMNS = Object.freeze({
     'errata_count',
     'applied_at',
   ],
-  users: ['id', 'auth_version', 'deleted_at'],
+  users: ['id', 'auth_version', 'deleted_at', 'identity_anonymized_at'],
   user_identities: ['user_id', 'provider', 'provider_user_id'],
   decks: ['id', 'user_id', 'card_ids', 'updated_at'],
   deck_reservations: ['id', 'user_id', 'deck_id', 'rules_version', 'card_ids', 'expires_at'],
@@ -527,6 +527,13 @@ const REQUIRED_BOARDGAME_RUNTIME_COLUMN_CONTRACTS = Object.freeze([
 // integrity critical. `udtName` uses PostgreSQL's stable internal names
 // (for example `timestamptz` and `int4`) instead of localized display text.
 const REQUIRED_RUNTIME_COLUMN_CONTRACTS = Object.freeze([
+  {
+    tableName: 'users',
+    columnName: 'identity_anonymized_at',
+    udtName: 'timestamptz',
+    nullable: true,
+    defaultToken: null,
+  },
   {
     tableName: 'official_card_data_releases',
     columnName: 'dataset_sha256',
@@ -1392,6 +1399,11 @@ const REQUIRED_BOARDGAME_RUNTIME_CONSTRAINTS = Object.freeze([
 
 const REQUIRED_RUNTIME_INDEXES = Object.freeze([
   {
+    tableName: 'users',
+    indexName: 'idx_users_deleted_identity_pending',
+    fragments: ['(deleted_at)', 'deleted_at is not null', 'identity_anonymized_at is null'],
+  },
+  {
     tableName: 'card_texts_i18n',
     indexName: 'idx_card_texts_i18n_lang_review',
     fragments: ['(lang, review_status)'],
@@ -1578,6 +1590,56 @@ const REQUIRED_BOARDGAME_RUNTIME_INDEXES = Object.freeze([
     fragments: ['rules_version', 'completed_at', 'status', 'ranked_eligible = true'],
   },
 ]);
+
+// Platform runs under its own least-privilege role in production. Its startup
+// gate must prove every relation it actually reads/writes without requiring
+// API-only catalog visibility that the role is intentionally denied.
+const REQUIRED_PLATFORM_RUNTIME_TABLES = Object.freeze([
+  'schema_migration_checksums',
+  'official_card_data_releases',
+  'users',
+  'user_friends',
+  'user_blocks',
+  'platform_match_participants',
+  'platform_room_participants',
+  'chat_conversations',
+  'chat_messages',
+  'bjg_matches',
+]);
+
+const REQUIRED_PLATFORM_RUNTIME_COLUMNS = Object.freeze({
+  official_card_data_releases: REQUIRED_RUNTIME_COLUMNS.official_card_data_releases,
+  users: ['id', 'auth_version', 'deleted_at', 'identity_anonymized_at'],
+  user_friends: REQUIRED_RUNTIME_COLUMNS.user_friends,
+  user_blocks: REQUIRED_RUNTIME_COLUMNS.user_blocks,
+  platform_match_participants: REQUIRED_RUNTIME_COLUMNS.platform_match_participants,
+  platform_room_participants: REQUIRED_RUNTIME_COLUMNS.platform_room_participants,
+  chat_conversations: REQUIRED_RUNTIME_COLUMNS.chat_conversations,
+  chat_messages: REQUIRED_RUNTIME_COLUMNS.chat_messages,
+  bjg_matches: REQUIRED_RUNTIME_COLUMNS.bjg_matches,
+});
+
+const PLATFORM_RUNTIME_TABLE_SET = new Set(REQUIRED_PLATFORM_RUNTIME_TABLES);
+const PLATFORM_RUNTIME_COLUMN_SET = new Set(
+  Object.entries(REQUIRED_PLATFORM_RUNTIME_COLUMNS).flatMap(([tableName, columns]) =>
+    columns.map((columnName) => `${tableName}.${columnName}`),
+  ),
+);
+const REQUIRED_PLATFORM_RUNTIME_COLUMN_CONTRACTS = Object.freeze(
+  [...REQUIRED_RUNTIME_COLUMN_CONTRACTS, ...REQUIRED_BOARDGAME_RUNTIME_COLUMN_CONTRACTS].filter(
+    ({ tableName, columnName }) => PLATFORM_RUNTIME_COLUMN_SET.has(`${tableName}.${columnName}`),
+  ),
+);
+const REQUIRED_PLATFORM_RUNTIME_CONSTRAINTS = Object.freeze(
+  [...REQUIRED_RUNTIME_CONSTRAINTS, ...REQUIRED_BOARDGAME_RUNTIME_CONSTRAINTS].filter(({ tableName }) =>
+    PLATFORM_RUNTIME_TABLE_SET.has(tableName),
+  ),
+);
+const REQUIRED_PLATFORM_RUNTIME_INDEXES = Object.freeze(
+  [...REQUIRED_RUNTIME_INDEXES, ...REQUIRED_BOARDGAME_RUNTIME_INDEXES].filter(({ tableName }) =>
+    PLATFORM_RUNTIME_TABLE_SET.has(tableName),
+  ),
+);
 
 function normalizeExpectedMigration(value) {
   const migration = String(value || '').trim();
@@ -1785,7 +1847,23 @@ async function assertRuntimeSchema({ pool, expectedMigration, expectedChecksum }
     requiredConstraints: REQUIRED_RUNTIME_CONSTRAINTS,
     requiredIndexes: REQUIRED_RUNTIME_INDEXES,
   });
+  await assertNoPendingLegacyTombstones(pool);
   return expected;
+}
+
+async function assertNoPendingLegacyTombstones(pool) {
+  const pendingLegacyTombstones = await pool.query(
+    `SELECT COUNT(*) AS pending_count
+       FROM users
+      WHERE deleted_at IS NOT NULL
+        AND identity_anonymized_at IS NULL`,
+  );
+  const pendingCount = Number(pendingLegacyTombstones.rows[0]?.pending_count);
+  if (!Number.isSafeInteger(pendingCount) || pendingCount !== 0) {
+    throw new Error(
+      `Runtime schema contains ${Number.isSafeInteger(pendingCount) ? pendingCount : 'an unknown number of'} legacy deleted accounts pending identity anonymization`,
+    );
+  }
 }
 
 async function assertBoardgameRuntimeSchema({ pool, expectedMigration, expectedChecksum }) {
@@ -1801,18 +1879,38 @@ async function assertBoardgameRuntimeSchema({ pool, expectedMigration, expectedC
   return expected;
 }
 
+async function assertPlatformRuntimeSchema({ pool, expectedMigration, expectedChecksum }) {
+  const expected = await assertExpectedMigration({ pool, expectedMigration, expectedChecksum });
+  await assertSchemaContracts({
+    pool,
+    requiredTables: REQUIRED_PLATFORM_RUNTIME_TABLES,
+    requiredColumns: REQUIRED_PLATFORM_RUNTIME_COLUMNS,
+    requiredColumnContracts: REQUIRED_PLATFORM_RUNTIME_COLUMN_CONTRACTS,
+    requiredConstraints: REQUIRED_PLATFORM_RUNTIME_CONSTRAINTS,
+    requiredIndexes: REQUIRED_PLATFORM_RUNTIME_INDEXES,
+  });
+  await assertNoPendingLegacyTombstones(pool);
+  return expected;
+}
+
 module.exports = {
   REQUIRED_BOARDGAME_RUNTIME_TABLES,
   REQUIRED_BOARDGAME_RUNTIME_COLUMNS,
   REQUIRED_BOARDGAME_RUNTIME_COLUMN_CONTRACTS,
   REQUIRED_BOARDGAME_RUNTIME_CONSTRAINTS,
   REQUIRED_BOARDGAME_RUNTIME_INDEXES,
+  REQUIRED_PLATFORM_RUNTIME_TABLES,
+  REQUIRED_PLATFORM_RUNTIME_COLUMNS,
+  REQUIRED_PLATFORM_RUNTIME_COLUMN_CONTRACTS,
+  REQUIRED_PLATFORM_RUNTIME_CONSTRAINTS,
+  REQUIRED_PLATFORM_RUNTIME_INDEXES,
   REQUIRED_RUNTIME_TABLES,
   REQUIRED_RUNTIME_COLUMNS,
   REQUIRED_RUNTIME_COLUMN_CONTRACTS,
   REQUIRED_RUNTIME_CONSTRAINTS,
   REQUIRED_RUNTIME_INDEXES,
   assertBoardgameRuntimeSchema,
+  assertPlatformRuntimeSchema,
   assertRuntimeSchema,
   normalizeExpectedChecksum,
   normalizeExpectedMigration,

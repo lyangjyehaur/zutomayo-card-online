@@ -8,28 +8,28 @@ import { PLATFORM_PENDING_INVITE_DISCOVERY_PATH } from '../../platformInviteDisc
 
 const require = createRequire(import.meta.url);
 const {
-  REQUIRED_RUNTIME_TABLES,
-  REQUIRED_RUNTIME_COLUMNS,
-  REQUIRED_RUNTIME_COLUMN_CONTRACTS,
-  REQUIRED_RUNTIME_CONSTRAINTS,
-  REQUIRED_RUNTIME_INDEXES,
+  REQUIRED_PLATFORM_RUNTIME_TABLES,
+  REQUIRED_PLATFORM_RUNTIME_COLUMNS,
+  REQUIRED_PLATFORM_RUNTIME_COLUMN_CONTRACTS,
+  REQUIRED_PLATFORM_RUNTIME_CONSTRAINTS,
+  REQUIRED_PLATFORM_RUNTIME_INDEXES,
 } = require('../../../api/schemaGate.cjs') as {
-  REQUIRED_RUNTIME_TABLES: string[];
-  REQUIRED_RUNTIME_COLUMNS: Record<string, string[]>;
-  REQUIRED_RUNTIME_COLUMN_CONTRACTS: Array<{
+  REQUIRED_PLATFORM_RUNTIME_TABLES: string[];
+  REQUIRED_PLATFORM_RUNTIME_COLUMNS: Record<string, string[]>;
+  REQUIRED_PLATFORM_RUNTIME_COLUMN_CONTRACTS: Array<{
     tableName: string;
     columnName: string;
     udtName: string;
     nullable: boolean;
     defaultToken: string | null;
   }>;
-  REQUIRED_RUNTIME_CONSTRAINTS: Array<{
+  REQUIRED_PLATFORM_RUNTIME_CONSTRAINTS: Array<{
     tableName: string;
     constraintName?: string;
     constraintType: string;
     fragments: string[];
   }>;
-  REQUIRED_RUNTIME_INDEXES: Array<{ tableName: string; indexName: string; fragments: string[] }>;
+  REQUIRED_PLATFORM_RUNTIME_INDEXES: Array<{ tableName: string; indexName: string; fragments: string[] }>;
 };
 
 const PLATFORM_ENV_KEYS = [
@@ -201,15 +201,15 @@ describe('platform runtime', () => {
       .mockResolvedValueOnce({ rows: [{ '?column?': 1 }] })
       .mockResolvedValueOnce({ rows: [{ sha256: checksum }] })
       .mockResolvedValueOnce({
-        rows: REQUIRED_RUNTIME_TABLES.map((table_name) => ({ table_name, present: true })),
+        rows: REQUIRED_PLATFORM_RUNTIME_TABLES.map((table_name) => ({ table_name, present: true })),
       })
       .mockResolvedValueOnce({
-        rows: Object.entries(REQUIRED_RUNTIME_COLUMNS).flatMap(([table_name, columns]) =>
+        rows: Object.entries(REQUIRED_PLATFORM_RUNTIME_COLUMNS).flatMap(([table_name, columns]) =>
           columns.map((column_name) => ({ table_name, column_name, present: true })),
         ),
       })
       .mockResolvedValueOnce({
-        rows: REQUIRED_RUNTIME_COLUMN_CONTRACTS.map((contract) => ({
+        rows: REQUIRED_PLATFORM_RUNTIME_COLUMN_CONTRACTS.map((contract) => ({
           table_name: contract.tableName,
           column_name: contract.columnName,
           udt_name: contract.udtName,
@@ -219,7 +219,7 @@ describe('platform runtime', () => {
         })),
       })
       .mockResolvedValueOnce({
-        rows: REQUIRED_RUNTIME_CONSTRAINTS.map((contract) => ({
+        rows: REQUIRED_PLATFORM_RUNTIME_CONSTRAINTS.map((contract) => ({
           table_name: contract.tableName,
           constraint_name: contract.constraintName || `${contract.tableName}_${contract.constraintType}`,
           constraint_type: contract.constraintType,
@@ -227,12 +227,13 @@ describe('platform runtime', () => {
         })),
       })
       .mockResolvedValueOnce({
-        rows: REQUIRED_RUNTIME_INDEXES.map((contract) => ({
+        rows: REQUIRED_PLATFORM_RUNTIME_INDEXES.map((contract) => ({
           table_name: contract.tableName,
           index_name: contract.indexName,
           index_definition: contract.fragments.join(' '),
         })),
-      });
+      })
+      .mockResolvedValueOnce({ rows: [{ pending_count: '0' }] });
 
     await expect(
       assertPlatformRuntimeSchema({ query } as never, {

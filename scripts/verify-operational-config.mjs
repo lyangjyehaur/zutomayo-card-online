@@ -219,11 +219,42 @@ export function validateOperationalConfig() {
       'CARD_ERRATA_SOURCE',
       'CARD_OCR_OVERRIDES_SOURCE',
       '/run/card-data',
+      'LEGACY_TOMBSTONE_BACKFILL_APPROVED',
+      'LEGACY_TOMBSTONE_BACKFILL_EXPECTED_COUNT',
     ]);
   }
-  requireFragments('Dockerfile.migrate', ['scripts/release-card-data.cjs', 'scripts/card-data-gate.cjs']);
+  requireFragments('Dockerfile.migrate', [
+    'api/accountLifecycleService.cjs',
+    'api/accountExportService.cjs',
+    'api/legalHoldService.cjs',
+    'scripts/release-card-data.cjs',
+    'scripts/card-data-gate.cjs',
+    'scripts/migration-lineage-pg-smoke.cjs',
+    'scripts/backfill-legacy-deleted-accounts-pg.cjs',
+    'scripts/platform-schema-gate-pg-smoke.cjs',
+  ]);
+  requireFragments('scripts/backfill-legacy-deleted-accounts-pg.cjs', [
+    "assertPostgresExpectedRole(process.env, 'PG_MIGRATION_USER')",
+    'LEGACY_TOMBSTONE_BACKFILL_APPROVED',
+    'LEGACY_TOMBSTONE_BACKFILL_EXPECTED_COUNT',
+    'identity_anonymized_at IS NULL',
+    'auditRef(userId)',
+  ]);
+  requireFragments('scripts/postgres-role-smoke.sh', [
+    'db:migration-lineage:smoke',
+    'db:platform-schema:smoke',
+    'lineage_database',
+    'REQUIRE_APP_ROLE_GATE=false',
+  ]);
+  requireFragments('scripts/platform-schema-gate-pg-smoke.cjs', [
+    "assertPostgresExpectedRole(process.env, 'PG_PLATFORM_USER')",
+    'assertPlatformRuntimeSchema',
+  ]);
   rejectFragments('Dockerfile.migrate', ['COPY data/card-', 'COPY scripts/card-english-ocr-overrides.json']);
-  requireFragments('package.json', ['npm run data:policy', 'scripts/release-card-data.cjs']);
+  requireFragments('package.json', [
+    'npm run data:policy',
+    'scripts/db-migrate.cjs up && node scripts/backfill-legacy-deleted-accounts-pg.cjs && node scripts/release-card-data.cjs',
+  ]);
   requireFragments('docker-compose.pgbouncer.yml', [
     'pgbouncer-role-mode-gate:',
     'REQUIRE_DISTINCT_DB_ROLES',
@@ -266,6 +297,8 @@ export function validateOperationalConfig() {
     'Public Access Block',
     's3:DeleteObjectVersion',
     '000031_official_card_data_releases',
+    'LEGACY_TOMBSTONE_BACKFILL_APPROVED',
+    'identity_anonymized_at IS NULL',
     '256 MiB',
   ]);
   requireFragments('docs/DATA_RETENTION.md', [

@@ -75,6 +75,14 @@ describe('schema migrations', () => {
     expect(consistencyMigration).not.toContain('WHERE claimed_at IS NOT NULL');
   });
 
+  it('adopts schema artifacts created by the historical initSchema fallback', () => {
+    const replayMigration = readRepoFile('migrations/000019_replay_metadata.js');
+    const consistencyMigration = readRepoFile('migrations/000021_season_result_consistency.js');
+
+    expect(replayMigration.match(/\{ ifNotExists: true \}/g)).toHaveLength(2);
+    expect(consistencyMigration).toContain('DROP CONSTRAINT IF EXISTS fk_season_match_results_canonical_match');
+  });
+
   it('adopts existing official English card fields before the append-only migration tightens nullability', () => {
     const initSchema = readRepoFile('api/server.cjs');
     const seedSchema = readRepoFile('scripts/seed-cards-pg.ts');
@@ -116,6 +124,7 @@ describe('schema migrations', () => {
 
   it('makes every retained deletion audit surface explicitly anonymizable', () => {
     const migration = readRepoFile('migrations/000027_account_deletion_anonymization.js');
+    const initSchema = readRepoFile('api/server.cjs');
     for (const artifact of [
       'season_match_results',
       'account_export_jobs',
@@ -123,8 +132,10 @@ describe('schema migrations', () => {
       'admin_audit_log',
       'account_deletion_requests',
       'relationship_change_outbox',
+      "pgm.addColumns('users'",
       'identity_anonymized_at',
       'identities_redacted_at',
+      'idx_users_deleted_identity_pending',
       'idx_season_match_results_winner_user',
       'idx_season_match_results_loser_user',
       'idx_account_deletion_requests_user_all',
@@ -139,7 +150,9 @@ describe('schema migrations', () => {
     expect(migration).toContain('ALTER COLUMN winner_user_id DROP NOT NULL');
     expect(migration).toContain('ALTER COLUMN loser_user_id DROP NOT NULL');
     expect(migration.match(/ALTER COLUMN user_id DROP NOT NULL/g)).toHaveLength(2);
-    expect(migration).toContain('reviewed legacy tombstone backfill');
+    expect(migration).not.toContain('000027 requires a reviewed legacy tombstone backfill before migration');
+    expect(initSchema).toContain('ALTER TABLE users ADD COLUMN IF NOT EXISTS identity_anonymized_at TIMESTAMPTZ');
+    expect(initSchema).toContain('idx_users_deleted_identity_pending');
     expect(migration).toContain('account export audit anonymization requires a deleted account');
     expect(migration).toContain('admin audit anonymization requires a deleted account');
     expect(migration).toContain('request_id = NULL');
@@ -189,12 +202,11 @@ describe('schema migrations', () => {
     const errata = readRepoFile('migrations/000029_card_official_errata.js');
     const errataSource = readRepoFile('migrations/000030_card_official_errata_english_source.js');
 
-    expect(migrationRunner).toContain('migrationIgnorePatternForApplied');
-    expect(developmentRunner).toContain('migrationIgnorePatternForApplied');
-    expect(developmentRunner).toContain('ignorePattern,');
     expect(developmentRunner).toContain('ssl: postgresSslConfig(process.env)');
     for (const runner of [migrationRunner, developmentRunner]) {
-      expect(runner).toContain('checkOrder: true');
+      expect(runner).toContain('migrationOrderPolicyForApplied');
+      expect(runner).toContain('checkOrder: migrationPolicy.checkOrder');
+      expect(runner).toContain('assertOutOfOrderBackfillApplied');
     }
     for (const legacyName of [
       '000007_card_official_texts_i18n',

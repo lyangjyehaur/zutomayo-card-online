@@ -141,7 +141,7 @@ describe('account mutation concurrency', () => {
         if (sql.includes('FROM legal_holds') || sql.includes('FROM account_deletion_requests')) {
           return { rows: [], rowCount: 0 };
         }
-        if (sql.includes('UPDATE users') && sql.includes('deleted_at = NOW()')) {
+        if (sql.includes('UPDATE users') && sql.includes('identity_anonymized_at = NOW()')) {
           const user = users.get(String(params?.[0]));
           if (user) user.deleted_at = '2026-07-13T00:00:00.000Z';
           return { rows: [], rowCount: user ? 1 : 0 };

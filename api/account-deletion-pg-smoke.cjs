@@ -2,7 +2,7 @@
 
 const crypto = require('node:crypto');
 const { Pool } = require('pg');
-const { deleteAccount } = require('./accountLifecycleService.cjs');
+const { backfillLegacyDeletedAccount, deleteAccount } = require('./accountLifecycleService.cjs');
 const { acquireAccountMutationLocks } = require('./accountMutationLock.cjs');
 const { createAccountExportWorker } = require('./accountExportService.cjs');
 const { createUserDeck, validateDeckInput } = require('./deckService.cjs');
@@ -24,6 +24,26 @@ function createPool() {
     ssl: postgresSslConfig(process.env),
     max: 4,
   });
+}
+
+function createFixture(prefix) {
+  const userId = `delete-user:${prefix}`;
+  const peerId = `delete-peer:${prefix}`;
+  const conversationSubjectId = `v1:${[userId, peerId].sort().map(encodeURIComponent).join(':')}`;
+  return {
+    prefix,
+    userId,
+    peerId,
+    matchId: `delete-match:${prefix}`,
+    sourceMatchId: `delete-source:${prefix}`,
+    seasonId: `delete-season:${prefix}`,
+    conversationSubjectId,
+    conversationId: `direct:${conversationSubjectId}`,
+    deletedMessageId: `message-deleted:${prefix}`,
+    exportJobId: `delete-export:${prefix}`,
+    retryExportJobId: `delete-export-retry:${prefix}`,
+    deletionRequestId: `delete-request:${prefix}`,
+  };
 }
 
 async function seed(pool, fixture) {
@@ -214,13 +234,14 @@ async function assertAnonymized(pool, fixture) {
   const user = (
     await pool.query(
       `SELECT deleted_at IS NOT NULL AS deleted,
+              identity_anonymized_at IS NOT NULL AS identity_anonymized,
               email LIKE 'deleted+%@invalid.local' AS email_anonymized,
               nickname = 'Deleted Player' AS nickname_anonymized
          FROM users WHERE id = $1`,
       [userId],
     )
   ).rows[0];
-  if (!user?.deleted || !user.email_anonymized || !user.nickname_anonymized) {
+  if (!user?.deleted || !user.identity_anonymized || !user.email_anonymized || !user.nickname_anonymized) {
     throw new Error('users tombstone was not anonymized');
   }
 
@@ -754,24 +775,7 @@ async function assertAccountFirstTerminalWriterFence(pool) {
 
 async function main() {
   const pool = createPool();
-  const prefix = crypto.randomUUID();
-  const userId = `delete-user:${prefix}`;
-  const peerId = `delete-peer:${prefix}`;
-  const conversationSubjectId = `v1:${[userId, peerId].sort().map(encodeURIComponent).join(':')}`;
-  const fixture = {
-    prefix,
-    userId,
-    peerId,
-    matchId: `delete-match:${prefix}`,
-    sourceMatchId: `delete-source:${prefix}`,
-    seasonId: `delete-season:${prefix}`,
-    conversationSubjectId,
-    conversationId: `direct:${conversationSubjectId}`,
-    deletedMessageId: `message-deleted:${prefix}`,
-    exportJobId: `delete-export:${prefix}`,
-    retryExportJobId: `delete-export-retry:${prefix}`,
-    deletionRequestId: `delete-request:${prefix}`,
-  };
+  const fixture = createFixture(crypto.randomUUID());
   try {
     await seed(pool, fixture);
     await assertAuditAnonymizersRejectActiveAccount(pool, fixture.userId);
@@ -875,6 +879,48 @@ async function main() {
     await assertAnonymized(pool, fixture);
     await assertDeckDelayedWriterFences(pool);
     await assertAccountFirstTerminalWriterFence(pool);
+
+    await pool.query("UPDATE seasons SET status = 'closed' WHERE id = $1", [fixture.seasonId]);
+    const legacyFixture = createFixture(crypto.randomUUID());
+    await seed(pool, legacyFixture);
+    await pool.query(
+      `UPDATE users
+          SET deleted_at = NOW(), identity_anonymized_at = NULL
+        WHERE id = $1`,
+      [legacyFixture.userId],
+    );
+    await pool.query(
+      `UPDATE account_deletion_requests
+          SET status = 'completed', completed_at = NOW()
+        WHERE id = $1`,
+      [legacyFixture.deletionRequestId],
+    );
+    const legacyBackfill = await backfillLegacyDeletedAccount({ pool, userId: legacyFixture.userId });
+    if (!legacyBackfill?.ok) {
+      throw new Error(`legacy tombstone backfill failed: ${JSON.stringify(legacyBackfill)}`);
+    }
+    const legacyExportWorker = createAccountExportWorker({
+      pool,
+      storage: {
+        configured: true,
+        prefix: 'account-exports',
+        async deleteObject({ key }) {
+          if (key.includes(legacyFixture.retryExportJobId)) throw new Error('forced legacy purge retry');
+        },
+      },
+      buildArtifact: async () => {
+        throw new Error('legacy tombstone export jobs must never be rebuilt');
+      },
+      intervalMs: 60_000,
+      batchSize: 2,
+      onError(error) {
+        throw error;
+      },
+      logger: { error() {} },
+    });
+    await legacyExportWorker.tick();
+    await legacyExportWorker.stop();
+    await assertAnonymized(pool, legacyFixture);
     process.stdout.write('Account deletion PostgreSQL anonymization smoke passed\n');
   } finally {
     await pool.end();

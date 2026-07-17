@@ -407,7 +407,7 @@ Schema changes are managed by [node-pg-migrate](https://github.com/salsita/node-
 | Script                           | Purpose                                                                                       |
 | -------------------------------- | --------------------------------------------------------------------------------------------- |
 | `npm run db:migrate`             | Apply all pending migrations (up).                                                            |
-| `npm run db:migrate:release`     | Apply migrations; in production audit/import/gate signed card data; then run the schema gate. |
+| `npm run db:migrate:release`     | Apply migrations, gated legacy tombstone backfill, signed card-data release, and schema gate. |
 | `npm run db:schema:gate`         | Verify the expected migration without changing schema.                                        |
 | `npm run db:card-data:gate`      | Verify all 422 official English card rows and the exact 12 reviewed errata rows.              |
 | `npm run db:migrate:down`        | Roll back the most recent migration (down).                                                   |
@@ -425,7 +425,7 @@ Reconciliation is digest-based: deploying the same signed dataset again does not
 
 Always run `npm run db:migrate:release` with the verified image and expected checksum rather than executing a migration or data file manually. Local/E2E Compose explicitly leaves `REQUIRE_OFFICIAL_CARD_DATA=false` because those stacks seed synthetic cards after migration; `NODE_ENV=production` refuses to skip the signed data path.
 
-> **`000027` deployment blocker:** the current migration intentionally fails closed when `SELECT COUNT(*) FROM users WHERE deleted_at IS NOT NULL` is non-zero. It does not backfill identifiers retained by accounts deleted before this migration. The existing server4 database remains reusable, but do not apply this release to it until a production-copy rehearsal has counted and inspected those tombstones and a reviewed backfill release has reduced every legacy invariant to zero. Bypassing the guard would leave historical personal identifiers behind and is not supported.
+Migration `000027` adds `users.identity_anonymized_at` and a partial pending-tombstone index. A release with no pre-existing deleted accounts needs no special approval. When a production-copy review finds accounts deleted before `000027`, record the exact result of `SELECT COUNT(*) FROM users WHERE deleted_at IS NOT NULL`, rehearse the release against that copy, and set both `LEGACY_TOMBSTONE_BACKFILL_APPROVED=true` and `LEGACY_TOMBSTONE_BACKFILL_EXPECTED_COUNT=<reviewed-count>` for the one release migration. The backfill serializes against retention/account mutations, respects active legal holds, anonymizes all retained identity domains, emits only hashed account references on failure, and does not publish a second account-deleted event. A missing approval, count drift, held account, failed invariant, or non-zero post-backfill count stops the migrate service. The final schema gate independently refuses application startup while any `deleted_at IS NOT NULL AND identity_anonymized_at IS NULL` row remains. Reset approval to `false` and expected count to `0` after the successful release.
 
 ### Docker Compose
 
@@ -441,6 +441,8 @@ migrate:
     PG_PASSWORD: <migration-password>
     EXPECTED_SCHEMA_MIGRATION: <latest migration basename>
     EXPECTED_SCHEMA_CHECKSUM: <64-character lowercase SHA-256>
+    LEGACY_TOMBSTONE_BACKFILL_APPROVED: 'false' # one-time true only after reviewed rehearsal
+    LEGACY_TOMBSTONE_BACKFILL_EXPECTED_COUNT: '0'
     REQUIRE_OFFICIAL_CARD_DATA: 'true'
   depends_on:
     postgres:

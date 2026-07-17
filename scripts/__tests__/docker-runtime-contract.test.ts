@@ -105,6 +105,9 @@ describe('game runtime image contract', () => {
     expect(dockerfile).toContain('COPY api/relationshipOutbox.cjs ./api/relationshipOutbox.cjs');
     expect(dockerfile).toContain('COPY api/observability.cjs ./api/observability.cjs');
     expect(dockerfile).toContain('COPY api/matchmakingService.cjs ./api/matchmakingService.cjs');
+    expect(dockerfile).toContain('COPY api/accountLifecycleService.cjs ./api/accountLifecycleService.cjs');
+    expect(dockerfile).toContain('COPY api/accountExportService.cjs ./api/accountExportService.cjs');
+    expect(dockerfile).toContain('COPY api/legalHoldService.cjs ./api/legalHoldService.cjs');
     expect(dockerfile).toContain(
       'COPY scripts/relationship-outbox-pg-smoke.cjs ./scripts/relationship-outbox-pg-smoke.cjs',
     );
@@ -120,6 +123,15 @@ describe('game runtime image contract', () => {
     expect(dockerignore).toContain('!api/matchmakingService.cjs');
     expect(dockerfile).toContain('COPY scripts/postgres-role-gate.cjs ./scripts/postgres-role-gate.cjs');
     expect(dockerfile).toContain('COPY scripts/migration-order-compat.cjs ./scripts/migration-order-compat.cjs');
+    expect(dockerfile).toContain(
+      'COPY scripts/migration-lineage-pg-smoke.cjs ./scripts/migration-lineage-pg-smoke.cjs',
+    );
+    expect(dockerfile).toContain(
+      'COPY scripts/backfill-legacy-deleted-accounts-pg.cjs ./scripts/backfill-legacy-deleted-accounts-pg.cjs',
+    );
+    expect(dockerfile).toContain(
+      'COPY scripts/platform-schema-gate-pg-smoke.cjs ./scripts/platform-schema-gate-pg-smoke.cjs',
+    );
     expect(dockerfile).not.toContain('COPY data/card-');
     expect(dockerfile).not.toContain('COPY scripts/card-english-ocr-overrides.json');
     expect(dockerignore).toContain('data/card*.json');

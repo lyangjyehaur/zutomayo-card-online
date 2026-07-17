@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 const require = createRequire(import.meta.url);
 const {
+  backfillLegacyDeletedAccount,
   deleteAccount,
   exportAccountData,
   hashAccountToken,
@@ -11,6 +12,7 @@ const {
   resetPassword,
   verifyEmailToken,
 } = require('../accountLifecycleService.cjs') as {
+  backfillLegacyDeletedAccount: (input: Record<string, unknown>) => Promise<Record<string, unknown>>;
   deleteAccount: (input: Record<string, unknown>) => Promise<Record<string, unknown>>;
   exportAccountData: (input: Record<string, unknown>) => Promise<Record<string, unknown>>;
   hashAccountToken: (token: string) => string;
@@ -220,6 +222,10 @@ describe('account lifecycle service', () => {
     expect(pool.query).toHaveBeenCalledWith(
       expect.stringContaining("nickname = 'Deleted Player'"),
       expect.arrayContaining(['u_1', expect.stringMatching(/^deleted\+[a-f0-9]{32}@invalid\.local$/)]),
+    );
+    expect(pool.query).toHaveBeenCalledWith(
+      expect.stringContaining('identity_anonymized_at = NOW()'),
+      expect.arrayContaining(['u_1']),
     );
     expect(pool.query).not.toHaveBeenCalledWith(expect.stringContaining('DELETE FROM matches'), expect.anything());
     expect(pool.query).toHaveBeenCalledWith('DELETE FROM deck_reservations WHERE user_id = $1', ['u_1']);
@@ -607,6 +613,83 @@ describe('account lifecycle service', () => {
     });
     expect(pool.query).toHaveBeenCalledWith(expect.stringContaining("SET status = 'completed'"), ['delete_1', 'u_1']);
     expect(pool.query).toHaveBeenCalledWith('COMMIT');
+  });
+
+  it('backfills only an existing deleted tombstone without emitting a second deletion event', async () => {
+    const pool = createPool((sql) => {
+      if (sql.includes('FROM users') && sql.includes('deleted_at IS NOT NULL')) {
+        return { rows: [{ id: 'u_legacy_deleted' }] };
+      }
+      return { rows: [] };
+    });
+
+    await expect(backfillLegacyDeletedAccount({ pool, userId: 'u_legacy_deleted' })).resolves.toEqual({
+      ok: true,
+      body: { deleted: true },
+    });
+    expect(pool.query).toHaveBeenCalledWith(
+      expect.stringContaining('identity_anonymized_at = NOW()'),
+      expect.arrayContaining(['u_legacy_deleted']),
+    );
+    expect(pool.query).not.toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO relationship_change_outbox'),
+      expect.anything(),
+    );
+    expect(pool.query.mock.calls.some(([sql]) => String(sql).includes('FROM account_deletion_requests'))).toBe(false);
+    expect(pool.query).toHaveBeenCalledWith('COMMIT');
+  });
+
+  it('rejects a live account passed to the legacy tombstone backfill', async () => {
+    const pool = createPool(() => ({ rows: [] }));
+
+    await expect(backfillLegacyDeletedAccount({ pool, userId: 'u_live' })).resolves.toEqual({
+      ok: false,
+      status: 404,
+      error: 'Legacy deleted account not found',
+    });
+    expect(pool.query).not.toHaveBeenCalledWith(
+      expect.stringContaining("nickname = 'Deleted Player'"),
+      expect.anything(),
+    );
+  });
+
+  it('treats a tombstone completed by a concurrent backfill as an idempotent no-op', async () => {
+    const pool = createPool((sql) => {
+      if (sql.includes('FROM users') && sql.includes('deleted_at IS NOT NULL')) {
+        return { rows: [{ id: 'u_already_backfilled', identity_anonymized_at: '2026-07-17T00:00:00.000Z' }] };
+      }
+      return { rows: [] };
+    });
+
+    await expect(backfillLegacyDeletedAccount({ pool, userId: 'u_already_backfilled' })).resolves.toEqual({
+      ok: true,
+      body: { deleted: true, alreadyBackfilled: true },
+    });
+    expect(pool.query).not.toHaveBeenCalledWith(
+      expect.stringContaining("nickname = 'Deleted Player'"),
+      expect.anything(),
+    );
+    expect(pool.query).toHaveBeenCalledWith('COMMIT');
+  });
+
+  it('keeps a legacy tombstone pending when any related evidence is under legal hold', async () => {
+    const pool = createPool((sql) => {
+      if (sql.includes('FROM users') && sql.includes('deleted_at IS NOT NULL')) {
+        return { rows: [{ id: 'u_legacy_held' }] };
+      }
+      if (sql.includes('WITH account_objects')) return { rows: [{ id: 'hold_legacy' }] };
+      return { rows: [] };
+    });
+
+    await expect(backfillLegacyDeletedAccount({ pool, userId: 'u_legacy_held' })).resolves.toEqual({
+      ok: false,
+      status: 409,
+      error: 'Account deletion is suspended by an active legal hold',
+    });
+    expect(pool.query).not.toHaveBeenCalledWith(
+      expect.stringContaining("nickname = 'Deleted Player'"),
+      expect.anything(),
+    );
   });
 
   it('uses a caller-owned lease client for local anonymization without reconnecting or releasing it', async () => {

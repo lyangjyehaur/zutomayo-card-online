@@ -159,6 +159,35 @@ fi
 "${compose[@]}" run --build --rm --no-deps migrate
 
 "${compose[@]}" run --rm --no-deps \
+  --env PG_USER="$PG_PLATFORM_USER" \
+  --env PG_PASSWORD="$PG_PLATFORM_PASSWORD" \
+  --env PG_PLATFORM_USER="$PG_PLATFORM_USER" \
+  migrate npm run db:platform-schema:smoke
+
+# Reproduce the historical master lineage where canonical card migrations
+# 000028-000030 were recorded before deferred hardening 000019-000027. The
+# real wrapper must backfill once, normalize metadata, and then pass a second
+# strict-order run on the same disposable database.
+lineage_database="${PG_DATABASE}_lineage"
+"${compose[@]}" exec --no-TTY \
+  --env PGPASSWORD="$PG_BOOTSTRAP_PASSWORD" \
+  postgres psql --host 127.0.0.1 --username "$PG_BOOTSTRAP_USER" --dbname postgres \
+  --set=ON_ERROR_STOP=1 \
+  --set=lineage_database="$lineage_database" \
+  --set=migration_user="$PG_MIGRATION_USER" <<'SQL'
+SELECT format('CREATE DATABASE %I OWNER %I', :'lineage_database', :'migration_user') \gexec
+SQL
+"${compose[@]}" run --rm --no-deps \
+  --env DATABASE_URL= \
+  --env PG_DATABASE="$lineage_database" \
+  --env PG_USER="$PG_MIGRATION_USER" \
+  --env PG_PASSWORD="$PG_MIGRATION_PASSWORD" \
+  --env REQUIRE_APP_ROLE_GATE=false \
+  --env REQUIRE_DISTINCT_DB_ROLES=false \
+  --env REQUIRE_ROLE_MATRIX_GATE=false \
+  migrate npm run db:migration-lineage:smoke
+
+"${compose[@]}" run --rm --no-deps \
   --env PG_USER="$PG_API_USER" \
   --env PG_PASSWORD="$PG_API_PASSWORD" \
   --env PG_API_USER="$PG_API_USER" \

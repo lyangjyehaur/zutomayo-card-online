@@ -527,6 +527,12 @@ async function initSchema() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )`,
     `CREATE INDEX IF NOT EXISTS idx_users_elo ON users (elo DESC)`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_version INTEGER NOT NULL DEFAULT 1`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS identity_anonymized_at TIMESTAMPTZ`,
+    `CREATE INDEX IF NOT EXISTS idx_users_deleted_identity_pending
+      ON users (deleted_at)
+      WHERE deleted_at IS NOT NULL AND identity_anonymized_at IS NULL`,
 
     `CREATE TABLE IF NOT EXISTS user_identities (
       user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -1032,13 +1038,22 @@ async function runMigrations() {
     ssl: postgresSslConfig(process.env),
   };
   const {
+    assertAppliedMigrationOrder,
+    assertOutOfOrderBackfillApplied,
     listAppliedMigrationNames,
-    migrationIgnorePatternForApplied,
+    migrationOrderPolicyForApplied,
+    normalizeAppliedMigrationOrder,
   } = require('../scripts/migration-order-compat.cjs');
   const appliedNames = await listAppliedMigrationNames(pool);
-  const ignorePattern = migrationIgnorePatternForApplied(appliedNames);
-  if (ignorePattern) {
+  const migrationPolicy = migrationOrderPolicyForApplied(appliedNames);
+  if (migrationPolicy.ignorePattern) {
     logger.info('Using canonical append-only card migrations 000028-000030');
+  }
+  if (migrationPolicy.outOfOrderBackfill.length > 0) {
+    logger.warn(
+      { migrations: migrationPolicy.outOfOrderBackfill },
+      'applying reviewed deferred-hardening lineage compatibility',
+    );
   }
 
   await runner({
@@ -1047,11 +1062,20 @@ async function runMigrations() {
     direction: 'up',
     migrationsTable: 'schema_migrations',
     schema: 'public',
-    ignorePattern,
-    checkOrder: true,
+    ignorePattern: migrationPolicy.ignorePattern,
+    checkOrder: migrationPolicy.checkOrder,
     count: Infinity,
     log: (msg) => logger.info({ msg }, 'migration'),
   });
+  if (migrationPolicy.outOfOrderBackfill.length > 0) {
+    const updatedAppliedNames = await listAppliedMigrationNames(pool);
+    assertOutOfOrderBackfillApplied(migrationPolicy.outOfOrderBackfill, updatedAppliedNames);
+  }
+  if (migrationPolicy.normalizeOrder) {
+    await normalizeAppliedMigrationOrder(pool);
+    const normalizedNames = await listAppliedMigrationNames(pool);
+    assertAppliedMigrationOrder(normalizedNames);
+  }
 }
 
 // 匯出 schemaReady 供測試 await，並讓正式啟動在 migration 失敗時 fail closed。
