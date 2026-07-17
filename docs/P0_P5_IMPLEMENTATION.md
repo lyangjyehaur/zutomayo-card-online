@@ -22,7 +22,8 @@
 - Fresh-volume Compose 重新 build current-tree images，migration/seed 後 Chromium 40/40 通過，包含 service-backed accessibility，authenticated QuickMatch/Invite/chat/reconnect，以可控強弱 synthetic deck 自然完成對局，以及兩個獨立重新登入 browser context 證明跨裝置 history 各只有同一筆 canonical result。Distinct platform role 同時驗證 participant/chat writer 只用共用 advisory fence 與最小 `users(id, deleted_at)` live check，不需要 `users` UPDATE 權限。
 - boardgame.io 的 async Master 已套用版本鎖定 patch，將 subscriber/transport 終局發布移到 state/metadata durable write 成功之後；整合測試證明 terminal transaction 拋錯時不發布 phantom 終局，成功路徑順序固定為 persist → subscriber → broadcast。Patch 會在 install、CI verify 與 Docker builder fail closed 套用，production runtime 明確複製同一已修補 bundle。
 - Fresh-volume authenticated process-restart E2E 通過：兩個 browser 完成 setup 並停在持久化 `turnSet`，宿主機實際重啟 game/platform 容器且驗證兩者 `StartedAt` 改變與 health 恢復；原 browser 離開 disconnected/reconnecting 後從同一局投降結算，雙方 server history 對該 source match 各恰好一筆且共用同一 canonical history ID。
-- 以上仍是 local/current-tree automated evidence，不是 staging/server4/production evidence；branch protection、production approval、signed-image staging rehearsal、HA/canary/off-site restore/load/alert、provider account E2E、production admin recovery 與法務項目仍阻擋 production。
+- GitHub `master` branch protection 已於 2026-07-17 透過 API 建立並回讀：要求最新 `Lint & Test`、`E2E Tests`、PR、linear history 與 resolved conversations，套用至管理員且禁止 force-push／刪除。`production` environment 要求 `lyangjyehaur` 明確批准、只接受 protected branch 且關閉 admin bypass；`staging` 同樣只接受 protected branch。
+- 以上應用程式驗證仍是 local/current-tree automated evidence，不是 staging/server4/production evidence；GitHub Actions 尚未配置任何 repository/environment deploy secrets，因此 signed-image staging rehearsal、HA/canary/off-site restore/load/alert、provider account E2E、production admin recovery 與法務項目仍阻擋 production。
 
 ## 修補波次
 
@@ -74,10 +75,10 @@
 ## P1：發布與供應鏈
 
 - [x] Base、E2E、staging、legacy server4、parallel slot、gateway、monitoring Compose 靜態 config gate 全部通過並進 CI；current-tree fresh-volume runtime images、migration/seed 與 Chromium 40/40 亦已重跑。
-- [ ] CI 與 E2E job、CD 的 successful-CI SHA gate 已存在；但 GitHub `master` 尚無 branch protection/ruleset，required checks 仍可被繞過。
+- [x] CI 與 E2E job、CD 的 successful-CI SHA gate 已存在；GitHub `master` branch protection 要求 strict `Lint & Test`／`E2E Tests`、PR、linear history 與 resolved conversations，套用至管理員且禁止 force-push／刪除。
 - [x] Migration 使用同一 release digest，失敗時 app 不啟動。
 - [x] Deploy `--sha`、health port 與 post-deploy smoke 正確。
-- [ ] Build once / promote by digest 與 deploy concurrency 已實作；GitHub `production` environment/reviewer approval 尚未建立。
+- [x] Build once / promote by digest 與 deploy concurrency 已實作；GitHub `production` environment 要求 owner 明確批准、protected branch，並關閉 admin bypass。GitHub Actions deploy secrets 尚未配置，故實際部署仍由 staging gate 阻擋。
 - [x] Coverage 正確包含 production API CJS，短期門檻 lines/statements/functions 50%、branches 40%。
 - [x] SBOM、依賴／容器／secret scan 與 image signing 已進 release gate。
 - [x] Sentry token 等 build secret 不寫入 image layer 或 build arg cache。
@@ -112,7 +113,7 @@
 - [x] Replay 使用伺服器 authoritative action log 並綁定 rules version。
 - [x] Core routes、Login、Feedback detail、Battle/Result 的 service-backed axe spec 已以 current-tree fresh images/volumes 重跑並包含在 Chromium 40/40。
 - [x] 共用 modal focus/inert、Battle drawer 與 Feedback detail dialog test 已有；手牌／mulligan 卡牌 accessible name 包含名稱、充能成本與區域內唯一位置，選取型卡牌暴露 `aria-pressed`。Fresh-volume authenticated E2E 已以 Enter 鍵完成匹配、猜拳、mulligan、選牌、出牌與確認的自然完整對局，並保留雙方與重新登入裝置只對應同一 canonical history 的證據。
-- [ ] Chromium PR job、每週兩次多瀏覽器 matrix，以及 production-build 的 PWA standalone／responsive CI job 已定義；本機 production preview 已驗證 Chrome app standalone display mode、service worker control 與 offline cached-shell reload，deterministic responsive smoke 也以 44px 觸控下限覆蓋 360/390px 與 Battle 多狀態。尚缺 branch required check及遠端成功 run artifact。
+- [ ] Chromium PR job、每週兩次多瀏覽器 matrix，以及 production-build 的 PWA standalone／responsive CI job 已定義；本機 production preview 已驗證 Chrome app standalone display mode、service worker control、offline cached-shell reload 與離線 AI 對局，deterministic responsive smoke 也以 44px 觸控下限覆蓋 360/390px 與 Battle 多狀態。`master` 目前已要求既有 CI/E2E checks；新增的 Responsive & PWA gate 尚待日後合併、遠端成功 run 及加入 required checks。
 - [x] 離線支援明確限定為已暖機卡牌資料後的本機 AI 對戰；Workbox card-data cache 依 build/rules 隔離，API response 綁 signed dataset SHA、dataset release SHA、card count 與 app/build/rules，完整 SHA build 另要求 dataset release SHA 相同。Production PWA smoke 會同時將 page 與 service-worker target 真斷網，驗證 versioned cache response、離線 `/ai` 選牌並進入 `.bf-root` 對局；在線服務不承諾離線使用或寫入同步。
 
 ## P5：帳號、社交、LiveOps 與合規
