@@ -304,6 +304,12 @@ export const zhTW = {
   'lobby.homeDeckCaption': '組成 20 張牌組，迎接夜與晝改寫效果的戰鬥',
   'lobby.homeLeaderboardCaption': '查看玩家排名與 ELO，追蹤目前的對戰表現',
   'lobby.homeHistoryCaption': '回顧近期對局結果，整理每場勝負與回合紀錄',
+  'announcement.title': '最新公告',
+  'announcement.loading': '正在載入公告',
+  'announcement.empty': '目前沒有公告',
+  'community.title': '社群',
+  'community.caption': '進入公共大廳聊天，或與好友傳送私信',
+  'community.loginRequired': '登入後才能使用公共大廳聊天與好友私信',
   'lobby.projectTitle': 'About ZUTOMAYO CARD ONLINE',
   'lobby.projectDescription':
     '這是一個由玩家維護的非官方線上對戰項目，目標是讓更多人能方便體驗 ZUTOMAYO CARD 的夜晝攻防與牌組構築。',

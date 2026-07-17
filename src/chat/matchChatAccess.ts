@@ -3,26 +3,36 @@ import type { ChatPublicAuthorRole } from '../api/client';
 export type MatchChatAccount = { id: string } | null | undefined;
 export type MatchChatAccessStatus = 'loading' | 'ready' | 'login_required';
 
-export function matchChatAccessStatus(accountLoaded: boolean, account: MatchChatAccount): MatchChatAccessStatus {
+export function matchChatAccessStatus(
+  accountLoaded: boolean,
+  account: MatchChatAccount,
+  hasPlayerSeat: boolean,
+): MatchChatAccessStatus {
   if (!accountLoaded) return 'loading';
-  return account ? 'ready' : 'login_required';
+  return account || hasPlayerSeat ? 'ready' : 'login_required';
 }
 
-export function matchChatAuthorRole(account: MatchChatAccount, spectator: boolean): ChatPublicAuthorRole | null {
-  if (!account) return null;
+export function matchChatAuthorRole(
+  account: MatchChatAccount,
+  spectator: boolean,
+  hasPlayerSeat: boolean,
+): ChatPublicAuthorRole | null {
+  if (!account && !hasPlayerSeat) return null;
   return spectator ? 'spectator' : 'player';
 }
 
 export function canSubmitMatchChat({
   account,
+  hasPlayerSeat,
   content,
   status,
 }: {
   account: MatchChatAccount;
+  hasPlayerSeat: boolean;
   content: string;
   status: string;
 }): boolean {
-  return Boolean(account && content.trim() && status === 'ready');
+  return Boolean((account || hasPlayerSeat) && content.trim() && status === 'ready');
 }
 
 function sanitizePresenceIdPart(value: string, maxLength: number): string {

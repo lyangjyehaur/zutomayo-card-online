@@ -54,6 +54,7 @@ const OnlineGamePage = lazy(() =>
 const OnlineLobbyPage = lazy(() =>
   import('./pages/OnlineLobbyPage').then((module) => ({ default: module.OnlineLobbyPage })),
 );
+const CommunityPage = lazy(() => import('./pages/CommunityPage').then((module) => ({ default: module.CommunityPage })));
 const LeaderboardPage = lazy(() =>
   import('./pages/LeaderboardPage').then((module) => ({ default: module.LeaderboardPage })),
 );
@@ -86,6 +87,7 @@ function isFullscreenRoute(pathname: string): boolean {
     pathname.startsWith('/qa/') ||
     pathname === '/' ||
     pathname === '/online' ||
+    pathname === '/community' ||
     pathname === '/ai' ||
     pathname === '/deck-builder' ||
     pathname === '/feedback' ||
@@ -200,6 +202,7 @@ function NavBar() {
   const navItems = [
     { path: '/', label: t('nav.lobby') },
     { path: '/online', label: t('lobby.onlineTitle') },
+    { path: '/community', label: t('community.title') },
     { path: '/ai', label: t('lobby.aiBattle') },
     { path: '/deck-builder', label: t('nav.deckBuilder') },
     { path: '/feedback', label: t('nav.feedback') },
@@ -223,7 +226,7 @@ function NavBar() {
       <div className="hidden items-center justify-between md:flex">
         <div className="flex items-center gap-1 rounded-md border border-border-soft bg-surface-base/80 px-2 py-1.5 backdrop-blur-md">
           <span className="mx-2 size-2 rounded-full bg-accent-primary shadow-status-dot" aria-hidden="true" />
-          {navItems.slice(0, 5).map((item) => (
+          {navItems.slice(0, 6).map((item) => (
             <Button
               key={item.path}
               className={navButtonClass(item.path)}
@@ -631,6 +634,7 @@ function RouterShell() {
         <Suspense fallback={<RouteFallback />}>
           <Routes>
             <Route path="/" element={<LobbyPage onAuthChanged={refreshServerDecks} />} />
+            <Route path="/community" element={<CommunityPage onAuthChanged={refreshServerDecks} />} />
             <Route
               path="/online"
               element={

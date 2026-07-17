@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
-import { Check, Flag, Languages, MessageCircle, Pencil, Radio, Send, Trash2, UserPlus, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Check, Flag, Languages, MessageCircle, Pencil, Radio, Send, X } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   ANONYMOUS_PLAYER_DEFAULT_NAME,
@@ -10,27 +10,21 @@ import {
   type AnonymousIdentity,
 } from '../anonymousIdentity';
 import {
-  addFriend,
   fetchChatMessages,
   getProfile,
   getFriends,
-  fetchUnreadChat,
   isLoggedIn,
   markChatRead,
   reportChatMessage,
-  removeFriend,
   requestChatTranslation,
   sendChatMessage,
   reserveDeck,
   type ChatMessage,
   type ChatMessageTranslation,
   type DeckResponse,
-  type ChatUnreadConversation,
   type FriendProfile,
   type ProfileResponse,
 } from '../api/client';
-import { buildDirectConversationSubjectId } from '../chat/directConversation';
-import { resolveUnreadConversationAction, unreadConversationLatestMessageId } from '../chat/unreadNavigation';
 import { copyText } from '../clipboard';
 import { buildOnlineRoomUrl } from '../components/OnlineRoomInfo';
 import { useToast } from '../components/ToastProvider';
@@ -62,7 +56,6 @@ import {
 } from '../platformClient';
 import { Sentry } from '../sentry';
 import { t, translate, useLocale } from '../i18n';
-import { buildMatchHistoryChatPath } from '../game/matchHistory';
 import type { OnlineSession } from '../onlineSession';
 import { isOnlineRoomErrorKey } from '../onlineRoomStatus';
 
@@ -103,10 +96,8 @@ type DirectChatTranslationState = {
   content?: string;
 };
 type LobbyChatEntry = ChatMessage & { translation?: DirectChatTranslationState };
-type DirectChatEntry = LobbyChatEntry;
 type RoomChatEntry = LobbyChatEntry;
 const ANONYMOUS_NAME_PROMPT_STORAGE_KEY = 'zutomayo_anonymous_name_prompt_seen';
-const GLOBAL_LOBBY_CHAT_SUBJECT_ID = 'online-lobby';
 
 // 段位定義：依 ELO 劃分漆面塔羅風格的段位名（專有名詞，不 i18n）。
 const RANKS = [
@@ -173,8 +164,6 @@ export function OnlineLobbyPage({
   const [profile, setProfile] = useState<ProfileResponse | null>(null);
   const [friends, setFriends] = useState<FriendProfile[]>([]);
   const [friendStatus, setFriendStatus] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>('idle');
-  const [friendUserIdDraft, setFriendUserIdDraft] = useState('');
-  const [friendActionId, setFriendActionId] = useState<string | null>(null);
   const [friendInviteActionId, setFriendInviteActionId] = useState<string | null>(null);
   const [friendInvitePeerId, setFriendInvitePeerId] = useState<string | null>(null);
   const [friendInviteMode, setFriendInviteMode] = useState<'incoming' | 'outgoing' | null>(null);
@@ -185,25 +174,6 @@ export function OnlineLobbyPage({
     friendUserId: string;
     session: OnlineSession;
   } | null>(null);
-  const [unreadChats, setUnreadChats] = useState<ChatUnreadConversation[]>([]);
-  const [unreadChatStatus, setUnreadChatStatus] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>('idle');
-  const [directChat, setDirectChat] = useState<{
-    subjectId: string;
-    peerUserId: string;
-    friend?: FriendProfile;
-  } | null>(null);
-  const [directChatMessages, setDirectChatMessages] = useState<DirectChatEntry[]>([]);
-  const [directChatDraft, setDirectChatDraft] = useState('');
-  const [directChatStatus, setDirectChatStatus] = useState<DirectChatStatus>('idle');
-  const [reportedDirectMessageIds, setReportedDirectMessageIds] = useState<Set<string>>(() => new Set());
-  const directChatPanelRef = useRef<HTMLDivElement | null>(null);
-  const directChatMessagesRef = useRef<HTMLDivElement | null>(null);
-  const [lobbyChatMessages, setLobbyChatMessages] = useState<LobbyChatEntry[]>([]);
-  const [lobbyChatDraft, setLobbyChatDraft] = useState('');
-  const [lobbyChatStatus, setLobbyChatStatus] = useState<DirectChatStatus>('idle');
-  const [reportedLobbyMessageIds, setReportedLobbyMessageIds] = useState<Set<string>>(() => new Set());
-  const lobbyChatPanelRef = useRef<HTMLDivElement | null>(null);
-  const lobbyChatMessagesRef = useRef<HTMLDivElement | null>(null);
   const [roomChatSubjectOverride, setRoomChatSubjectOverride] = useState('');
   const [roomChatMessages, setRoomChatMessages] = useState<RoomChatEntry[]>([]);
   const [roomChatDraft, setRoomChatDraft] = useState('');
@@ -221,11 +191,6 @@ export function OnlineLobbyPage({
       setProfile(null);
       setFriends([]);
       setFriendStatus('idle');
-      setUnreadChats([]);
-      setUnreadChatStatus('idle');
-      setDirectChat(null);
-      setLobbyChatMessages([]);
-      setLobbyChatStatus('idle');
       setRoomChatMessages([]);
       setRoomChatStatus('idle');
       setFriendInviteActionId(null);
@@ -243,11 +208,6 @@ export function OnlineLobbyPage({
       setProfile(null);
       setFriends([]);
       setFriendStatus('idle');
-      setUnreadChats([]);
-      setUnreadChatStatus('idle');
-      setDirectChat(null);
-      setLobbyChatMessages([]);
-      setLobbyChatStatus('idle');
       setRoomChatMessages([]);
       setRoomChatStatus('idle');
       setFriendInviteActionId(null);
@@ -283,29 +243,6 @@ export function OnlineLobbyPage({
     }
   }, []);
 
-  const refreshUnreadChats = useCallback(async () => {
-    if (!isLoggedIn()) {
-      setUnreadChats([]);
-      setUnreadChatStatus('idle');
-      return;
-    }
-    setUnreadChatStatus('loading');
-    try {
-      const conversations = await fetchUnreadChat(5);
-      setUnreadChats(conversations);
-      setUnreadChatStatus('ready');
-    } catch (err) {
-      Sentry.addBreadcrumb({
-        category: 'chat',
-        message: 'unread chat summary unavailable',
-        level: 'warning',
-        data: { error: err instanceof Error ? err.message : String(err) },
-      });
-      setUnreadChats([]);
-      setUnreadChatStatus('unavailable');
-    }
-  }, []);
-
   useEffect(() => {
     let cancelled = false;
     void refreshProfile().then(() => {
@@ -319,119 +256,14 @@ export function OnlineLobbyPage({
   useEffect(() => {
     if (!profile) return;
     void refreshFriends();
-    void refreshUnreadChats();
-  }, [profile, refreshFriends, refreshUnreadChats]);
+  }, [profile, refreshFriends]);
 
   const handleAuthChanged = useCallback(async () => {
     await onAuthChanged();
     await refreshProfile();
     await refreshFriends();
-    await refreshUnreadChats();
     setError('');
-  }, [onAuthChanged, refreshFriends, refreshProfile, refreshUnreadChats]);
-
-  useEffect(() => {
-    if (!directChat || !profile) {
-      setDirectChatMessages([]);
-      setDirectChatStatus('idle');
-      return;
-    }
-    let cancelled = false;
-    setDirectChatStatus('loading');
-    setDirectChatMessages([]);
-    void fetchChatMessages({ conversationType: 'direct', subjectId: directChat.subjectId, limit: 50 }).then(
-      (messages) => {
-        if (cancelled) return;
-        const visibleMessages = messages.filter(canShowChatMessage);
-        setDirectChatMessages(visibleMessages);
-        setDirectChatStatus('ready');
-        const latestMessageId = visibleMessages.at(-1)?.id;
-        void markChatRead({
-          conversationType: 'direct',
-          subjectId: directChat.subjectId,
-          lastReadMessageId: latestMessageId,
-        }).then(refreshUnreadChats, () => undefined);
-      },
-      (err) => {
-        if (cancelled) return;
-        Sentry.addBreadcrumb({
-          category: 'chat',
-          message: 'direct chat history unavailable',
-          level: 'warning',
-          data: { peer_user_id: directChat.peerUserId, error: err instanceof Error ? err.message : String(err) },
-        });
-        setDirectChatStatus('unavailable');
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [directChat, profile, refreshUnreadChats]);
-
-  useEffect(() => {
-    const element = directChatMessagesRef.current;
-    if (!element) return;
-    element.scrollTop = element.scrollHeight;
-  }, [directChatMessages]);
-
-  useEffect(() => {
-    if (!profile) {
-      setLobbyChatMessages([]);
-      setLobbyChatStatus('idle');
-      return;
-    }
-    let cancelled = false;
-    setLobbyChatStatus('loading');
-    void fetchChatMessages({
-      conversationType: 'global',
-      subjectId: GLOBAL_LOBBY_CHAT_SUBJECT_ID,
-      limit: 50,
-    }).then(
-      (messages) => {
-        if (cancelled) return;
-        const visibleMessages = messages.filter(canShowChatMessage);
-        setLobbyChatMessages(visibleMessages);
-        setLobbyChatStatus('ready');
-        const latestMessageId = visibleMessages.at(-1)?.id;
-        void markChatRead({
-          conversationType: 'global',
-          subjectId: GLOBAL_LOBBY_CHAT_SUBJECT_ID,
-          lastReadMessageId: latestMessageId,
-        }).then(refreshUnreadChats, () => undefined);
-      },
-      (err) => {
-        if (cancelled) return;
-        Sentry.addBreadcrumb({
-          category: 'chat',
-          message: 'global lobby chat history unavailable',
-          level: 'warning',
-          data: { error: err instanceof Error ? err.message : String(err) },
-        });
-        setLobbyChatStatus('unavailable');
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [profile, refreshUnreadChats]);
-
-  useEffect(() => {
-    const element = lobbyChatMessagesRef.current;
-    if (!element) return;
-    element.scrollTop = element.scrollHeight;
-  }, [lobbyChatMessages]);
-
-  const applyDirectChatTranslation = useCallback((messageId: string, translation: DirectChatTranslationState) => {
-    setDirectChatMessages((messages) =>
-      messages.map((message) => (message.id === messageId ? { ...message, translation } : message)),
-    );
-  }, []);
-
-  const applyLobbyChatTranslation = useCallback((messageId: string, translation: DirectChatTranslationState) => {
-    setLobbyChatMessages((messages) =>
-      messages.map((message) => (message.id === messageId ? { ...message, translation } : message)),
-    );
-  }, []);
+  }, [onAuthChanged, refreshFriends, refreshProfile]);
 
   const applyRoomChatTranslation = useCallback((messageId: string, translation: DirectChatTranslationState) => {
     setRoomChatMessages((messages) =>
@@ -570,7 +402,7 @@ export function OnlineLobbyPage({
           conversationType: 'room',
           subjectId: roomChatSubjectId,
           lastReadMessageId: latestMessageId,
-        }).then(refreshUnreadChats, () => undefined);
+        }).catch(() => undefined);
       },
       (err) => {
         if (cancelled) return;
@@ -586,7 +418,7 @@ export function OnlineLobbyPage({
     return () => {
       cancelled = true;
     };
-  }, [profile, refreshUnreadChats, roomChatSubjectId]);
+  }, [profile, roomChatSubjectId]);
 
   useEffect(() => {
     const element = roomChatMessagesRef.current;
@@ -833,97 +665,10 @@ export function OnlineLobbyPage({
   const canStart = cardsReady && !!deck0Name;
   const startDisabledReason = !cardsReady ? t('game.loading') : !deck0Name ? t('lobby.selectDeckFirst') : '';
   const rank = profile ? eloToRank(profile.elo) : null;
-  const unreadChatTotal = unreadChats.reduce((total, conversation) => total + conversation.unreadCount, 0);
-  const directChatPeerName = directChat?.friend?.nickname || directChat?.peerUserId || '';
   const draftPreview = formatAnonymousDisplayName({
     baseName: sanitizeAnonymousBaseName(anonymousNameDraft),
     suffix: anonymousIdentity.suffix,
   });
-
-  const scrollToPanel = (ref: RefObject<HTMLDivElement | null>) => {
-    window.requestAnimationFrame(() => {
-      ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
-  };
-
-  const openUnreadConversation = (conversation: ChatUnreadConversation) => {
-    const action = resolveUnreadConversationAction(conversation, { profileId: profile?.id, friends });
-    if (!action) return;
-
-    if (action.kind === 'match') {
-      navigate(buildMatchHistoryChatPath(action.subjectId));
-      return;
-    }
-    if (action.kind === 'room') {
-      setRoomChatSubjectOverride(action.subjectId);
-      setMatchID(action.subjectId);
-      scrollToPanel(customRoomPanelRef);
-      return;
-    }
-    if (action.kind === 'global') {
-      scrollToPanel(lobbyChatPanelRef);
-      void markChatRead({
-        conversationType: 'global',
-        subjectId: action.subjectId,
-        lastReadMessageId: unreadConversationLatestMessageId(conversation),
-      }).then(refreshUnreadChats, () => undefined);
-      return;
-    }
-    if (action.kind === 'direct') {
-      setDirectChat({ subjectId: action.subjectId, peerUserId: action.peerUserId, friend: action.friend });
-      scrollToPanel(directChatPanelRef);
-    }
-  };
-
-  const openFriendChat = (friend: FriendProfile) => {
-    if (!profile) return;
-    const subjectId = buildDirectConversationSubjectId(profile.id, friend.userId);
-    if (!subjectId) return;
-    setDirectChat({ subjectId, peerUserId: friend.userId, friend });
-  };
-
-  const handleAddFriend = async () => {
-    if (!profile) return;
-    const friendUserId = friendUserIdDraft.trim();
-    if (!friendUserId) return;
-    setFriendActionId(friendUserId);
-    try {
-      await addFriend(friendUserId);
-      setFriendUserIdDraft('');
-      await refreshFriends();
-      showToast({ title: t('friend.added'), kind: 'success' });
-    } catch (err) {
-      Sentry.addBreadcrumb({
-        category: 'friends',
-        message: 'add friend failed',
-        level: 'warning',
-        data: { friend_user_id: friendUserId, error: err instanceof Error ? err.message : String(err) },
-      });
-      showToast({ title: t('friend.addFailed'), kind: 'error' });
-    } finally {
-      setFriendActionId(null);
-    }
-  };
-
-  const handleRemoveFriend = async (friend: FriendProfile) => {
-    setFriendActionId(friend.userId);
-    try {
-      await removeFriend(friend.userId);
-      if (directChat?.peerUserId === friend.userId) setDirectChat(null);
-      await refreshFriends();
-      showToast({ title: t('friend.removed'), kind: 'success' });
-    } catch (err) {
-      Sentry.addBreadcrumb({
-        category: 'friends',
-        message: 'remove friend failed',
-        level: 'warning',
-        data: { friend_user_id: friend.userId, error: err instanceof Error ? err.message : String(err) },
-      });
-      showToast({ title: t('friend.removeFailed'), kind: 'error' });
-    } finally {
-      setFriendActionId(null);
-    }
-  };
 
   const leavePlatformInviteRoom = () => {
     activeOutgoingInviteIdRef.current = null;
@@ -1271,176 +1016,6 @@ export function OnlineLobbyPage({
     showToast,
   ]);
 
-  const handleDirectChatSubmit = async () => {
-    if (!profile || !directChat || !directChatDraft.trim() || directChatStatus === 'sending') return;
-    const content = directChatDraft.trim();
-    setDirectChatStatus('sending');
-    try {
-      const result = await sendChatMessage({
-        conversationType: 'direct',
-        subjectId: directChat.subjectId,
-        content,
-        title: directChatPeerName ? `${profile.nickname} / ${directChatPeerName}` : '',
-        authorDisplayName: profile.nickname,
-        authorRole: 'player',
-      });
-      if (canShowChatMessage(result.message)) {
-        setDirectChatMessages((messages) => [...messages, result.message]);
-        void markChatRead({
-          conversationType: 'direct',
-          subjectId: directChat.subjectId,
-          lastReadMessageId: result.message.id,
-        }).then(refreshUnreadChats, () => undefined);
-      }
-      setDirectChatDraft('');
-      setDirectChatStatus('ready');
-    } catch (err) {
-      Sentry.addBreadcrumb({
-        category: 'chat',
-        message: 'direct chat send failed',
-        level: 'warning',
-        data: { peer_user_id: directChat.peerUserId, error: err instanceof Error ? err.message : String(err) },
-      });
-      setDirectChatStatus('ready');
-      showToast({ title: t('chat.sendFailed'), kind: 'error' });
-    }
-  };
-
-  const handleDirectChatTranslate = useCallback(
-    async (message: DirectChatEntry) => {
-      if (message.translation?.status === 'loading') return;
-      const targetLanguage = locale.toLowerCase();
-      applyDirectChatTranslation(message.id, { status: 'loading', targetLanguage });
-      try {
-        const result = await requestChatTranslation(message.id, targetLanguage);
-        applyDirectChatTranslation(message.id, {
-          status: result.translation.status,
-          targetLanguage: result.translation.targetLanguage,
-          content: result.translation.translatedContent || undefined,
-        });
-      } catch (err) {
-        applyDirectChatTranslation(message.id, { status: 'unavailable', targetLanguage });
-        Sentry.addBreadcrumb({
-          category: 'chat',
-          message: 'direct chat translation failed',
-          level: 'warning',
-          data: { message_id: message.id, error: err instanceof Error ? err.message : String(err) },
-        });
-      }
-    },
-    [applyDirectChatTranslation, locale],
-  );
-
-  const handleDirectChatReport = useCallback(
-    async (message: DirectChatEntry) => {
-      if (message.authorUserId === profile?.id || reportedDirectMessageIds.has(message.id)) return;
-      setReportedDirectMessageIds((ids) => new Set(ids).add(message.id));
-      try {
-        await reportChatMessage(message.id, { reason: 'inappropriate' });
-        showToast({ title: t('chat.reported'), kind: 'success' });
-      } catch (err) {
-        setReportedDirectMessageIds((ids) => {
-          const next = new Set(ids);
-          next.delete(message.id);
-          return next;
-        });
-        Sentry.addBreadcrumb({
-          category: 'chat',
-          message: 'direct chat report failed',
-          level: 'warning',
-          data: { message_id: message.id, error: err instanceof Error ? err.message : String(err) },
-        });
-        showToast({ title: t('chat.reportFailed'), kind: 'error' });
-      }
-    },
-    [profile?.id, reportedDirectMessageIds, showToast],
-  );
-
-  const handleLobbyChatSubmit = async () => {
-    if (!profile || !lobbyChatDraft.trim() || lobbyChatStatus === 'sending') return;
-    const content = lobbyChatDraft.trim();
-    setLobbyChatStatus('sending');
-    try {
-      const result = await sendChatMessage({
-        conversationType: 'global',
-        subjectId: GLOBAL_LOBBY_CHAT_SUBJECT_ID,
-        content,
-        title: t('chat.globalTitle'),
-        authorDisplayName: profile.nickname,
-        authorRole: 'player',
-      });
-      if (canShowChatMessage(result.message)) {
-        setLobbyChatMessages((messages) => [...messages, result.message]);
-        void markChatRead({
-          conversationType: 'global',
-          subjectId: GLOBAL_LOBBY_CHAT_SUBJECT_ID,
-          lastReadMessageId: result.message.id,
-        }).then(refreshUnreadChats, () => undefined);
-      }
-      setLobbyChatDraft('');
-      setLobbyChatStatus('ready');
-    } catch (err) {
-      Sentry.addBreadcrumb({
-        category: 'chat',
-        message: 'global lobby chat send failed',
-        level: 'warning',
-        data: { error: err instanceof Error ? err.message : String(err) },
-      });
-      setLobbyChatStatus('ready');
-      showToast({ title: t('chat.sendFailed'), kind: 'error' });
-    }
-  };
-
-  const handleLobbyChatTranslate = useCallback(
-    async (message: LobbyChatEntry) => {
-      if (message.translation?.status === 'loading') return;
-      const targetLanguage = locale.toLowerCase();
-      applyLobbyChatTranslation(message.id, { status: 'loading', targetLanguage });
-      try {
-        const result = await requestChatTranslation(message.id, targetLanguage);
-        applyLobbyChatTranslation(message.id, {
-          status: result.translation.status,
-          targetLanguage: result.translation.targetLanguage,
-          content: result.translation.translatedContent || undefined,
-        });
-      } catch (err) {
-        applyLobbyChatTranslation(message.id, { status: 'unavailable', targetLanguage });
-        Sentry.addBreadcrumb({
-          category: 'chat',
-          message: 'global lobby chat translation failed',
-          level: 'warning',
-          data: { message_id: message.id, error: err instanceof Error ? err.message : String(err) },
-        });
-      }
-    },
-    [applyLobbyChatTranslation, locale],
-  );
-
-  const handleLobbyChatReport = useCallback(
-    async (message: LobbyChatEntry) => {
-      if (message.authorUserId === profile?.id || reportedLobbyMessageIds.has(message.id)) return;
-      setReportedLobbyMessageIds((ids) => new Set(ids).add(message.id));
-      try {
-        await reportChatMessage(message.id, { reason: 'inappropriate' });
-        showToast({ title: t('chat.reported'), kind: 'success' });
-      } catch (err) {
-        setReportedLobbyMessageIds((ids) => {
-          const next = new Set(ids);
-          next.delete(message.id);
-          return next;
-        });
-        Sentry.addBreadcrumb({
-          category: 'chat',
-          message: 'global lobby chat report failed',
-          level: 'warning',
-          data: { message_id: message.id, error: err instanceof Error ? err.message : String(err) },
-        });
-        showToast({ title: t('chat.reportFailed'), kind: 'error' });
-      }
-    },
-    [profile?.id, reportedLobbyMessageIds, showToast],
-  );
-
   const handleRoomChatSubmit = async () => {
     if (!profile || !roomChatSubjectId || !roomChatDraft.trim() || roomChatStatus === 'sending') return;
     const content = roomChatDraft.trim();
@@ -1460,7 +1035,7 @@ export function OnlineLobbyPage({
           conversationType: 'room',
           subjectId: roomChatSubjectId,
           lastReadMessageId: result.message.id,
-        }).then(refreshUnreadChats, () => undefined);
+        }).catch(() => undefined);
       }
       setRoomChatDraft('');
       setRoomChatStatus('ready');
@@ -1668,84 +1243,6 @@ export function OnlineLobbyPage({
                 {profile ? `ELO ${profile.elo} · ${profile.wins}/${profile.matchCount}` : t('lobby.loginRequired')}
               </div>
             </Panel>
-
-            {profile && (
-              <Panel variant="ghost" data-chat-surface="unread">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <MessageCircle className="size-4 shrink-0 text-accent-primary/80" strokeWidth={1.25} />
-                    <div className="min-w-0">
-                      <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">
-                        {t('chat.unreadTitle')}
-                      </div>
-                      <div className="mt-1 truncate font-mono text-sm text-accent-primary">
-                        {unreadChatStatus === 'loading'
-                          ? t('presence.syncing')
-                          : unreadChatTotal > 0
-                            ? translate(locale, 'chat.unreadCount').replace('{count}', String(unreadChatTotal))
-                            : t('chat.unreadEmpty')}
-                      </div>
-                    </div>
-                  </div>
-                  <Button
-                    className="size-11 shrink-0 p-0"
-                    variant="ghost"
-                    type="button"
-                    onClick={refreshUnreadChats}
-                    aria-label={t('chat.refreshUnread')}
-                    title={t('chat.refreshUnread')}
-                  >
-                    <Radio className="size-3.5" strokeWidth={1.25} />
-                  </Button>
-                </div>
-
-                {unreadChatStatus === 'unavailable' && (
-                  <p className="mt-3 text-caption leading-relaxed text-accent-action/70">
-                    {t('chat.unreadUnavailable')}
-                  </p>
-                )}
-
-                {unreadChats.length > 0 && (
-                  <div className="mt-3 grid gap-2">
-                    {unreadChats.map((conversation) => {
-                      const label =
-                        conversation.title ||
-                        translate(locale, 'chat.conversationLabel')
-                          .replace('{type}', conversation.type)
-                          .replace('{subjectId}', conversation.subjectId);
-                      const time = conversation.latestMessageAt
-                        ? new Date(conversation.latestMessageAt).toLocaleString(locale, {
-                            month: '2-digit',
-                            day: '2-digit',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })
-                        : '';
-                      return (
-                        <button
-                          key={conversation.id}
-                          type="button"
-                          data-unread-conversation={conversation.type}
-                          data-unread-subject={conversation.subjectId}
-                          className="grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-sm border border-border-soft bg-surface-canvas/40 px-3 py-2 text-left transition hover:border-accent-primary/40 disabled:cursor-default disabled:hover:border-border-soft"
-                          onClick={() => openUnreadConversation(conversation)}
-                        >
-                          <span className="min-w-0">
-                            <span className="block truncate font-mono text-xs text-content-primary/80">{label}</span>
-                            <span className="mt-1 block truncate text-minutia uppercase tracking-[var(--tracking-label)] text-content-primary/35">
-                              {time || conversation.subjectId}
-                            </span>
-                          </span>
-                          <span className="rounded-sm bg-accent-primary/15 px-2 py-1 font-mono text-minutia text-accent-primary">
-                            {conversation.unreadCount}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </Panel>
-            )}
 
             {/* 開始匹配 */}
             <div className="grid gap-2">
@@ -2067,438 +1564,67 @@ export function OnlineLobbyPage({
             </div>
 
             {profile && (
-              <div ref={directChatPanelRef}>
-                <RoomPanel mode="custom" data-chat-surface="direct">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">
-                        {t('friend.title')}
-                      </div>
-                      <h2 className="font-display text-2xl font-bold">{t('chat.directTitle')}</h2>
-                    </div>
-                    <Button
-                      className="size-11 shrink-0 p-0 tracking-normal"
-                      variant="ghost"
-                      type="button"
-                      onClick={refreshFriends}
-                      aria-label={t('friend.refresh')}
-                      title={t('friend.refresh')}
-                    >
-                      <Radio className="size-3.5" strokeWidth={1.25} />
-                    </Button>
-                  </div>
-
-                  <div className="flex flex-col gap-2 sm:flex-row">
-                    <Input
-                      className="min-h-11 min-w-0 flex-1 font-mono text-xs"
-                      value={friendUserIdDraft}
-                      onChange={(event) => setFriendUserIdDraft(event.target.value.slice(0, 128))}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter') void handleAddFriend();
-                      }}
-                      placeholder={t('friend.userId')}
-                      aria-label={t('friend.userId')}
-                      disabled={friendActionId !== null}
-                    />
-                    <Button
-                      className="min-h-11"
-                      variant="secondary"
-                      type="button"
-                      leftIcon={<UserPlus className="size-4" strokeWidth={1.25} />}
-                      disabled={!friendUserIdDraft.trim() || friendActionId !== null}
-                      onClick={() => void handleAddFriend()}
-                    >
-                      {t('friend.add')}
-                    </Button>
-                  </div>
-
-                  {friendStatus === 'unavailable' && (
-                    <Alert tone="danger" role="alert">
-                      {t('friend.unavailable')}
-                    </Alert>
-                  )}
-
-                  <div className="grid gap-2 sm:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
-                    <div className="grid max-h-80 gap-2 overflow-y-auto pr-1">
-                      {friendStatus === 'loading' && (
-                        <div className="grid min-h-16 place-items-center font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/35">
-                          {t('presence.syncing')}
-                        </div>
-                      )}
-                      {friendStatus !== 'loading' && friends.length === 0 && (
-                        <div className="grid min-h-16 place-items-center rounded-sm border border-border-soft bg-surface-canvas/30 px-3 text-center font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/35">
-                          {t('friend.empty')}
-                        </div>
-                      )}
-                      {friends.map((friend) => (
-                        <div
-                          key={friend.userId}
-                          data-friend-user-id={friend.userId}
-                          className={`grid min-h-16 grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-2 rounded-sm border px-3 py-2 transition ${
-                            directChat?.peerUserId === friend.userId
-                              ? 'border-accent-primary/50 bg-accent-primary/10'
-                              : 'border-border-soft bg-surface-canvas/30'
-                          }`}
-                        >
-                          <button
-                            type="button"
-                            data-direct-chat-open={friend.userId}
-                            className="min-w-0 text-left"
-                            onClick={() => openFriendChat(friend)}
-                            aria-label={`${t('chat.directTitle')} ${friend.nickname || friend.userId}`}
-                          >
-                            <span className="block truncate font-mono text-xs text-content-primary/80">
-                              {friend.nickname || friend.userId}
-                            </span>
-                            <span className="mt-1 block truncate text-minutia uppercase tracking-[var(--tracking-label)] text-content-primary/35">
-                              {friend.userId}
-                            </span>
-                          </button>
-                          <Button
-                            className="size-10 shrink-0 p-0 tracking-normal"
-                            variant="ghost"
-                            type="button"
-                            data-friend-invite-action="send"
-                            data-friend-user-id={friend.userId}
-                            onClick={() => void handleInviteFriend(friend)}
-                            disabled={
-                              friendInviteActionId !== null ||
-                              friendInvitePeerId !== null ||
-                              matchmakingActive ||
-                              !canStart
-                            }
-                            aria-label={t('friend.invite')}
-                            title={
-                              friendInvitePeerId === friend.userId ? t('friend.inviteWaiting') : t('friend.invite')
-                            }
-                          >
-                            <Send className="size-3.5" strokeWidth={1.25} />
-                          </Button>
-                          <Button
-                            className="size-10 shrink-0 p-0 tracking-normal"
-                            variant="ghost"
-                            type="button"
-                            data-friend-invite-action="accept"
-                            data-friend-user-id={friend.userId}
-                            onClick={() => void handleAcceptFriendInvite(friend)}
-                            disabled={
-                              friendInviteActionId !== null ||
-                              matchmakingActive ||
-                              (friendInvitePeerId !== null && friendInvitePeerId !== friend.userId)
-                            }
-                            aria-label={t('friend.acceptInvite')}
-                            title={
-                              friendInviteMode === 'incoming' && friendInvitePeerId === friend.userId
-                                ? t('friend.inviteIncoming')
-                                : t('friend.acceptInvite')
-                            }
-                          >
-                            <Check className="size-3.5" strokeWidth={1.25} />
-                          </Button>
-                          <Button
-                            className="size-10 shrink-0 p-0 tracking-normal"
-                            variant="ghost"
-                            type="button"
-                            onClick={() => void handleRemoveFriend(friend)}
-                            disabled={friendActionId === friend.userId}
-                            aria-label={t('friend.remove')}
-                            title={t('friend.remove')}
-                          >
-                            <Trash2 className="size-3.5" strokeWidth={1.25} />
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="grid min-h-80 grid-rows-[auto_minmax(0,1fr)_auto] rounded-sm border border-border-soft bg-surface-canvas/30">
-                      <div className="flex min-h-12 items-center justify-between gap-3 border-b border-border-soft px-3">
-                        <div className="min-w-0">
-                          <div className="truncate font-mono text-xs text-accent-primary">
-                            {directChat ? directChatPeerName : t('chat.directTitle')}
-                          </div>
-                          <div className="truncate text-minutia uppercase tracking-[var(--tracking-label)] text-content-primary/35">
-                            {directChat?.peerUserId || t('friend.empty')}
-                          </div>
-                        </div>
-                        {directChat && (
-                          <Button
-                            className="size-10 shrink-0 p-0 tracking-normal"
-                            variant="ghost"
-                            type="button"
-                            onClick={() => setDirectChat(null)}
-                            aria-label={t('common.close')}
-                            title={t('common.close')}
-                          >
-                            <X className="size-3.5" strokeWidth={1.25} />
-                          </Button>
-                        )}
-                      </div>
-
-                      <div ref={directChatMessagesRef} className="flex min-h-0 flex-col gap-2 overflow-y-auto p-3">
-                        {!directChat && (
-                          <div className="grid min-h-full place-items-center text-center font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/35">
-                            {t('chat.selectDirect')}
-                          </div>
-                        )}
-                        {directChat && directChatStatus === 'loading' && (
-                          <div className="grid min-h-full place-items-center font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/35">
-                            {t('presence.syncing')}
-                          </div>
-                        )}
-                        {directChat && directChatStatus === 'unavailable' && (
-                          <div className="grid min-h-full place-items-center px-4 text-center text-caption text-accent-action/70">
-                            {t('chat.historyUnavailable')}
-                          </div>
-                        )}
-                        {directChat &&
-                          directChatStatus !== 'loading' &&
-                          directChatStatus !== 'unavailable' &&
-                          directChatMessages.length === 0 && (
-                            <div className="grid min-h-full place-items-center text-center font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/35">
-                              {t('chat.empty')}
-                            </div>
-                          )}
-                        {directChatMessages.map((message) => {
-                          const self = message.authorUserId === profile.id;
-                          return (
-                            <div
-                              key={message.id}
-                              data-chat-message="direct"
-                              className={`max-w-[86%] ${self ? 'self-end text-right' : 'self-start text-left'}`}
-                            >
-                              <div className="px-1 pb-1 font-mono text-minutia uppercase tracking-[var(--tracking-label)] text-content-primary/35">
-                                <span>{message.authorDisplayName || message.authorUserId || t('auth.guest')}</span>
-                                <span className="ml-2 inline-flex items-center gap-1">
-                                  <Button
-                                    className="size-7 p-0 tracking-normal"
-                                    variant="ghost"
-                                    type="button"
-                                    onClick={() => void handleDirectChatTranslate(message)}
-                                    disabled={message.translation?.status === 'loading'}
-                                    aria-label={t('chat.translate')}
-                                    title={t('chat.translate')}
-                                  >
-                                    <Languages className="size-3" strokeWidth={1.25} />
-                                  </Button>
-                                  {!self && (
-                                    <Button
-                                      className="size-7 p-0 tracking-normal"
-                                      variant="ghost"
-                                      type="button"
-                                      onClick={() => void handleDirectChatReport(message)}
-                                      disabled={reportedDirectMessageIds.has(message.id)}
-                                      aria-label={
-                                        reportedDirectMessageIds.has(message.id) ? t('chat.reported') : t('chat.report')
-                                      }
-                                      title={
-                                        reportedDirectMessageIds.has(message.id) ? t('chat.reported') : t('chat.report')
-                                      }
-                                    >
-                                      <Flag className="size-3" strokeWidth={1.25} />
-                                    </Button>
-                                  )}
-                                </span>
-                              </div>
-                              <div
-                                className={`rounded-sm border px-3 py-2 text-caption leading-relaxed [overflow-wrap:anywhere] ${
-                                  self
-                                    ? 'border-accent-primary/25 bg-accent-primary/10 text-content-primary'
-                                    : 'border-border-soft bg-surface-elevated/50 text-content-primary'
-                                }`}
-                              >
-                                {message.content}
-                              </div>
-                              {message.translation && (
-                                <div
-                                  className={`mt-1 rounded-sm border px-3 py-2 text-caption leading-relaxed [overflow-wrap:anywhere] ${
-                                    message.translation.status === 'ready' && message.translation.content
-                                      ? 'border-accent-primary/20 bg-accent-primary/10 text-content-muted'
-                                      : 'border-border-soft bg-surface-canvas/40 font-mono uppercase tracking-[var(--tracking-kicker)] text-content-primary/35'
-                                  }`}
-                                >
-                                  {message.translation.status === 'ready' && message.translation.content
-                                    ? message.translation.content
-                                    : message.translation.status === 'loading'
-                                      ? t('chat.translationTranslating')
-                                      : message.translation.status === 'unavailable'
-                                        ? t('chat.translationOffline')
-                                        : t('chat.translationPending')}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      <form
-                        className="grid grid-cols-[minmax(0,1fr)_var(--touch-target-min)] gap-2 border-t border-border-soft p-2"
-                        onSubmit={(event) => {
-                          event.preventDefault();
-                          void handleDirectChatSubmit();
-                        }}
-                      >
-                        <Input
-                          className="min-h-11 min-w-0"
-                          value={directChatDraft}
-                          onChange={(event) => setDirectChatDraft(event.target.value.slice(0, 500))}
-                          placeholder={t('chat.messagePlaceholder')}
-                          aria-label={t('chat.messagePlaceholder')}
-                          disabled={!directChat || directChatStatus === 'sending' || directChatStatus === 'unavailable'}
-                        />
-                        <Button
-                          className="size-11 p-0 tracking-normal"
-                          variant="primary"
-                          type="submit"
-                          disabled={
-                            !directChat ||
-                            !directChatDraft.trim() ||
-                            directChatStatus === 'sending' ||
-                            directChatStatus === 'unavailable'
-                          }
-                          aria-label={t('chat.send')}
-                          title={t('chat.send')}
-                        >
-                          <Send className="size-4" strokeWidth={1.25} />
-                        </Button>
-                      </form>
-                    </div>
-                  </div>
-                </RoomPanel>
-              </div>
-            )}
-
-            {profile && (
-              <div ref={lobbyChatPanelRef}>
-                <RoomPanel mode="custom" data-chat-surface="global">
-                  <div className="flex flex-col gap-1">
+              <RoomPanel mode="custom" data-friend-invites>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
                     <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">
-                      {t('chat.globalEyebrow')}
+                      {t('friend.title')}
                     </div>
-                    <h2 className="font-display text-2xl font-bold">{t('chat.globalTitle')}</h2>
+                    <h2 className="font-display text-2xl font-bold">{t('friend.invite')}</h2>
                   </div>
-
-                  <div className="grid min-h-80 grid-rows-[minmax(0,1fr)_auto] rounded-sm border border-border-soft bg-surface-canvas/30">
-                    <div ref={lobbyChatMessagesRef} className="flex min-h-0 flex-col gap-2 overflow-y-auto p-3">
-                      {lobbyChatStatus === 'loading' && (
-                        <div className="grid min-h-full place-items-center font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/35">
-                          {t('presence.syncing')}
-                        </div>
-                      )}
-                      {lobbyChatStatus === 'unavailable' && (
-                        <div className="grid min-h-full place-items-center px-4 text-center text-caption text-accent-action/70">
-                          {t('chat.historyUnavailable')}
-                        </div>
-                      )}
-                      {lobbyChatStatus !== 'loading' &&
-                        lobbyChatStatus !== 'unavailable' &&
-                        lobbyChatMessages.length === 0 && (
-                          <div className="grid min-h-full place-items-center text-center font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/35">
-                            {t('chat.empty')}
-                          </div>
-                        )}
-                      {lobbyChatMessages.map((message) => {
-                        const self = message.authorUserId === profile.id;
-                        return (
-                          <div
-                            key={message.id}
-                            data-chat-message="global"
-                            className={`max-w-[86%] ${self ? 'self-end text-right' : 'self-start text-left'}`}
-                          >
-                            <div className="px-1 pb-1 font-mono text-minutia uppercase tracking-[var(--tracking-label)] text-content-primary/35">
-                              <span>{message.authorDisplayName || message.authorUserId || t('auth.guest')}</span>
-                              <span className="ml-2 inline-flex items-center gap-1">
-                                <Button
-                                  className="size-7 p-0 tracking-normal"
-                                  variant="ghost"
-                                  type="button"
-                                  onClick={() => void handleLobbyChatTranslate(message)}
-                                  disabled={message.translation?.status === 'loading'}
-                                  aria-label={t('chat.translate')}
-                                  title={t('chat.translate')}
-                                >
-                                  <Languages className="size-3" strokeWidth={1.25} />
-                                </Button>
-                                {!self && (
-                                  <Button
-                                    className="size-7 p-0 tracking-normal"
-                                    variant="ghost"
-                                    type="button"
-                                    onClick={() => void handleLobbyChatReport(message)}
-                                    disabled={reportedLobbyMessageIds.has(message.id)}
-                                    aria-label={
-                                      reportedLobbyMessageIds.has(message.id) ? t('chat.reported') : t('chat.report')
-                                    }
-                                    title={
-                                      reportedLobbyMessageIds.has(message.id) ? t('chat.reported') : t('chat.report')
-                                    }
-                                  >
-                                    <Flag className="size-3" strokeWidth={1.25} />
-                                  </Button>
-                                )}
-                              </span>
-                            </div>
-                            <div
-                              className={`rounded-sm border px-3 py-2 text-caption leading-relaxed [overflow-wrap:anywhere] ${
-                                self
-                                  ? 'border-accent-primary/25 bg-accent-primary/10 text-content-primary'
-                                  : 'border-border-soft bg-surface-elevated/50 text-content-primary'
-                              }`}
-                            >
-                              {message.content}
-                            </div>
-                            {message.translation && (
-                              <div
-                                className={`mt-1 rounded-sm border px-3 py-2 text-caption leading-relaxed [overflow-wrap:anywhere] ${
-                                  message.translation.status === 'ready' && message.translation.content
-                                    ? 'border-accent-primary/20 bg-accent-primary/10 text-content-muted'
-                                    : 'border-border-soft bg-surface-canvas/40 font-mono uppercase tracking-[var(--tracking-kicker)] text-content-primary/35'
-                                }`}
-                              >
-                                {message.translation.status === 'ready' && message.translation.content
-                                  ? message.translation.content
-                                  : message.translation.status === 'loading'
-                                    ? t('chat.translationTranslating')
-                                    : message.translation.status === 'unavailable'
-                                      ? t('chat.translationOffline')
-                                      : t('chat.translationPending')}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    <form
-                      className="grid grid-cols-[minmax(0,1fr)_var(--touch-target-min)] gap-2 border-t border-border-soft p-2"
-                      onSubmit={(event) => {
-                        event.preventDefault();
-                        void handleLobbyChatSubmit();
-                      }}
+                  <Button
+                    className="size-11 p-0"
+                    variant="ghost"
+                    type="button"
+                    onClick={refreshFriends}
+                    aria-label={t('friend.refresh')}
+                  >
+                    <Radio className="size-3.5" strokeWidth={1.25} />
+                  </Button>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {friends.map((friend) => (
+                    <div
+                      key={friend.userId}
+                      className="grid min-h-14 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 rounded-sm border border-border-soft bg-surface-canvas/30 px-3 py-2"
                     >
-                      <Input
-                        className="min-h-11 min-w-0"
-                        value={lobbyChatDraft}
-                        onChange={(event) => setLobbyChatDraft(event.target.value.slice(0, 500))}
-                        placeholder={t('chat.messagePlaceholder')}
-                        aria-label={t('chat.messagePlaceholder')}
-                        disabled={lobbyChatStatus === 'sending' || lobbyChatStatus === 'unavailable'}
-                      />
+                      <div className="min-w-0">
+                        <strong className="block truncate text-body">{friend.nickname || friend.userId}</strong>
+                        <span className="block truncate text-minutia text-content-dim">{friend.userId}</span>
+                      </div>
                       <Button
-                        className="size-11 p-0 tracking-normal"
-                        variant="primary"
-                        type="submit"
+                        className="size-10 p-0"
+                        variant="ghost"
+                        type="button"
+                        onClick={() => void handleInviteFriend(friend)}
                         disabled={
-                          !lobbyChatDraft.trim() || lobbyChatStatus === 'sending' || lobbyChatStatus === 'unavailable'
+                          friendInviteActionId !== null || friendInvitePeerId !== null || matchmakingActive || !canStart
                         }
-                        aria-label={t('chat.send')}
-                        title={t('chat.send')}
+                        aria-label={t('friend.invite')}
                       >
-                        <Send className="size-4" strokeWidth={1.25} />
+                        <Send className="size-3.5" strokeWidth={1.25} />
                       </Button>
-                    </form>
-                  </div>
-                </RoomPanel>
-              </div>
+                      <Button
+                        className="size-10 p-0"
+                        variant="ghost"
+                        type="button"
+                        onClick={() => void handleAcceptFriendInvite(friend)}
+                        disabled={
+                          friendInviteActionId !== null ||
+                          matchmakingActive ||
+                          (friendInvitePeerId !== null && friendInvitePeerId !== friend.userId)
+                        }
+                        aria-label={t('friend.acceptInvite')}
+                      >
+                        <Check className="size-3.5" strokeWidth={1.25} />
+                      </Button>
+                    </div>
+                  ))}
+                  {friendStatus !== 'loading' && friends.length === 0 && (
+                    <p className="text-caption text-content-dim">{t('friend.empty')}</p>
+                  )}
+                </div>
+              </RoomPanel>
             )}
           </section>
         </div>

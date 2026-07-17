@@ -312,6 +312,12 @@ export const en: Record<TranslationKey, string> = {
   'lobby.homeDeckCaption': 'Build a 20-card deck for battles rewritten by night and day',
   'lobby.homeLeaderboardCaption': 'Check player rankings and ELO across recorded battles',
   'lobby.homeHistoryCaption': 'Review recent match results, winners, and turn records',
+  'announcement.title': 'Latest announcements',
+  'announcement.loading': 'Loading announcements',
+  'announcement.empty': 'No announcements yet',
+  'community.title': 'Community',
+  'community.caption': 'Join the public lobby chat or message your friends',
+  'community.loginRequired': 'Sign in to use public lobby chat and direct messages',
   'lobby.projectTitle': 'About ZUTOMAYO CARD ONLINE',
   'lobby.projectDescription':
     'A player-maintained, unofficial online battle project built to make ZUTOMAYO CARD easier to play, test, and share with others.',

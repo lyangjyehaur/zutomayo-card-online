@@ -157,6 +157,15 @@ const chatTranslationRequestSchema = z
   })
   .passthrough();
 
+const announcementWriteSchema = z.object({
+  title: z.string().min(1).max(300),
+  content: z.string().min(1).max(10000),
+  sourceLanguage: z.enum(['ja', 'zh-tw', 'zh-cn', 'zh-hk', 'en', 'ko']),
+  status: z.enum(['draft', 'published', 'archived']),
+  publishedAt: z.string().datetime().nullable().optional(),
+  expiresAt: z.string().datetime().nullable().optional(),
+});
+
 // ===== Admin =====
 const adminLoginSchema = z.object({
   username: z.string().min(3).max(80),
@@ -299,6 +308,7 @@ module.exports = {
   chatMessageModerationReviewSchema,
   chatUserSanctionCreateSchema,
   chatTranslationRequestSchema,
+  announcementWriteSchema,
   adminLoginSchema,
   adminEloSchema,
   adminUserListQuerySchema,

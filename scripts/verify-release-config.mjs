@@ -224,7 +224,7 @@ function assertServer4DeployScript() {
   const requiredFragments = [
     'origin/master',
     'git reset --hard origin/master',
-    '000031_user_linked_admins',
+    '000032_announcements',
     'APP_BUILD_ID',
     'APP_VERSION',
     'GAME_RULES_VERSION',
