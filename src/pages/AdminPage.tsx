@@ -1,8 +1,35 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { LogOut, Search, ShieldCheck, SlidersHorizontal } from 'lucide-react';
+import {
+  Activity,
+  ArrowLeft,
+  BookOpenText,
+  Database,
+  Info,
+  Languages,
+  Library,
+  Lock,
+  LockOpen,
+  LogOut,
+  MessageSquareWarning,
+  Music2,
+  Save,
+  Search,
+  Settings2,
+  ShieldCheck,
+  SlidersHorizontal,
+  Swords,
+  Users,
+  ZoomIn,
+} from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { t } from '../i18n';
-import { getAllCardDefs, refreshCards } from '../game/cards/loader';
+import { getAllCardDefs, loadConfigFromAPI, refreshCards } from '../game/cards/loader';
+import { matchesLocalizedCardSearch } from '../game/cards/i18n';
+import {
+  CARD_SONG_TITLES_I18N_CONFIG_KEY,
+  normalizeSongTitleConfig,
+  type SongTitleConfig,
+} from '../game/cards/songTitleConfig';
 import { parseEffect } from '../game/effects/parser';
 import type { ParsedEffect } from '../game/effects';
 import type { CardDef, CardType, Element } from '../game/types';
@@ -24,9 +51,11 @@ import {
   adminUpdateAboutPage,
   adminUpdateCard,
   adminUpdateCardI18n,
+  adminUpdateConfig,
   DEFAULT_ABOUT_PAGE_I18N_CONFIG,
   fetchAboutPageI18n,
   fetchCardTextsI18n,
+  fetchGameConfig,
 } from '../api/client';
 import type {
   AboutPageConfig,
@@ -43,7 +72,7 @@ import {
   Badge,
   BackButton,
   Button,
-  Card as UiCard,
+  Checkbox,
   DataListCell,
   DataListTable,
   Dialog,
@@ -56,10 +85,7 @@ import {
   Panel,
   Select,
   SegmentedControl,
-  StatCard,
-  StatsGrid,
   Textarea,
-  ToolHeader,
 } from '../ui';
 import { CardImage } from '../components/CardImage';
 import { AdminOperationsPanel } from '../components/AdminOperationsPanel';
@@ -95,6 +121,8 @@ const RARITY_OPTIONS = ['N', 'R', 'SR', 'UR', 'SE'] as const;
 const ELEMENTS: (Element | 'all')[] = ['all', ...ELEMENT_OPTIONS];
 const TYPES: (CardType | 'all')[] = ['all', ...TYPE_OPTIONS];
 const FALLBACK_PACKS = ['THE WORLD IS CHANGING', 'ALL ALONG THE WATCHTOWER', 'Off Minor', 'Fantasy Is Reality'];
+const PACK_FILTERS = ['all', ...FALLBACK_PACKS];
+const CARD_ID_COLLATOR = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
 const TRIGGERS = [
   'all',
   'onUse',
@@ -119,8 +147,8 @@ const ABOUT_LANGS: Array<{ code: AboutPageLocale; label: string }> = I18N_LANGS.
   label: lang.label,
 }));
 
-type AdminTab = 'cards' | 'users' | 'matches' | 'chat' | 'operations' | 'about';
-type ModalTab = 'basic' | 'engine' | 'i18n';
+type AdminTab = 'cards' | 'songs' | 'users' | 'matches' | 'chat' | 'operations' | 'about';
+type CardEditorTab = 'overview' | 'official' | 'i18n' | 'engine';
 type ParsedCardMeta = {
   card: CardDef;
   lines: string[];
@@ -152,6 +180,10 @@ type CardEditDraft = {
   song: string;
   illustrator: string;
 };
+
+type SongTitleLocale = Exclude<(typeof I18N_LANGS)[number]['code'], 'ja'>;
+
+const SONG_TITLE_LANGS = I18N_LANGS.filter((lang) => lang.code !== 'ja');
 
 function cardToDraft(card: CardDef): CardEditDraft {
   return {
@@ -284,7 +316,7 @@ function EffectInspector({ meta }: { meta: ParsedCardMeta }) {
           複製 AST
         </Button>
       </div>
-      <UiCard>
+      <div className="admin-engine-block">
         <div className="grid gap-2">
           <strong>原文</strong>
           {meta.lines.map((l) => (
@@ -293,7 +325,7 @@ function EffectInspector({ meta }: { meta: ParsedCardMeta }) {
             </p>
           ))}
         </div>
-      </UiCard>
+      </div>
       <div className="grid gap-2 md:grid-cols-3">
         <div>
           <span className="text-sm opacity-70">Trigger</span>
@@ -309,7 +341,7 @@ function EffectInspector({ meta }: { meta: ParsedCardMeta }) {
         </div>
       </div>
       {meta.parsed.map((effect, i) => (
-        <UiCard as="article" key={`${effect.rawText}-${i}`}>
+        <article className="admin-engine-block" key={`${effect.rawText}-${i}`}>
           <div className="grid gap-2">
             <div>{badgeList([effect.trigger, effect.action.type])}</div>
             <p className="my-2">{effect.rawText}</p>
@@ -322,7 +354,7 @@ function EffectInspector({ meta }: { meta: ParsedCardMeta }) {
               </small>
             )}
           </div>
-        </UiCard>
+        </article>
       ))}
       <details className="rounded-sm bg-surface-base p-4 ring-1 ring-content-primary/10">
         <summary className="cursor-pointer font-bold">查看完整 AST JSON</summary>
@@ -345,19 +377,42 @@ function EffectInspector({ meta }: { meta: ParsedCardMeta }) {
 }
 
 // ===== Card Edit Form =====
-function CardEditForm({ card, onSaved }: { card: CardDef; onSaved: (updated: CardDef) => void }) {
+function CardEditForm({
+  card,
+  section,
+  locked,
+  onSaved,
+  onDirtyChange,
+}: {
+  card: CardDef;
+  section: 'overview' | 'official';
+  locked: boolean;
+  onSaved: (updated: CardDef) => void;
+  onDirtyChange?: (dirty: boolean) => void;
+}) {
   const [draft, setDraft] = useState<CardEditDraft>(() => cardToDraft(card));
+  const [savedDraft, setSavedDraft] = useState<CardEditDraft>(() => cardToDraft(card));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const dirty = JSON.stringify(draft) !== JSON.stringify(savedDraft);
 
   useEffect(() => {
-    setDraft(cardToDraft(card));
+    const nextDraft = cardToDraft(card);
+    setDraft(nextDraft);
+    setSavedDraft(nextDraft);
     setSuccess(false);
     setError('');
   }, [card]);
 
-  const set = (field: keyof CardEditDraft, value: string) => setDraft((d) => ({ ...d, [field]: value }));
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
+
+  const set = (field: keyof CardEditDraft, value: string) => {
+    setSuccess(false);
+    setDraft((d) => ({ ...d, [field]: value }));
+  };
 
   const handleSave = async () => {
     const patch = changedFields(card, draft);
@@ -370,6 +425,7 @@ function CardEditForm({ card, onSaved }: { card: CardDef; onSaved: (updated: Car
     setSuccess(false);
     try {
       await adminUpdateCard(card.id, patch);
+      setSavedDraft(draft);
       setSuccess(true);
       onSaved({ ...card, ...patch } as CardDef);
     } catch (e) {
@@ -380,107 +436,161 @@ function CardEditForm({ card, onSaved }: { card: CardDef; onSaved: (updated: Car
   };
 
   return (
-    <div className="grid gap-3">
-      <label className="grid gap-1">
-        <span className="text-xs text-content-primary/50">官方日文名稱</span>
-        <Input value={draft.name} onChange={(e) => set('name', e.target.value)} />
-      </label>
-      <label className="grid gap-1">
-        <span className="text-xs text-content-primary/50">卡面官方英文名稱</span>
-        <Input value={draft.enNameOfficial} onChange={(e) => set('enNameOfficial', e.target.value)} />
-      </label>
-      <div className="grid gap-3 md:grid-cols-3">
-        <label className="grid gap-1">
-          <span className="text-xs text-content-primary/50">屬性</span>
-          <Select value={draft.element} onChange={(e) => set('element', e.target.value)}>
-            {ELEMENT_OPTIONS.map((el) => (
-              <option key={el}>{el}</option>
-            ))}
-          </Select>
-        </label>
-        <label className="grid gap-1">
-          <span className="text-xs text-content-primary/50">類型</span>
-          <Select value={draft.type} onChange={(e) => set('type', e.target.value)}>
-            {TYPE_OPTIONS.map((tp) => (
-              <option key={tp}>{tp}</option>
-            ))}
-          </Select>
-        </label>
-        <label className="grid gap-1">
-          <span className="text-xs text-content-primary/50">稀有度</span>
-          <Select value={draft.rarity} onChange={(e) => set('rarity', e.target.value)}>
-            {RARITY_OPTIONS.map((r) => (
-              <option key={r}>{r}</option>
-            ))}
-          </Select>
-        </label>
-      </div>
-      <div className="grid gap-3 md:grid-cols-3">
-        <label className="grid gap-1">
-          <span className="text-xs text-content-primary/50">時計</span>
-          <Input type="number" value={draft.clock} onChange={(e) => set('clock', e.target.value)} />
-        </label>
-        <label className="grid gap-1">
-          <span className="text-xs text-content-primary/50">充能成本</span>
-          <Input type="number" value={draft.powerCost} onChange={(e) => set('powerCost', e.target.value)} />
-        </label>
-        <label className="grid gap-1">
-          <span className="text-xs text-content-primary/50">SEND TO POWER</span>
-          <Input type="number" value={draft.sendToPower} onChange={(e) => set('sendToPower', e.target.value)} />
-        </label>
-      </div>
-      {draft.type === 'Character' && (
-        <div className="grid gap-3 md:grid-cols-2">
-          <label className="grid gap-1">
-            <span className="text-xs text-content-primary/50">夜間攻擊</span>
-            <Input type="number" value={draft.attackNight} onChange={(e) => set('attackNight', e.target.value)} />
-          </label>
-          <label className="grid gap-1">
-            <span className="text-xs text-content-primary/50">日間攻擊</span>
-            <Input type="number" value={draft.attackDay} onChange={(e) => set('attackDay', e.target.value)} />
-          </label>
+    <div className="admin-card-form">
+      <fieldset className="admin-card-core-fields" disabled={locked}>
+        {section === 'overview' ? (
+          <div className="admin-editor-section-grid">
+            <section className="admin-editor-section">
+              <div className="admin-editor-section-heading">
+                <h3>卡牌規格</h3>
+                <span>{card.id}</span>
+              </div>
+              <div className="grid gap-3 md:grid-cols-3">
+                <label className="grid gap-1">
+                  <span className="text-xs text-content-primary/50">屬性</span>
+                  <Select value={draft.element} onChange={(e) => set('element', e.target.value)}>
+                    {ELEMENT_OPTIONS.map((el) => (
+                      <option key={el}>{el}</option>
+                    ))}
+                  </Select>
+                </label>
+                <label className="grid gap-1">
+                  <span className="text-xs text-content-primary/50">類型</span>
+                  <Select value={draft.type} onChange={(e) => set('type', e.target.value)}>
+                    {TYPE_OPTIONS.map((tp) => (
+                      <option key={tp}>{tp}</option>
+                    ))}
+                  </Select>
+                </label>
+                <label className="grid gap-1">
+                  <span className="text-xs text-content-primary/50">稀有度</span>
+                  <Select value={draft.rarity} onChange={(e) => set('rarity', e.target.value)}>
+                    {RARITY_OPTIONS.map((r) => (
+                      <option key={r}>{r}</option>
+                    ))}
+                  </Select>
+                </label>
+              </div>
+              <div className="grid gap-3 md:grid-cols-3">
+                <label className="grid gap-1">
+                  <span className="text-xs text-content-primary/50">時計</span>
+                  <Input type="number" value={draft.clock} onChange={(e) => set('clock', e.target.value)} />
+                </label>
+                <label className="grid gap-1">
+                  <span className="text-xs text-content-primary/50">充能成本</span>
+                  <Input type="number" value={draft.powerCost} onChange={(e) => set('powerCost', e.target.value)} />
+                </label>
+                <label className="grid gap-1">
+                  <span className="text-xs text-content-primary/50">SEND TO POWER</span>
+                  <Input type="number" value={draft.sendToPower} onChange={(e) => set('sendToPower', e.target.value)} />
+                </label>
+              </div>
+              {draft.type === 'Character' && (
+                <div className="grid gap-3 md:grid-cols-2">
+                  <label className="grid gap-1">
+                    <span className="text-xs text-content-primary/50">夜間攻擊</span>
+                    <Input
+                      type="number"
+                      value={draft.attackNight}
+                      onChange={(e) => set('attackNight', e.target.value)}
+                    />
+                  </label>
+                  <label className="grid gap-1">
+                    <span className="text-xs text-content-primary/50">日間攻擊</span>
+                    <Input type="number" value={draft.attackDay} onChange={(e) => set('attackDay', e.target.value)} />
+                  </label>
+                </div>
+              )}
+            </section>
+
+            <section className="admin-editor-section">
+              <div className="admin-editor-section-heading">
+                <h3>來源資訊</h3>
+              </div>
+              <label className="grid gap-1">
+                <span className="text-xs text-content-primary/50">歌曲</span>
+                <Input value={draft.song} onChange={(e) => set('song', e.target.value)} />
+              </label>
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="grid gap-1">
+                  <span className="text-xs text-content-primary/50">畫師</span>
+                  <Input value={draft.illustrator} onChange={(e) => set('illustrator', e.target.value)} />
+                </label>
+                <label className="grid gap-1">
+                  <span className="text-xs text-content-primary/50">卡包</span>
+                  <Select value={draft.pack} onChange={(e) => set('pack', e.target.value)}>
+                    {FALLBACK_PACKS.map((p) => (
+                      <option key={p}>{p}</option>
+                    ))}
+                  </Select>
+                </label>
+              </div>
+              <label className="grid gap-1">
+                <span className="text-xs text-content-primary/50">圖片 URL</span>
+                <Input value={draft.image} onChange={(e) => set('image', e.target.value)} />
+              </label>
+            </section>
+
+            <section className="admin-editor-section admin-editor-section-wide">
+              <div className="admin-editor-section-heading">
+                <h3>官方勘誤</h3>
+                {card.hasOfficialErrata && <Badge tone="gold">#{card.officialErrataId}</Badge>}
+              </div>
+              <Textarea value={draft.errata} onChange={(e) => set('errata', e.target.value)} rows={4} />
+            </section>
+          </div>
+        ) : (
+          <div className="admin-editor-section-grid">
+            <section className="admin-editor-section">
+              <div className="admin-editor-section-heading">
+                <h3>日本語</h3>
+                <Badge>官方原文</Badge>
+              </div>
+              <label className="grid gap-1">
+                <span className="text-xs text-content-primary/50">卡牌名稱</span>
+                <Input value={draft.name} onChange={(e) => set('name', e.target.value)} />
+              </label>
+              <label className="grid gap-1">
+                <span className="text-xs text-content-primary/50">卡牌效果</span>
+                <Textarea value={draft.effect} onChange={(e) => set('effect', e.target.value)} rows={12} />
+              </label>
+            </section>
+            <section className="admin-editor-section">
+              <div className="admin-editor-section-heading">
+                <h3>English</h3>
+                <Badge>卡面官方文本</Badge>
+              </div>
+              <label className="grid gap-1">
+                <span className="text-xs text-content-primary/50">Card name</span>
+                <Input value={draft.enNameOfficial} onChange={(e) => set('enNameOfficial', e.target.value)} />
+              </label>
+              <label className="grid gap-1">
+                <span className="text-xs text-content-primary/50">Card effect</span>
+                <Textarea
+                  value={draft.enEffectOfficial}
+                  onChange={(e) => set('enEffectOfficial', e.target.value)}
+                  rows={12}
+                />
+              </label>
+            </section>
+          </div>
+        )}
+      </fieldset>
+      <div className="admin-editor-savebar">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          {locked && <Badge>核心資料已鎖定</Badge>}
+          {dirty && <Badge tone="gold">尚未儲存</Badge>}
+          {success && <Badge tone="jade">已儲存</Badge>}
+          {error && <Badge tone="vermilion">{error}</Badge>}
         </div>
-      )}
-      <label className="grid gap-1">
-        <span className="text-xs text-content-primary/50">官方日文效果</span>
-        <Textarea value={draft.effect} onChange={(e) => set('effect', e.target.value)} rows={4} />
-      </label>
-      <label className="grid gap-1">
-        <span className="text-xs text-content-primary/50">卡面官方英文效果</span>
-        <Textarea value={draft.enEffectOfficial} onChange={(e) => set('enEffectOfficial', e.target.value)} rows={4} />
-      </label>
-      <label className="grid gap-1">
-        <span className="text-xs text-content-primary/50">圖片 URL</span>
-        <Input value={draft.image} onChange={(e) => set('image', e.target.value)} />
-      </label>
-      <div className="grid gap-3 md:grid-cols-2">
-        <label className="grid gap-1">
-          <span className="text-xs text-content-primary/50">歌曲</span>
-          <Input value={draft.song} onChange={(e) => set('song', e.target.value)} />
-        </label>
-        <label className="grid gap-1">
-          <span className="text-xs text-content-primary/50">畫師</span>
-          <Input value={draft.illustrator} onChange={(e) => set('illustrator', e.target.value)} />
-        </label>
-      </div>
-      <label className="grid gap-1">
-        <span className="text-xs text-content-primary/50">卡包</span>
-        <Select value={draft.pack} onChange={(e) => set('pack', e.target.value)}>
-          {FALLBACK_PACKS.map((p) => (
-            <option key={p}>{p}</option>
-          ))}
-        </Select>
-      </label>
-      <label className="grid gap-1">
-        <span className="text-xs text-content-primary/50">勘誤</span>
-        <Textarea value={draft.errata} onChange={(e) => set('errata', e.target.value)} rows={2} />
-      </label>
-      <div className="flex flex-wrap items-center gap-3">
-        <Button type="button" disabled={saving} onClick={() => void handleSave()}>
-          {saving ? '儲存中…' : '儲存'}
+        <Button
+          type="button"
+          leftIcon={<Save className="size-4" aria-hidden="true" />}
+          disabled={locked || saving || !dirty}
+          onClick={() => void handleSave()}
+        >
+          {saving ? '儲存中…' : '儲存卡牌'}
         </Button>
-        {success && <Badge tone="jade">已儲存</Badge>}
-        {error && <Badge tone="vermilion">{error}</Badge>}
       </div>
     </div>
   );
@@ -496,13 +606,19 @@ type CardTextDraft = {
 
 const DERIVED_I18N_LANGS = I18N_LANGS.filter((lang) => lang.code !== 'ja' && lang.code !== 'en');
 
-function I18nEditor({ card }: { card: CardDef }) {
+function I18nEditor({ card, onDirtyChange }: { card: CardDef; onDirtyChange?: (dirty: boolean) => void }) {
   const cardId = card.id;
   const [draft, setDraft] = useState<Record<string, CardTextDraft>>({});
+  const [savedDraft, setSavedDraft] = useState<Record<string, CardTextDraft>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const dirty = JSON.stringify(draft) !== JSON.stringify(savedDraft);
+
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
 
   useEffect(() => {
     setLoading(true);
@@ -519,6 +635,7 @@ function I18nEditor({ card }: { card: CardDef }) {
           };
         }
         setDraft(init);
+        setSavedDraft(init);
       })
       .catch(() => {
         const init: Record<string, CardTextDraft> = {};
@@ -526,6 +643,7 @@ function I18nEditor({ card }: { card: CardDef }) {
           init[lang.code] = { name: '', effect: '', reviewStatus: 'pending_review', reviewNote: '' };
         }
         setDraft(init);
+        setSavedDraft(init);
       })
       .finally(() => setLoading(false));
   }, [cardId]);
@@ -551,6 +669,7 @@ function I18nEditor({ card }: { card: CardDef }) {
             : 'admin_bilingual_translation',
         });
       }
+      setSavedDraft(draft);
       setSuccess(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : '儲存失敗');
@@ -562,51 +681,246 @@ function I18nEditor({ card }: { card: CardDef }) {
   if (loading) return <LoadingState label="載入翻譯中…" />;
 
   return (
-    <div className="grid gap-3">
-      <p className="text-xs text-content-primary/50">
-        翻譯須同時核對官方日文與卡面官方英文；只有標記為「已複核」的文字會顯示給玩家。
-      </p>
-      {DERIVED_I18N_LANGS.map((lang) => {
-        const entry = draft[lang.code] ?? { name: '', effect: '', reviewStatus: 'pending_review', reviewNote: '' };
-        const update = (patch: Partial<CardTextDraft>) =>
-          setDraft((current) => ({ ...current, [lang.code]: { ...entry, ...patch } }));
-        return (
-          <Panel className="grid gap-2" key={lang.code}>
-            <span className="text-xs font-semibold text-content-primary/70">
-              {lang.label} <span className="opacity-60">({lang.code})</span>
-            </span>
-            <Input value={entry.name} onChange={(e) => update({ name: e.target.value })} placeholder="卡牌名稱" />
-            <Textarea
-              value={entry.effect}
-              onChange={(e) => update({ effect: e.target.value })}
-              rows={3}
-              placeholder="卡牌效果"
-            />
-            <div className="grid gap-2 md:grid-cols-2">
-              <Select
-                value={entry.reviewStatus}
-                onChange={(e) => update({ reviewStatus: e.target.value as CardTextDraft['reviewStatus'] })}
-              >
-                <option value="pending_review">待複核</option>
-                <option value="verified">已複核</option>
-              </Select>
-              <Input
-                value={entry.reviewNote}
-                onChange={(e) => update({ reviewNote: e.target.value })}
-                placeholder="複核備註"
+    <div className="admin-card-form">
+      <div className="admin-editor-section-grid">
+        {DERIVED_I18N_LANGS.map((lang) => {
+          const entry = draft[lang.code] ?? { name: '', effect: '', reviewStatus: 'pending_review', reviewNote: '' };
+          const update = (patch: Partial<CardTextDraft>) =>
+            setDraft((current) => ({ ...current, [lang.code]: { ...entry, ...patch } }));
+          return (
+            <section className="admin-editor-section" key={lang.code}>
+              <div className="admin-editor-section-heading">
+                <h3>{lang.label}</h3>
+                <span>{lang.code}</span>
+              </div>
+              <Input value={entry.name} onChange={(e) => update({ name: e.target.value })} placeholder="卡牌名稱" />
+              <Textarea
+                value={entry.effect}
+                onChange={(e) => update({ effect: e.target.value })}
+                rows={3}
+                placeholder="卡牌效果"
               />
-            </div>
-          </Panel>
-        );
-      })}
-      <div className="flex flex-wrap items-center gap-3">
-        <Button type="button" disabled={saving} onClick={() => void handleSave()}>
+              <div className="grid gap-2 md:grid-cols-2">
+                <Select
+                  value={entry.reviewStatus}
+                  onChange={(e) => update({ reviewStatus: e.target.value as CardTextDraft['reviewStatus'] })}
+                >
+                  <option value="pending_review">待複核</option>
+                  <option value="verified">已複核</option>
+                </Select>
+                <Input
+                  value={entry.reviewNote}
+                  onChange={(e) => update({ reviewNote: e.target.value })}
+                  placeholder="複核備註"
+                />
+              </div>
+            </section>
+          );
+        })}
+      </div>
+      <div className="admin-editor-savebar">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          {dirty && <Badge tone="gold">尚未儲存</Badge>}
+          {success && <Badge tone="jade">已儲存</Badge>}
+          {error && <Badge tone="vermilion">{error}</Badge>}
+        </div>
+        <Button
+          type="button"
+          leftIcon={<Save className="size-4" aria-hidden="true" />}
+          disabled={saving || !dirty}
+          onClick={() => void handleSave()}
+        >
           {saving ? '儲存中…' : '儲存翻譯'}
         </Button>
-        {success && <Badge tone="jade">已儲存</Badge>}
-        {error && <Badge tone="vermilion">{error}</Badge>}
       </div>
     </div>
+  );
+}
+
+function SongTitleEditor({ cards }: { cards: CardDef[] }) {
+  const [draft, setDraft] = useState<SongTitleConfig>({});
+  const [savedDraft, setSavedDraft] = useState<SongTitleConfig>({});
+  const [activeLocale, setActiveLocale] = useState<SongTitleLocale>('zh-TW');
+  const [searchText, setSearchText] = useState('');
+  const [missingOnly, setMissingOnly] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
+
+  const songCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const card of cards) {
+      const song = card.song.trim();
+      if (song) counts.set(song, (counts.get(song) ?? 0) + 1);
+    }
+    return counts;
+  }, [cards]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError('');
+    void fetchGameConfig()
+      .then((config) => {
+        if (cancelled) return;
+        const next = normalizeSongTitleConfig(config[CARD_SONG_TITLES_I18N_CONFIG_KEY]);
+        for (const song of songCounts.keys()) next[song] ??= {};
+        setDraft(next);
+        setSavedDraft(next);
+      })
+      .catch((loadError: unknown) => {
+        if (cancelled) return;
+        const next = Object.fromEntries([...songCounts.keys()].map((song) => [song, {}]));
+        setDraft(next);
+        setSavedDraft(next);
+        setError(loadError instanceof Error ? loadError.message : '歌名翻譯載入失敗');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [songCounts]);
+
+  const songs = useMemo(() => {
+    const query = searchText.trim().toLowerCase();
+    return Object.keys(draft)
+      .filter((song) => {
+        const translations = draft[song] ?? {};
+        if (missingOnly && translations[activeLocale]?.trim()) return false;
+        if (!query) return true;
+        return (
+          song.toLowerCase().includes(query) ||
+          Object.values(translations).some((value) => value.toLowerCase().includes(query))
+        );
+      })
+      .sort((left, right) => left.localeCompare(right, 'ja'));
+  }, [activeLocale, draft, missingOnly, searchText]);
+
+  const filledCount = useMemo(
+    () => Object.values(draft).filter((translations) => translations[activeLocale]?.trim()).length,
+    [activeLocale, draft],
+  );
+  const dirty = JSON.stringify(draft) !== JSON.stringify(savedDraft);
+
+  const updateTitle = (song: string, value: string) => {
+    setSuccess(false);
+    setDraft((current) => ({
+      ...current,
+      [song]: { ...current[song], [activeLocale]: value },
+    }));
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    setError('');
+    setSuccess(false);
+    try {
+      await adminUpdateConfig(CARD_SONG_TITLES_I18N_CONFIG_KEY, draft);
+      await loadConfigFromAPI();
+      setSavedDraft(draft);
+      setSuccess(true);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : '歌名翻譯儲存失敗');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return <LoadingState className="min-h-48" label="載入歌名翻譯中…" />;
+  }
+
+  return (
+    <section className="admin-table-section flex-1 overflow-auto p-4">
+      <div className="admin-song-toolbar mb-4 grid gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 flex-wrap items-center gap-3">
+            <SegmentedControl
+              className="admin-song-locale-tabs"
+              size="sm"
+              ariaLabel="歌名翻譯語言"
+              options={SONG_TITLE_LANGS.map((lang) => ({ value: lang.code, label: lang.label }))}
+              value={activeLocale}
+              onChange={setActiveLocale}
+            />
+            <Badge>
+              {filledCount} / {Object.keys(draft).length}
+            </Badge>
+          </div>
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            {dirty && <Badge tone="gold">尚未儲存</Badge>}
+            <Button
+              leftIcon={<Save className="size-4" aria-hidden="true" />}
+              disabled={saving || !dirty}
+              onClick={() => void handleSave()}
+            >
+              {saving ? '儲存中…' : '儲存歌名翻譯'}
+            </Button>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <SearchInput
+            className="min-w-0"
+            containerClassName="admin-search-input"
+            icon={<Search className="size-4 shrink-0 text-content-dim" aria-hidden="true" />}
+            aria-label="搜尋歌名翻譯"
+            placeholder="搜尋日文或任一語言歌名"
+            value={searchText}
+            onChange={(event) => setSearchText(event.target.value)}
+          />
+          <Checkbox checked={missingOnly} onChange={(event) => setMissingOnly(event.target.checked)}>
+            只看缺失
+          </Checkbox>
+        </div>
+      </div>
+
+      {error && (
+        <Alert className="mb-3" tone="danger" role="alert">
+          {error}
+        </Alert>
+      )}
+      {success && (
+        <Alert className="mb-3" tone="success">
+          歌名翻譯已儲存
+        </Alert>
+      )}
+
+      {songs.length === 0 ? (
+        <EmptyState className="min-h-48" title="沒有符合條件的歌名" />
+      ) : (
+        <DataListTable className="admin-responsive-table admin-song-table">
+          <thead className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">
+            <tr className="border-b border-content-primary/10">
+              <th className="px-3 py-2">官方日文歌名</th>
+              <th className="px-3 py-2">卡牌</th>
+              <th className="px-3 py-2">{SONG_TITLE_LANGS.find((lang) => lang.code === activeLocale)?.label}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {songs.map((song) => (
+              <tr key={song} className="odd:bg-surface-base/50">
+                <DataListCell label="官方日文歌名" className="font-medium">
+                  {song}
+                </DataListCell>
+                <DataListCell label="卡牌">{songCounts.get(song) ?? 0}</DataListCell>
+                <DataListCell
+                  label={SONG_TITLE_LANGS.find((lang) => lang.code === activeLocale)?.label ?? activeLocale}
+                >
+                  <Input
+                    aria-label={`${song} 的 ${activeLocale} 歌名`}
+                    value={draft[song]?.[activeLocale] ?? ''}
+                    onChange={(event) => updateTitle(song, event.target.value)}
+                  />
+                </DataListCell>
+              </tr>
+            ))}
+          </tbody>
+        </DataListTable>
+      )}
+    </section>
   );
 }
 
@@ -877,7 +1191,13 @@ export function AdminPage() {
   const [searchText, setSearchText] = useState('');
   const [sortBy, setSortBy] = useState<'id' | 'name' | 'cost' | 'attack'>('id');
   const [selectedCard, setSelectedCard] = useState<CardDef | null>(null);
-  const [modalTab, setModalTab] = useState<ModalTab>('basic');
+  const [cardEditorTab, setCardEditorTab] = useState<CardEditorTab>('overview');
+  const [cardCoreUnlocked, setCardCoreUnlocked] = useState(false);
+  const [cardUnlockConfirmOpen, setCardUnlockConfirmOpen] = useState(false);
+  const [cardPreviewOpen, setCardPreviewOpen] = useState(false);
+  const [cardDraftDirty, setCardDraftDirty] = useState(false);
+  const [cardI18nDirty, setCardI18nDirty] = useState(false);
+  const [mobileCardEditorOpen, setMobileCardEditorOpen] = useState(false);
   const [showMobileCardFilters, setShowMobileCardFilters] = useState(false);
   const [allCards, setAllCards] = useState(() => getAllCardDefs());
   const [cardLoadStatus, setCardLoadStatus] = useState<'idle' | 'loading' | 'loaded' | 'error'>(() =>
@@ -921,13 +1241,12 @@ export function AdminPage() {
     if (pendingOnly) cards = cards.filter((c) => metaById.get(c.id)?.hasPendingChoice);
     if (areaExpiryOnly) cards = cards.filter((c) => metaById.get(c.id)?.hasAreaExpiry);
     if (searchText) {
-      const q = searchText.toLowerCase();
-      cards = cards.filter(
-        (c) =>
-          c.name.toLowerCase().includes(q) ||
-          c.effect.toLowerCase().includes(q) ||
-          c.id.toLowerCase().includes(q) ||
-          c.song.toLowerCase().includes(q),
+      cards = cards.filter((card) =>
+        matchesLocalizedCardSearch(
+          card,
+          searchText,
+          I18N_LANGS.map((lang) => lang.code),
+        ),
       );
     }
     return [...cards].sort((a, b) => {
@@ -938,7 +1257,7 @@ export function AdminPage() {
           (a.attack ? Math.max(a.attack.night, a.attack.day) : 0)
         );
       if (sortBy === 'name') return a.name.localeCompare(b.name);
-      return a.id.localeCompare(b.id);
+      return CARD_ID_COLLATOR.compare(a.id, b.id);
     });
   }, [
     allCards,
@@ -968,6 +1287,40 @@ export function AdminPage() {
     errataOnly,
     sortBy !== 'id',
   ].filter(Boolean).length;
+  const hasUnsavedCardChanges = cardDraftDirty || cardI18nDirty;
+
+  const selectCard = useCallback(
+    (card: CardDef) => {
+      const changingCard = selectedCard?.id !== card.id;
+      if (changingCard && hasUnsavedCardChanges && !window.confirm('目前卡牌有尚未儲存的變更，確定切換？')) {
+        return;
+      }
+      setSelectedCard(card);
+      setMobileCardEditorOpen(true);
+      setCardUnlockConfirmOpen(false);
+      setCardPreviewOpen(false);
+      if (changingCard) {
+        setCardCoreUnlocked(false);
+        setCardDraftDirty(false);
+        setCardI18nDirty(false);
+      }
+    },
+    [hasUnsavedCardChanges, selectedCard?.id],
+  );
+
+  const switchAdminTab = useCallback(
+    (tab: AdminTab) => {
+      if (activeTab === 'cards' && tab !== 'cards' && hasUnsavedCardChanges) {
+        if (!window.confirm('目前卡牌有尚未儲存的變更，確定離開卡牌維護？')) return;
+      }
+      setActiveTab(tab);
+      setMobileCardEditorOpen(false);
+      setCardUnlockConfirmOpen(false);
+      setCardPreviewOpen(false);
+      if (tab !== 'cards') setCardCoreUnlocked(false);
+    },
+    [activeTab, hasUnsavedCardChanges],
+  );
 
   const handleLogin = useCallback(async () => {
     setLoggingIn(true);
@@ -1243,13 +1596,24 @@ export function AdminPage() {
   }, [activeTab, matches.length, refreshChatReports, refreshMatches, refreshUsers, users.length]);
 
   useEffect(() => {
-    if (!authenticated || activeTab !== 'cards') return;
+    if (!authenticated || !['cards', 'songs'].includes(activeTab)) return;
     if (allCards.length > 0) {
       setCardLoadStatus('loaded');
       return;
     }
     if (cardLoadStatus === 'idle') void loadAdminCards();
   }, [activeTab, allCards.length, authenticated, cardLoadStatus, loadAdminCards]);
+
+  useEffect(() => {
+    if (filtered.length === 0 || hasUnsavedCardChanges) return;
+    if (selectedCard && filtered.some((card) => card.id === selectedCard.id)) return;
+    setSelectedCard(filtered[0]);
+    setCardCoreUnlocked(false);
+    setCardUnlockConfirmOpen(false);
+    setCardPreviewOpen(false);
+    setCardDraftDirty(false);
+    setCardI18nDirty(false);
+  }, [filtered, hasUnsavedCardChanges, selectedCard]);
 
   if (checkingLinkedAdmin) {
     return (
@@ -1321,763 +1685,958 @@ export function AdminPage() {
   }
 
   const selectedMeta = selectedCard ? metaById.get(selectedCard.id) : null;
-  const CardModal =
-    selectedCard && selectedMeta ? (
-      <Dialog
-        open
-        onOpenChange={(open) => !open && setSelectedCard(null)}
-        title={selectedCard.name}
-        size="lg"
-        className="admin-card-dialog"
-        footer={
-          <Button variant="secondary" type="button" onClick={() => setSelectedCard(null)}>
-            關閉
-          </Button>
-        }
-      >
-        <div className="grid gap-4">
-          <div className="admin-card-modal-summary flex items-center gap-3">
-            <CardImage
-              cardId={selectedCard.id}
-              context="thumbnail"
-              alt={selectedCard.name}
-              className="h-20 w-14 rounded object-contain"
-              loading="eager"
-              referrerPolicy="no-referrer"
-            />
-            <div>
-              <h3 className="text-lg font-bold">{selectedCard.name}</h3>
-              <p className="font-mono text-xs opacity-70">{selectedCard.id}</p>
-            </div>
-          </div>
-          <div role="tablist" className="admin-card-modal-tabs mt-4 flex flex-wrap gap-2">
-            {(
-              [
-                ['basic', '基本資訊'],
-                ['engine', '效果引擎'],
-                ['i18n', '多語言'],
-              ] as const
-            ).map(([key, label]) => (
-              <Button
-                key={key}
-                role="tab"
-                variant={modalTab === key ? 'primary' : 'secondary'}
-                size="sm"
-                onClick={() => setModalTab(key)}
-              >
-                {label}
-              </Button>
-            ))}
-          </div>
-          <div className="admin-card-modal-body mt-4 max-h-[60vh] overflow-y-auto pr-1">
-            {modalTab === 'basic' && (
-              <CardEditForm
-                card={selectedCard}
-                onSaved={(updated) => {
-                  setSelectedCard(updated);
-                  setAllCards((cards) => cards.map((card) => (card.id === updated.id ? updated : card)));
-                  void refreshCards().then(() => setAllCards(getAllCardDefs()));
-                }}
-              />
-            )}
-            {modalTab === 'engine' && <EffectInspector meta={selectedMeta} />}
-            {modalTab === 'i18n' && <I18nEditor card={selectedCard} />}
-          </div>
-        </div>
-      </Dialog>
-    ) : null;
+  const navGroups: Array<{
+    label: string;
+    items: Array<{ value: AdminTab; label: string; icon: typeof Library }>;
+  }> = [
+    {
+      label: '內容',
+      items: [
+        { value: 'cards', label: '卡牌維護', icon: Library },
+        { value: 'songs', label: '歌名翻譯', icon: Music2 },
+        { value: 'about', label: 'About 設定', icon: Info },
+      ],
+    },
+    {
+      label: '社群',
+      items: [
+        { value: 'users', label: '使用者', icon: Users },
+        { value: 'matches', label: '對戰紀錄', icon: Swords },
+        { value: 'chat', label: '聊天審核', icon: MessageSquareWarning },
+      ],
+    },
+    {
+      label: '系統',
+      items: [{ value: 'operations', label: '營運工具', icon: Settings2 }],
+    },
+  ];
+
+  const activeSection = navGroups.flatMap((group) => group.items).find((item) => item.value === activeTab);
 
   return (
     <PageShell className="card-admin-page admin-page flex flex-col">
-      <ToolHeader
-        className="admin-header"
-        leading={
-          <div className="admin-title-row flex items-center gap-2">
-            <BackButton className="min-h-11" onClick={() => navigate('/')}>
-              {t('common.backToLobby')}
-            </BackButton>
-            {activeTab === 'cards' && (
-              <Badge>
-                {filtered.length} / {allCards.length} 張
-              </Badge>
-            )}
-          </div>
-        }
-        title={<span className="admin-heading">管理員面板</span>}
-        actions={
-          <>
-            <SegmentedControl
-              className="admin-tablist"
-              behavior="tabs"
+      <div className="admin-shell-body">
+        <nav className="admin-sidebar" aria-label="管理員功能">
+          <div className="admin-sidebar-meta">
+            <div className="admin-sidebar-identity">
+              <Database className="size-4" aria-hidden="true" />
+              <div>
+                <strong>管理員面板</strong>
+                {currentAdminRole && <span>{currentAdminRole}</span>}
+              </div>
+            </div>
+            <Button
+              aria-label="登出"
+              title="登出"
+              className="admin-sidebar-logout"
+              variant="ghost"
               size="sm"
-              ariaLabel="管理員分頁"
-              options={[
-                { value: 'cards', label: '卡牌資料' },
-                { value: 'users', label: '使用者' },
-                { value: 'matches', label: '對戰' },
-                { value: 'chat', label: '聊天' },
-                { value: 'operations', label: t('admin.operations') },
-                { value: 'about', label: 'About' },
-              ]}
-              value={activeTab}
-              onChange={setActiveTab}
-            />
-            <div className="admin-header-actions">
-              <Button
-                aria-label="登出"
-                className="admin-logout-button size-11 p-0 sm:size-auto sm:min-h-11 sm:px-3"
-                variant="secondary"
-                size="sm"
-                onClick={() => void handleLogout()}
-              >
-                <LogOut className="size-4" aria-hidden="true" />
-                <span className="hidden sm:inline">登出</span>
-              </Button>
-            </div>
-          </>
-        }
-      />
-
-      {activeTab === 'cards' && (
-        <div className="admin-main flex-1 overflow-y-auto p-4">
-          <StatsGrid className="admin-stats-grid" columns={5}>
-            <StatCard label="總卡" value={audit.totalCards} />
-            <StatCard label="效果卡" value={audit.effectCards} />
-            <StatCard label="效果行" value={`${audit.parsedLines}/${audit.effectLines}`} />
-            <StatCard label="未解析" value={audit.unparsedLines} />
-            <StatCard label="Runtime effects" value={audit.runtimeParsedEffects} />
-          </StatsGrid>
-          <div className="admin-filter-panel grid gap-3 py-4">
-            <Input
-              type="text"
-              placeholder="搜尋卡名/效果/ID..."
-              value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-              className="admin-search-input max-w-md"
-            />
-            <div className="admin-mobile-filter-summary">
-              <span className="font-mono text-caption uppercase tracking-[var(--tracking-control)] text-content-primary/50">
-                {filtered.length} results
-                {activeCardFilterCount > 0 ? ` / ${activeCardFilterCount} filters` : ''}
-              </span>
-              <Button
-                size="sm"
-                variant={showMobileCardFilters ? 'primary' : 'secondary'}
-                leftIcon={<SlidersHorizontal className="size-3.5" aria-hidden="true" />}
-                aria-expanded={showMobileCardFilters}
-                onClick={() => setShowMobileCardFilters((value) => !value)}
-              >
-                篩選
-              </Button>
-            </div>
-            <div className={`admin-filter-advanced${showMobileCardFilters ? ' admin-filter-advanced-open' : ''}`}>
-              <div className="admin-filter-row flex flex-wrap items-center gap-2">
-                <span className="admin-filter-label w-12 text-xs text-content-primary/50">屬性</span>
-                {ELEMENTS.map((el) => (
-                  <Button
-                    key={el}
-                    size="sm"
-                    variant={filterElement === el ? 'primary' : 'ghost'}
-                    onClick={() => setFilterElement(el)}
-                  >
-                    {el === 'all' ? '全部' : el}
-                  </Button>
-                ))}
-              </div>
-              <div className="admin-filter-row flex flex-wrap items-center gap-2">
-                <span className="admin-filter-label w-12 text-xs text-content-primary/50">類型</span>
-                {TYPES.map((type) => (
-                  <Button
-                    key={type}
-                    size="sm"
-                    variant={filterType === type ? 'primary' : 'ghost'}
-                    onClick={() => setFilterType(type)}
-                  >
-                    {type === 'all' ? '全部' : type === 'Character' ? '角色' : type === 'Enchant' ? '附魔' : '區域'}
-                  </Button>
-                ))}
-              </div>
-              <div className="admin-filter-row flex flex-wrap items-center gap-2">
-                <span className="admin-filter-label w-12 text-xs text-content-primary/50">Trigger</span>
-                {TRIGGERS.map((trigger) => (
-                  <Button
-                    key={trigger}
-                    size="sm"
-                    variant={filterTrigger === trigger ? 'primary' : 'ghost'}
-                    onClick={() => setFilterTrigger(trigger)}
-                  >
-                    {trigger === 'all' ? '全部' : trigger}
-                  </Button>
-                ))}
-              </div>
-              <div className="admin-filter-row flex flex-wrap items-center gap-2">
-                <span className="admin-filter-label w-12 text-xs text-content-primary/50">引擎</span>
-                <Input
-                  className="w-36"
-                  placeholder="Action type"
-                  value={filterAction}
-                  onChange={(e) => setFilterAction(e.target.value)}
-                />
-                <Input
-                  className="w-36"
-                  placeholder="Condition type"
-                  value={filterCondition}
-                  onChange={(e) => setFilterCondition(e.target.value)}
-                />
-                <Button size="sm" variant={pendingOnly ? 'primary' : 'ghost'} onClick={() => setPendingOnly((v) => !v)}>
-                  待選卡
-                </Button>
-                <Button
-                  size="sm"
-                  variant={areaExpiryOnly ? 'primary' : 'ghost'}
-                  onClick={() => setAreaExpiryOnly((v) => !v)}
-                >
-                  Area expiry
-                </Button>
-                <Button
-                  size="sm"
-                  variant={errataOnly ? 'primary' : 'ghost'}
-                  onClick={() => setErrataOnly((value) => !value)}
-                >
-                  官方勘誤
-                </Button>
-              </div>
-              <div className="admin-filter-row flex flex-wrap items-center gap-2">
-                <span className="admin-filter-label w-12 text-xs text-content-primary/50">卡包</span>
-                {FALLBACK_PACKS.map((pack) => (
-                  <Button
-                    key={pack}
-                    size="sm"
-                    variant={filterPack === pack ? 'primary' : 'ghost'}
-                    onClick={() => setFilterPack(pack)}
-                  >
-                    {pack === 'all' ? '全部' : pack}
-                  </Button>
-                ))}
-              </div>
-              <div className="admin-filter-row flex flex-wrap items-center gap-2">
-                <span className="admin-filter-label w-12 text-xs text-content-primary/50">排序</span>
-                {(['id', 'name', 'cost', 'attack'] as const).map((sort) => (
-                  <Button
-                    key={sort}
-                    size="sm"
-                    variant={sortBy === sort ? 'primary' : 'ghost'}
-                    onClick={() => setSortBy(sort)}
-                  >
-                    {sort === 'id' ? '編號' : sort === 'name' ? '名稱' : sort === 'cost' ? '充能成本' : '攻擊'}
-                  </Button>
-                ))}
-              </div>
-            </div>
-          </div>
-          {cardLoadStatus === 'loading' && allCards.length === 0 && (
-            <LoadingState className="min-h-48" label="載入卡牌資料中…" />
-          )}
-          {cardLoadStatus === 'error' && allCards.length === 0 && (
-            <EmptyState
-              className="min-h-48"
-              title="卡牌資料未載入"
-              description={cardLoadError || '請確認 API 服務後重新載入。'}
-              actions={
-                <Button type="button" onClick={() => void loadAdminCards()}>
-                  重新載入
-                </Button>
-              }
-            />
-          )}
-          {allCards.length > 0 && filtered.length === 0 && (
-            <EmptyState className="min-h-48" title="沒有符合條件的卡牌" description="調整搜尋或篩選條件後再試一次。" />
-          )}
-          {allCards.length > 0 && filtered.length > 0 && (
-            <div className="admin-card-grid grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3">
-              {filtered.map((card) => {
-                const meta = metaById.get(card.id);
-                return (
-                  <button
-                    key={card.id}
-                    type="button"
-                    className="group relative overflow-hidden rounded-sm bg-surface-base text-left ring-1 ring-content-primary/10 transition hover:-translate-y-1 hover:ring-accent-primary/40 focus:outline-none focus:ring-2 focus:ring-accent-primary/60"
-                    onClick={() => {
-                      setSelectedCard(card);
-                      setModalTab('basic');
-                    }}
-                  >
-                    <CardImage
-                      className="aspect-[5/7] w-full object-contain opacity-80 transition group-hover:opacity-100"
-                      cardId={card.id}
-                      context="thumbnail"
-                      alt={card.name}
-                      loading="lazy"
-                      referrerPolicy="no-referrer"
-                    />
-                    <div className="absolute inset-x-0 bottom-0 bg-surface-canvas/80 p-3 backdrop-blur">
-                      {card.hasOfficialErrata && (
-                        <Badge className="mb-1" tone="gold">
-                          官方勘誤 #{card.officialErrataId}
-                        </Badge>
-                      )}
-                      <h2 className="block truncate text-sm font-bold">{card.name}</h2>
-                      <p className="font-mono text-xs opacity-80">{card.id}</p>
-                      <p className="text-xs opacity-80">
-                        {card.element} • {card.type === 'Character' ? '角' : card.type === 'Enchant' ? '附' : '域'}
-                        {card.type === 'Character' && card.attack && ` • ${card.attack.night}/${card.attack.day}`}
-                        {card.powerCost > 0 && ` • ${card.powerCost}`}
-                      </p>
-                    </div>
-                    {card.effect && (
-                      <Badge
-                        tone={meta?.unparsedLines.length ? 'vermilion' : 'gold'}
-                        className="absolute right-2 top-2"
-                      >
-                        {meta?.parsed.length ?? 0}
-                      </Badge>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {activeTab === 'users' && (
-        <section className="admin-table-section flex-1 overflow-auto p-4">
-          <form
-            className="mb-4 flex flex-wrap items-center gap-2"
-            onSubmit={(event) => {
-              event.preventDefault();
-              setAdminNotice('');
-              void refreshUsers(userSearch);
-            }}
-          >
-            <SearchInput
-              className="min-w-0"
-              containerClassName="admin-search-input"
-              icon={<Search className="size-4 shrink-0 text-content-dim" aria-hidden="true" />}
-              aria-label="搜尋使用者"
-              placeholder="搜尋 Email、暱稱或 ID"
-              value={userSearch}
-              onChange={(event) => setUserSearch(event.target.value)}
-            />
-            <Button type="submit" size="sm">
-              搜尋
+              onClick={() => void handleLogout()}
+            >
+              <LogOut className="size-4" aria-hidden="true" />
             </Button>
-            <Badge>{users.length} 位</Badge>
-          </form>
-          {adminLoading && <LoadingState className="mb-3" label="載入中…" />}
-          {adminNotice && (
-            <Alert className="mb-3" tone="success">
-              {adminNotice}
-            </Alert>
+          </div>
+          {navGroups.map((group) => (
+            <div className="admin-nav-group" key={group.label}>
+              <span className="admin-nav-label">{group.label}</span>
+              <div className="admin-nav-items">
+                {group.items.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <button
+                      type="button"
+                      className={`admin-nav-item${activeTab === item.value ? ' admin-nav-item-active' : ''}`}
+                      aria-current={activeTab === item.value ? 'page' : undefined}
+                      aria-label={item.label}
+                      title={item.label}
+                      key={item.value}
+                      onClick={() => switchAdminTab(item.value)}
+                    >
+                      <Icon className="size-4" aria-hidden="true" />
+                      <span>{item.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+          <button
+            type="button"
+            className="admin-mobile-logout"
+            aria-label="登出"
+            title="登出"
+            onClick={() => void handleLogout()}
+          >
+            <LogOut className="size-4" aria-hidden="true" />
+          </button>
+        </nav>
+
+        <main className="admin-content">
+          {activeTab !== 'cards' && (
+            <div className="admin-section-header">
+              <div>
+                <span className="admin-section-kicker">管理員面板</span>
+                <h1>{activeSection?.label}</h1>
+              </div>
+            </div>
           )}
-          {adminError && (
-            <Alert className="mb-3" tone="danger" role="alert">
-              {adminError}
-            </Alert>
-          )}
-          {!adminLoading && users.length === 0 ? (
-            <EmptyState className="min-h-48" title="找不到使用者" />
-          ) : (
-            <DataListTable className="admin-responsive-table admin-users-table">
-              <thead className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">
-                <tr className="border-b border-content-primary/10">
-                  <th className="px-3 py-2">ID</th>
-                  <th className="px-3 py-2">Email</th>
-                  <th className="px-3 py-2">暱稱</th>
-                  <th className="px-3 py-2">ELO</th>
-                  <th className="px-3 py-2">場次</th>
-                  <th className="px-3 py-2">勝率</th>
-                  {currentAdminRole === 'admin' && <th className="px-3 py-2">管理權限</th>}
-                  <th className="px-3 py-2">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {users.map((u) => (
-                  <tr key={u.id} className="odd:bg-surface-base/50">
-                    <DataListCell label="ID" className="max-w-32 truncate font-mono text-xs opacity-70">
-                      {u.id}
-                    </DataListCell>
-                    <DataListCell label="Email">{u.email}</DataListCell>
-                    <DataListCell label="暱稱">{u.nickname}</DataListCell>
-                    <DataListCell label="ELO">
-                      <div className="admin-elo-field flex items-center gap-2">
-                        {eloEdits[u.id] ?? u.elo}
-                        <Input
-                          className="w-20"
-                          value={eloEdits[u.id] ?? ''}
-                          placeholder={String(u.elo)}
-                          onChange={(e) => setEloEdits((prev) => ({ ...prev, [u.id]: e.target.value }))}
-                        />
-                      </div>
-                    </DataListCell>
-                    <DataListCell label="場次">{u.matchCount}</DataListCell>
-                    <DataListCell label="勝率">{u.winRate}%</DataListCell>
-                    {currentAdminRole === 'admin' && (
-                      <DataListCell label="管理權限">
-                        <div className="admin-role-field flex items-center gap-2">
-                          <Select
-                            className="min-w-36"
-                            aria-label={`${u.email} 的管理權限`}
-                            disabled={u.isCurrentAdmin || roleSavingId === u.id}
-                            value={userRoleEdits[u.id] ?? u.adminRole ?? 'none'}
-                            onChange={(event) =>
-                              setUserRoleEdits((previous) => ({
-                                ...previous,
-                                [u.id]: event.target.value as AdminRole | 'none',
-                              }))
-                            }
-                          >
-                            <option value="none">無管理權限</option>
-                            <option value="viewer">viewer</option>
-                            <option value="moderator">moderator</option>
-                            <option value="operator">operator</option>
-                            <option value="admin">admin</option>
-                          </Select>
-                          {u.isCurrentAdmin ? (
-                            <Badge tone="gold">目前帳號</Badge>
-                          ) : (
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              leftIcon={<ShieldCheck className="size-4" aria-hidden="true" />}
-                              disabled={
-                                roleSavingId === u.id ||
-                                (userRoleEdits[u.id] ?? u.adminRole ?? 'none') === (u.adminRole ?? 'none')
-                              }
-                              onClick={() => void updateUserRole(u)}
-                            >
-                              {roleSavingId === u.id ? '套用中…' : '套用'}
-                            </Button>
-                          )}
-                        </div>
-                      </DataListCell>
-                    )}
-                    <DataListCell label="操作">
+
+          {activeTab === 'cards' && (
+            <section className={`admin-card-workspace${mobileCardEditorOpen ? ' admin-card-workspace-editing' : ''}`}>
+              <aside className="admin-card-browser">
+                <div className="admin-card-browser-toolbar">
+                  <div className="admin-card-browser-title">
+                    <div>
+                      <span className="admin-section-kicker">內容</span>
+                      <h1>卡牌維護</h1>
+                    </div>
+                    <Badge>
+                      {filtered.length} / {allCards.length}
+                    </Badge>
+                  </div>
+                  <SearchInput
+                    containerClassName="admin-card-search"
+                    icon={<Search className="size-4 shrink-0 text-content-dim" aria-hidden="true" />}
+                    aria-label="搜尋卡牌"
+                    placeholder="搜尋任一語言卡名、歌名、效果或 ID"
+                    value={searchText}
+                    onChange={(event) => setSearchText(event.target.value)}
+                  />
+                  <div className="admin-card-browser-actions">
+                    <span className="font-mono text-caption text-content-primary/50">
+                      {activeCardFilterCount > 0 ? `${activeCardFilterCount} 個篩選` : '全部卡牌'}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant={showMobileCardFilters ? 'primary' : 'secondary'}
+                      leftIcon={<SlidersHorizontal className="size-3.5" aria-hidden="true" />}
+                      aria-expanded={showMobileCardFilters}
+                      onClick={() => setShowMobileCardFilters((value) => !value)}
+                    >
+                      篩選
+                    </Button>
+                  </div>
+                  <div className={`admin-filter-advanced${showMobileCardFilters ? ' admin-filter-advanced-open' : ''}`}>
+                    <div className="admin-filter-row flex flex-wrap items-center gap-2">
+                      <span className="admin-filter-label w-12 text-xs text-content-primary/50">屬性</span>
+                      {ELEMENTS.map((el) => (
+                        <Button
+                          key={el}
+                          size="sm"
+                          variant={filterElement === el ? 'primary' : 'ghost'}
+                          onClick={() => setFilterElement(el)}
+                        >
+                          {el === 'all' ? '全部' : el}
+                        </Button>
+                      ))}
+                    </div>
+                    <div className="admin-filter-row flex flex-wrap items-center gap-2">
+                      <span className="admin-filter-label w-12 text-xs text-content-primary/50">類型</span>
+                      {TYPES.map((type) => (
+                        <Button
+                          key={type}
+                          size="sm"
+                          variant={filterType === type ? 'primary' : 'ghost'}
+                          onClick={() => setFilterType(type)}
+                        >
+                          {type === 'all'
+                            ? '全部'
+                            : type === 'Character'
+                              ? '角色'
+                              : type === 'Enchant'
+                                ? '附魔'
+                                : '區域'}
+                        </Button>
+                      ))}
+                    </div>
+                    <div className="admin-filter-row flex flex-wrap items-center gap-2">
+                      <span className="admin-filter-label w-12 text-xs text-content-primary/50">Trigger</span>
+                      {TRIGGERS.map((trigger) => (
+                        <Button
+                          key={trigger}
+                          size="sm"
+                          variant={filterTrigger === trigger ? 'primary' : 'ghost'}
+                          onClick={() => setFilterTrigger(trigger)}
+                        >
+                          {trigger === 'all' ? '全部' : trigger}
+                        </Button>
+                      ))}
+                    </div>
+                    <div className="admin-filter-row flex flex-wrap items-center gap-2">
+                      <span className="admin-filter-label w-12 text-xs text-content-primary/50">引擎</span>
+                      <Input
+                        className="w-36"
+                        placeholder="Action type"
+                        value={filterAction}
+                        onChange={(e) => setFilterAction(e.target.value)}
+                      />
+                      <Input
+                        className="w-36"
+                        placeholder="Condition type"
+                        value={filterCondition}
+                        onChange={(e) => setFilterCondition(e.target.value)}
+                      />
                       <Button
                         size="sm"
+                        variant={pendingOnly ? 'primary' : 'ghost'}
+                        onClick={() => setPendingOnly((v) => !v)}
+                      >
+                        待選卡
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={areaExpiryOnly ? 'primary' : 'ghost'}
+                        onClick={() => setAreaExpiryOnly((v) => !v)}
+                      >
+                        Area expiry
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={errataOnly ? 'primary' : 'ghost'}
+                        onClick={() => setErrataOnly((value) => !value)}
+                      >
+                        官方勘誤
+                      </Button>
+                    </div>
+                    <div className="admin-filter-row flex flex-wrap items-center gap-2">
+                      <span className="admin-filter-label w-12 text-xs text-content-primary/50">卡包</span>
+                      {PACK_FILTERS.map((pack) => (
+                        <Button
+                          key={pack}
+                          size="sm"
+                          variant={filterPack === pack ? 'primary' : 'ghost'}
+                          onClick={() => setFilterPack(pack)}
+                        >
+                          {pack === 'all' ? '全部' : pack}
+                        </Button>
+                      ))}
+                    </div>
+                    <div className="admin-filter-row flex flex-wrap items-center gap-2">
+                      <span className="admin-filter-label w-12 text-xs text-content-primary/50">排序</span>
+                      {(['id', 'name', 'cost', 'attack'] as const).map((sort) => (
+                        <Button
+                          key={sort}
+                          size="sm"
+                          variant={sortBy === sort ? 'primary' : 'ghost'}
+                          onClick={() => setSortBy(sort)}
+                        >
+                          {sort === 'id' ? '編號' : sort === 'name' ? '名稱' : sort === 'cost' ? '充能成本' : '攻擊'}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="admin-card-audit" aria-label="卡牌效果資料摘要">
+                    <span>效果 {audit.effectCards}</span>
+                    <span>
+                      解析 {audit.parsedLines}/{audit.effectLines}
+                    </span>
+                    <span className={audit.unparsedLines > 0 ? 'text-accent-action' : ''}>
+                      未解析 {audit.unparsedLines}
+                    </span>
+                    <span>Runtime {audit.runtimeParsedEffects}</span>
+                  </div>
+                </div>
+
+                <div className="admin-card-list" role="listbox" aria-label="卡牌列表">
+                  {cardLoadStatus === 'loading' && allCards.length === 0 && (
+                    <LoadingState className="min-h-48" label="載入卡牌資料中…" />
+                  )}
+                  {cardLoadStatus === 'error' && allCards.length === 0 && (
+                    <EmptyState
+                      className="min-h-48"
+                      title="卡牌資料未載入"
+                      description={cardLoadError || '請確認 API 服務後重新載入。'}
+                      actions={
+                        <Button type="button" onClick={() => void loadAdminCards()}>
+                          重新載入
+                        </Button>
+                      }
+                    />
+                  )}
+                  {allCards.length > 0 && filtered.length === 0 && (
+                    <EmptyState className="min-h-48" title="沒有符合條件的卡牌" />
+                  )}
+                  {filtered.map((card) => {
+                    const meta = metaById.get(card.id);
+                    return (
+                      <button
+                        key={card.id}
+                        type="button"
+                        role="option"
+                        aria-selected={selectedCard?.id === card.id}
+                        className={`admin-card-list-item${selectedCard?.id === card.id ? ' admin-card-list-item-active' : ''}`}
+                        onClick={() => selectCard(card)}
+                      >
+                        <CardImage
+                          className="admin-card-list-image"
+                          cardId={card.id}
+                          context="thumbnail"
+                          alt={card.name}
+                          loading="lazy"
+                          referrerPolicy="no-referrer"
+                        />
+                        <div className="admin-card-list-copy">
+                          <div className="admin-card-list-name-row">
+                            <strong>{card.name}</strong>
+                            {card.hasOfficialErrata && <span className="admin-card-status-dot" title="官方勘誤" />}
+                          </div>
+                          <span className="font-mono text-xs text-content-primary/45">{card.id}</span>
+                          <span className="admin-card-list-meta">
+                            {card.element} ·{' '}
+                            {card.type === 'Character' ? '角色' : card.type === 'Enchant' ? '附魔' : '區域'}
+                            {card.song ? ` · ${card.song}` : ''}
+                          </span>
+                        </div>
+                        {card.effect && (
+                          <Badge
+                            tone={meta?.unparsedLines.length ? 'vermilion' : 'gold'}
+                            className="admin-card-engine-count"
+                          >
+                            {meta?.parsed.length ?? 0}
+                          </Badge>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </aside>
+
+              <section className="admin-card-editor">
+                {selectedCard && selectedMeta ? (
+                  <>
+                    <header className="admin-card-editor-header">
+                      <Button
+                        className="admin-card-editor-back"
+                        size="sm"
                         variant="ghost"
-                        disabled={eloSavingId === u.id}
+                        leftIcon={<ArrowLeft className="size-4" aria-hidden="true" />}
                         onClick={() => {
-                          const v = Number(eloEdits[u.id]);
-                          if (!Number.isFinite(v)) return;
-                          void adminResetElo(token, u.id, Math.trunc(v))
-                            .then(() => refreshUsers(userSearch))
-                            .then(() =>
-                              setEloEdits((p) => {
-                                const n = { ...p };
-                                delete n[u.id];
-                                return n;
-                              }),
-                            );
-                          setEloSavingId(u.id);
-                          setTimeout(() => setEloSavingId(null), 1500);
+                          if (hasUnsavedCardChanges && !window.confirm('目前卡牌有尚未儲存的變更，確定返回列表？'))
+                            return;
+                          setMobileCardEditorOpen(false);
                         }}
                       >
-                        {eloSavingId === u.id ? '已更新' : '更新 ELO'}
+                        卡牌列表
                       </Button>
-                    </DataListCell>
-                  </tr>
-                ))}
-              </tbody>
-            </DataListTable>
+                      <div className="admin-card-editor-summary">
+                        <CardImage
+                          cardId={selectedCard.id}
+                          context="thumbnail"
+                          alt={selectedCard.name}
+                          className="admin-card-editor-image"
+                          loading="eager"
+                          referrerPolicy="no-referrer"
+                        />
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h2>{selectedCard.name}</h2>
+                            {selectedCard.hasOfficialErrata && <Badge tone="gold">官方勘誤</Badge>}
+                          </div>
+                          <p>
+                            <span className="font-mono">{selectedCard.id}</span>
+                            <span>{selectedCard.pack}</span>
+                            {selectedCard.song && <span>{selectedCard.song}</span>}
+                          </p>
+                        </div>
+                        <div className="admin-card-editor-controls">
+                          <Button
+                            className="admin-card-preview-open"
+                            size="sm"
+                            variant="ghost"
+                            aria-label="預覽卡牌大圖"
+                            title="預覽卡牌大圖"
+                            leftIcon={<ZoomIn className="size-4" aria-hidden="true" />}
+                            onClick={() => setCardPreviewOpen(true)}
+                          >
+                            <span>大圖</span>
+                          </Button>
+                          <Button
+                            className="admin-card-lock-control"
+                            size="sm"
+                            variant={cardCoreUnlocked ? 'secondary' : 'ghost'}
+                            aria-label={cardCoreUnlocked ? '鎖定核心資料' : '解鎖核心資料'}
+                            title={cardCoreUnlocked ? '鎖定核心資料' : '解鎖核心資料'}
+                            leftIcon={
+                              cardCoreUnlocked ? (
+                                <LockOpen className="size-4" aria-hidden="true" />
+                              ) : (
+                                <Lock className="size-4" aria-hidden="true" />
+                              )
+                            }
+                            onClick={() => {
+                              if (cardCoreUnlocked) {
+                                setCardCoreUnlocked(false);
+                                return;
+                              }
+                              setCardUnlockConfirmOpen(true);
+                            }}
+                          >
+                            <span>{cardCoreUnlocked ? '重新鎖定' : '解鎖核心資料'}</span>
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="admin-card-editor-tabs" role="tablist" aria-label="卡牌維護區段">
+                        {(
+                          [
+                            ['overview', '資料', Database],
+                            ['official', '官方文本', BookOpenText],
+                            ['i18n', '多語翻譯', Languages],
+                            ['engine', '效果診斷', Activity],
+                          ] as const
+                        ).map(([value, label, Icon]) => (
+                          <button
+                            type="button"
+                            role="tab"
+                            aria-selected={cardEditorTab === value}
+                            className={cardEditorTab === value ? 'admin-card-editor-tab-active' : ''}
+                            key={value}
+                            onClick={() => setCardEditorTab(value)}
+                          >
+                            <Icon className="size-4" aria-hidden="true" />
+                            <span>{label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </header>
+                    <div className="admin-card-editor-content">
+                      <div className="admin-card-editor-body">
+                        <div hidden={cardEditorTab !== 'overview' && cardEditorTab !== 'official'}>
+                          <CardEditForm
+                            card={selectedCard}
+                            section={cardEditorTab === 'official' ? 'official' : 'overview'}
+                            locked={!cardCoreUnlocked}
+                            onDirtyChange={setCardDraftDirty}
+                            onSaved={(updated) => {
+                              setCardCoreUnlocked(false);
+                              setSelectedCard(updated);
+                              setAllCards((cards) => cards.map((card) => (card.id === updated.id ? updated : card)));
+                              void refreshCards().then(() => setAllCards(getAllCardDefs()));
+                            }}
+                          />
+                        </div>
+                        <div hidden={cardEditorTab !== 'i18n'}>
+                          <I18nEditor card={selectedCard} onDirtyChange={setCardI18nDirty} />
+                        </div>
+                        <div hidden={cardEditorTab !== 'engine'}>
+                          <EffectInspector meta={selectedMeta} />
+                        </div>
+                      </div>
+                      <aside className="admin-card-preview-pane" aria-label="卡牌大圖預覽">
+                        <div className="admin-card-preview-heading">
+                          <span>卡牌大圖</span>
+                          <span>{selectedCard.id}</span>
+                        </div>
+                        <CardImage
+                          cardId={selectedCard.id}
+                          context="detail"
+                          alt={selectedCard.name}
+                          className="admin-card-preview-image"
+                          loading="eager"
+                          referrerPolicy="no-referrer"
+                        />
+                      </aside>
+                    </div>
+                  </>
+                ) : (
+                  <EmptyState className="min-h-full" title="選擇一張卡牌開始維護" />
+                )}
+              </section>
+            </section>
           )}
-        </section>
-      )}
 
-      {activeTab === 'matches' && (
-        <section className="admin-table-section flex-1 overflow-auto p-4">
-          {adminLoading && <LoadingState className="mb-3" label="載入中…" />}
-          {adminError && (
-            <Alert className="mb-3" tone="danger" role="alert">
-              {adminError}
-            </Alert>
-          )}
-          <DataListTable className="admin-responsive-table">
-            <thead className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">
-              <tr className="border-b border-content-primary/10">
-                <th className="px-3 py-2">ID</th>
-                <th className="px-3 py-2">勝者</th>
-                <th className="px-3 py-2">敗者</th>
-                <th className="px-3 py-2">ELO Δ</th>
-                <th className="px-3 py-2">回合</th>
-                <th className="px-3 py-2">時長</th>
-                <th className="px-3 py-2">時間</th>
-              </tr>
-            </thead>
-            <tbody>
-              {matches.map((m) => (
-                <tr key={m.id} className="odd:bg-surface-base/50">
-                  <DataListCell label="ID" className="max-w-32 truncate font-mono text-xs opacity-70">
-                    {m.id}
-                  </DataListCell>
-                  <DataListCell label="勝者">{m.winnerNickname ?? m.winnerId}</DataListCell>
-                  <DataListCell label="敗者">{m.loserNickname ?? m.loserId}</DataListCell>
-                  <DataListCell label="ELO Δ">
-                    {m.winnerEloChange >= 0 ? '+' : ''}
-                    {m.winnerEloChange} / {m.loserEloChange}
-                  </DataListCell>
-                  <DataListCell label="回合">{m.turns ?? '—'}</DataListCell>
-                  <DataListCell label="時長">
-                    {m.duration != null ? `${Math.round(m.duration / 60)}m` : '—'}
-                  </DataListCell>
-                  <DataListCell label="時間">{new Date(m.createdAt).toLocaleString()}</DataListCell>
-                </tr>
-              ))}
-            </tbody>
-          </DataListTable>
-        </section>
-      )}
+          {activeTab === 'songs' && <SongTitleEditor cards={allCards} />}
 
-      {activeTab === 'chat' && (
-        <section className="admin-table-section flex-1 overflow-auto p-4">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <SegmentedControl
-              behavior="tabs"
-              size="sm"
-              ariaLabel="聊天舉報狀態"
-              options={[
-                { value: 'open', label: 'Open' },
-                { value: 'reviewing', label: 'Reviewing' },
-                { value: 'resolved', label: 'Resolved' },
-                { value: 'dismissed', label: 'Dismissed' },
-              ]}
-              value={chatReportStatus}
-              onChange={setChatReportStatus}
-            />
-            <Button size="sm" variant="secondary" onClick={() => void refreshChatReports()}>
-              重新整理
-            </Button>
-          </div>
-          {adminLoading && <LoadingState className="mb-3" label="載入中…" />}
-          {adminError && (
-            <Alert className="mb-3" tone="danger" role="alert">
-              {adminError}
-            </Alert>
+          {activeTab === 'users' && (
+            <section className="admin-table-section flex-1 overflow-auto p-4">
+              <form
+                className="mb-4 flex flex-wrap items-center gap-2"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  setAdminNotice('');
+                  void refreshUsers(userSearch);
+                }}
+              >
+                <SearchInput
+                  className="min-w-0"
+                  containerClassName="admin-search-input"
+                  icon={<Search className="size-4 shrink-0 text-content-dim" aria-hidden="true" />}
+                  aria-label="搜尋使用者"
+                  placeholder="搜尋 Email、暱稱或 ID"
+                  value={userSearch}
+                  onChange={(event) => setUserSearch(event.target.value)}
+                />
+                <Button type="submit" size="sm">
+                  搜尋
+                </Button>
+                <Badge>{users.length} 位</Badge>
+              </form>
+              {adminLoading && <LoadingState className="mb-3" label="載入中…" />}
+              {adminNotice && (
+                <Alert className="mb-3" tone="success">
+                  {adminNotice}
+                </Alert>
+              )}
+              {adminError && (
+                <Alert className="mb-3" tone="danger" role="alert">
+                  {adminError}
+                </Alert>
+              )}
+              {!adminLoading && users.length === 0 ? (
+                <EmptyState className="min-h-48" title="找不到使用者" />
+              ) : (
+                <DataListTable className="admin-responsive-table admin-users-table">
+                  <thead className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">
+                    <tr className="border-b border-content-primary/10">
+                      <th className="px-3 py-2">ID</th>
+                      <th className="px-3 py-2">Email</th>
+                      <th className="px-3 py-2">暱稱</th>
+                      <th className="px-3 py-2">ELO</th>
+                      <th className="px-3 py-2">場次</th>
+                      <th className="px-3 py-2">勝率</th>
+                      {currentAdminRole === 'admin' && <th className="px-3 py-2">管理權限</th>}
+                      <th className="px-3 py-2">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {users.map((u) => (
+                      <tr key={u.id} className="odd:bg-surface-base/50">
+                        <DataListCell label="ID" className="max-w-32 truncate font-mono text-xs opacity-70">
+                          {u.id}
+                        </DataListCell>
+                        <DataListCell label="Email">{u.email}</DataListCell>
+                        <DataListCell label="暱稱">{u.nickname}</DataListCell>
+                        <DataListCell label="ELO">
+                          <div className="admin-elo-field flex items-center gap-2">
+                            {eloEdits[u.id] ?? u.elo}
+                            <Input
+                              className="w-20"
+                              value={eloEdits[u.id] ?? ''}
+                              placeholder={String(u.elo)}
+                              onChange={(e) => setEloEdits((prev) => ({ ...prev, [u.id]: e.target.value }))}
+                            />
+                          </div>
+                        </DataListCell>
+                        <DataListCell label="場次">{u.matchCount}</DataListCell>
+                        <DataListCell label="勝率">{u.winRate}%</DataListCell>
+                        {currentAdminRole === 'admin' && (
+                          <DataListCell label="管理權限">
+                            <div className="admin-role-field flex items-center gap-2">
+                              <Select
+                                className="min-w-36"
+                                aria-label={`${u.email} 的管理權限`}
+                                disabled={u.isCurrentAdmin || roleSavingId === u.id}
+                                value={userRoleEdits[u.id] ?? u.adminRole ?? 'none'}
+                                onChange={(event) =>
+                                  setUserRoleEdits((previous) => ({
+                                    ...previous,
+                                    [u.id]: event.target.value as AdminRole | 'none',
+                                  }))
+                                }
+                              >
+                                <option value="none">無管理權限</option>
+                                <option value="viewer">viewer</option>
+                                <option value="moderator">moderator</option>
+                                <option value="operator">operator</option>
+                                <option value="admin">admin</option>
+                              </Select>
+                              {u.isCurrentAdmin ? (
+                                <Badge tone="gold">目前帳號</Badge>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  leftIcon={<ShieldCheck className="size-4" aria-hidden="true" />}
+                                  disabled={
+                                    roleSavingId === u.id ||
+                                    (userRoleEdits[u.id] ?? u.adminRole ?? 'none') === (u.adminRole ?? 'none')
+                                  }
+                                  onClick={() => void updateUserRole(u)}
+                                >
+                                  {roleSavingId === u.id ? '套用中…' : '套用'}
+                                </Button>
+                              )}
+                            </div>
+                          </DataListCell>
+                        )}
+                        <DataListCell label="操作">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={eloSavingId === u.id}
+                            onClick={() => {
+                              const v = Number(eloEdits[u.id]);
+                              if (!Number.isFinite(v)) return;
+                              void adminResetElo(token, u.id, Math.trunc(v))
+                                .then(() => refreshUsers(userSearch))
+                                .then(() =>
+                                  setEloEdits((p) => {
+                                    const n = { ...p };
+                                    delete n[u.id];
+                                    return n;
+                                  }),
+                                );
+                              setEloSavingId(u.id);
+                              setTimeout(() => setEloSavingId(null), 1500);
+                            }}
+                          >
+                            {eloSavingId === u.id ? '已更新' : '更新 ELO'}
+                          </Button>
+                        </DataListCell>
+                      </tr>
+                    ))}
+                  </tbody>
+                </DataListTable>
+              )}
+            </section>
           )}
-          {chatReports.length === 0 && !adminLoading ? (
-            <EmptyState className="min-h-48" title="沒有聊天舉報" description="目前篩選條件下沒有待處理項目。" />
-          ) : (
-            <>
+
+          {activeTab === 'matches' && (
+            <section className="admin-table-section flex-1 overflow-auto p-4">
+              {adminLoading && <LoadingState className="mb-3" label="載入中…" />}
+              {adminError && (
+                <Alert className="mb-3" tone="danger" role="alert">
+                  {adminError}
+                </Alert>
+              )}
               <DataListTable className="admin-responsive-table">
                 <thead className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">
                   <tr className="border-b border-content-primary/10">
-                    <th className="px-3 py-2">狀態</th>
-                    <th className="px-3 py-2">訊息</th>
-                    <th className="px-3 py-2">舉報</th>
+                    <th className="px-3 py-2">ID</th>
+                    <th className="px-3 py-2">勝者</th>
+                    <th className="px-3 py-2">敗者</th>
+                    <th className="px-3 py-2">ELO Δ</th>
+                    <th className="px-3 py-2">回合</th>
+                    <th className="px-3 py-2">時長</th>
                     <th className="px-3 py-2">時間</th>
-                    <th className="px-3 py-2">操作</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {chatReports.map((report) => (
-                    <tr key={report.id} className="odd:bg-surface-base/50">
-                      <DataListCell label="狀態">
-                        <Badge
-                          tone={
-                            report.status === 'resolved' ? 'jade' : report.status === 'dismissed' ? 'neutral' : 'gold'
-                          }
-                        >
-                          {report.status}
-                        </Badge>
+                  {matches.map((m) => (
+                    <tr key={m.id} className="odd:bg-surface-base/50">
+                      <DataListCell label="ID" className="max-w-32 truncate font-mono text-xs opacity-70">
+                        {m.id}
                       </DataListCell>
-                      <DataListCell label="訊息">
-                        <div className="grid max-w-xl gap-1">
-                          <span className="font-mono text-xs text-content-primary/50">{report.conversationId}</span>
-                          <span className="text-xs text-content-primary/60">
-                            {report.message?.authorDisplayName || report.message?.authorUserId || 'Unknown'}
-                          </span>
-                          <p className="whitespace-pre-wrap break-words text-sm">
-                            {report.message?.content || '訊息已刪除或無法讀取'}
-                          </p>
-                          {report.message?.activeSanction && (
-                            <span className="text-xs text-accent-action">
-                              已禁言至{' '}
-                              {report.message.activeSanction.expiresAt
-                                ? new Date(report.message.activeSanction.expiresAt).toLocaleString()
-                                : '永久'}
-                            </span>
-                          )}
-                        </div>
+                      <DataListCell label="勝者">{m.winnerNickname ?? m.winnerId}</DataListCell>
+                      <DataListCell label="敗者">{m.loserNickname ?? m.loserId}</DataListCell>
+                      <DataListCell label="ELO Δ">
+                        {m.winnerEloChange >= 0 ? '+' : ''}
+                        {m.winnerEloChange} / {m.loserEloChange}
                       </DataListCell>
-                      <DataListCell label="舉報">
-                        <div className="grid gap-1">
-                          <span>{report.reason}</span>
-                          {report.note && <span className="text-xs text-content-primary/60">{report.note}</span>}
-                          <span className="font-mono text-xs text-content-primary/50">
-                            by {report.reporterUserId || 'unknown'}
-                          </span>
-                        </div>
+                      <DataListCell label="回合">{m.turns ?? '—'}</DataListCell>
+                      <DataListCell label="時長">
+                        {m.duration != null ? `${Math.round(m.duration / 60)}m` : '—'}
                       </DataListCell>
-                      <DataListCell label="時間">{new Date(report.createdAt).toLocaleString()}</DataListCell>
-                      <DataListCell label="操作">
-                        <div className="flex flex-wrap gap-2">
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            disabled={chatEvidenceLoadingId === report.id}
-                            onClick={() => void loadChatEvidence(report)}
-                          >
-                            {chatEvidenceLoadingId === report.id ? '載入中…' : '上下文'}
-                          </Button>
-                          {report.message?.activeSanction ? (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              disabled={chatSanctioningId === report.id}
-                              onClick={() => void revokeChatSanction(report)}
-                            >
-                              解除禁言
-                            </Button>
-                          ) : (
-                            report.message?.authorUserId && (
-                              <Button
-                                size="sm"
-                                variant="danger"
-                                disabled={chatSanctioningId === report.id}
-                                onClick={() => void muteReportedAuthor(report)}
-                              >
-                                禁言 24h
-                              </Button>
-                            )
-                          )}
-                          {report.status === 'open' && (
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              disabled={chatReviewingId === report.id}
-                              onClick={() => void reviewChatReport(report.id, 'reviewing')}
-                            >
-                              標記審核中
-                            </Button>
-                          )}
-                          {report.status !== 'resolved' && (
-                            <Button
-                              size="sm"
-                              variant="primary"
-                              disabled={chatReviewingId === report.id}
-                              onClick={() => void reviewChatReport(report.id, 'resolved')}
-                            >
-                              已處理
-                            </Button>
-                          )}
-                          {report.status !== 'dismissed' && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              disabled={chatReviewingId === report.id}
-                              onClick={() => void reviewChatReport(report.id, 'dismissed')}
-                            >
-                              駁回
-                            </Button>
-                          )}
-                        </div>
-                      </DataListCell>
+                      <DataListCell label="時間">{new Date(m.createdAt).toLocaleString()}</DataListCell>
                     </tr>
                   ))}
                 </tbody>
               </DataListTable>
+            </section>
+          )}
 
-              {chatEvidence && (
-                <div className="mt-4 border-t border-border-soft pt-4">
-                  <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                    <div className="grid gap-1">
-                      <h3 className="text-sm font-semibold text-content-primary">聊天上下文</h3>
-                      <span className="font-mono text-xs text-content-primary/50">{chatEvidence.conversation.id}</span>
-                    </div>
-                    <Badge tone="neutral">{chatEvidence.messages.length} messages</Badge>
-                  </div>
-                  <div className="grid gap-2">
-                    {chatEvidence.messages.map((message) => {
-                      const isFocused = message.id === chatEvidenceFocusMessageId;
-                      return (
-                        <div
-                          key={message.id}
-                          className={`grid gap-1 border-l-2 px-3 py-2 ${
-                            isFocused
-                              ? 'border-accent-primary bg-accent-primary/10'
-                              : 'border-content-primary/10 bg-surface-base/40'
-                          }`}
-                        >
-                          <div className="flex flex-wrap items-center gap-2 text-xs text-content-primary/60">
-                            <span className="font-mono text-content-primary/50">{message.id}</span>
-                            <span>{message.authorDisplayName || message.authorUserId || 'Unknown'}</span>
+          {activeTab === 'chat' && (
+            <section className="admin-table-section flex-1 overflow-auto p-4">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <SegmentedControl
+                  behavior="tabs"
+                  size="sm"
+                  ariaLabel="聊天舉報狀態"
+                  options={[
+                    { value: 'open', label: 'Open' },
+                    { value: 'reviewing', label: 'Reviewing' },
+                    { value: 'resolved', label: 'Resolved' },
+                    { value: 'dismissed', label: 'Dismissed' },
+                  ]}
+                  value={chatReportStatus}
+                  onChange={setChatReportStatus}
+                />
+                <Button size="sm" variant="secondary" onClick={() => void refreshChatReports()}>
+                  重新整理
+                </Button>
+              </div>
+              {adminLoading && <LoadingState className="mb-3" label="載入中…" />}
+              {adminError && (
+                <Alert className="mb-3" tone="danger" role="alert">
+                  {adminError}
+                </Alert>
+              )}
+              {chatReports.length === 0 && !adminLoading ? (
+                <EmptyState className="min-h-48" title="沒有聊天舉報" description="目前篩選條件下沒有待處理項目。" />
+              ) : (
+                <>
+                  <DataListTable className="admin-responsive-table">
+                    <thead className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">
+                      <tr className="border-b border-content-primary/10">
+                        <th className="px-3 py-2">狀態</th>
+                        <th className="px-3 py-2">訊息</th>
+                        <th className="px-3 py-2">舉報</th>
+                        <th className="px-3 py-2">時間</th>
+                        <th className="px-3 py-2">操作</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {chatReports.map((report) => (
+                        <tr key={report.id} className="odd:bg-surface-base/50">
+                          <DataListCell label="狀態">
                             <Badge
                               tone={
-                                message.moderationStatus === 'blocked'
-                                  ? 'vermilion'
-                                  : message.moderationStatus === 'pending_review'
-                                    ? 'gold'
-                                    : message.deletedAt
-                                      ? 'neutral'
-                                      : 'jade'
+                                report.status === 'resolved'
+                                  ? 'jade'
+                                  : report.status === 'dismissed'
+                                    ? 'neutral'
+                                    : 'gold'
                               }
                             >
-                              {message.deletedAt ? 'deleted' : message.moderationStatus}
+                              {report.status}
                             </Badge>
-                            <span>{new Date(message.createdAt).toLocaleString()}</span>
-                            <div className="ml-auto flex flex-wrap gap-1">
+                          </DataListCell>
+                          <DataListCell label="訊息">
+                            <div className="grid max-w-xl gap-1">
+                              <span className="font-mono text-xs text-content-primary/50">{report.conversationId}</span>
+                              <span className="text-xs text-content-primary/60">
+                                {report.message?.authorDisplayName || report.message?.authorUserId || 'Unknown'}
+                              </span>
+                              <p className="whitespace-pre-wrap break-words text-sm">
+                                {report.message?.content || '訊息已刪除或無法讀取'}
+                              </p>
+                              {report.message?.activeSanction && (
+                                <span className="text-xs text-accent-action">
+                                  已禁言至{' '}
+                                  {report.message.activeSanction.expiresAt
+                                    ? new Date(report.message.activeSanction.expiresAt).toLocaleString()
+                                    : '永久'}
+                                </span>
+                              )}
+                            </div>
+                          </DataListCell>
+                          <DataListCell label="舉報">
+                            <div className="grid gap-1">
+                              <span>{report.reason}</span>
+                              {report.note && <span className="text-xs text-content-primary/60">{report.note}</span>}
+                              <span className="font-mono text-xs text-content-primary/50">
+                                by {report.reporterUserId || 'unknown'}
+                              </span>
+                            </div>
+                          </DataListCell>
+                          <DataListCell label="時間">{new Date(report.createdAt).toLocaleString()}</DataListCell>
+                          <DataListCell label="操作">
+                            <div className="flex flex-wrap gap-2">
                               <Button
                                 size="sm"
                                 variant="secondary"
-                                disabled={
-                                  chatModeratingMessageId === message.id || message.moderationStatus === 'visible'
-                                }
-                                onClick={() => void moderateChatMessage(message, 'visible')}
+                                disabled={chatEvidenceLoadingId === report.id}
+                                onClick={() => void loadChatEvidence(report)}
                               >
-                                放行
+                                {chatEvidenceLoadingId === report.id ? '載入中…' : '上下文'}
                               </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                disabled={
-                                  chatModeratingMessageId === message.id || message.moderationStatus === 'blocked'
-                                }
-                                onClick={() => void moderateChatMessage(message, 'blocked')}
-                              >
-                                封鎖
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="danger"
-                                disabled={
-                                  chatModeratingMessageId === message.id || message.moderationStatus === 'deleted'
-                                }
-                                onClick={() => void moderateChatMessage(message, 'deleted')}
-                              >
-                                刪除
-                              </Button>
+                              {report.message?.activeSanction ? (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  disabled={chatSanctioningId === report.id}
+                                  onClick={() => void revokeChatSanction(report)}
+                                >
+                                  解除禁言
+                                </Button>
+                              ) : (
+                                report.message?.authorUserId && (
+                                  <Button
+                                    size="sm"
+                                    variant="danger"
+                                    disabled={chatSanctioningId === report.id}
+                                    onClick={() => void muteReportedAuthor(report)}
+                                  >
+                                    禁言 24h
+                                  </Button>
+                                )
+                              )}
+                              {report.status === 'open' && (
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  disabled={chatReviewingId === report.id}
+                                  onClick={() => void reviewChatReport(report.id, 'reviewing')}
+                                >
+                                  標記審核中
+                                </Button>
+                              )}
+                              {report.status !== 'resolved' && (
+                                <Button
+                                  size="sm"
+                                  variant="primary"
+                                  disabled={chatReviewingId === report.id}
+                                  onClick={() => void reviewChatReport(report.id, 'resolved')}
+                                >
+                                  已處理
+                                </Button>
+                              )}
+                              {report.status !== 'dismissed' && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  disabled={chatReviewingId === report.id}
+                                  onClick={() => void reviewChatReport(report.id, 'dismissed')}
+                                >
+                                  駁回
+                                </Button>
+                              )}
                             </div>
-                          </div>
-                          <p className="whitespace-pre-wrap break-words text-sm text-content-primary">
-                            {message.content || '（空白訊息）'}
-                          </p>
-                          {message.moderationReason && (
-                            <span className="text-xs text-content-primary/50">{message.moderationReason}</span>
-                          )}
+                          </DataListCell>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </DataListTable>
+
+                  {chatEvidence && (
+                    <div className="mt-4 border-t border-border-soft pt-4">
+                      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                        <div className="grid gap-1">
+                          <h3 className="text-sm font-semibold text-content-primary">聊天上下文</h3>
+                          <span className="font-mono text-xs text-content-primary/50">
+                            {chatEvidence.conversation.id}
+                          </span>
                         </div>
-                      );
-                    })}
-                  </div>
-                </div>
+                        <Badge tone="neutral">{chatEvidence.messages.length} messages</Badge>
+                      </div>
+                      <div className="grid gap-2">
+                        {chatEvidence.messages.map((message) => {
+                          const isFocused = message.id === chatEvidenceFocusMessageId;
+                          return (
+                            <div
+                              key={message.id}
+                              className={`grid gap-1 border-l-2 px-3 py-2 ${
+                                isFocused
+                                  ? 'border-accent-primary bg-accent-primary/10'
+                                  : 'border-content-primary/10 bg-surface-base/40'
+                              }`}
+                            >
+                              <div className="flex flex-wrap items-center gap-2 text-xs text-content-primary/60">
+                                <span className="font-mono text-content-primary/50">{message.id}</span>
+                                <span>{message.authorDisplayName || message.authorUserId || 'Unknown'}</span>
+                                <Badge
+                                  tone={
+                                    message.moderationStatus === 'blocked'
+                                      ? 'vermilion'
+                                      : message.moderationStatus === 'pending_review'
+                                        ? 'gold'
+                                        : message.deletedAt
+                                          ? 'neutral'
+                                          : 'jade'
+                                  }
+                                >
+                                  {message.deletedAt ? 'deleted' : message.moderationStatus}
+                                </Badge>
+                                <span>{new Date(message.createdAt).toLocaleString()}</span>
+                                <div className="ml-auto flex flex-wrap gap-1">
+                                  <Button
+                                    size="sm"
+                                    variant="secondary"
+                                    disabled={
+                                      chatModeratingMessageId === message.id || message.moderationStatus === 'visible'
+                                    }
+                                    onClick={() => void moderateChatMessage(message, 'visible')}
+                                  >
+                                    放行
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    disabled={
+                                      chatModeratingMessageId === message.id || message.moderationStatus === 'blocked'
+                                    }
+                                    onClick={() => void moderateChatMessage(message, 'blocked')}
+                                  >
+                                    封鎖
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="danger"
+                                    disabled={
+                                      chatModeratingMessageId === message.id || message.moderationStatus === 'deleted'
+                                    }
+                                    onClick={() => void moderateChatMessage(message, 'deleted')}
+                                  >
+                                    刪除
+                                  </Button>
+                                </div>
+                              </div>
+                              <p className="whitespace-pre-wrap break-words text-sm text-content-primary">
+                                {message.content || '（空白訊息）'}
+                              </p>
+                              {message.moderationReason && (
+                                <span className="text-xs text-content-primary/50">{message.moderationReason}</span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
-            </>
+            </section>
           )}
-        </section>
-      )}
 
-      {activeTab === 'about' && (
-        <section className="admin-main flex-1 overflow-y-auto p-4">
-          <AboutSettingsEditor />
-        </section>
-      )}
+          {activeTab === 'about' && (
+            <section className="admin-main flex-1 overflow-y-auto p-4">
+              <AboutSettingsEditor />
+            </section>
+          )}
 
-      {activeTab === 'operations' && (
-        <section className="admin-main flex-1 overflow-y-auto p-4">
-          <AdminOperationsPanel token={token} />
-        </section>
+          {activeTab === 'operations' && (
+            <section className="admin-main flex-1 overflow-y-auto p-4">
+              <AdminOperationsPanel token={token} />
+            </section>
+          )}
+        </main>
+      </div>
+      {selectedCard && (
+        <Dialog
+          open={cardUnlockConfirmOpen}
+          onOpenChange={setCardUnlockConfirmOpen}
+          title="解鎖核心資料"
+          size="sm"
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setCardUnlockConfirmOpen(false)}>
+                取消
+              </Button>
+              <Button
+                variant="danger"
+                leftIcon={<LockOpen className="size-4" aria-hidden="true" />}
+                onClick={() => {
+                  setCardCoreUnlocked(true);
+                  setCardUnlockConfirmOpen(false);
+                }}
+              >
+                確認解鎖
+              </Button>
+            </>
+          }
+        >
+          <Alert tone="danger">
+            {selectedCard.id} 的核心資料與官方效果會直接影響對戰規則。解鎖後請只修改已核對的內容。
+          </Alert>
+        </Dialog>
       )}
-
-      {CardModal}
+      {selectedCard && (
+        <Dialog
+          open={cardPreviewOpen}
+          onOpenChange={setCardPreviewOpen}
+          title={selectedCard.name}
+          size="sm"
+          className="admin-card-preview-dialog"
+        >
+          <CardImage
+            cardId={selectedCard.id}
+            context="detail"
+            alt={selectedCard.name}
+            className="admin-card-preview-dialog-image"
+            loading="eager"
+            referrerPolicy="no-referrer"
+          />
+        </Dialog>
+      )}
     </PageShell>
   );
 }
