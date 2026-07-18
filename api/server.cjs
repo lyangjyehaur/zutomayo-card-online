@@ -88,6 +88,7 @@ const {
   getAllCardI18n,
   getAllCardTextsI18n,
   getCardI18n,
+  getCardOfficialErrata,
   getCardTextsI18n,
   getGameConfig,
   getPresetDecks,
@@ -4734,6 +4735,15 @@ function handleRequest(req, res) {
     if (pathname === '/api/admin/cards/reload' && method === 'POST') {
       if (!(await authorizeAdmin(req, 'cards:write'))) return json({ error: 'Unauthorized' }, 401);
       json({ ok: true });
+      return;
+    }
+
+    const adminCardErrataRoute = pathname.match(/^\/api\/admin\/cards\/([^/]+)\/errata$/);
+    if (adminCardErrataRoute && method === 'GET') {
+      if (!(await authorizeAdmin(req, 'cards:write'))) return json({ error: 'Unauthorized' }, 401);
+      const cardId = decodeURIComponent(adminCardErrataRoute[1]);
+      res.setHeader('Cache-Control', 'no-store');
+      json({ errata: await getCardOfficialErrata(pool, cardId) });
       return;
     }
 

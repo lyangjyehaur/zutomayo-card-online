@@ -683,6 +683,20 @@ export interface CardTextI18nEntry {
   reviewNote: string;
 }
 
+export interface CardOfficialErrata {
+  errataId: string;
+  cardId: string;
+  publishedAt: string;
+  affectsName: boolean;
+  affectsEffect: boolean;
+  incorrectText: string;
+  correctedJapaneseText: string;
+  correctedEnglishText: string;
+  correctedEnglishStatus: 'official' | 'verified' | 'pending_review' | string;
+  correctedEnglishSource: string;
+  sourceUrl: string;
+}
+
 export type CardTextsI18n = Record<string, Record<string, CardTextI18nEntry>>;
 
 export async function fetchAllCardTextsI18n(): Promise<CardTextsI18n> {
@@ -1724,6 +1738,14 @@ export async function adminUpdateCard(id: string, card: Partial<CardDef>): Promi
   await adminReloadGameCards();
   cardsCache = null;
   return updated;
+}
+
+export async function adminGetCardOfficialErrata(cardId: string): Promise<CardOfficialErrata | null> {
+  const data = await request<{ errata: CardOfficialErrata | null }>(
+    `/admin/cards/${encodeURIComponent(cardId)}/errata`,
+    { headers: adminAuthHeaders() },
+  );
+  return data.errata;
 }
 
 export async function adminUpdateConfig(key: string, value: unknown): Promise<void> {

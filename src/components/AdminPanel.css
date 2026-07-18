@@ -551,6 +551,121 @@
   color: color-mix(in oklch, var(--content-primary) 42%, transparent);
 }
 
+.admin-errata-detail,
+.admin-i18n-reference {
+  display: grid;
+  min-width: 0;
+  gap: 0.85rem;
+}
+
+.admin-errata-meta,
+.admin-errata-meta > div,
+.admin-i18n-reference-heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.admin-errata-meta {
+  justify-content: space-between;
+}
+
+.admin-errata-meta > div {
+  flex-wrap: wrap;
+}
+
+.admin-errata-source-link {
+  display: inline-flex;
+  min-height: 2.5rem;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--accent-primary);
+  font-size: var(--type-caption);
+  font-weight: 700;
+}
+
+.admin-errata-source-link:hover {
+  text-decoration: underline;
+}
+
+.admin-errata-text-grid,
+.admin-i18n-reference-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+  gap: 0.75rem;
+}
+
+.admin-reference-block {
+  min-width: 0;
+  border-left: 2px solid color-mix(in oklch, var(--accent-primary) 48%, transparent);
+  background: color-mix(in oklch, var(--surface-base) 62%, transparent);
+  padding: 0.75rem 0.85rem;
+}
+
+.admin-reference-block > span,
+.admin-reference-block > small,
+.admin-errata-legacy > span,
+.admin-i18n-reference-heading > span {
+  font-family: var(--font-mono);
+  font-size: var(--type-minutia);
+  color: color-mix(in oklch, var(--content-primary) 48%, transparent);
+}
+
+.admin-reference-block > p,
+.admin-errata-legacy > p {
+  margin-top: 0.45rem;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  font-size: var(--type-body-sm);
+  line-height: 1.65;
+}
+
+.admin-reference-block > small {
+  display: block;
+  margin-top: 0.55rem;
+}
+
+.admin-errata-empty {
+  color: color-mix(in oklch, var(--content-primary) 50%, transparent);
+  font-size: var(--type-body-sm);
+}
+
+.admin-errata-legacy {
+  border-left: 2px solid color-mix(in oklch, var(--content-primary) 18%, transparent);
+  padding: 0.65rem 0.85rem;
+}
+
+.admin-i18n-reference {
+  margin-bottom: 1.5rem;
+  border-top: 2px solid color-mix(in oklch, var(--accent-primary) 38%, transparent);
+  padding-top: 0.8rem;
+}
+
+.admin-i18n-reference-language {
+  display: grid;
+  min-width: 0;
+  gap: 0.75rem;
+}
+
+.admin-i18n-reference-heading {
+  min-height: 1.65rem;
+  justify-content: space-between;
+}
+
+.admin-i18n-reference-heading > strong {
+  font-size: 0.85rem;
+}
+
+.admin-i18n-reference input[readonly],
+.admin-i18n-reference textarea[readonly] {
+  cursor: text;
+  border-style: dashed;
+  background: color-mix(in oklch, var(--surface-base) 72%, transparent);
+  color: color-mix(in oklch, var(--content-primary) 78%, transparent);
+}
+
 .admin-editor-savebar {
   position: sticky;
   bottom: 0;
