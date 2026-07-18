@@ -19,6 +19,10 @@ const COMPOSE_FILES = [
 ];
 const RELEASE_COMPOSE_FILES = ['docker-compose.staging.yml', 'docker-compose.server4.yml'];
 const REQUIRED_IMAGES = ['GAME_IMAGE', 'API_IMAGE', 'PLATFORM_IMAGE', 'MIGRATE_IMAGE'];
+const REQUIRED_CORE_ACTION_COMMITS = Object.freeze({
+  'actions/checkout': '9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0',
+  'actions/setup-node': '820762786026740c76f36085b0efc47a31fe5020',
+});
 
 function read(relativePath) {
   const absolutePath = path.join(ROOT, relativePath);
@@ -52,6 +56,19 @@ export function findUnpinnedWorkflowActions(contents) {
   });
 }
 
+export function findOutdatedCoreWorkflowActions(contents) {
+  return nonCommentLines(contents).flatMap((line) => {
+    const match = line.match(/^(?:-\s*)?uses:\s*([^\s]+)$/);
+    if (!match) return [];
+    const actionReference = match[1];
+    const separator = actionReference.lastIndexOf('@');
+    const action = separator >= 0 ? actionReference.slice(0, separator) : actionReference;
+    const expectedCommit = REQUIRED_CORE_ACTION_COMMITS[action];
+    if (!expectedCommit || actionReference === `${action}@${expectedCommit}`) return [];
+    return [`${actionReference} (required ${action}@${expectedCommit})`];
+  });
+}
+
 function assertPinnedWorkflowActions() {
   const workflowDirectory = path.join(ROOT, '.github/workflows');
   if (!existsSync(workflowDirectory)) throw new Error('missing GitHub workflow directory');
@@ -68,6 +85,9 @@ function assertPinnedWorkflowActions() {
         `${relativePath} contains actions not pinned to full 40-character commit SHAs:\n${unpinned.join('\n')}`,
       );
     }
+    const outdatedCoreActions = findOutdatedCoreWorkflowActions(read(relativePath));
+    if (outdatedCoreActions.length > 0)
+      throw new Error(`${relativePath} contains retired core action runtimes:\n${outdatedCoreActions.join('\n')}`);
   }
 }
 

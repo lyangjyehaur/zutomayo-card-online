@@ -709,8 +709,8 @@ Runner: `ubuntu-latest`, Node 22, with `npm` caching.
 
 Pipeline steps, in order:
 
-1. `actions/checkout@v4`
-2. `actions/setup-node@v4` (Node 22, npm cache)
+1. `actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0` (`v7.0.0`, Node 24 action runtime)
+2. `actions/setup-node@820762786026740c76f36085b0efc47a31fe5020` (`v7.0.0`, Node 24 action runtime; installs Node 22 with npm cache)
 3. `npm ci` — install dependencies from the lockfile.
 4. `npm run format:check:tracked` — Prettier check for Git-tracked files.
 5. `npm run version:check` — root/API version synchronization and managed fallback check.

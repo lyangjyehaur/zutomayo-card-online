@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import { resolve } from 'node:path';
 // @ts-expect-error The runtime MJS module intentionally has no generated declarations.
-import { findUnpinnedWorkflowActions } from './verify-release-config.mjs';
+import { findOutdatedCoreWorkflowActions, findUnpinnedWorkflowActions } from './verify-release-config.mjs';
 
 describe('release configuration contract', () => {
   it('accepts the isolated server4 beta deployment contract', () => {
@@ -16,9 +16,23 @@ describe('release configuration contract', () => {
       findUnpinnedWorkflowActions(`
         - uses: actions/checkout@v4
         - uses: docker/login-action@main
-        - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         - uses: ./github/actions/local
       `),
     ).toEqual(['actions/checkout@v4', 'docker/login-action@main']);
+  });
+
+  it('requires the reviewed Node 24 core action commits', () => {
+    expect(
+      findOutdatedCoreWorkflowActions(`
+        - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        - uses: actions/setup-node@v7
+        - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+      `),
+    ).toEqual([
+      'actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 (required actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0)',
+      'actions/setup-node@v7 (required actions/setup-node@820762786026740c76f36085b0efc47a31fe5020)',
+    ]);
   });
 });
