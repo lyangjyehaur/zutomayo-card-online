@@ -119,16 +119,25 @@ describe('card data service', () => {
     expect(normalizeI18nLang('zhTW')).toBe('zh-TW');
     expect(normalizeI18nLang('xx')).toBeNull();
 
-    const pool = poolWithRows([{ card_id: 'c_1', lang: 'ja', effect_text: 'JP' }]);
+    const pool = poolWithRows([
+      { card_id: 'c_1', lang: 'ja', effect_text: 'JP', review_status: 'official' },
+      { card_id: 'c_1', lang: 'zhTW', effect_text: 'TW', review_status: 'verified' },
+      { card_id: 'c_1', lang: 'ko', effect_text: 'draft', review_status: 'pending_review' },
+    ]);
     await expect(getAllCardI18n(pool)).resolves.toEqual({
-      c_1: { ja: 'JP' },
+      c_1: { ja: 'JP', 'zh-TW': 'TW' },
     });
     expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('FROM cards'));
     expect(pool.query).not.toHaveBeenCalledWith(expect.stringContaining('card_effects_i18n'));
-    await expect(getCardI18n(poolWithRows([{ lang: 'zhTW', effect_text: 'TW' }]), 'c_1')).resolves.toMatchObject({
-      en: '',
-      'zh-TW': 'TW',
-    });
+    await expect(
+      getCardI18n(
+        poolWithRows([
+          { lang: 'zhTW', effect_text: 'TW', review_status: 'verified' },
+          { lang: 'ko', effect_text: 'draft', review_status: 'pending_review' },
+        ]),
+        'c_1',
+      ),
+    ).resolves.toMatchObject({ en: '', ko: '', 'zh-TW': 'TW' });
   });
 
   it('returns unified card text with provenance and review status', async () => {

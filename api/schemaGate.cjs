@@ -386,7 +386,13 @@ const REQUIRED_RUNTIME_CONSTRAINTS = Object.freeze([
     tableName: 'card_texts_i18n',
     constraintName: 'card_texts_i18n_derived_lang_check',
     constraintType: 'c',
-    fragments: [],
+    fragments: ['lang = any', 'zh-tw', 'zh-cn', 'zh-hk', 'ko'],
+  },
+  {
+    tableName: 'card_texts_i18n',
+    constraintName: 'card_texts_i18n_derived_review_status_check',
+    constraintType: 'c',
+    fragments: ['review_status = any', 'verified', 'pending_review'],
   },
   { tableName: 'season_ratings', constraintType: 'p', fragments: ['primary key (season_id, user_id)'] },
   {

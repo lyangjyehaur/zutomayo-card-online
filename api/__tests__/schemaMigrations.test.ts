@@ -138,6 +138,7 @@ describe('schema migrations', () => {
     const authority = readRepoFile('migrations/000033_card_text_authority.js');
     const rollbackCompatibility = readRepoFile('migrations/000034_card_text_rollback_compat.js');
     const removeRollbackCompatibility = readRepoFile('migrations/000035_remove_card_text_rollback_compat.js');
+    const hardenedI18nContract = readRepoFile('migrations/000036_harden_card_i18n_contract.js');
 
     expect(migrationRunner).toContain('migrationIgnorePatternForApplied');
     expect(developmentRunner).toContain('migrationIgnorePatternForApplied');
@@ -169,6 +170,9 @@ describe('schema migrations', () => {
     expect(removeRollbackCompatibility).toContain('DROP VIEW IF EXISTS card_effects_i18n');
     expect(removeRollbackCompatibility).toContain('DROP COLUMN IF EXISTS corrected_japanese_text');
     expect(removeRollbackCompatibility).toContain('DROP COLUMN IF EXISTS corrected_english_text');
+    expect(hardenedI18nContract).toContain("lang IN ('zh-TW', 'zh-CN', 'zh-HK', 'ko')");
+    expect(hardenedI18nContract).toContain("review_status IN ('verified', 'pending_review')");
+    expect(hardenedI18nContract).toContain('resolve data before migration 000036');
     for (const migration of [
       cardTexts,
       errata,
@@ -176,6 +180,7 @@ describe('schema migrations', () => {
       authority,
       rollbackCompatibility,
       removeRollbackCompatibility,
+      hardenedI18nContract,
     ]) {
       expect(migration).toContain('export const down = false;');
     }

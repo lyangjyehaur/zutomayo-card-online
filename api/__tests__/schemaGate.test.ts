@@ -96,6 +96,12 @@ describe('production schema gate', () => {
         constraintName: 'card_texts_i18n_derived_lang_check',
       }),
     );
+    expect(REQUIRED_RUNTIME_CONSTRAINTS).toContainEqual(
+      expect.objectContaining({
+        tableName: 'card_texts_i18n',
+        constraintName: 'card_texts_i18n_derived_review_status_check',
+      }),
+    );
     expect(REQUIRED_RUNTIME_CONSTRAINTS).not.toContainEqual(
       expect.objectContaining({ tableName: 'card_official_errata' }),
     );

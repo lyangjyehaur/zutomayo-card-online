@@ -2,7 +2,7 @@
 import './server/observability/tracing.js';
 import { ZutomayoOnlineCard, resetParsedEffects } from './game/Game';
 import { initCards } from './game/cards/loader';
-import { initCardTextsI18n, initEffectI18n, type CardTextI18nEntry } from './game/cards/i18n';
+import { initCardTextsI18n, type CardTextI18nEntry } from './game/cards/i18n';
 import type { CardDef, ZutomayoSetupData } from './game/types';
 import { APP_VERSION_INFO, isCompatibleVersion, normalizeVersionInfo, type AppVersionInfo } from './version';
 import path from 'path';
@@ -332,7 +332,8 @@ async function loadCardsFromPG(): Promise<void> {
     `SELECT card_id, lang, name_text, effect_text, name_source, effect_source,
             review_status, review_note
      FROM card_texts_i18n
-     WHERE lang NOT IN ('ja', 'en')
+     WHERE lang IN ('zh-TW', 'zh-CN', 'zh-HK', 'ko')
+       AND review_status <> 'pending_review'
      ORDER BY card_id, lang`,
   );
   const texts: Record<string, Record<string, CardTextI18nEntry>> = {};
@@ -380,13 +381,6 @@ async function loadCardsFromPG(): Promise<void> {
       reviewNote: r.review_note || '',
     };
   }
-  const effects = Object.fromEntries(
-    Object.entries(texts).map(([cardId, entries]) => [
-      cardId,
-      Object.fromEntries(Object.entries(entries).map(([lang, entry]) => [lang, entry.effect])),
-    ]),
-  );
-  initEffectI18n(effects);
   initCardTextsI18n(texts);
   logger.info({ count: Object.keys(texts).length }, 'loaded canonical card texts from PostgreSQL');
 }

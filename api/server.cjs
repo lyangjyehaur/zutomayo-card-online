@@ -642,18 +642,16 @@ async function initSchema() {
        END IF;
      END $$`,
     `DELETE FROM card_texts_i18n WHERE lang IN ('ja', 'en')`,
-    `DO $$
-     BEGIN
-       IF NOT EXISTS (
-         SELECT 1 FROM pg_constraint
-          WHERE conname = 'card_texts_i18n_derived_lang_check'
-            AND conrelid = 'public.card_texts_i18n'::regclass
-       ) THEN
-         ALTER TABLE card_texts_i18n
-           ADD CONSTRAINT card_texts_i18n_derived_lang_check
-           CHECK (lang NOT IN ('ja', 'en'));
-       END IF;
-     END $$`,
+    `ALTER TABLE card_texts_i18n
+       DROP CONSTRAINT IF EXISTS card_texts_i18n_derived_lang_check,
+       DROP CONSTRAINT IF EXISTS card_texts_i18n_chck,
+       DROP CONSTRAINT IF EXISTS card_texts_i18n_review_status_check,
+       DROP CONSTRAINT IF EXISTS card_texts_i18n_derived_review_status_check`,
+    `ALTER TABLE card_texts_i18n
+       ADD CONSTRAINT card_texts_i18n_derived_lang_check
+         CHECK (lang IN ('zh-TW', 'zh-CN', 'zh-HK', 'ko')),
+       ADD CONSTRAINT card_texts_i18n_derived_review_status_check
+         CHECK (review_status IN ('verified', 'pending_review'))`,
     `DO $$
      DECLARE relation_kind "char";
      BEGIN

@@ -32,6 +32,16 @@ export function initEffectI18n(data: Record<string, Record<string, string>>): vo
 
 export function initCardTextsI18n(data: Record<string, Record<string, CardTextI18nEntry>>): void {
   cardTextsI18n = data;
+  effectI18n = Object.fromEntries(
+    Object.entries(data).map(([cardId, entries]) => [
+      cardId,
+      Object.fromEntries(
+        Object.entries(entries)
+          .filter(([, entry]) => entry.reviewStatus !== 'pending_review')
+          .map(([lang, entry]) => [lang, entry.effect]),
+      ),
+    ]),
+  );
   _initialized = true;
 }
 
@@ -134,10 +144,14 @@ function songTitlesI18n(): Record<string, Record<string, string>> {
 }
 
 export function getLocalizedSongTitle(song: string, locale: string): string {
-  if (!song || locale === 'ja') return song;
+  return configuredSongTitle(song, locale) ?? song;
+}
+
+function configuredSongTitle(song: string, locale: string): string | null {
+  if (!song || locale === 'ja') return null;
   const titles = songTitlesI18n()[song];
-  if (!titles || typeof titles !== 'object') return song;
-  return titles[locale] || (locale === 'zh-HK' ? titles['zh-TW'] : undefined) || song;
+  if (!titles || typeof titles !== 'object') return null;
+  return titles[locale] || (locale === 'zh-HK' ? titles['zh-TW'] : undefined) || null;
 }
 
 export function getLocalizedCardSearchTerms(card: CardDef, locales: readonly string[]): string[] {
@@ -165,23 +179,61 @@ export function matchesLocalizedCardSearch(card: CardDef, searchText: string, lo
 }
 
 function canonicalizeSongTitleInCardName(text: string, card: CardDef, locale: string): string {
-  if (!card.song || !card.name.includes(card.song)) return text;
-  const title = getLocalizedSongTitle(card.song, locale);
-  if (!title || title === card.song) return text;
-  return text.replace(/([（(《])([^（）()《》]+)([）)》])/, `$1${title}$3`);
+  const title = configuredSongTitle(card.song, locale);
+  if (!title) return text;
+  const sourceSegments = delimitedSegments(card.name);
+  const sourceSongIndex = sourceSegments.map((segment) => segment.inner).lastIndexOf(card.song);
+  if (sourceSongIndex < 0) return text;
+
+  const targetSegments = delimitedSegments(text);
+  const targetIndex = targetSegments.length - (sourceSegments.length - sourceSongIndex);
+  if (targetIndex < 0) return text;
+  return replaceDelimitedSegments(text, targetSegments, [targetIndex], title);
 }
 
 function canonicalizeSongTitleInCardEffect(text: string, card: CardDef, locale: string): string {
-  if (!card.song || !card.effect.includes(card.song)) return text;
-  const title = getLocalizedSongTitle(card.song, locale);
-  if (!title || title === card.song) return text;
-  const occurrences = card.effect.split(card.song).length - 1;
-  let replaced = 0;
-  return text.replace(/([（(《])([^（）()《》]+)([）)》])/g, (match, open: string, _inner: string, close: string) => {
-    if (replaced >= occurrences) return match;
-    replaced += 1;
-    return `${open}${title}${close}`;
-  });
+  const title = configuredSongTitle(card.song, locale);
+  if (!title) return text;
+  const sourceSongIndexes = delimitedSegments(card.effect).flatMap((segment, index) =>
+    segment.inner === card.song ? [index] : [],
+  );
+  if (sourceSongIndexes.length === 0) return text;
+
+  const targetSegments = delimitedSegments(text);
+  if (sourceSongIndexes.some((index) => index >= targetSegments.length)) return text;
+  return replaceDelimitedSegments(text, targetSegments, sourceSongIndexes, title);
+}
+
+type DelimitedSegment = {
+  start: number;
+  end: number;
+  open: string;
+  inner: string;
+  close: string;
+};
+
+function delimitedSegments(text: string): DelimitedSegment[] {
+  return [...text.matchAll(/（([^（）]+)）|\(([^()]+)\)|《([^《》]+)》/g)].map((match) => ({
+    start: match.index,
+    end: match.index + match[0].length,
+    open: match[0][0],
+    inner: match[1] ?? match[2] ?? match[3] ?? '',
+    close: match[0][match[0].length - 1] ?? '',
+  }));
+}
+
+function replaceDelimitedSegments(
+  text: string,
+  segments: DelimitedSegment[],
+  indexes: readonly number[],
+  replacement: string,
+): string {
+  let result = text;
+  for (const index of [...indexes].sort((left, right) => right - left)) {
+    const segment = segments[index];
+    result = `${result.slice(0, segment.start)}${segment.open}${replacement}${segment.close}${result.slice(segment.end)}`;
+  }
+  return result;
 }
 
 /**

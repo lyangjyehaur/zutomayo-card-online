@@ -147,8 +147,11 @@ async function getAllCardI18n(pool) {
     const rows = (await pool.query(`${CARD_TEXTS_SELECT} ORDER BY card_id, lang`)).rows;
     const grouped = {};
     for (const row of rows) {
+      if (row.review_status === 'pending_review') continue;
+      const lang = normalizeI18nLang(row.lang);
+      if (!lang) continue;
       if (!grouped[row.card_id]) grouped[row.card_id] = {};
-      grouped[row.card_id][row.lang] = typeof row.effect_text === 'string' ? row.effect_text : '';
+      grouped[row.card_id][lang] = typeof row.effect_text === 'string' ? row.effect_text : '';
     }
     return grouped;
   } catch {
@@ -161,6 +164,7 @@ async function getCardI18n(pool, cardId) {
   try {
     const rows = (await pool.query(`${CARD_TEXTS_SELECT} WHERE card_id = $1 ORDER BY lang`, [cardId])).rows;
     for (const row of rows) {
+      if (row.review_status === 'pending_review') continue;
       const lang = normalizeI18nLang(row.lang);
       if (lang) translations[lang] = typeof row.effect_text === 'string' ? row.effect_text : '';
     }

@@ -6,34 +6,46 @@ type Queryable = {
 };
 
 const require = createRequire(import.meta.url);
-const { cardDefToDbParams, normalizeCardForUpsert, upsertCard, upsertCardI18n, upsertGameConfig } =
-  require('../adminCardService.cjs') as {
-    cardDefToDbParams: (card: Record<string, unknown>) => unknown[];
-    normalizeCardForUpsert: (
-      id: string,
-      body: Record<string, unknown>,
-      baseCard?: Record<string, unknown>,
-    ) => Record<string, unknown> | null;
-    upsertCard: (
-      pool: Queryable,
-      cardId: string,
-      body: Record<string, unknown>,
-    ) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
-    upsertCardI18n: (
-      pool: Queryable,
-      cardId: string,
-      body: Record<string, unknown>,
-    ) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
-    upsertGameConfig: (
-      pool: Queryable,
-      key: string,
-      body: Record<string, unknown>,
-    ) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
-  };
+const {
+  cardDefToDbParams,
+  isValidSongTitleConfig,
+  normalizeCardForUpsert,
+  upsertCard,
+  upsertCardI18n,
+  upsertGameConfig,
+} = require('../adminCardService.cjs') as {
+  cardDefToDbParams: (card: Record<string, unknown>) => unknown[];
+  isValidSongTitleConfig: (value: unknown) => boolean;
+  normalizeCardForUpsert: (
+    id: string,
+    body: Record<string, unknown>,
+    baseCard?: Record<string, unknown>,
+  ) => Record<string, unknown> | null;
+  upsertCard: (
+    pool: Queryable,
+    cardId: string,
+    body: Record<string, unknown>,
+  ) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
+  upsertCardI18n: (
+    pool: Queryable,
+    cardId: string,
+    body: Record<string, unknown>,
+  ) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
+  upsertGameConfig: (
+    pool: Queryable,
+    key: string,
+    body: Record<string, unknown>,
+  ) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
+};
 
-function poolWithRows(rows: unknown[] = []): Queryable {
+function poolWithRows(rows: unknown[] = [], cardEffect: string | null = 'Official effect'): Queryable {
   return {
-    query: vi.fn(async () => ({ rows })),
+    query: vi.fn(async (sql: string) => {
+      if (sql === 'SELECT effect FROM cards WHERE id = $1') {
+        return { rows: cardEffect === null ? [] : [{ effect: cardEffect }] };
+      }
+      return { rows };
+    }),
   };
 }
 
@@ -112,7 +124,8 @@ describe('admin card service', () => {
       ok: true,
       body: { ok: true },
     });
-    expect(pool.query).toHaveBeenNthCalledWith(1, expect.stringContaining('INSERT INTO card_texts_i18n'), [
+    expect(pool.query).toHaveBeenNthCalledWith(1, 'SELECT effect FROM cards WHERE id = $1', ['c_1']);
+    expect(pool.query).toHaveBeenNthCalledWith(2, expect.stringContaining('INSERT INTO card_texts_i18n'), [
       'c_1',
       'zh-TW',
       '',
@@ -125,7 +138,7 @@ describe('admin card service', () => {
       true,
     ]);
     expect(pool.query).toHaveBeenNthCalledWith(
-      2,
+      3,
       'INSERT INTO admin_audit_log (admin_user_id, action, target_type, target_id, details) VALUES ($1, $2, $3, $4, $5::jsonb)',
       [
         null,
@@ -156,7 +169,8 @@ describe('admin card service', () => {
       }),
     ).resolves.toEqual({ ok: true, body: { ok: true } });
 
-    expect(pool.query).toHaveBeenNthCalledWith(1, expect.stringContaining('INSERT INTO card_texts_i18n'), [
+    expect(pool.query).toHaveBeenNthCalledWith(1, 'SELECT effect FROM cards WHERE id = $1', ['c_1']);
+    expect(pool.query).toHaveBeenNthCalledWith(2, expect.stringContaining('INSERT INTO card_texts_i18n'), [
       'c_1',
       'ko',
       '카드 이름',
@@ -183,7 +197,46 @@ describe('admin card service', () => {
     await expect(
       upsertCardI18n(pool, 'c_1', { lang: 'ko', nameText: 'name', reviewStatus: 'unknown' }),
     ).resolves.toMatchObject({ ok: false, status: 400 });
+    await expect(
+      upsertCardI18n(pool, 'c_1', { lang: 'ko', nameText: 'name', reviewStatus: 'verified' }),
+    ).resolves.toMatchObject({ ok: false, status: 400 });
     expect(pool.query).not.toHaveBeenCalled();
+  });
+
+  it('requires complete verified text and permits an empty effect only for cards without effects', async () => {
+    const effectCardPool = poolWithRows();
+    await expect(
+      upsertCardI18n(effectCardPool, 'c_1', {
+        lang: 'zh-TW',
+        nameText: '卡名',
+        effectText: '',
+        reviewStatus: 'verified',
+      }),
+    ).resolves.toMatchObject({ ok: false, status: 400 });
+    expect(effectCardPool.query).toHaveBeenCalledTimes(1);
+
+    const noEffectCardPool = poolWithRows([], '');
+    await expect(
+      upsertCardI18n(noEffectCardPool, 'c_1', {
+        lang: 'zh-TW',
+        nameText: '卡名',
+        effectText: '',
+        reviewStatus: 'verified',
+      }),
+    ).resolves.toEqual({ ok: true, body: { ok: true } });
+    expect(noEffectCardPool.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO card_texts_i18n'),
+      expect.any(Array),
+    );
+
+    await expect(
+      upsertCardI18n(poolWithRows([], null), 'missing', {
+        lang: 'zh-TW',
+        nameText: '卡名',
+        effectText: '',
+        reviewStatus: 'pending_review',
+      }),
+    ).resolves.toMatchObject({ ok: false, status: 404 });
   });
 
   it('upserts cards using existing DB rows as base data', async () => {
@@ -240,5 +293,23 @@ describe('admin card service', () => {
       JSON.stringify(60),
       'Timer',
     ]);
+  });
+
+  it('validates the card song title config before storing it', async () => {
+    const valid = { 袖のキルト: { 'zh-TW': '袖口的絎縫', 'zh-CN': '袖中棉绒', en: 'QUILT', ko: '소매의 퀼트' } };
+    expect(isValidSongTitleConfig(valid)).toBe(true);
+    expect(isValidSongTitleConfig({ 袖のキルト: { ja: '袖のキルト' } })).toBe(false);
+    expect(isValidSongTitleConfig([])).toBe(false);
+
+    const invalidPool = poolWithRows();
+    await expect(
+      upsertGameConfig(invalidPool, 'card_song_titles_i18n', { value: { 袖のキルト: { ja: '袖のキルト' } } }),
+    ).resolves.toMatchObject({ ok: false, status: 400 });
+    expect(invalidPool.query).not.toHaveBeenCalled();
+
+    const pool = poolWithRows();
+    await expect(upsertGameConfig(pool, 'card_song_titles_i18n', { value: valid })).resolves.toMatchObject({
+      ok: true,
+    });
   });
 });
