@@ -98,4 +98,29 @@ describe('online session storage', () => {
     });
     expect(loadOnlineSession()).toEqual(session);
   });
+
+  it('restores the server-issued platform identity for legacy stored sessions', async () => {
+    const localStorage = createStorage();
+    vi.stubGlobal('window', { localStorage });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          platformSeatToken: 'seat-token-refreshed',
+          platformUserId: 'guest:match:bgio-match-1:reservation:abc',
+        }),
+      })),
+    );
+    const session: OnlineSession = {
+      matchID: 'bgio-match-1',
+      playerID: '0',
+      playerCredentials: 'credential-0',
+    };
+
+    await expect(validateOnlineSession(session)).resolves.toEqual({ ok: true });
+
+    expect(session.platformUserId).toBe('guest:match:bgio-match-1:reservation:abc');
+    expect(loadOnlineSession()).toEqual(session);
+  });
 });

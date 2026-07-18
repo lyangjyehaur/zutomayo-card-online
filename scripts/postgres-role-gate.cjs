@@ -28,6 +28,8 @@ const APPLICATION_TABLES = Object.freeze([
   'feedback_tags',
   'feedback_comment_reactions',
   'feedback_attachments',
+  'announcements',
+  'announcement_translations',
   'chat_conversations',
   'chat_messages',
   'chat_message_translations',

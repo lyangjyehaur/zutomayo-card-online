@@ -278,10 +278,10 @@ async function performConcurrentOnlineMoves(
   move0();
   move1();
   await waitForStates(
-    `${label} accepted update`,
+    `${label} accepted both updates`,
     client0,
     client1,
-    (next0, next1) => stateID(next0) > previousStateID && stateID(next0) === stateID(next1),
+    (next0, next1) => stateID(next0) >= previousStateID + 2 && stateID(next0) === stateID(next1),
   );
   return waitForAuthoritativeConsistency(label, matchID, client0, client1);
 }
@@ -421,30 +421,27 @@ function assertHiddenOpponentInfo(viewerState: NonNullable<ClientState>, opponen
   );
 }
 
-function assertVisibleDeckMatchesIds(
-  viewerState: NonNullable<ClientState>,
-  player: 0 | 1,
-  expectedIds: string[],
-): void {
-  const actualIds = [...viewerState.G.players[player].hand, ...viewerState.G.players[player].deck]
-    .map((card: CardInstance) => card.defId)
-    .sort();
+function assertOwnDeckView(viewerState: NonNullable<ClientState>, player: 0 | 1, expectedIds: string[]): void {
+  const playerState = viewerState.G.players[player];
+  assert.equal(playerState.hand.length + playerState.deck.length, expectedIds.length);
+  assert.ok(
+    playerState.hand.every((card: CardInstance) => card.defId !== '__hidden__'),
+    'own hand should be visible',
+  );
+  assert.ok(
+    playerState.deck.every((card: CardInstance) => card.defId === '__hidden__'),
+    'own deck order should be hidden',
+  );
+}
+
+function assertStoredDeckMatchesIds(stored: StoredState, player: 0 | 1, expectedIds: string[]): void {
+  const playerState = stored.G.players[player];
+  const actualIds = [...playerState.hand, ...playerState.deck].map((card) => card.defId).sort();
   assert.deepEqual(actualIds, [...expectedIds].sort());
 }
 
 async function runOnlineConsistencyScenario(): Promise<void> {
   const match = await startJoinedClients({ deck0Name: 'dark', deck1Name: 'flame' });
-  const resyncClients = async (label: string) => {
-    stopClient(match.client0);
-    stopClient(match.client1);
-    match.client0 = createBoardgameClient(match.matchID, '0', match.credentials0);
-    match.client1 = createBoardgameClient(match.matchID, '1', match.credentials1);
-    clients.push(match.client0, match.client1);
-    match.client0.start();
-    match.client1.start();
-    await waitForAuthoritativeConsistency(label, match.matchID, match.client0, match.client1);
-  };
-
   let stored = await performConcurrentOnlineMoves(
     'race janken',
     match.matchID,
@@ -453,21 +450,7 @@ async function runOnlineConsistencyScenario(): Promise<void> {
     () => match.client0.moves.janken('rock'),
     () => match.client1.moves.janken('scissors'),
   );
-  if (stored.G.step === 'janken') {
-    await resyncClients('resync after race janken');
-    stored = await fetchStoredState(match.matchID);
-    if (stored.G.jankenChoices[0] === null) {
-      await performOnlineMove('repair player0 janken', match.client0, match.client1, () =>
-        match.client0.moves.janken('rock'),
-      );
-    }
-    stored = await fetchStoredState(match.matchID);
-    if (stored.G.jankenChoices[1] === null) {
-      await performOnlineMove('repair player1 janken', match.client0, match.client1, () =>
-        match.client1.moves.janken('scissors'),
-      );
-    }
-  }
+  assert.equal(stored.G.step, 'mulligan', 'concurrent janken moves must both persist without repair');
   await waitForAuthoritativeConsistency('post-janken', match.matchID, match.client0, match.client1);
   await waitForStates(
     'mulligan after race janken',
@@ -484,21 +467,7 @@ async function runOnlineConsistencyScenario(): Promise<void> {
     () => match.client0.moves.keepHand(),
     () => match.client1.moves.keepHand(),
   );
-  if (stored.G.step === 'mulligan') {
-    await resyncClients('resync after race mulligan');
-    stored = await fetchStoredState(match.matchID);
-    if (!stored.G.mulliganUsed[0]) {
-      await performOnlineMove('repair player0 keepHand', match.client0, match.client1, () =>
-        match.client0.moves.keepHand(),
-      );
-    }
-    stored = await fetchStoredState(match.matchID);
-    if (!stored.G.mulliganUsed[1]) {
-      await performOnlineMove('repair player1 keepHand', match.client0, match.client1, () =>
-        match.client1.moves.keepHand(),
-      );
-    }
-  }
+  assert.equal(stored.G.step, 'initialSet', 'concurrent mulligan moves must both persist without repair');
   await waitForAuthoritativeConsistency('post-mulligan', match.matchID, match.client0, match.client1);
   await waitForStates(
     'initialSet after race mulligan',
@@ -515,21 +484,8 @@ async function runOnlineConsistencyScenario(): Promise<void> {
     () => match.client0.moves.setInitialCard(0),
     () => match.client1.moves.setInitialCard(0),
   );
-  if (!stored.G.players[0].battleZone || !stored.G.players[1].battleZone) {
-    await resyncClients('resync after race initial set');
-    stored = await fetchStoredState(match.matchID);
-  }
-  if (!stored.G.players[0].battleZone) {
-    await performOnlineMove('repair player0 initial set', match.client0, match.client1, () =>
-      match.client0.moves.setInitialCard(0),
-    );
-  }
-  stored = await fetchStoredState(match.matchID);
-  if (!stored.G.players[1].battleZone) {
-    await performOnlineMove('repair player1 initial set', match.client0, match.client1, () =>
-      match.client1.moves.setInitialCard(0),
-    );
-  }
+  assert.ok(stored.G.players[0].battleZone, 'player0 concurrent initial set must persist without repair');
+  assert.ok(stored.G.players[1].battleZone, 'player1 concurrent initial set must persist without repair');
 
   stored = await performConcurrentOnlineMoves(
     'race initial confirm',
@@ -539,21 +495,7 @@ async function runOnlineConsistencyScenario(): Promise<void> {
     () => match.client0.moves.confirmReady(),
     () => match.client1.moves.confirmReady(),
   );
-  if (stored.G.step === 'initialSet') {
-    await resyncClients('resync after race initial confirm');
-    stored = await fetchStoredState(match.matchID);
-    if (!stored.G.ready[0]) {
-      await performOnlineMove('repair player0 initial confirm', match.client0, match.client1, () =>
-        match.client0.moves.confirmReady(),
-      );
-    }
-    stored = await fetchStoredState(match.matchID);
-    if (!stored.G.ready[1]) {
-      await performOnlineMove('repair player1 initial confirm', match.client0, match.client1, () =>
-        match.client1.moves.confirmReady(),
-      );
-    }
-  }
+  assert.notEqual(stored.G.step, 'initialSet', 'concurrent initial confirmations must advance without repair');
   await drainPendingEffects(match.client0, match.client1);
   await waitForStates(
     'turnSet after race initial turn',
@@ -623,8 +565,11 @@ try {
     assert.equal(validateConstructedDeckIds(customDeck0Ids), null);
     assert.equal(validateConstructedDeckIds(customDeck1Ids), null);
     const customMatch = await startJoinedClients({ deck0Ids: customDeck0Ids, deck1Ids: customDeck1Ids });
-    assertVisibleDeckMatchesIds(customMatch.state0, 0, customDeck0Ids);
-    assertVisibleDeckMatchesIds(customMatch.state1, 1, customDeck1Ids);
+    const customStored = await fetchStoredState(customMatch.matchID);
+    assertStoredDeckMatchesIds(customStored, 0, customDeck0Ids);
+    assertStoredDeckMatchesIds(customStored, 1, customDeck1Ids);
+    assertOwnDeckView(customMatch.state0, 0, customDeck0Ids);
+    assertOwnDeckView(customMatch.state1, 1, customDeck1Ids);
     assertHiddenOpponentInfo(customMatch.state0, 1);
     assertHiddenOpponentInfo(customMatch.state1, 0);
     const customTurnSet = await playToTurnSet(customMatch.client0, customMatch.client1);

@@ -330,6 +330,12 @@ export const ko: Record<TranslationKey, string> = {
   'lobby.homeDeckCaption': '20장 덱을 구성해 시간으로 뒤바뀌는 전투에 대비',
   'lobby.homeLeaderboardCaption': '플레이어 순위와 ELO를 확인하고 현재 성적 추적',
   'lobby.homeHistoryCaption': '최근 대전 결과와 승패, 턴 기록을 다시 확인',
+  'announcement.title': '최신 공지',
+  'announcement.loading': '공지를 불러오는 중',
+  'announcement.empty': '현재 공지가 없습니다',
+  'community.title': '커뮤니티',
+  'community.caption': '공개 로비 채팅과 친구 메시지를 이용하세요',
+  'community.loginRequired': '공개 로비 채팅과 친구 메시지는 로그인 후 이용할 수 있습니다',
   'lobby.projectTitle': 'About ZUTOMAYO CARD ONLINE',
   'lobby.projectDescription':
     '플레이어가 운영하는 비공식 온라인 대전 프로젝트입니다. ZUTOMAYO CARD의 밤낮 전투와 덱 구성을 더 쉽게 즐기고 공유할 수 있도록 만들고 있습니다.',

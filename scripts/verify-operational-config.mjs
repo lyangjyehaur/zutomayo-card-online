@@ -329,6 +329,7 @@ export function validateOperationalConfig() {
     'ACCOUNT_EXPORT_S3_LIFECYCLE_CONFIRMED',
     'Public Access Block',
     's3:DeleteObjectVersion',
+    '000032_announcements',
     '000033_admin_linked_auth_contract',
     'LEGACY_TOMBSTONE_BACKFILL_APPROVED',
     'identity_anonymized_at IS NULL',

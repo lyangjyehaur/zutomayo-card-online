@@ -163,7 +163,7 @@ describe('PostgresAdapter state constraints', () => {
     expect(poolQuery).not.toHaveBeenCalled();
   });
 
-  it('does not let the idle watchdog roll back an active state write', async () => {
+  it('does not let the next-turn release roll back an active state write', async () => {
     vi.useFakeTimers();
     try {
       const schemaClient = mockClient();
@@ -187,7 +187,7 @@ describe('PostgresAdapter state constraints', () => {
       await adapter.fetch('match_1', { state: true });
       const writing = adapter.setState('match_1', stateWithID(1));
       await updateStarted.promise;
-      await vi.advanceTimersByTimeAsync(6_000);
+      await vi.runAllTimersAsync();
 
       expect(client.query.mock.calls.some(([sql]) => sql === 'ROLLBACK')).toBe(false);
       updateResult.resolve({ rows: [], rowCount: 1 });
@@ -199,7 +199,7 @@ describe('PostgresAdapter state constraints', () => {
     }
   });
 
-  it('uses a fresh transaction when the idle watchdog wins before setState', async () => {
+  it('uses a fresh transaction when the next-turn release wins before setState', async () => {
     vi.useFakeTimers();
     try {
       const schemaClient = mockClient();
@@ -228,7 +228,7 @@ describe('PostgresAdapter state constraints', () => {
       });
 
       await adapter.fetch('match_1', { state: true });
-      await vi.advanceTimersByTimeAsync(6_000);
+      await vi.runAllTimersAsync();
       await Promise.resolve();
 
       expect(retainedClient.query).toHaveBeenLastCalledWith('ROLLBACK');

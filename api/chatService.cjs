@@ -200,6 +200,10 @@ async function hasMatchChatAccess({ pool, userId, subjectId }) {
      FROM matches
      WHERE source_match_id = $1
        AND (player0_id = $2 OR player1_id = $2)
+     UNION
+     SELECT 1
+     FROM bjg_match_seats
+     WHERE match_id = $1 AND user_id = $2
      LIMIT 1`,
     [matchId, userId],
   );
@@ -218,6 +222,10 @@ async function matchChatParticipantRole({ pool, userId, subjectId }) {
      FROM matches
      WHERE source_match_id = $1
        AND (player0_id = $2 OR player1_id = $2)
+     UNION
+     SELECT 'player' AS role
+     FROM bjg_match_seats
+     WHERE match_id = $1 AND user_id = $2
     `,
     [matchId, userId],
   );
@@ -519,8 +527,12 @@ async function sendChatMessage({
   enforceMatchParticipation = false,
   enforceRoomParticipation = false,
   allowedAuthorRoles = PUBLIC_AUTHOR_ROLES,
+  allowPresenceOnlyUserId = false,
 }) {
-  if (!hasAccountBackedUserId(authorUserId)) return { ok: false, status: 401, error: 'Unauthorized' };
+  const accountBackedAuthor = hasAccountBackedUserId(authorUserId);
+  if (!accountBackedAuthor && !(allowPresenceOnlyUserId && isPresenceOnlyUserId(authorUserId))) {
+    return { ok: false, status: 401, error: 'Unauthorized' };
+  }
   const type = normalizeConversationType(body.conversationType);
   const subjectId = normalizeSubjectId(body.subjectId);
   const content = normalizeContent(body.content, sanitizeText);
@@ -529,13 +541,7 @@ async function sendChatMessage({
   if (!conversationKey(type, subjectId)) return { ok: false, status: 400, error: 'Invalid conversation' };
   if (!allowedAuthorRoles.includes(role)) return { ok: false, status: 403, error: 'Forbidden' };
   if (!content) return { ok: false, status: 400, error: 'Message content is required' };
-  const displayName = sanitizeText(body.authorDisplayName || '', 60);
-  const moderation = evaluateChatModeration(content, moderationRules);
-  const status = normalizeMessageStatus(moderation.status);
-  const metadata = body.clientMessageId
-    ? { clientMessageId: sanitizeText(body.clientMessageId, 120), transport: body.transport || 'api' }
-    : { transport: body.transport || 'api' };
-  return runAccountMutation(pool, conversationMutationUserIds(authorUserId, type, subjectId), async (client) => {
+  const writeMessage = async (client) => {
     const writableAuthorRole = await writableAuthorRoleWithPolicy({
       pool: client,
       userId: authorUserId,
@@ -549,7 +555,9 @@ async function sendChatMessage({
     if (!writableAuthorRole || !allowedAuthorRoles.includes(writableAuthorRole)) {
       return { ok: false, status: 403, error: 'Forbidden' };
     }
-    const activeSanction = await getActiveChatSanction({ pool: client, userId: authorUserId });
+    const activeSanction = accountBackedAuthor
+      ? await getActiveChatSanction({ pool: client, userId: authorUserId })
+      : null;
     if (activeSanction) {
       return {
         ok: false,
@@ -568,6 +576,14 @@ async function sendChatMessage({
     if (!conversation.ok) return conversation;
 
     const id = generateMessageId();
+    const displayName = sanitizeText(body.authorDisplayName || '', 60);
+    const moderation = evaluateChatModeration(content, moderationRules);
+    const status = normalizeMessageStatus(moderation.status);
+    const metadata = {
+      ...(body.clientMessageId ? { clientMessageId: sanitizeText(body.clientMessageId, 120) } : {}),
+      ...(!accountBackedAuthor ? { guestSeatUserId: authorUserId } : {}),
+      transport: body.transport || 'api',
+    };
     const { rows } = await client.query(
       `INSERT INTO chat_messages (
            id, conversation_id, author_user_id, author_display_name, author_role,
@@ -578,7 +594,7 @@ async function sendChatMessage({
       [
         id,
         conversation.body.id,
-        authorUserId,
+        accountBackedAuthor ? authorUserId : null,
         displayName,
         writableAuthorRole,
         content,
@@ -594,12 +610,14 @@ async function sendChatMessage({
       generateModerationEventId,
       messageId: id,
       conversationId: conversation.body.id,
-      actorUserId: authorUserId,
+      actorUserId: accountBackedAuthor ? authorUserId : null,
       moderation,
     });
     await client.query('UPDATE chat_conversations SET updated_at = NOW() WHERE id = $1', [conversation.body.id]);
     return { ok: true, body: { message: mapMessage(rows[0]), conversation: conversation.body } };
-  });
+  };
+  if (!accountBackedAuthor) return writeMessage(pool);
+  return runAccountMutation(pool, conversationMutationUserIds(authorUserId, type, subjectId), writeMessage);
 }
 
 async function listChatMessages({
@@ -612,8 +630,11 @@ async function listChatMessages({
   enforceDirectFriendship = false,
   enforceMatchParticipation = false,
   enforceRoomParticipation = false,
+  allowPresenceOnlyUserId = false,
 }) {
-  if (!hasAccountBackedUserId(userId)) return { ok: false, status: 401, error: 'Unauthorized' };
+  if (!hasAccountBackedUserId(userId) && !(allowPresenceOnlyUserId && isPresenceOnlyUserId(userId))) {
+    return { ok: false, status: 401, error: 'Unauthorized' };
+  }
   const key = conversationKey(conversationType, subjectId);
   if (!key) return { ok: false, status: 400, error: 'Invalid conversation' };
   if (
@@ -694,11 +715,32 @@ async function markConversationRead({
   enforceDirectFriendship = false,
   enforceMatchParticipation = false,
   enforceRoomParticipation = false,
+  allowPresenceOnlyUserId = false,
 }) {
-  if (!hasAccountBackedUserId(userId)) return { ok: false, status: 401, error: 'Unauthorized' };
+  if (!hasAccountBackedUserId(userId) && !(allowPresenceOnlyUserId && isPresenceOnlyUserId(userId))) {
+    return { ok: false, status: 401, error: 'Unauthorized' };
+  }
   const key = conversationKey(body.conversationType, body.subjectId);
   if (!key) return { ok: false, status: 400, error: 'Invalid conversation' };
   const lastReadMessageId = typeof body.lastReadMessageId === 'string' ? body.lastReadMessageId.slice(0, 80) : null;
+  if (!hasAccountBackedUserId(userId)) {
+    if (
+      !(await canAccessConversationWithPolicy({
+        pool,
+        userId,
+        type: body.conversationType,
+        subjectId: body.subjectId,
+        enforceDirectFriendship,
+        enforceMatchParticipation,
+        enforceRoomParticipation,
+      }))
+    ) {
+      return { ok: false, status: 403, error: 'Forbidden' };
+    }
+    // Presence-only guests have no users row, so chat_read_states cannot
+    // persist a foreign-key-backed cursor for them.
+    return { ok: true, body: { ok: true } };
+  }
   return runAccountMutation(
     pool,
     conversationMutationUserIds(userId, body.conversationType, body.subjectId),
@@ -737,8 +779,11 @@ async function listUnreadChat({
   enforceDirectFriendship = false,
   enforceMatchParticipation = false,
   enforceRoomParticipation = false,
+  allowPresenceOnlyUserId = false,
 }) {
-  if (!hasAccountBackedUserId(userId)) return { ok: false, status: 401, error: 'Unauthorized' };
+  if (!hasAccountBackedUserId(userId) && !(allowPresenceOnlyUserId && isPresenceOnlyUserId(userId))) {
+    return { ok: false, status: 401, error: 'Unauthorized' };
+  }
   const lim = clampLimit(limit, 50, 200);
   const encodedUserId = encodeURIComponent(userId);
   const directSubjectIds = enforceDirectFriendship ? await directFriendConversationSubjects({ pool, userId }) : [];
@@ -932,8 +977,11 @@ async function requestChatTranslation({
   enforceDirectFriendship = false,
   enforceMatchParticipation = false,
   enforceRoomParticipation = false,
+  allowPresenceOnlyUserId = false,
 }) {
-  if (!hasAccountBackedUserId(userId)) return { ok: false, status: 401, error: 'Unauthorized' };
+  if (!hasAccountBackedUserId(userId) && !(allowPresenceOnlyUserId && isPresenceOnlyUserId(userId))) {
+    return { ok: false, status: 401, error: 'Unauthorized' };
+  }
   const cleanMessageId = typeof messageId === 'string' ? messageId.slice(0, 80) : '';
   const targetLanguage = normalizeLanguage(body.targetLanguage);
   if (!cleanMessageId || !targetLanguage) return { ok: false, status: 400, error: 'Invalid translation request' };
@@ -959,8 +1007,8 @@ async function requestChatTranslation({
     )
   ).rows[0];
   if (!message) return { ok: false, status: 404, error: 'Message not found' };
-  if (!hasAccountBackedUserId(message.author_user_id)) {
-    return { ok: false, status: 404, error: 'Message not found' };
+  if (isPresenceOnlyUserId(userId) && message.type !== 'match') {
+    return { ok: false, status: 403, error: 'Forbidden' };
   }
   if (
     !(await canAccessConversationWithPolicy({
@@ -1032,6 +1080,9 @@ async function requestChatTranslation({
       text: message.content,
       sourceLanguage,
       targetLanguage,
+      purpose: 'chat',
+      resourceType: 'chat_message',
+      resourceId: cleanMessageId,
       messageId: cleanMessageId,
       conversationId: message.conversation_id,
     });

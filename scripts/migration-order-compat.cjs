@@ -47,6 +47,7 @@ const CANONICAL_CARD_MIGRATIONS = Object.freeze([
   '000029_card_official_errata',
   '000030_card_official_errata_english_source',
 ]);
+const ANNOUNCEMENTS_MIGRATION = '000032_announcements';
 
 const KNOWN_OUT_OF_ORDER_HISTORY = new Set([
   ...PRE_CARD_HARDENING_BASELINE,
@@ -55,6 +56,7 @@ const KNOWN_OUT_OF_ORDER_HISTORY = new Set([
   ...CANONICAL_CARD_MIGRATIONS,
   LEGACY_OFFICIAL_CARD_DATA_MIGRATION,
   '000031_user_linked_admins',
+  ANNOUNCEMENTS_MIGRATION,
   '000032_official_card_data_releases',
   '000033_admin_linked_auth_contract',
 ]);
@@ -77,8 +79,10 @@ function migrationIgnorePatternForApplied(appliedNames) {
  * `000028`-`000030` shipped on master before deferred hardening assigned
  * `000019`-`000027`. A database that followed that exact lineage must apply
  * the missing hardening migrations once, even though their numbers precede
- * an already-applied card migration. Every other lineage remains ordered and
- * fail-closed.
+ * an already-applied card migration. Master later shipped announcements as
+ * `000032_announcements`; existing P0-P5 histories may likewise need to apply
+ * that file after `000032_official_card_data_releases`/`000033`. These two
+ * reviewed lineages are normalized once; every other lineage fails closed.
  */
 function migrationOrderPolicyForApplied(appliedNames) {
   const names = Array.isArray(appliedNames) ? appliedNames.map(String) : [];
@@ -87,9 +91,12 @@ function migrationOrderPolicyForApplied(appliedNames) {
   const appliedCanonical = CANONICAL_CARD_MIGRATIONS.filter((name) => applied.has(name));
   const missingHardening = DEFERRED_HARDENING_MIGRATIONS.filter((name) => !applied.has(name));
   const firstCanonicalIndex = names.findIndex((name) => CANONICAL_CARD_MIGRATIONS.includes(name));
+  const requiresAnnouncementBackfill =
+    !applied.has(ANNOUNCEMENTS_MIGRATION) && names.some((name) => name.localeCompare(ANNOUNCEMENTS_MIGRATION) > 0);
   const requiresOrderNormalization =
-    firstCanonicalIndex >= 0 &&
-    names.some((name, index) => index > firstCanonicalIndex && DEFERRED_HARDENING_MIGRATIONS.includes(name));
+    requiresAnnouncementBackfill ||
+    (firstCanonicalIndex >= 0 &&
+      names.some((name, index) => index > firstCanonicalIndex && DEFERRED_HARDENING_MIGRATIONS.includes(name)));
 
   if (appliedCanonical.length === 0 || (missingHardening.length === 0 && !requiresOrderNormalization)) {
     return { ignorePattern, checkOrder: true, outOfOrderBackfill: [], normalizeOrder: false };
@@ -177,6 +184,7 @@ async function listAppliedMigrationNames(pool) {
 }
 
 module.exports = {
+  ANNOUNCEMENTS_MIGRATION,
   CANONICAL_CARD_MIGRATIONS,
   DEFAULT_MIGRATION_IGNORE_PATTERN,
   DEFERRED_HARDENING_MIGRATIONS,

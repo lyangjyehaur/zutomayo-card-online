@@ -93,42 +93,47 @@ describe('online lobby platform boundary', () => {
     expect(onlineGamePageSource).not.toContain('match:${activeSession.matchID}:player');
   });
 
+  it('keeps account-only moderation controls hidden from guest match chat', () => {
+    const onlineGameSource = readRepoFile('src/components/OnlineGame.tsx');
+
+    expect(onlineGameSource).toContain('chatAccount && message.persisted && !message.self');
+  });
+
   it('opens unread match chats through durable history chat instead of live spectator fallback', () => {
-    const lobbySource = readRepoFile('src/pages/OnlineLobbyPage.tsx');
+    const communitySource = readRepoFile('src/pages/CommunityPage.tsx');
     const historyPageSource = readRepoFile('src/pages/MatchHistoryPage.tsx');
     const historySource = readRepoFile('src/components/MatchHistory.tsx');
 
-    expect(lobbySource).toContain('buildMatchHistoryChatPath(action.subjectId)');
-    expect(lobbySource).not.toContain('navigate(buildOnlineSpectatorPath(action.subjectId))');
+    expect(communitySource).toContain('buildMatchHistoryChatPath(action.subjectId)');
+    expect(communitySource).not.toContain('navigate(buildOnlineSpectatorPath(action.subjectId))');
     expect(historyPageSource).toContain("new URLSearchParams(location.search).get('chat')");
     expect(historySource).toContain('initialChatSourceMatchId');
     expect(historySource).toContain('resolveInitialHistoryChatRecord');
     expect(historySource).toContain('resolveInitialHistoryChatRecord(records, initialChatSourceMatchId)');
   });
 
-  it('reopens non-match unread chats through durable lobby chat surfaces', () => {
+  it('moves durable social chat and unread navigation out of the matchmaking page', () => {
     const lobbySource = readRepoFile('src/pages/OnlineLobbyPage.tsx');
-    const openUnreadStart = lobbySource.indexOf('const openUnreadConversation =');
-    const openUnreadEnd = lobbySource.indexOf('const openFriendChat =');
-    const openUnreadSource = lobbySource.slice(openUnreadStart, openUnreadEnd);
+    const communitySource = readRepoFile('src/pages/CommunityPage.tsx');
+    const openUnreadStart = communitySource.indexOf('const openUnreadConversation =');
+    const openUnreadEnd = communitySource.indexOf('const handleSend =');
+    const openUnreadSource = communitySource.slice(openUnreadStart, openUnreadEnd);
 
     expect(openUnreadStart).toBeGreaterThan(-1);
     expect(openUnreadEnd).toBeGreaterThan(openUnreadStart);
     expect(openUnreadSource).toContain("if (action.kind === 'room')");
-    expect(openUnreadSource).toContain('setRoomChatSubjectOverride(action.subjectId)');
-    expect(openUnreadSource).toContain('setMatchID(action.subjectId)');
-    expect(openUnreadSource).toContain('scrollToPanel(customRoomPanelRef)');
+    expect(openUnreadSource).toContain('navigate(`/online?room=${encodeURIComponent(action.subjectId)}`)');
     expect(openUnreadSource).toContain("if (action.kind === 'global')");
-    expect(openUnreadSource).toContain("conversationType: 'global'");
-    expect(openUnreadSource).toContain('lastReadMessageId: unreadConversationLatestMessageId(conversation)');
-    expect(openUnreadSource).toContain("if (action.kind === 'direct')");
-    expect(openUnreadSource).toContain('setDirectChat({ subjectId: action.subjectId');
-    expect(openUnreadSource).toContain('scrollToPanel(directChatPanelRef)');
+    expect(openUnreadSource).toContain("setView('global')");
+    expect(openUnreadSource).toContain("setView('direct')");
+    expect(communitySource).toContain("const conversationType = view === 'global' ? 'global' : 'direct'");
+    expect(lobbySource).not.toContain("conversationType: 'global'");
+    expect(lobbySource).not.toContain("conversationType: 'direct'");
   });
 
   it('emits match chat previews only after durable REST persistence and without message content', () => {
     const onlineGameSource = readRepoFile('src/components/OnlineGame.tsx');
-    const sendIndex = onlineGameSource.indexOf('const result = await sendChatMessage({');
+    const sendIndex = onlineGameSource.indexOf('const result = await sendChatMessage(');
     const previewIndex = onlineGameSource.indexOf("platformRoomRef.current?.send('chatPreview', {");
     const previewSnippet = onlineGameSource.slice(previewIndex, previewIndex + 260);
 

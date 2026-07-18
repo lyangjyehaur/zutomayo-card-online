@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 const require_ = createRequire(import.meta.url);
 const {
+  ANNOUNCEMENTS_MIGRATION,
   CANONICAL_CARD_MIGRATIONS,
   DEFAULT_MIGRATION_IGNORE_PATTERN,
   DEFERRED_HARDENING_MIGRATIONS,
@@ -18,6 +19,7 @@ const {
   migrationOrderPolicyForApplied,
   normalizeAppliedMigrationOrder,
 } = require_('../migration-order-compat.cjs') as {
+  ANNOUNCEMENTS_MIGRATION: string;
   CANONICAL_CARD_MIGRATIONS: string[];
   DEFAULT_MIGRATION_IGNORE_PATTERN: string;
   DEFERRED_HARDENING_MIGRATIONS: string[];
@@ -117,6 +119,34 @@ describe('migration order compatibility', () => {
     expect(query.mock.calls[0]?.[0]).toContain('ROW_NUMBER() OVER (ORDER BY name)');
     expect(query.mock.calls[0]?.[0]).toContain("INTERVAL '1 microsecond'");
     expect(query.mock.calls[0]?.[0]).toContain("pg_get_serial_sequence('public.schema_migrations', 'id')");
+  });
+
+  it('accepts the reviewed master announcements history while backfilling deferred hardening', () => {
+    const policy = migrationOrderPolicyForApplied([
+      ...PRE_CARD_HARDENING_BASELINE,
+      ...CANONICAL_CARD_MIGRATIONS,
+      ANNOUNCEMENTS_MIGRATION,
+    ]);
+
+    expect(policy).toEqual({
+      ignorePattern: DEFAULT_MIGRATION_IGNORE_PATTERN,
+      checkOrder: false,
+      outOfOrderBackfill: DEFERRED_HARDENING_MIGRATIONS,
+      normalizeOrder: true,
+    });
+  });
+
+  it('backfills announcements once into an existing completed P0-P5 history', () => {
+    const policy = migrationOrderPolicyForApplied([
+      ...PRE_CARD_HARDENING_BASELINE,
+      ...DEFERRED_HARDENING_MIGRATIONS,
+      ...CANONICAL_CARD_MIGRATIONS,
+      '000031_user_linked_admins',
+      '000032_official_card_data_releases',
+      '000033_admin_linked_auth_contract',
+    ]);
+
+    expect(policy).toMatchObject({ checkOrder: false, outOfOrderBackfill: [], normalizeOrder: true });
   });
 
   it('rejects incomplete, non-prefix, and unknown card-first histories', () => {

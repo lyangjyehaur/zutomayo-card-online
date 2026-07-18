@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Client, type BoardProps } from 'boardgame.io/react';
 import { SocketIO } from 'boardgame.io/multiplayer';
 import { onlineSocketOptions } from '../onlineSocketConfig';
@@ -21,6 +21,7 @@ import {
   type ChatAuthorRole,
   type ChatMessageTranslation,
   type ChatMessage,
+  type MatchChatAccess,
   type ProfileResponse,
 } from '../api/client';
 import {
@@ -35,7 +36,8 @@ import {
   type OnlineStateMismatchReason,
   type OnlineStateSnapshot,
 } from '../onlineStateGuard';
-import { type PlatformMatchShellPresence, type PlatformMatchShellRoom } from '../platformClient';
+import { didOnlineStateAdvance, ONLINE_MOVE_ACK_TIMEOUT_MS, shouldTrackOnlineMove } from '../onlineMoveAck';
+import type { PlatformMatchShellRoom } from '../platformClient';
 import {
   connectPlatformMatchShellWithRetry,
   type PlatformMatchShellConnectionState,
@@ -59,7 +61,6 @@ interface OnlineGameProps {
 type ConnectionStatus = 'reconnecting' | 'disconnected' | 'rejoined' | null;
 
 type MatchDataMember = { id: number; name?: string } | undefined;
-type PlatformShellStatus = (PlatformMatchShellPresence & { connected: boolean }) | null;
 type ChatStatus = 'loading' | 'ready' | 'unavailable' | 'login_required' | 'sending';
 type OnlineChatEntry = {
   id: string;
@@ -94,6 +95,7 @@ function chatTimeLabel(createdAt: string): string {
 
 function mapChatMessage(message: ChatMessage, localUserId: string, localDisplayName: string): OnlineChatEntry {
   const sameUser = Boolean(localUserId && message.authorUserId === localUserId);
+  const sameGuest = Boolean(localUserId && message.metadata.guestSeatUserId === localUserId);
   const sameDisplayName = Boolean(!localUserId && localDisplayName && message.authorDisplayName === localDisplayName);
   return {
     id: message.id,
@@ -102,7 +104,7 @@ function mapChatMessage(message: ChatMessage, localUserId: string, localDisplayN
     content: message.content,
     createdAt: message.createdAt,
     persisted: true,
-    self: sameUser || sameDisplayName,
+    self: sameUser || sameGuest || sameDisplayName,
   };
 }
 
@@ -141,12 +143,37 @@ function OnlineBoard(
     onConnectionStatusChange: (isConnected: boolean) => void;
     onOpponentDetected: () => void;
     onStateMismatch: (reason: OnlineStateMismatchReason) => void;
+    onMoveSubmitted: (moveName: string, stateID: number | undefined) => void;
+    onStateObserved: (stateID: number) => void;
     onExitRequest: () => void;
   },
 ) {
-  const { gameOverActions, spectator, onConnectionStatusChange, onOpponentDetected, onStateMismatch, ...boardProps } =
-    props;
+  const {
+    gameOverActions,
+    spectator,
+    onConnectionStatusChange,
+    onOpponentDetected,
+    onStateMismatch,
+    onMoveSubmitted,
+    onStateObserved,
+    moves,
+    _stateID,
+    ...boardProps
+  } = props;
   const lastSnapshot = useRef<OnlineStateSnapshot | null>(null);
+  const trackedMoves = useMemo(
+    () =>
+      Object.fromEntries(
+        Object.entries(moves).map(([name, move]) => [
+          name,
+          (...args: unknown[]) => {
+            onMoveSubmitted(name, _stateID);
+            return (move as (...moveArgs: unknown[]) => unknown)(...args);
+          },
+        ]),
+      ) as typeof moves,
+    [_stateID, moves, onMoveSubmitted],
+  );
 
   useEffect(() => {
     onConnectionStatusChange(props.isConnected);
@@ -154,6 +181,7 @@ function OnlineBoard(
 
   useEffect(() => {
     if (typeof props._stateID !== 'number' || !props.G || !props.ctx) return;
+    onStateObserved(props._stateID);
     // 同步 game_phase tag 到 Sentry，便於後台依遊戲階段篩選錯誤。
     if (props.G.step) {
       Sentry.setTag('game_phase', props.G.step);
@@ -170,7 +198,7 @@ function OnlineBoard(
       return;
     }
     lastSnapshot.current = result.snapshot;
-  }, [props._stateID, props.G, props.ctx, onStateMismatch]);
+  }, [props._stateID, props.G, props.ctx, onStateMismatch, onStateObserved]);
 
   // P2-13：改用 Socket.IO 推送的 matchData 變化偵測對手加入，取代 HTTP 輪詢。
   // boardgame.io client 連線後，當第二個玩家 join 時 server 會推送 matchData 更新。
@@ -182,7 +210,16 @@ function OnlineBoard(
   }, [props.matchData, onOpponentDetected]);
 
   // P3-16：線上模式啟用伺服器權威計時器（G.turnStartTime + timeoutSkip move）。
-  return <Board {...boardProps} gameOverActions={gameOverActions} spectator={spectator} useServerTimer />;
+  return (
+    <Board
+      {...boardProps}
+      _stateID={_stateID}
+      moves={trackedMoves}
+      gameOverActions={gameOverActions}
+      spectator={spectator}
+      useServerTimer
+    />
+  );
 }
 
 export function OnlineGame({
@@ -203,6 +240,9 @@ export function OnlineGame({
   const connectedOnce = useRef(false);
   const statusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const resyncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const moveAckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestStateIDRef = useRef<number | null>(null);
+  const pendingMoveRef = useRef<{ moveName: string; stateID: number } | null>(null);
   const onReturnToLobbyRef = useRef(onReturnToLobby);
   const onCreateNewRoomRef = useRef(onCreateNewRoom);
   const onLeaveRequestRef = useRef(onLeaveRequest);
@@ -212,7 +252,6 @@ export function OnlineGame({
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('reconnecting');
   const [clientSyncNonce, setClientSyncNonce] = useState(0);
   const [resyncingState, setResyncingState] = useState(false);
-  const [platformShellStatus, setPlatformShellStatus] = useState<PlatformShellStatus>(null);
   const [platformShellConnectionState, setPlatformShellConnectionState] =
     useState<PlatformMatchShellConnectionState>('connecting');
   const [platformShellEvidenceReady, setPlatformShellEvidenceReady] = useState(false);
@@ -226,7 +265,14 @@ export function OnlineGame({
   const [chatAccountLoaded, setChatAccountLoaded] = useState(false);
   const fallbackDisplayName = participantDisplayName(playerID, spectator);
   const chatDisplayName = chatAccount?.nickname || platformDisplayName || fallbackDisplayName;
-  const chatUserId = chatAccount?.id || '';
+  const hasPlayerSeat = !spectator && (playerID === '0' || playerID === '1') && Boolean(playerCredentials);
+  const matchAccess = useMemo<MatchChatAccess | undefined>(
+    () =>
+      hasPlayerSeat
+        ? { matchID, playerID: playerID as string, playerCredentials: playerCredentials as string }
+        : undefined,
+    [hasPlayerSeat, matchID, playerCredentials, playerID],
+  );
   const localPlatformUserId =
     platformUserId && !spectator
       ? platformUserId
@@ -237,6 +283,7 @@ export function OnlineGame({
           spectator,
           anonymousToken: spectatorPlatformUserId.current,
         });
+  const chatUserId = chatAccount?.id || localPlatformUserId;
 
   // 線上對戰模式標記，便於 Sentry 後台區分錯誤來源模式。
   useEffect(() => {
@@ -251,9 +298,18 @@ export function OnlineGame({
     () => () => {
       if (statusTimer.current) clearTimeout(statusTimer.current);
       if (resyncTimer.current) clearTimeout(resyncTimer.current);
+      if (moveAckTimer.current) clearTimeout(moveAckTimer.current);
     },
     [],
   );
+
+  useEffect(() => {
+    pendingMoveRef.current = null;
+    latestStateIDRef.current = null;
+    if (moveAckTimer.current) clearTimeout(moveAckTimer.current);
+    moveAckTimer.current = null;
+    connectedOnce.current = false;
+  }, [matchID]);
 
   useEffect(() => {
     onReturnToLobbyRef.current = onReturnToLobby;
@@ -312,11 +368,16 @@ export function OnlineGame({
   }, []);
 
   const loadMatchChatEntries = useCallback(async (): Promise<OnlineChatEntry[]> => {
-    const messages = await fetchChatMessages({ conversationType: 'match', subjectId: matchID, limit: 50 });
+    const messages = await fetchChatMessages({
+      conversationType: 'match',
+      subjectId: matchID,
+      limit: 50,
+      matchAccess,
+    });
     return messages
       .filter((message) => canShowChatMessage(message))
       .map((message) => mapChatMessage(message, chatUserId, chatDisplayName));
-  }, [chatDisplayName, chatUserId, matchID]);
+  }, [chatDisplayName, chatUserId, matchAccess, matchID]);
 
   useEffect(() => {
     let cancelled = false;
@@ -324,7 +385,7 @@ export function OnlineGame({
     setChatMessages([]);
     setReportedMessageIds(new Set());
 
-    const accessStatus = matchChatAccessStatus(chatAccountLoaded, chatAccount);
+    const accessStatus = matchChatAccessStatus(chatAccountLoaded, chatAccount, hasPlayerSeat);
     if (accessStatus === 'loading') {
       return () => {
         cancelled = true;
@@ -368,6 +429,7 @@ export function OnlineGame({
   }, [
     chatAccount,
     chatAccountLoaded,
+    hasPlayerSeat,
     loadMatchChatEntries,
     matchID,
     platformShellEvidenceReady,
@@ -375,7 +437,7 @@ export function OnlineGame({
   ]);
 
   useEffect(() => {
-    if (chatStatus !== 'ready') return;
+    if (chatStatus !== 'ready' || !chatAccount) return;
     const latestPersisted = [...chatMessages].reverse().find((message) => message.persisted);
     if (!latestPersisted) return;
     void markChatRead({
@@ -383,7 +445,7 @@ export function OnlineGame({
       subjectId: matchID,
       lastReadMessageId: latestPersisted.id,
     }).catch(() => undefined);
-  }, [chatMessages, chatStatus, matchID]);
+  }, [chatAccount, chatMessages, chatStatus, matchID]);
 
   useEffect(() => {
     if (!chatAccountLoaded) return;
@@ -408,16 +470,14 @@ export function OnlineGame({
         onRoomChange: (nextRoom) => {
           if (!cancelled) platformRoomRef.current = nextRoom;
         },
-        onPresence: (presence) => {
+        onPresence: () => {
           if (!cancelled) {
-            setPlatformShellStatus({ ...presence, connected: true });
             setPlatformShellEvidenceReady(true);
             setPlatformShellUnavailable(false);
           }
         },
         onChatPreview: () => {
           if (cancelled) return;
-          if (!chatAccount) return;
           void loadMatchChatEntries().then(
             (entries) => {
               if (!cancelled) setChatMessages(entries);
@@ -434,7 +494,6 @@ export function OnlineGame({
         },
         onDisconnect: () => {
           if (!cancelled) {
-            setPlatformShellStatus(null);
             setPlatformShellEvidenceReady(false);
           }
         },
@@ -446,7 +505,6 @@ export function OnlineGame({
             data: { match_id: matchID, error: err instanceof Error ? err.message : String(err) },
           });
           if (!cancelled) {
-            setPlatformShellStatus(null);
             setPlatformShellUnavailable(true);
           }
         },
@@ -456,7 +514,6 @@ export function OnlineGame({
     return () => {
       cancelled = true;
       platformRoomRef.current = null;
-      setPlatformShellStatus(null);
       setPlatformShellConnectionState('stopped');
       setPlatformShellEvidenceReady(false);
       setPlatformShellUnavailable(false);
@@ -516,28 +573,63 @@ export function OnlineGame({
     [flashRejoined, matchID, showRejoinedStatus],
   );
 
+  const rebuildOnlineClient = useCallback(() => {
+    pendingMoveRef.current = null;
+    if (moveAckTimer.current) clearTimeout(moveAckTimer.current);
+    moveAckTimer.current = null;
+    if (statusTimer.current) clearTimeout(statusTimer.current);
+    if (resyncTimer.current) clearTimeout(resyncTimer.current);
+    setConnectionStatus('reconnecting');
+    setResyncingState(true);
+    setClientSyncNonce((nonce) => nonce + 1);
+    resyncTimer.current = setTimeout(() => setResyncingState(false), 5000);
+  }, []);
+
   const handleStateMismatch = useCallback(
     (reason: OnlineStateMismatchReason) => {
       console.warn(`[online-sync] detected ${reason}; rebuilding client to resync authoritative state`);
       Sentry.captureException(new Error(`Online state mismatch: ${reason}`), {
         tags: { layer: 'online-sync', reason, match_id: matchID },
       });
-      if (statusTimer.current) clearTimeout(statusTimer.current);
-      if (resyncTimer.current) clearTimeout(resyncTimer.current);
-      setConnectionStatus('reconnecting');
-      setResyncingState(true);
-      setClientSyncNonce((nonce) => nonce + 1);
-      resyncTimer.current = setTimeout(() => setResyncingState(false), 5000);
+      rebuildOnlineClient();
     },
-    [matchID],
+    [matchID, rebuildOnlineClient],
+  );
+
+  const handleStateObserved = useCallback((stateID: number) => {
+    latestStateIDRef.current = stateID;
+    const pending = pendingMoveRef.current;
+    if (!pending || !didOnlineStateAdvance(pending.stateID, stateID)) return;
+    pendingMoveRef.current = null;
+    if (moveAckTimer.current) clearTimeout(moveAckTimer.current);
+    moveAckTimer.current = null;
+  }, []);
+
+  const handleMoveSubmitted = useCallback(
+    (moveName: string, stateID: number | undefined) => {
+      if (!shouldTrackOnlineMove(moveName) || typeof stateID !== 'number') return;
+      pendingMoveRef.current = { moveName, stateID };
+      if (moveAckTimer.current) clearTimeout(moveAckTimer.current);
+      moveAckTimer.current = setTimeout(() => {
+        const pending = pendingMoveRef.current;
+        if (!pending || didOnlineStateAdvance(pending.stateID, latestStateIDRef.current)) return;
+        pendingMoveRef.current = null;
+        Sentry.captureException(new Error(`Online move acknowledgement timed out: ${pending.moveName}`), {
+          tags: { layer: 'online-sync', reason: 'move-ack-timeout', move: pending.moveName, match_id: matchID },
+          extra: { submittedStateID: pending.stateID, observedStateID: latestStateIDRef.current },
+        });
+        rebuildOnlineClient();
+      }, ONLINE_MOVE_ACK_TIMEOUT_MS);
+    },
+    [matchID, rebuildOnlineClient],
   );
 
   const handleChatSubmit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
       const content = chatDraft.trim();
-      if (!canSubmitMatchChat({ account: chatAccount, content, status: chatStatus })) return;
-      const authorRole = matchChatAuthorRole(chatAccount, spectator);
+      if (!canSubmitMatchChat({ account: chatAccount, hasPlayerSeat, content, status: chatStatus })) return;
+      const authorRole = matchChatAuthorRole(chatAccount, spectator, hasPlayerSeat);
       if (!authorRole) {
         setChatStatus('login_required');
         return;
@@ -545,14 +637,17 @@ export function OnlineGame({
 
       setChatStatus('sending');
       try {
-        const result = await sendChatMessage({
-          conversationType: 'match',
-          subjectId: matchID,
-          content,
-          authorDisplayName: chatDisplayName,
-          authorRole,
-          clientMessageId: `client:${Date.now()}:${Math.random().toString(36).slice(2)}`,
-        });
+        const result = await sendChatMessage(
+          {
+            conversationType: 'match',
+            subjectId: matchID,
+            content,
+            authorDisplayName: chatDisplayName,
+            authorRole,
+            clientMessageId: `client:${Date.now()}:${Math.random().toString(36).slice(2)}`,
+          },
+          matchAccess,
+        );
         if (canShowChatMessage(result.message)) {
           appendChatEntry(mapChatMessage(result.message, chatUserId, chatDisplayName));
         }
@@ -574,7 +669,18 @@ export function OnlineGame({
         setChatStatus(err instanceof ApiError && err.status === 401 ? 'login_required' : 'ready');
       }
     },
-    [appendChatEntry, chatAccount, chatDisplayName, chatDraft, chatStatus, chatUserId, matchID, spectator],
+    [
+      appendChatEntry,
+      chatAccount,
+      chatDisplayName,
+      chatDraft,
+      chatStatus,
+      chatUserId,
+      hasPlayerSeat,
+      matchAccess,
+      matchID,
+      spectator,
+    ],
   );
 
   const handleChatReport = useCallback(
@@ -606,7 +712,7 @@ export function OnlineGame({
       const targetLanguage = locale.toLowerCase();
       applyChatTranslation(message.id, { status: 'loading', targetLanguage });
       try {
-        const result = await requestChatTranslation(message.id, targetLanguage);
+        const result = await requestChatTranslation(message.id, targetLanguage, matchAccess);
         applyChatTranslation(message.id, {
           status: result.translation.status,
           targetLanguage: result.translation.targetLanguage,
@@ -622,34 +728,56 @@ export function OnlineGame({
         });
       }
     },
-    [applyChatTranslation, locale, matchID],
+    [applyChatTranslation, locale, matchAccess, matchID],
   );
+
+  const onlineBoardRuntimeRef = useRef({
+    spectator,
+    handleConnectionStatusChange,
+    handleOpponentDetected,
+    handleStateMismatch,
+    handleMoveSubmitted,
+    handleStateObserved,
+  });
+  onlineBoardRuntimeRef.current = {
+    spectator,
+    handleConnectionStatusChange,
+    handleOpponentDetected,
+    handleStateMismatch,
+    handleMoveSubmitted,
+    handleStateObserved,
+  };
 
   const [OnlineClient] = useState(() =>
     Client({
       game: ZutomayoCard,
-      board: (props: BoardProps<GameState>) => (
-        <OnlineBoard
-          {...props}
-          gameOverActions={{
-            helperText: t('online.gameOverHelper'),
-            primary: {
-              label: t('common.backToLobby'),
-              onClick: () => onReturnToLobbyRef.current(),
-            },
-            secondary: {
-              label: t('online.createNewRoom'),
-              onClick: () => onCreateNewRoomRef.current(),
-              variant: 'secondary',
-            },
-          }}
-          spectator={spectator}
-          onConnectionStatusChange={handleConnectionStatusChange}
-          onOpponentDetected={handleOpponentDetected}
-          onStateMismatch={handleStateMismatch}
-          onExitRequest={() => onLeaveRequestRef.current()}
-        />
-      ),
+      board: (props: BoardProps<GameState>) => {
+        const runtime = onlineBoardRuntimeRef.current;
+        return (
+          <OnlineBoard
+            {...props}
+            gameOverActions={{
+              helperText: t('online.gameOverHelper'),
+              primary: {
+                label: t('common.backToLobby'),
+                onClick: () => onReturnToLobbyRef.current(),
+              },
+              secondary: {
+                label: t('online.createNewRoom'),
+                onClick: () => onCreateNewRoomRef.current(),
+                variant: 'secondary',
+              },
+            }}
+            spectator={runtime.spectator}
+            onConnectionStatusChange={runtime.handleConnectionStatusChange}
+            onOpponentDetected={runtime.handleOpponentDetected}
+            onStateMismatch={runtime.handleStateMismatch}
+            onMoveSubmitted={runtime.handleMoveSubmitted}
+            onStateObserved={runtime.handleStateObserved}
+            onExitRequest={() => onLeaveRequestRef.current()}
+          />
+        );
+      },
       loading: OnlineLoading,
       numPlayers: 2,
       multiplayer: SocketIO({ server: window.location.origin, socketOpts: onlineSocketOptions() }),
@@ -676,17 +804,6 @@ export function OnlineGame({
               : visibleConnectionStatus === 'disconnected'
                 ? t('onlineSession.disconnectedRetrying')
                 : t('onlineSession.reconnecting')}
-          </span>
-        </div>
-      )}
-      {platformShellStatus && (
-        <div className="absolute left-6 top-1.5 z-[var(--z-modal)]">
-          <span
-            className="online-platform-status font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70"
-            aria-label={`Platform room connected, ${platformShellStatus.players} players, ${platformShellStatus.spectators} spectators`}
-            data-platform-connection-status="connected"
-          >
-            P {platformShellStatus.players} / S {platformShellStatus.spectators}
           </span>
         </div>
       )}
@@ -739,7 +856,7 @@ export function OnlineGame({
                             onClick={() => void handleChatTranslate(message)}
                           />
                         )}
-                        {message.persisted && !message.self && (
+                        {chatAccount && message.persisted && !message.self && (
                           <IconButton
                             label={reportedMessageIds.has(message.id) ? t('chat.matchReported') : t('chat.matchReport')}
                             icon={<Flag className="size-3" aria-hidden="true" />}

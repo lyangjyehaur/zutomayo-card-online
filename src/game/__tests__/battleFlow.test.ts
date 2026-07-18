@@ -128,8 +128,10 @@ describe('online inactivity recovery', () => {
       { allowBrowserCustomDeckName: true, allowSkipShuffle: true },
     );
     const parsedEffects = parseAllEffects([]);
+    G.interactionStartTime = Date.now() - TURN_TIMER_MS - 10_000;
     expect(chooseJanken(G, 0, 'paper')).toBe(true);
     expect(getPlayersAwaitingAction(G)).toEqual([1]);
+    expect(Date.now() - G.interactionStartTime).toBeLessThan(1_000);
     expect(timeoutAdvance(G, 1, parsedEffects)).toBe(false);
     expireInteraction(G);
     const random = vi.spyOn(Math, 'random').mockReturnValueOnce(0);

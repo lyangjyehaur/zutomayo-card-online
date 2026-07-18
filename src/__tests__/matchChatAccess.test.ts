@@ -7,25 +7,30 @@ import {
 } from '../chat/matchChatAccess';
 
 describe('match chat access', () => {
-  it('keeps anonymous spectators in login-required state for durable chat', () => {
-    expect(matchChatAccessStatus(false, null)).toBe('loading');
-    expect(matchChatAccessStatus(true, null)).toBe('login_required');
-    expect(matchChatAuthorRole(null, true)).toBeNull();
-    expect(canSubmitMatchChat({ account: null, content: 'hello', status: 'ready' })).toBe(false);
+  it('allows anonymous seated players but keeps anonymous spectators login-required', () => {
+    expect(matchChatAccessStatus(false, null, true)).toBe('loading');
+    expect(matchChatAccessStatus(true, null, false)).toBe('login_required');
+    expect(matchChatAccessStatus(true, null, true)).toBe('ready');
+    expect(matchChatAuthorRole(null, true, false)).toBeNull();
+    expect(matchChatAuthorRole(null, false, true)).toBe('player');
+    expect(canSubmitMatchChat({ account: null, hasPlayerSeat: true, content: 'hello', status: 'ready' })).toBe(true);
+    expect(canSubmitMatchChat({ account: null, hasPlayerSeat: false, content: 'hello', status: 'ready' })).toBe(false);
   });
 
   it('assigns evidence-bearing chat roles only after account identity is loaded', () => {
     const account = { id: 'u_1' };
 
-    expect(matchChatAccessStatus(true, account)).toBe('ready');
-    expect(matchChatAuthorRole(account, true)).toBe('spectator');
-    expect(matchChatAuthorRole(account, false)).toBe('player');
-    expect(canSubmitMatchChat({ account, content: ' hello ', status: 'ready' })).toBe(true);
-    expect(canSubmitMatchChat({ account, content: '', status: 'ready' })).toBe(false);
-    expect(canSubmitMatchChat({ account, content: 'hello', status: 'loading' })).toBe(false);
-    expect(canSubmitMatchChat({ account, content: 'hello', status: 'login_required' })).toBe(false);
-    expect(canSubmitMatchChat({ account, content: 'hello', status: 'unavailable' })).toBe(false);
-    expect(canSubmitMatchChat({ account, content: 'hello', status: 'sending' })).toBe(false);
+    expect(matchChatAccessStatus(true, account, false)).toBe('ready');
+    expect(matchChatAuthorRole(account, true, false)).toBe('spectator');
+    expect(matchChatAuthorRole(account, false, false)).toBe('player');
+    expect(canSubmitMatchChat({ account, hasPlayerSeat: false, content: ' hello ', status: 'ready' })).toBe(true);
+    expect(canSubmitMatchChat({ account, hasPlayerSeat: false, content: '', status: 'ready' })).toBe(false);
+    expect(canSubmitMatchChat({ account, hasPlayerSeat: false, content: 'hello', status: 'loading' })).toBe(false);
+    expect(canSubmitMatchChat({ account, hasPlayerSeat: false, content: 'hello', status: 'login_required' })).toBe(
+      false,
+    );
+    expect(canSubmitMatchChat({ account, hasPlayerSeat: false, content: 'hello', status: 'unavailable' })).toBe(false);
+    expect(canSubmitMatchChat({ account, hasPlayerSeat: false, content: 'hello', status: 'sending' })).toBe(false);
   });
 
   it('aligns match-shell presence identity with durable chat identity', () => {

@@ -12,12 +12,12 @@ const STALE_SAFE_SERVER_MOVE_NAMES = [
   'undoSetCard',
   'confirmReady',
   'surrender',
+  'timeoutSkip',
+  'timeoutAdvance',
 ] as const;
 
 const AUTHORITATIVE_SERVER_MOVE_NAMES = [
   ...STALE_SAFE_SERVER_MOVE_NAMES,
-  'timeoutSkip',
-  'timeoutAdvance',
   'resolvePendingEffect',
   'submitPendingChoice',
 ] as const;

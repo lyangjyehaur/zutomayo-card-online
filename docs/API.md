@@ -401,7 +401,7 @@ Message creation body:
 }
 ```
 
-Translation uses the configured `CHAT_TRANSLATION_ENDPOINT`. Without a provider, requests are persisted with `pending` status for a future worker. Active `chat_mute` sanctions are enforced across all conversation types.
+Translation uses the shared `TRANSLATION_ENDPOINT` service, with `CHAT_TRANSLATION_ENDPOINT` retained as a compatibility fallback. Chat messages and announcements keep separate versioned caches while sharing the same provider call. Without a provider, requests are persisted with `pending` status for a future worker. Active `chat_mute` sanctions are enforced across all conversation types.
 
 ## Leaderboard / 排行榜
 

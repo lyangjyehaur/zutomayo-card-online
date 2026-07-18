@@ -332,6 +332,12 @@ export const ja: Record<TranslationKey, string> = {
   'lobby.homeDeckCaption': '20枚のカードを組み合わせて、時間を操る戦いへ',
   'lobby.homeLeaderboardCaption': 'プレイヤー順位とELOを確認し、現在の成績を追跡',
   'lobby.homeHistoryCaption': '最近の対戦結果を振り返り、勝敗とターンを確認',
+  'announcement.title': '最新のお知らせ',
+  'announcement.loading': 'お知らせを読み込み中',
+  'announcement.empty': '現在お知らせはありません',
+  'community.title': 'コミュニティ',
+  'community.caption': 'ロビーチャットやフレンドとのダイレクトメッセージ',
+  'community.loginRequired': 'ロビーチャットとDMを利用するにはログインしてください',
   'lobby.projectTitle': 'About ZUTOMAYO CARD ONLINE',
   'lobby.projectDescription':
     'プレイヤーによって運営されている非公式オンライン対戦プロジェクトです。ZUTOMAYO CARD の夜昼の攻防とデッキ構築を、より手軽に楽しめる場を目指しています。',

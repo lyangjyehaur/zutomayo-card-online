@@ -38,6 +38,7 @@ const CANONICAL_CARD_MIGRATIONS = [
 const LEGACY_OFFICIAL_CARD_DATA_MIGRATION = '000031_official_card_data_releases';
 const POST_CARD_MIGRATIONS = [
   '000031_user_linked_admins',
+  '000032_announcements',
   '000032_official_card_data_releases',
   '000033_admin_linked_auth_contract',
 ];

@@ -97,7 +97,7 @@ interface UpdateLockContext {
   matchID: string;
   client: PoolClient;
   lockedMatch: LockedMatchForStateWrite;
-  timeout: ReturnType<typeof setTimeout>;
+  releaseHandle: ReturnType<typeof setImmediate>;
   writing: boolean;
   released: boolean;
 }
@@ -521,11 +521,10 @@ export class PostgresAdapter {
 
     const lock = this.updateLocks.get(matchID);
     if (lock && !lock.released && !lock.writing) {
-      // Claim the retained transaction synchronously. The idle watchdog may
-      // only roll back a fetch that never reached setState; active writes are
-      // bounded by the PostgreSQL transaction-local timeouts instead.
+      // Claim the retained transaction synchronously before the next event-loop
+      // turn can release a move that boardgame.io rejected without setState.
       lock.writing = true;
-      clearTimeout(lock.timeout);
+      clearImmediate(lock.releaseHandle);
       try {
         await this.writeState(lock.client, lock.lockedMatch, state, deltalog);
         await this.releaseUpdateLock(lock, 'commit');
@@ -1133,17 +1132,17 @@ export class PostgresAdapter {
           lockedMatch,
           writing: false,
           released: false,
-          timeout: setTimeout(() => {
+          releaseHandle: setImmediate(() => {
             if (lock.writing || lock.released) return;
             this.releaseUpdateLock(lock, 'rollback').catch((err) => {
               Sentry.captureException(err, {
-                tags: { layer: 'postgres', op: 'lock-release-timeout', match_id: matchID },
+                tags: { layer: 'postgres', op: 'unused-update-lock-release', match_id: matchID },
               });
-              console.error(`[PostgresAdapter] timed-out update lock release failed for ${matchID}:`, err);
+              console.error(`[PostgresAdapter] unused update lock release failed for ${matchID}:`, err);
             });
-          }, 5000),
+          }),
         };
-        lock.timeout.unref?.();
+        lock.releaseHandle.unref?.();
         this.updateLocks.set(matchID, lock);
         return { state: lockedMatch.match.state as State };
       } catch (err) {
@@ -1218,8 +1217,8 @@ export class PostgresAdapter {
   private async releaseUpdateLock(lock: UpdateLockContext, mode: 'commit' | 'rollback'): Promise<void> {
     if (lock.released) return;
     lock.released = true;
-    this.updateLocks.delete(lock.matchID);
-    clearTimeout(lock.timeout);
+    if (this.updateLocks.get(lock.matchID) === lock) this.updateLocks.delete(lock.matchID);
+    clearImmediate(lock.releaseHandle);
     try {
       await lock.client.query(mode === 'commit' ? 'COMMIT' : 'ROLLBACK');
     } finally {
