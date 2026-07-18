@@ -63,6 +63,27 @@ function cardTextRowToDef(row) {
   };
 }
 
+function officialErrataRowToDef(row) {
+  if (!row) return null;
+  return {
+    errataId: typeof row.errata_id === 'string' ? row.errata_id : '',
+    cardId: typeof row.card_id === 'string' ? row.card_id : '',
+    publishedAt:
+      row.published_at instanceof Date
+        ? row.published_at.toISOString().slice(0, 10)
+        : String(row.published_at || '').slice(0, 10),
+    affectsName: Boolean(row.affects_name),
+    affectsEffect: Boolean(row.affects_effect),
+    incorrectText: typeof row.incorrect_text === 'string' ? row.incorrect_text : '',
+    correctedJapaneseText: typeof row.corrected_japanese_text === 'string' ? row.corrected_japanese_text : '',
+    correctedEnglishText: typeof row.corrected_english_text === 'string' ? row.corrected_english_text : '',
+    correctedEnglishStatus:
+      typeof row.corrected_english_status === 'string' ? row.corrected_english_status : 'pending_review',
+    correctedEnglishSource: typeof row.corrected_english_source === 'string' ? row.corrected_english_source : '',
+    sourceUrl: typeof row.source_url === 'string' ? row.source_url : '',
+  };
+}
+
 async function getPublicCards(pool, searchParams) {
   try {
     const conditions = [];
@@ -177,6 +198,20 @@ async function getCardTextsI18n(pool, cardId) {
   return translations;
 }
 
+async function getCardOfficialErrata(pool, cardId) {
+  const row = (
+    await pool.query(
+      `SELECT errata_id, card_id, published_at, affects_name, affects_effect,
+              incorrect_text, corrected_japanese_text, corrected_english_text,
+              corrected_english_status, corrected_english_source, source_url
+       FROM card_official_errata
+       WHERE card_id = $1`,
+      [cardId],
+    )
+  ).rows[0];
+  return officialErrataRowToDef(row);
+}
+
 async function getPublicCard(pool, cardId) {
   try {
     const card = (await pool.query(`${CARD_SELECT} FROM cards WHERE id = $1`, [cardId])).rows[0];
@@ -208,10 +243,12 @@ module.exports = {
   getAllCardI18n,
   getAllCardTextsI18n,
   getCardI18n,
+  getCardOfficialErrata,
   getCardTextsI18n,
   getGameConfig,
   getPresetDecks,
   getPublicCard,
   getPublicCards,
   normalizeI18nLang,
+  officialErrataRowToDef,
 };

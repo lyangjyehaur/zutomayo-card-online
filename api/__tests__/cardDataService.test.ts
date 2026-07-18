@@ -11,17 +11,20 @@ const {
   getAllCardI18n,
   getAllCardTextsI18n,
   getCardI18n,
+  getCardOfficialErrata,
   getCardTextsI18n,
   getGameConfig,
   getPresetDecks,
   getPublicCard,
   getPublicCards,
   normalizeI18nLang,
+  officialErrataRowToDef,
 } = require('../cardDataService.cjs') as {
   cardRowToDef: (row: Record<string, unknown>) => Record<string, unknown>;
   getAllCardI18n: (pool: Queryable) => Promise<Record<string, unknown>>;
   getAllCardTextsI18n: (pool: Queryable) => Promise<Record<string, unknown>>;
   getCardI18n: (pool: Queryable, cardId: string) => Promise<Record<string, string>>;
+  getCardOfficialErrata: (pool: Queryable, cardId: string) => Promise<Record<string, unknown> | null>;
   getCardTextsI18n: (pool: Queryable, cardId: string) => Promise<Record<string, unknown>>;
   getGameConfig: (pool: Queryable) => Promise<Record<string, unknown>>;
   getPresetDecks: (pool: Queryable) => Promise<Array<Record<string, unknown>>>;
@@ -31,6 +34,7 @@ const {
   ) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
   getPublicCards: (pool: Queryable, searchParams: URLSearchParams) => Promise<Array<Record<string, unknown>>>;
   normalizeI18nLang: (lang: unknown) => string | null;
+  officialErrataRowToDef: (row: Record<string, unknown> | undefined) => Record<string, unknown> | null;
 };
 
 const dbCard = {
@@ -151,6 +155,39 @@ describe('card data service', () => {
       en: { reviewStatus: 'pending_review' },
       'zh-TW': expected,
     });
+  });
+
+  it('returns the complete official errata comparison for card maintenance', async () => {
+    const row = {
+      errata_id: '001',
+      card_id: 'c_1',
+      published_at: new Date('2026-02-17T00:00:00.000Z'),
+      affects_name: false,
+      affects_effect: true,
+      incorrect_text: 'old text',
+      corrected_japanese_text: 'corrected Japanese',
+      corrected_english_text: 'corrected English',
+      corrected_english_status: 'verified',
+      corrected_english_source: 'official_japanese_errata_translation',
+      source_url: 'https://zutomayocard.net/errata/001/',
+    };
+    const expected = {
+      errataId: '001',
+      cardId: 'c_1',
+      publishedAt: '2026-02-17',
+      affectsName: false,
+      affectsEffect: true,
+      incorrectText: 'old text',
+      correctedJapaneseText: 'corrected Japanese',
+      correctedEnglishText: 'corrected English',
+      correctedEnglishStatus: 'verified',
+      correctedEnglishSource: 'official_japanese_errata_translation',
+      sourceUrl: 'https://zutomayocard.net/errata/001/',
+    };
+
+    expect(officialErrataRowToDef(row)).toEqual(expected);
+    await expect(getCardOfficialErrata(poolWithRows([row]), 'c_1')).resolves.toEqual(expected);
+    await expect(getCardOfficialErrata(poolWithRows([]), 'missing')).resolves.toBeNull();
   });
 
   it('gets a single card from PG and returns 404 when missing', async () => {
