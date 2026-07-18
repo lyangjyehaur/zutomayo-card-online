@@ -119,9 +119,12 @@ describe('card data service', () => {
     expect(normalizeI18nLang('zhTW')).toBe('zh-TW');
     expect(normalizeI18nLang('xx')).toBeNull();
 
-    await expect(getAllCardI18n(poolWithRows([{ card_id: 'c_1', lang: 'ja', effect_text: 'JP' }]))).resolves.toEqual({
+    const pool = poolWithRows([{ card_id: 'c_1', lang: 'ja', effect_text: 'JP' }]);
+    await expect(getAllCardI18n(pool)).resolves.toEqual({
       c_1: { ja: 'JP' },
     });
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('FROM cards'));
+    expect(pool.query).not.toHaveBeenCalledWith(expect.stringContaining('card_effects_i18n'));
     await expect(getCardI18n(poolWithRows([{ lang: 'zhTW', effect_text: 'TW' }]), 'c_1')).resolves.toMatchObject({
       en: '',
       'zh-TW': 'TW',
@@ -157,6 +160,38 @@ describe('card data service', () => {
     });
   });
 
+  it('projects effective Japanese and English card text from cards', async () => {
+    const rows = [
+      {
+        card_id: '4th_76',
+        lang: 'ja',
+        name_text: 'グレくまくん (形)',
+        effect_text: '',
+        name_source: 'official_errata_notice',
+        effect_source: 'official_card_print',
+        review_status: 'official',
+        review_note: 'Official errata 011',
+      },
+      {
+        card_id: '4th_76',
+        lang: 'en',
+        name_text: 'GUREKUMA-KUN (Pain Give Form)',
+        effect_text: '',
+        name_source: 'official_errata_notice',
+        effect_source: 'official_card_print',
+        review_status: 'official',
+        review_note: 'Official errata 011',
+      },
+    ];
+    const pool = poolWithRows(rows);
+
+    await expect(getCardTextsI18n(pool, '4th_76')).resolves.toMatchObject({
+      ja: { name: 'グレくまくん (形)' },
+      en: { name: 'GUREKUMA-KUN (Pain Give Form)' },
+    });
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining("SELECT id, 'en', en_name_official"), ['4th_76']);
+  });
+
   it('returns the complete official errata comparison for card maintenance', async () => {
     const row = {
       errata_id: '001',
@@ -186,7 +221,9 @@ describe('card data service', () => {
     };
 
     expect(officialErrataRowToDef(row)).toEqual(expected);
-    await expect(getCardOfficialErrata(poolWithRows([row]), 'c_1')).resolves.toEqual(expected);
+    const pool = poolWithRows([row]);
+    await expect(getCardOfficialErrata(pool, 'c_1')).resolves.toEqual(expected);
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('JOIN cards AS card'), ['c_1']);
     await expect(getCardOfficialErrata(poolWithRows([]), 'missing')).resolves.toBeNull();
   });
 

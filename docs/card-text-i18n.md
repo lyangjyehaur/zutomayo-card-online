@@ -7,14 +7,14 @@
 ## 不可破壞的資料契約
 
 1. `cards.name` 與 `cards.effect` 是官方修正後日文的權威來源，不得由英文 OCR、既有翻譯或卡面錯字覆蓋。
-2. `cards.en_name_official` 與 `cards.en_effect_official` 保存卡面印刷的官方英文。這兩個欄位不是一般翻譯，也不代表勘誤後英文。
-3. `card_texts_i18n` 保存統一的各語言名稱與效果、來源及複核狀態。日文與英文是官方來源的鏡像；其他語言是衍生翻譯。
+2. `cards.en_name_official` 與 `cards.en_effect_official` 是官方有效英文的權威來源；有官方勘誤時直接保存勘誤後文本，不保留已失效卡面文本作為另一份有效值。
+3. `card_texts_i18n` 只保存衍生語言的名稱與效果、來源及複核狀態，禁止寫入 `ja` 或 `en`。
 4. `game_config.card_song_titles_i18n` 保存歌曲日文原題對應的多語歌名。卡名或效果包含歌名時，玩家端一律以這份設定訂正其中的歌名部分。
-5. 衍生翻譯必須同時參考官方日文和卡面官方英文；兩者有歧義時，以官方修正後日文語義為準。
+5. 衍生翻譯必須同時參考官方有效日文和英文；兩者有歧義時，以官方修正後日文語義為準。
 6. `pending_review` 的衍生翻譯不得展示給玩家。只有 `verified`（或官方來源使用的 `official`）可以進入顯示鏈路。
-7. 勘誤影響的欄位不得回退到已失效的卡面英文。其英文及其他語言必須使用已複核的勘誤文本；尚未複核時回退到官方日文。
+7. 勘誤影響的衍生翻譯必須使用已複核的勘誤文本；尚未複核時回退到 `cards` 的有效英文，再回退官方日文。
 8. 本機受控來源 `data/card-english-extraction.json` 中的英文必須先完成人工卡面複核，才能批量匯入 PostgreSQL；該檔及其他卡牌文本來源不得提交到 Git 或進入容器映像。
-9. 舊式 `card_effects_i18n.lang='en'` 是已停用流程產生的英文翻譯，必須刪除且不得重新建立。英文效果只可來自 `cards.en_effect_official`；受勘誤影響時使用已複核的勘誤英文。
+9. 舊表 `card_effects_i18n` 已移除。相容 API `/cards/i18n` 只從 `cards` 與 `card_texts_i18n` 投影，不得建立第二份效果資料。
 
 ## 資料模型
 
@@ -23,7 +23,7 @@
 | 欄位                                     | 含義                                   |
 | ---------------------------------------- | -------------------------------------- |
 | `name`, `effect`                         | 官方修正後日文名稱與效果，日文權威來源 |
-| `en_name_official`, `en_effect_official` | 經人工複核的卡面印刷英文               |
+| `en_name_official`, `en_effect_official` | 官方有效英文；有勘誤時為勘誤後文本     |
 | `has_official_errata`                    | 是否存在官方勘誤，供列表快速篩選       |
 | `official_errata_id`                     | 官方勘誤編號                           |
 | `official_errata_affects_name`           | 勘誤是否影響名稱                       |
@@ -32,7 +32,7 @@
 
 ### `card_texts_i18n`
 
-每張卡、每個語言一列，主鍵為 `(card_id, lang)`。
+每張卡、每個衍生語言一列，主鍵為 `(card_id, lang)`。
 
 | 欄位                           | 含義                                           |
 | ------------------------------ | ---------------------------------------------- |
@@ -41,26 +41,22 @@
 | `review_status`                | `official`、`verified` 或 `pending_review`     |
 | `review_note`                  | 複核依據、歧義或勘誤連結等備註                 |
 
-支援的語言代碼為 `ja`、`en`、`zh-TW`、`zh-CN`、`zh-HK`、`ko`。舊式 `zhTW`、`zhCN`、`zhHK` 只作 API 輸入相容，新資料應使用帶連字號的正式代碼。
+表內支援的語言代碼為 `zh-TW`、`zh-CN`、`zh-HK`、`ko`。舊式 `zhTW`、`zhCN`、`zhHK` 只作 API 輸入相容，新資料應使用帶連字號的正式代碼；API 回應中的 `ja`、`en` 是由 `cards` 即時投影，不是資料列。
 
 狀態規則：
 
-- `official`：只用於官方日文、卡面英文或官方直接提供的文本。
+- `official`：只用於 API 投影的官方日文與英文，不可由衍生翻譯寫入。
 - `verified`：人工核對完成的衍生翻譯或勘誤後翻譯。
 - `pending_review`：草稿或既有但尚未重新核對的翻譯；前端不使用。
 
 常用來源值：
 
-- `official_card_print`：官方卡面印刷文本。
 - `admin_bilingual_translation`：同時參考官方日文與英文完成的後台翻譯。
-- `official_errata_notice`：官方勘誤直接提供的文本。
-- `official_card_print_unaffected`：勘誤未改變卡面英文的語義，可沿用卡面文本。
-- `official_card_print_corrected`：以卡面英文為基礎作最小必要訂正。
 - `official_japanese_errata_translation`：依官方修正後日文重新翻譯。
 
 ### `card_official_errata`
 
-完整保存 12 條官方勘誤，包括錯誤文本、修正後日文、修正後英文、複核狀態、英文來源類型和官方網址。`cards` 上的勘誤欄位是便於查詢與顯示的摘要，不能代替此表。
+保存 12 條官方勘誤的歷史資訊，包括錯誤文本、日期、受影響欄位、英文複核狀態、英文來源類型和官方網址。修正後日文與英文不在此表重複保存，管理 API 會依受影響欄位從 canonical `cards` 即時回傳。
 
 `corrected_english_source` 只能是：
 
@@ -78,18 +74,18 @@
 | 使用語言 | 顯示順序                                   |
 | -------- | ------------------------------------------ |
 | `ja`     | 官方日文                                   |
-| `en`     | 卡面官方英文，缺失時回退官方日文           |
-| 其他語言 | 已複核衍生翻譯 -> 卡面官方英文 -> 官方日文 |
+| `en`     | 官方有效英文，缺失時回退官方日文           |
+| 其他語言 | 已複核衍生翻譯 -> 官方有效英文 -> 官方日文 |
 
 ### 有勘誤影響的欄位
 
-| 使用語言 | 顯示順序                                                           |
-| -------- | ------------------------------------------------------------------ |
-| `ja`     | 官方修正後日文                                                     |
-| `en`     | 已複核且來源屬於勘誤來源的英文 -> 官方日文                         |
-| 其他語言 | 已複核且來源屬於勘誤來源的該語言文本 -> 已複核勘誤英文 -> 官方日文 |
+| 使用語言 | 顯示順序                                                         |
+| -------- | ---------------------------------------------------------------- |
+| `ja`     | 官方修正後日文                                                   |
+| `en`     | `cards` 的勘誤後有效英文 -> 官方日文                             |
+| 其他語言 | 已複核且來源屬於勘誤來源的該語言文本 -> 官方有效英文 -> 官方日文 |
 
-勘誤只保護實際受影響的欄位。例如勘誤只改效果時，名稱仍可正常使用卡面官方英文。
+勘誤只保護實際受影響的衍生翻譯。例如勘誤只改效果時，名稱仍可正常使用既有複核翻譯。
 
 ## 主要資料與程式入口
 
@@ -105,7 +101,7 @@
 | `scripts/import-card-official-texts-pg.ts`    | 驗證後以交易寫入 PostgreSQL                         |
 | `data/card-derived-effects-review.json`       | 本機衍生效果複核範圍、依據及來源檔雜湊              |
 | `scripts/audit-card-derived-effects.ts`       | 稽核 1,000 條衍生效果、語言混入、數值及舊英文       |
-| `scripts/import-card-derived-effects-pg.ts`   | 交易匯入已複核衍生效果並清除舊英文                  |
+| `scripts/import-card-derived-effects-pg.ts`   | 交易匯入已複核衍生效果                              |
 | `scripts/card-official-text-review-server.ts` | 僅監聽本機的人工複核服務                            |
 | `api/cardDataService.cjs`                     | 對外卡牌及多語言文本查詢                            |
 | `api/adminCardService.cjs`                    | 衍生翻譯寫入、狀態限制與管理稽核紀錄                |
@@ -116,11 +112,12 @@
 - `migrations/000007_card_official_texts_i18n.js`
 - `migrations/000008_card_official_errata.js`
 - `migrations/000009_card_official_errata_english_source.js`
+- `migrations/000033_card_text_authority.js`
 
 ## 日常翻譯流程
 
 1. 在管理頁進入「卡牌翻譯」，選擇卡牌後會直接開啟「多語言」。日文與英文不在這個編輯器內修改。
-2. 翻譯名稱與效果時，同時核對官方修正後日文及卡面英文。
+2. 翻譯名稱與效果時，同時核對官方修正後日文及官方有效英文。
 3. 尚未完成核對時保持 `pending_review`，並在 `review_note` 記錄歧義或待確認事項。
 4. 人工確認語義、術語、數值、卡牌數量及作用範圍後，改為 `verified`。
 5. 若卡牌有勘誤，受影響欄位必須以官方修正後日文為準。管理頁會將其來源寫成 `official_japanese_errata_translation`。
@@ -136,7 +133,7 @@
 
 衍生翻譯不能標記為 `official`，API 會拒絕此操作。管理端的修改會寫入管理稽核紀錄。
 
-目前 250 張有效果卡的 `zh-TW`、`zh-CN`、`zh-HK`、`ko` 效果已同時依官方修正後日文及人工校對的卡面英文複核。複核來源檔 `data/card-effects-i18n.json` 與本機 review manifest 以 SHA-256 鎖定確切版本，兩者都不進 Git。來源檔不得含 `en`，英文只維護於官方英文資料流。
+目前 250 張有效果卡的 `zh-TW`、`zh-CN`、`zh-HK`、`ko` 效果已同時依官方修正後日文及人工校對的英文複核。複核來源檔 `data/card-effects-i18n.json` 與本機 review manifest 以 SHA-256 鎖定確切版本，兩者都不進 Git。來源檔不得含 `en`，英文只維護於 `cards`。
 
 422 張卡名與 42 首歌名使用相同的本機複核流程。`data/card-names-i18n.json`、`data/card-song-titles-i18n.json` 與 `data/card-derived-names-review.json` 均不得提交到 Git；review manifest 會以 SHA-256 鎖定卡名、歌名、官方日英來源及卡牌 seed。批量匯入前執行 `npm run audit:card-derived-names`，確認卡片數量、語言完整性、重複卡名一致性及卡名內歌名均符合 canonical 表，再以 `npm run import:card-derived-names` 寫入 PostgreSQL。匯入只更新衍生卡名與 `game_config.card_song_titles_i18n`，不得改動既有效果翻譯。
 
@@ -214,7 +211,7 @@ npm test -- src/game/cards/__tests__/i18n.test.ts api/__tests__/cardDataService.
 
 ## 匯入 PostgreSQL
 
-匯入會同時更新卡面官方英文、日英 `card_texts_i18n`、12 條勘誤及卡牌勘誤摘要欄位。腳本使用 transaction，任何一致性檢查失敗都會 rollback。
+匯入會同時更新 `cards` 的官方有效日英文本、12 條勘誤歷史資訊及卡牌勘誤摘要欄位，不會建立日英鏡像列。腳本使用 transaction，任何一致性檢查失敗都會 rollback。
 
 先套用 migration，再以目標資料庫的 `PG_HOST`、`PG_PORT`、`PG_USER`、`PG_PASSWORD`、`PG_DATABASE` 執行：
 
@@ -240,6 +237,7 @@ npm run import:card-official-texts
 - `hasOfficialErrata` 共 12 張。
 - `/api/cards/texts` 返回 422 張卡的文本資料。
 - 英文、日文和至少一個衍生語言實際 UI 的名稱、效果與勘誤 fallback。
+- `card_texts_i18n` 的 `ja`、`en` 列均為 0，且資料庫不存在 `card_effects_i18n`。
 
 ### 匯入已複核的衍生效果
 
@@ -254,10 +252,9 @@ npm run import:card-derived-effects
 
 - 寫入 4 種語言共 1,000 條效果並標記為 `verified`。
 - 一般卡使用 `admin_bilingual_translation`；效果勘誤卡使用 `official_japanese_errata_translation`。
-- 刪除 `card_effects_i18n` 中所有舊 `en` 列，但保留 `card_texts_i18n` 的官方英文鏡像。
 - 寫入一筆批次管理稽核紀錄。
 
-生產匯入前必須備份資料庫。匯入後確認每種衍生語言各有 250 條 `verified` 效果、舊英文列為 0，並重新載入 game 服務的卡牌資料或重啟 game 服務。
+生產匯入前必須備份資料庫。匯入後確認每種衍生語言各有 250 條 `verified` 效果，並重新載入 game 服務的卡牌資料或重啟 game 服務。
 
 ## 修改時的最小驗證
 

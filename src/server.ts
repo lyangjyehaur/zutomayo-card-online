@@ -256,8 +256,8 @@ const RANKED_MATCHES_ENABLED = process.env.RANKED_MATCHES_ENABLED === 'true';
 let matchResultOutboxWorker: ReturnType<typeof startMatchResultOutboxWorker> | undefined;
 
 // === 卡牌資料初始化（從 PostgreSQL 載入）===
-// 卡牌資料的 source of truth 是 PG 的 cards / card_effects_i18n 表（由 api 服務
-// 的 seed-cards-pg.ts 或 admin 上傳寫入）。game 服務的 boardgame.io server-side
+// 卡牌資料的 source of truth 是 PG 的 cards / card_texts_i18n 表（由 api 服務
+// 的 seed-cards-pg.ts 或 admin 維護寫入）。game 服務的 boardgame.io server-side
 // 邏輯需要卡牌定義來初始化牌組，啟動時直接從 PG 讀取，不依賴檔案系統靜態卡表。
 // 瀏覽器端則透過 /api/cards 動態載入（參見 App.tsx refreshCards）。
 const gameDatabaseUrl = postgresConnectionString(process.env);
@@ -328,52 +328,67 @@ async function loadCardsFromPG(): Promise<void> {
   resetParsedEffects();
   logger.info({ count: cards.length }, 'loaded cards from PostgreSQL');
 
-  const i18nRows = await cardPool.query(
-    'SELECT card_id, lang, effect_text FROM card_effects_i18n ORDER BY card_id, lang',
+  const textRows = await cardPool.query(
+    `SELECT card_id, lang, name_text, effect_text, name_source, effect_source,
+            review_status, review_note
+     FROM card_texts_i18n
+     WHERE lang NOT IN ('ja', 'en')
+     ORDER BY card_id, lang`,
   );
-  const i18n: Record<string, Record<string, string>> = {};
-  for (const row of i18nRows.rows) {
-    const r = row as { card_id: string; lang: string; effect_text: string };
-    if (!i18n[r.card_id]) i18n[r.card_id] = {};
-    i18n[r.card_id][r.lang] = typeof r.effect_text === 'string' ? r.effect_text : '';
+  const texts: Record<string, Record<string, CardTextI18nEntry>> = {};
+  for (const card of cards) {
+    const reviewNote = card.hasOfficialErrata
+      ? `Official errata ${card.officialErrataId || ''}: ${card.officialErrataUrl || ''}`
+      : '';
+    texts[card.id] = {
+      ja: {
+        name: card.name,
+        effect: card.effect,
+        nameSource: card.officialErrataAffectsName ? 'official_errata_notice' : 'official_card_print',
+        effectSource: card.officialErrataAffectsEffect ? 'official_errata_notice' : 'official_card_print',
+        reviewStatus: 'official',
+        reviewNote,
+      },
+      en: {
+        name: card.enNameOfficial || '',
+        effect: card.enEffectOfficial || '',
+        nameSource: card.officialErrataAffectsName ? 'official_errata_notice' : 'official_card_print',
+        effectSource: card.officialErrataAffectsEffect ? 'official_errata_notice' : 'official_card_print',
+        reviewStatus: 'official',
+        reviewNote,
+      },
+    };
   }
-  initEffectI18n(i18n);
-  logger.info({ count: Object.keys(i18n).length }, 'loaded card i18n entries from PostgreSQL');
-
-  try {
-    const textRows = await cardPool.query(
-      `SELECT card_id, lang, name_text, effect_text, name_source, effect_source,
-              review_status, review_note
-       FROM card_texts_i18n
-       ORDER BY card_id, lang`,
-    );
-    const texts: Record<string, Record<string, CardTextI18nEntry>> = {};
-    for (const row of textRows.rows) {
-      const r = row as {
-        card_id: string;
-        lang: string;
-        name_text: string;
-        effect_text: string;
-        name_source: string;
-        effect_source: string;
-        review_status: CardTextI18nEntry['reviewStatus'];
-        review_note: string;
-      };
-      if (!texts[r.card_id]) texts[r.card_id] = {};
-      texts[r.card_id][r.lang] = {
-        name: r.name_text || '',
-        effect: r.effect_text || '',
-        nameSource: r.name_source || '',
-        effectSource: r.effect_source || '',
-        reviewStatus: r.review_status || 'pending_review',
-        reviewNote: r.review_note || '',
-      };
-    }
-    initCardTextsI18n(texts);
-    logger.info({ count: Object.keys(texts).length }, 'loaded localized card texts from PostgreSQL');
-  } catch (error) {
-    logger.warn({ error }, 'localized card texts unavailable; using legacy effect translations');
+  for (const row of textRows.rows) {
+    const r = row as {
+      card_id: string;
+      lang: string;
+      name_text: string;
+      effect_text: string;
+      name_source: string;
+      effect_source: string;
+      review_status: CardTextI18nEntry['reviewStatus'];
+      review_note: string;
+    };
+    if (!texts[r.card_id]) texts[r.card_id] = {};
+    texts[r.card_id][r.lang] = {
+      name: r.name_text || '',
+      effect: r.effect_text || '',
+      nameSource: r.name_source || '',
+      effectSource: r.effect_source || '',
+      reviewStatus: r.review_status || 'pending_review',
+      reviewNote: r.review_note || '',
+    };
   }
+  const effects = Object.fromEntries(
+    Object.entries(texts).map(([cardId, entries]) => [
+      cardId,
+      Object.fromEntries(Object.entries(entries).map(([lang, entry]) => [lang, entry.effect])),
+    ]),
+  );
+  initEffectI18n(effects);
+  initCardTextsI18n(texts);
+  logger.info({ count: Object.keys(texts).length }, 'loaded canonical card texts from PostgreSQL');
 }
 
 const API_SERVER = process.env.API_URL || 'http://api:3001';

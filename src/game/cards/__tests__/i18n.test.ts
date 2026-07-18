@@ -40,7 +40,7 @@ describe('localized card text policy', () => {
     for (const key of Object.keys(gameConfig)) delete gameConfig[key];
   });
 
-  it('uses official print text for Japanese and English', () => {
+  it('uses effective official text for Japanese and English', () => {
     expect(getLocalizedCardName(card, 'ja')).toBe('公式日本語名');
     expect(getLocalizedCardEffect(card, 'ja')).toBe('公式日本語効果');
     expect(getLocalizedCardName(card, 'en')).toBe('OFFICIAL ENGLISH NAME');
@@ -89,8 +89,12 @@ describe('localized card text policy', () => {
     expect(getLocalizedCardEffect(japaneseOnly, 'zh-CN')).toBe('公式日本語効果');
   });
 
-  it('never uses printed English for an errata-affected field', () => {
-    const errataCard = { ...card, officialErrataAffectsEffect: true };
+  it('uses the canonical card field for errata-corrected English', () => {
+    const errataCard = {
+      ...card,
+      enEffectOfficial: 'CORRECTED ENGLISH EFFECT',
+      officialErrataAffectsEffect: true,
+    };
     initCardTextsI18n({
       test_1: {
         en: {
@@ -113,22 +117,20 @@ describe('localized card text policy', () => {
     });
 
     expect(getLocalizedCardName(errataCard, 'en')).toBe('OFFICIAL ENGLISH NAME');
-    expect(getLocalizedCardEffect(errataCard, 'en')).toBe('公式日本語効果');
-    expect(getLocalizedCardEffect(errataCard, 'zh-TW')).toBe('公式日本語効果');
+    expect(getLocalizedCardEffect(errataCard, 'en')).toBe('CORRECTED ENGLISH EFFECT');
+    expect(getLocalizedCardEffect(errataCard, 'zh-TW')).toBe('CORRECTED ENGLISH EFFECT');
   });
 
   it('uses reviewed translations derived from corrected Japanese errata', () => {
-    const errataCard = { ...card, officialErrataAffectsName: true, officialErrataAffectsEffect: true };
+    const errataCard = {
+      ...card,
+      enNameOfficial: 'CORRECTED ENGLISH NAME',
+      enEffectOfficial: 'CORRECTED ENGLISH EFFECT',
+      officialErrataAffectsName: true,
+      officialErrataAffectsEffect: true,
+    };
     initCardTextsI18n({
       test_1: {
-        en: {
-          name: 'CORRECTED ENGLISH NAME',
-          effect: 'CORRECTED ENGLISH EFFECT',
-          nameSource: 'official_errata_notice',
-          effectSource: 'official_japanese_errata_translation',
-          reviewStatus: 'verified',
-          reviewNote: '',
-        },
         ko: {
           name: '수정된 이름',
           effect: '수정된 효과',
@@ -149,20 +151,7 @@ describe('localized card text policy', () => {
 
   it('allows reviewed card-print English when the errata did not affect it', () => {
     const errataCard = { ...card, officialErrataAffectsEffect: true };
-    initCardTextsI18n({
-      test_1: {
-        en: {
-          name: 'OFFICIAL ENGLISH NAME',
-          effect: 'UNCHANGED PRINTED ENGLISH EFFECT',
-          nameSource: 'official_card_print',
-          effectSource: 'official_card_print_unaffected',
-          reviewStatus: 'verified',
-          reviewNote: '',
-        },
-      },
-    });
-
-    expect(getLocalizedCardEffect(errataCard, 'en')).toBe('UNCHANGED PRINTED ENGLISH EFFECT');
+    expect(getLocalizedCardEffect(errataCard, 'en')).toBe('OFFICIAL ENGLISH EFFECT');
   });
 
   it('builds search terms from card names, songs, and effects in every requested locale', () => {

@@ -124,13 +124,8 @@ describe('admin card service', () => {
       false,
       true,
     ]);
-    expect(pool.query).toHaveBeenNthCalledWith(2, expect.stringContaining('INSERT INTO card_effects_i18n'), [
-      'c_1',
-      'zh-TW',
-      '效果',
-    ]);
     expect(pool.query).toHaveBeenNthCalledWith(
-      3,
+      2,
       'INSERT INTO admin_audit_log (admin_user_id, action, target_type, target_id, details) VALUES ($1, $2, $3, $4, $5::jsonb)',
       [
         null,
@@ -216,15 +211,10 @@ describe('admin card service', () => {
       body: { id: 'c_1', name: 'Updated', pack: 'pack-a' },
     });
     expect(existingPool.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO cards'), expect.any(Array));
-    expect(existingPool.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO card_texts_i18n'), [
-      'c_1',
-      'Updated',
-      '',
-      '',
-      '',
-      false,
-      false,
-    ]);
+    expect(existingPool.query).not.toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO card_texts_i18n'),
+      expect.anything(),
+    );
     expect(existingPool.query).toHaveBeenCalledWith(
       'INSERT INTO admin_audit_log (admin_user_id, action, target_type, target_id, details) VALUES ($1, $2, $3, $4, $5::jsonb)',
       expect.arrayContaining(['upsert_card', 'card', 'c_1']),
