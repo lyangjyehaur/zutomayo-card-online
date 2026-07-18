@@ -8,7 +8,6 @@ const {
   ALL_RELATIONS,
   ALL_TABLES,
   APPLICATION_TABLES,
-  COMPATIBILITY_VIEWS,
   PROTECTED_SCHEMA_TABLES,
   enforceRuntimeRolePrivileges,
   quoteIdentifier,
@@ -227,7 +226,6 @@ describe('PostgreSQL runtime role gate', () => {
           /\b(?:INSERT|UPDATE|DELETE|TRUNCATE|REFERENCES|TRIGGER)\b/.test(statement),
       ),
     ).toBe(false);
-    expect(statements).toContain('GRANT SELECT ON TABLE public."card_effects_i18n" TO "z_game"');
     expect(statements).toContain('GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO "z_backup"');
     expect(statements).not.toContain('GRANT USAGE ON SCHEMA public TO "z_monitor"');
     expect(statements).not.toContain('GRANT CONNECT ON DATABASE "zutomayo" TO "z_wal"');
@@ -393,11 +391,7 @@ describe('PostgreSQL role provisioning contract', () => {
       new Set(REQUIRED_RUNTIME_TABLES),
     );
     expect(new Set(APPLICATION_TABLES)).toEqual(
-      new Set(
-        REQUIRED_RUNTIME_TABLES.filter(
-          (table) => !PROTECTED_SCHEMA_TABLES.includes(table) && !COMPATIBILITY_VIEWS.includes(table),
-        ),
-      ),
+      new Set(REQUIRED_RUNTIME_TABLES.filter((table) => !PROTECTED_SCHEMA_TABLES.includes(table))),
     );
   });
 

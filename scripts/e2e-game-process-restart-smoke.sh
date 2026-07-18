@@ -27,8 +27,8 @@ export ACCOUNT_EXPORT_PSEUDONYM_KEY="${ACCOUNT_EXPORT_PSEUDONYM_KEY:-e2e-test-ex
 export REDIS_PASSWORD="${REDIS_PASSWORD:-}"
 export METRICS_TOKEN="${METRICS_TOKEN:-e2e-test-metrics-token}"
 export PGSSLMODE="${PGSSLMODE:-disable}"
-export EXPECTED_SCHEMA_MIGRATION="${EXPECTED_SCHEMA_MIGRATION:-000034_card_text_rollback_compat}"
-export EXPECTED_SCHEMA_CHECKSUM="${EXPECTED_SCHEMA_CHECKSUM:-b2639d75bc6f9c39c74bd038052f4db2df12c77db0f7c45477a41693ebc53274}"
+export EXPECTED_SCHEMA_MIGRATION="${EXPECTED_SCHEMA_MIGRATION:-000035_remove_card_text_rollback_compat}"
+export EXPECTED_SCHEMA_CHECKSUM="${EXPECTED_SCHEMA_CHECKSUM:-07ca7db8618ab6e84260ca55b564edc69da4b77ead072a2e0ea998a50c380aa4}"
 
 project="zutomayo-process-restart-${$}"
 compose=(docker compose -p "$project" -f docker-compose.yml -f docker-compose.e2e.yml)

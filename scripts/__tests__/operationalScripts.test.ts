@@ -127,14 +127,14 @@ describe('operational shell scripts', () => {
     expect(workflow).toContain('"${compose[@]}" run --rm e2e');
     expect(workflow).toContain('PG_BOOTSTRAP_USER: zutomayo_e2e_bootstrap');
     expect(workflow).toContain('CARD_DATA_DIR: /tmp/zutomayo-card-data');
-    expect(workflow).toContain('EXPECTED_SCHEMA_MIGRATION: 000034_card_text_rollback_compat');
+    expect(workflow).toContain('EXPECTED_SCHEMA_MIGRATION: 000035_remove_card_text_rollback_compat');
     expect(workflow).toContain(
-      'EXPECTED_SCHEMA_CHECKSUM: b2639d75bc6f9c39c74bd038052f4db2df12c77db0f7c45477a41693ebc53274',
+      'EXPECTED_SCHEMA_CHECKSUM: 07ca7db8618ab6e84260ca55b564edc69da4b77ead072a2e0ea998a50c380aa4',
     );
     expect(browserMatrix).toContain('PG_BOOTSTRAP_USER: zutomayo_e2e_bootstrap');
-    expect(browserMatrix).toContain('EXPECTED_SCHEMA_MIGRATION: 000034_card_text_rollback_compat');
+    expect(browserMatrix).toContain('EXPECTED_SCHEMA_MIGRATION: 000035_remove_card_text_rollback_compat');
     expect(browserMatrix).toContain(
-      'EXPECTED_SCHEMA_CHECKSUM: b2639d75bc6f9c39c74bd038052f4db2df12c77db0f7c45477a41693ebc53274',
+      'EXPECTED_SCHEMA_CHECKSUM: 07ca7db8618ab6e84260ca55b564edc69da4b77ead072a2e0ea998a50c380aa4',
     );
     expect(browserMatrix).not.toContain('export EXPECTED_SCHEMA_MIGRATION=');
     expect(workflow).not.toContain('--abort-on-container-exit');
@@ -353,7 +353,7 @@ describe('operational shell scripts', () => {
       'RELEASE_SHA=' + 'a'.repeat(40),
       'APP_VERSION=1.2.3',
       'GAME_RULES_VERSION=1.2.3',
-      'EXPECTED_SCHEMA_MIGRATION=000034_card_text_rollback_compat',
+      'EXPECTED_SCHEMA_MIGRATION=000035_remove_card_text_rollback_compat',
       'EXPECTED_SCHEMA_CHECKSUM=' + 'b'.repeat(64),
       ...['game', 'api', 'platform', 'migrate', 'retention', 'gateway'].map(
         (app) => app.toUpperCase() + '_IMAGE=' + image(app),
