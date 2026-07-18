@@ -330,6 +330,16 @@ groups:
       # scripts/pg-wal-archive.sh through the node-exporter textfile collector.
       # A missing metric is intentionally critical in production; configure a
       # separate rule group or silence this group in local development.
+      - alert: PostgresBackupRunFailed
+        expr: pg_backup_last_run_success == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: 'Latest PostgreSQL encrypted backup failed'
+          description: 'The latest logical backup did not complete its verified, versioned off-site upload.'
+
       - alert: PostgresBackupMissingOrStale
         expr: absent(pg_backup_last_success_unixtime_seconds) or time() - pg_backup_last_success_unixtime_seconds > 93600
         for: 15m
@@ -379,6 +389,16 @@ groups:
         annotations:
           summary: 'PostgreSQL physical base backup is missing or stale'
           description: 'No successful encrypted physical base backup has been recorded within 8 days; WAL PITR coverage is at risk.'
+
+      - alert: PostgresBaseBackupRunFailed
+        expr: pg_base_backup_last_run_success == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: 'Latest PostgreSQL physical base backup failed'
+          description: 'The latest physical base backup did not complete its verified off-site upload.'
 
   - name: zutomayo-retention
     interval: 1m

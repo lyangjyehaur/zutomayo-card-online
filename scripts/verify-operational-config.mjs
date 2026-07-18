@@ -55,6 +55,7 @@ export function validateOperationalConfig() {
     'scripts/pg-wal-restore.sh',
     'scripts/pg-wal-operational-smoke.sh',
     'scripts/pg-restore-drill.sh',
+    'scripts/run-pg-restore-drill-scheduled.sh',
     'scripts/pg-pitr-drill.sh',
   ];
   for (const relativePath of backupScripts) assertExecutable(relativePath);
@@ -63,11 +64,18 @@ export function validateOperationalConfig() {
     'PG_BACKUP_AGE_RECIPIENT',
     'pg_restore --list',
     'recovery-point-at=',
+    'pg_backup_last_run_success',
     'pg_backup_last_success_unixtime_seconds',
+    'PG_BACKUP_RECEIPT_DIR',
+    's3api put-object',
+    '.VersionId',
+    'zutomayo-encrypted-logical-backup-receipt',
+    'latest-offsite-backup-receipt.json',
   ]);
   requireFragments('scripts/pg-base-backup.sh', [
     'PG_BASE_BACKUP_OFFSITE_URI',
     'pg_basebackup',
+    'pg_base_backup_last_run_success',
     'pg_base_backup_last_success_unixtime_seconds',
   ]);
   requireFragments('scripts/pg-wal-archive.sh', ['PG_WAL_OFFSITE_URI', 'pg_wal_archive_last_success_unixtime_seconds']);
@@ -91,6 +99,7 @@ export function validateOperationalConfig() {
     'EXPECTED_SCHEMA_CHECKSUM',
     'PG_RESTORE_DRILL_OBJECT_VERSION_ID',
     'PG_RESTORE_DRILL_CHECKSUM_VERSION_ID',
+    'PG_RESTORE_DRILL_EXPECTED_SHA256',
     'MIGRATE_IMAGE',
     's3api get-object',
     '.VersionId == $versionId',
@@ -113,6 +122,17 @@ export function validateOperationalConfig() {
     'deletion_hold_violations',
     'deleted_social_violations',
   ]);
+  requireFragments('scripts/run-pg-restore-drill-scheduled.sh', [
+    'PG_RESTORE_DRILL_RECEIPT_FILE',
+    'PG_RESTORE_DRILL_MAX_RECEIPT_AGE_SECONDS',
+    'latest-offsite-backup-receipt.json',
+    'zutomayo-encrypted-logical-backup-receipt',
+    'must not be group- or world-writable',
+    'PG_RESTORE_DRILL_OBJECT_VERSION_ID',
+    'PG_RESTORE_DRILL_CHECKSUM_VERSION_ID',
+    'PG_RESTORE_DRILL_EXPECTED_SHA256',
+    'pg_restore_drill_success 0',
+  ]);
   requireFragments('scripts/pg-pitr-drill.sh', [
     'PG_PITR_DRILL_MIGRATE_IMAGE',
     'pull --quiet migrate',
@@ -131,9 +151,22 @@ export function validateOperationalConfig() {
     throw new Error('PITR artifact directory must not be world-writable');
   }
 
-  for (const timer of ['ops/systemd/zutomayo-pg-backup.timer', 'ops/systemd/zutomayo-pg-base-backup.timer']) {
+  for (const timer of [
+    'ops/systemd/zutomayo-pg-backup.timer',
+    'ops/systemd/zutomayo-pg-base-backup.timer',
+    'ops/systemd/zutomayo-pg-restore-drill.timer',
+  ]) {
     requireFragments(timer, ['Persistent=true', 'OnCalendar=', 'Unit=']);
   }
+  requireFragments('ops/systemd/zutomayo-pg-restore-drill.service', [
+    'User=zutomayo-restore',
+    'SupplementaryGroups=zutomayo-backup',
+    'EnvironmentFile=/etc/zutomayo/restore-drill.env',
+    'ExecStart=/opt/zutomayo/scripts/run-pg-restore-drill-scheduled.sh',
+    'TimeoutStartSec=30min',
+    'ReadOnlyPaths=/var/backups/zutomayo/receipts',
+    'ReadWritePaths=/var/log/zutomayo/restore-drills /var/lib/zutomayo/restore-artifacts /var/lib/node_exporter/textfile_collector',
+  ]);
 
   assertExecutable('scripts/synthetic-probe.mjs');
   requireFragments('scripts/synthetic-probe.mjs', [
@@ -303,11 +336,13 @@ export function validateOperationalConfig() {
     'bearer_token_file: /etc/prometheus/metrics_token',
   ]);
   requireFragments('observability/grafana/alerting/alerts.yml', [
+    'PostgresBackupRunFailed',
     'PostgresBackupMissingOrStale',
     'PostgresWalArchiveMissingOrStale',
     'PostgresRestoreDrillFailed',
     'PostgresRestoreDrillMissingOrStale',
     'PostgresBaseBackupMissingOrStale',
+    'PostgresBaseBackupRunFailed',
     'RetentionJobMissingOrStale',
     'ReadinessProbeFailed',
     'SyntheticPlayerJourneyFailed',

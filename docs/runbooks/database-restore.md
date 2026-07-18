@@ -2,7 +2,7 @@
 
 ## 目標與限制
 
-- Production 目標：帳號、牌組、完成對局與排名 RPO 15 分鐘、RTO 30 分鐘；完整資料庫 60 分鐘內通過驗證。
+- Production 目標：帳號、牌組、完成對局、排名與完整資料庫 RPO 15 分鐘、RTO 30 分鐘。
 - Repository 提供可重複的加密備份、WAL archive 與 isolated restore drill 工具，但沒有在指定 provider 實測前，不代表已達到 RPO/RTO。
 - 還原一律在新 instance / 新 data directory 進行。不得直接覆寫故障 primary；先保留 snapshot 與 WAL 供調查。
 
@@ -20,22 +20,23 @@
 | Encrypted logical dump         | 每日                         | `scripts/pg-backup.sh`; `pg_backup_last_success_unixtime_seconds`           |
 | Encrypted physical base backup | 每週及重大 migration 前      | `scripts/pg-base-backup.sh`; `pg_base_backup_last_success_unixtime_seconds` |
 | Encrypted WAL archive          | 連續，`archive_timeout=300s` | `scripts/pg-wal-archive.sh`; `pg_wal_archive_last_success_unixtime_seconds` |
-| Isolated logical restore drill | 每週                         | `scripts/pg-restore-drill.sh`; `pg_restore_drill_success`                   |
+| Isolated logical restore drill | 每週                         | `scripts/run-pg-restore-drill-scheduled.sh`; `pg_restore_drill_success`     |
 | Full PITR/failover drill       | 每季及重大 DB 變更前         | 本 runbook + 演練報告                                                       |
 
 Prometheus 的 backup age alert 依賴 node-exporter textfile collector。Backup host 與 `docker-compose.monitoring.yml` 必須使用同一個 `PG_BACKUP_METRICS_DIR`。
 
-Repository 提供 `ops/systemd/` 的 scheduler template。Production host 應安裝並啟用 daily logical 與 weekly physical timer（或使用等價的 managed scheduler），並把 service exit code、artifact URI、checksum 與 alert delivery 接到值班系統：
+Repository 提供 `ops/systemd/` 的 scheduler template。專用 backup/restore runner 應安裝 daily logical、weekly physical 與 weekly version-pinned logical restore timer（或使用契約完全等價的 managed scheduler），讓備份產生的本機 receipt 可直接交給 restore service，並把 service exit code、artifact URI、checksum 與 alert delivery 接到值班系統。Runner 必須是隔離主機；不要在 production database host 執行 disposable Docker restore：
 
 ```bash
 sudo install -m 0644 ops/systemd/zutomayo-pg-backup.service ops/systemd/zutomayo-pg-backup.timer /etc/systemd/system/
 sudo install -m 0644 ops/systemd/zutomayo-pg-base-backup.service ops/systemd/zutomayo-pg-base-backup.timer /etc/systemd/system/
+sudo install -m 0644 ops/systemd/zutomayo-pg-restore-drill.service ops/systemd/zutomayo-pg-restore-drill.timer /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now zutomayo-pg-backup.timer zutomayo-pg-base-backup.timer
+sudo systemctl enable --now zutomayo-pg-backup.timer zutomayo-pg-base-backup.timer zutomayo-pg-restore-drill.timer
 systemctl list-timers 'zutomayo-pg-*'
 ```
 
-`/etc/zutomayo/backup.env` 與 age/S3/PG secrets 必須由 host secret manager 提供；不要把它們寫入 unit 或 repository。Restore drill 應由隔離 runner 每週執行，不能直接在 production database host 內覆寫資料。
+`zutomayo-backup` group 必須已存在；`zutomayo-restore` 是獨立、不可登入的 service account，透過 supplementary `zutomayo-backup` group 只讀取 mode `0440` receipt。它還要能存取隔離 runner 的 container runtime socket；這等同主機高權限，只能放在專用 restore runner，不能授予一般 app account。`/etc/zutomayo/backup.env`、`/etc/zutomayo/restore-drill.env` 與 age/S3/PG secrets 必須由 host secret manager 提供，不能寫入 unit 或 repository。先建立 `/var/log/zutomayo/restore-drills`、`/var/lib/zutomayo/restore-artifacts` 與 metrics 目錄並授予 unit 宣告的 service account 寫權。
 
 ## Logical encrypted backup
 
@@ -48,11 +49,14 @@ export PGPASSFILE=/run/secrets/pgpass
 export PG_DATABASE=zutomayo
 export PG_BACKUP_AGE_RECIPIENT_FILE=/run/secrets/backup-age-recipients
 export PG_BACKUP_OFFSITE_URI=s3://zutomayo-prod-backups/logical
+export PG_BACKUP_RECEIPT_DIR=/var/backups/zutomayo/receipts
 export PG_BACKUP_METRICS_DIR=/var/lib/node_exporter/textfile_collector
 ./scripts/pg-backup.sh
 ```
 
-腳本會使用 PostgreSQL custom format、執行 `pg_restore --list`、age encryption、SHA-256 sidecar，再上傳 artifact 與 checksum。Encrypted artifact 的 S3 object metadata 會寫入不可變的 `recovery-point-at`，其值在 `pg_dump` 前取得；restore evidence 以它計算真實資料落後時間，不能改用下載時間或 object `LastModified` 冒充 recovery point。Object-store 複製、replication 與 lifecycle 必須保留這個 metadata。未設定 off-site/encryption 時預設失敗；`PG_BACKUP_ALLOW_LOCAL_ONLY=true` 與 `PG_BACKUP_ALLOW_UNENCRYPTED=true` 只可用於可丟棄的本機環境。
+腳本會使用 PostgreSQL custom format、執行 `pg_restore --list`、age encryption、SHA-256 sidecar，再以兩次 `s3api put-object` 上傳 artifact 與 checksum。Bucket 必須已啟用 versioning；任一 response 沒有非 `null` `VersionId`，本次執行即失敗、寫入 `pg_backup_last_run_success 0`，且不發布成功 receipt。兩次上傳都成功後才原子寫入 timestamped receipt 與本機 `latest-offsite-backup-receipt.json` 快照，內容鎖定兩個 S3 URL、兩個 exact version ID、SHA-256、size 與 recovery point；receipt mode 為 `0440`。這個 `latest` 只是 runner 上的原子 receipt 快照，不是排程時查詢 mutable S3 latest。
+
+Encrypted artifact 的 S3 object metadata 會寫入不可變的 `recovery-point-at`，其值在 `pg_dump` 前取得；restore evidence 以它計算真實資料落後時間，不能改用下載時間或 object `LastModified` 冒充 recovery point。Object-store 複製、replication 與 lifecycle 必須保留 metadata、object versions 與 checksum sidecar。未設定 off-site/encryption 時預設失敗；`PG_BACKUP_ALLOW_LOCAL_ONLY=true` 與 `PG_BACKUP_ALLOW_UNENCRYPTED=true` 只可用於可丟棄的本機環境。
 
 ## Self-managed WAL/PITR
 
@@ -110,11 +114,14 @@ export EXPECTED_SCHEMA_CHECKSUM=3e1140398d4b9de39cf3e95dfac626fc50ac587127c5c556
 export MIGRATE_IMAGE='ghcr.io/.../zutomayo-card-online-migrate@sha256:<release-manifest-digest>'
 export PG_RESTORE_DRILL_OBJECT_VERSION_ID='<backup-object-version-from-upload-receipt>'
 export PG_RESTORE_DRILL_CHECKSUM_VERSION_ID='<checksum-object-version-from-upload-receipt>'
+export PG_RESTORE_DRILL_EXPECTED_SHA256='<artifact-sha256-from-upload-receipt>'
 export PG_RESTORE_DRILL_RUN_ID="release-${RELEASE_SHA:0:12}"
 ./scripts/pg-restore-drill.sh s3://zutomayo-prod-backups/logical/zutomayo_<timestamp>.dump.age
 ```
 
-兩個 version ID 必須來自有記錄 version 的 uploader receipt、object-store audit log 或不可變更 inventory，不得在 drill 當下改查 latest；S3 的 mutable `null` version 也不接受。腳本以兩次 `aws s3api get-object --version-id` 精確下載 encrypted artifact 與 checksum sidecar，並要求兩次 response 的 `VersionId` 精確確認 requested version；缺任一 version ID 都會在 AWS 呼叫前失敗。Artifact response 還必須包含合法 `recovery-point-at` metadata 與 `LastModified`；evidence 分別記錄 `recoveryPointAt`、`objectLastModifiedAt`，不可互換。Drill 的 `startedAt` 在下載前、`finishedAt` 在隔離 container 清理後，涵蓋 checksum、age decrypt、restore 與全部查核。
+正式每週排程不手工拆 receipt 欄位，而是執行 `scripts/run-pg-restore-drill-scheduled.sh`。Wrapper 只接受 26 小時內、非 symlink、group/world 不可寫且 schema 完整的 receipt 快照；它驗證 URL、兩個 exact version ID、SHA-256 與 recovery/upload time，再把鎖定值交給 `pg-restore-drill.sh`。任何 preflight 或 child failure 都原子寫入 `pg_restore_drill_success 0`，保留最近一次成功時間供 stale alert 判斷。
+
+兩個 version ID 必須來自 uploader receipt，不得在 drill 當下改查 latest；S3 的 mutable `null` version 也不接受。還原腳本以兩次 `aws s3api get-object --version-id` 精確下載 encrypted artifact 與 checksum sidecar，要求 response 的 `VersionId` 精確確認 requested version，並要求實際 artifact checksum 同時匹配 sidecar 與 receipt 的 `PG_RESTORE_DRILL_EXPECTED_SHA256`。Artifact response 還必須包含合法 `recovery-point-at` metadata 與 `LastModified`；evidence 分別記錄 `recoveryPointAt`、`objectLastModifiedAt`，不可互換。Drill 的 `startedAt` 在下載前、`finishedAt` 在隔離 container 清理後，涵蓋 checksum、age decrypt、restore 與全部查核。
 
 Drill 會在 `--network none` 且不注入資料庫密碼的一次性 PostgreSQL container 還原，並檢查：
 
@@ -127,6 +134,18 @@ Drill 會在 `--network none` 且不注入資料庫密碼的一次性 PostgreSQL
 - 完成後保留 timestamped 人類報告與 `pg_restore_drill_*` metrics，並原子產生 `encrypted-offsite-restore-<run-id>.json`。JSON 不含 credential，只會在 download/checksum/decrypt/restore/schema/core-data/legal-hold 全部成功後出現。
 
 本機檔案模式仍可用於開發檢查，但不會產生正式 off-site release evidence。排程系統必須保留 stdout/stderr、exit code 與 report。只有 script exit 0、metric 為 1、evidence artifact 存在且 alert 正常恢復才算一次正式 drill。
+
+首次啟用與每次變更後，至少人工觸發並核對一次：
+
+```bash
+sudo systemctl start zutomayo-pg-backup.service
+sudo -u zutomayo-restore -g zutomayo-backup test -r /var/backups/zutomayo/receipts/latest-offsite-backup-receipt.json
+sudo systemctl start zutomayo-pg-restore-drill.service
+systemctl status zutomayo-pg-backup.service zutomayo-pg-restore-drill.service
+grep -E 'pg_(backup_last_run|restore_drill)' /var/lib/node_exporter/textfile_collector/zutomayo_pg_*.prom
+```
+
+另外要故意以 sandbox bucket 製造一次 `VersionId: null`／restore child failure，確認 timestamped success receipt 不出現、`PostgresBackupRunFailed`／`PostgresRestoreDrillFailed` firing 能送達值班端，修復後 resolved 也能送達。沒有這份外部 firing/resolved 證據，repository 自動化通過仍不等於 production restore 能力已驗收。
 
 ## Disposable physical PITR release drill
 

@@ -390,11 +390,11 @@ Production backups must be encrypted, checksummed, copied off-site, monitored fo
 ./scripts/pg-backup.sh
 ./scripts/pg-base-backup.sh
 ./scripts/pg-wal-operational-smoke.sh
-# Set RELEASE_SHA, EXPECTED_SCHEMA_*, and the exact artifact/checksum S3 version IDs first.
-./scripts/pg-restore-drill.sh s3://bucket/path/zutomayo_<timestamp>.dump.age
+# Weekly runner consumes the recent immutable upload receipt and exact S3 versions.
+./scripts/run-pg-restore-drill-scheduled.sh
 ```
 
-The restore drill never resolves a mutable latest object: it requires `PG_RESTORE_DRILL_OBJECT_VERSION_ID` and `PG_RESTORE_DRILL_CHECKSUM_VERSION_ID`, downloads both with `s3api get-object --version-id`, and emits the release-bound `zutomayo-encrypted-offsite-restore-raw` artifact only after checksum, age decryption, isolated restore, expected migration/checksum, core-data, and legal-hold checks pass.
+The logical backup bucket must have versioning enabled. `pg-backup.sh` publishes a local read-only receipt only after both `put-object` responses return non-null immutable `VersionId` values. The weekly wrapper rejects stale, writable, symlinked, or malformed receipts and never resolves a mutable latest S3 object; it passes the exact artifact/checksum versions and receipt SHA-256 to `pg-restore-drill.sh`. The drill downloads both versions with `s3api get-object --version-id` and emits the release-bound `zutomayo-encrypted-offsite-restore-raw` artifact only after receipt/sidecar checksum binding, age decryption, isolated restore, expected migration/checksum, core-data, and legal-hold checks pass. Install and enable all three repository timers documented in the runbook, and verify both immediate run-failure alerts and stale alerts reach the on-call route.
 
 The repository Compose database remains single-instance and is not a production HA topology. See [`docs/runbooks/ha-capacity.md`](./runbooks/ha-capacity.md) before setting replica counts or claiming the documented RPO/RTO.
 

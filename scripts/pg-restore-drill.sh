@@ -15,6 +15,7 @@ run_id="${PG_RESTORE_DRILL_RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)-$$}"
 release_sha="${RELEASE_SHA:-}"
 object_version_id="${PG_RESTORE_DRILL_OBJECT_VERSION_ID:-}"
 checksum_version_id="${PG_RESTORE_DRILL_CHECKSUM_VERSION_ID:-}"
+expected_artifact_sha256="${PG_RESTORE_DRILL_EXPECTED_SHA256:-}"
 expected_schema_migration="${EXPECTED_SCHEMA_MIGRATION:-}"
 expected_schema_checksum="${EXPECTED_SCHEMA_CHECKSUM:-}"
 migrate_image="${MIGRATE_IMAGE:-}"
@@ -60,6 +61,8 @@ fail() {
   fail 'EXPECTED_SCHEMA_CHECKSUM must be a lowercase SHA-256 digest'
 [[ "$migrate_image" =~ ^[^[:space:]]+@sha256:[a-f0-9]{64}$ ]] ||
   fail 'MIGRATE_IMAGE must be the immutable release manifest digest'
+[[ -z "$expected_artifact_sha256" || "$expected_artifact_sha256" =~ ^[a-f0-9]{64}$ ]] ||
+  fail 'PG_RESTORE_DRILL_EXPECTED_SHA256 must be a lowercase SHA-256 digest'
 for command_name in docker awk jq; do
   command -v "$command_name" >/dev/null 2>&1 || fail "required command not found: $command_name"
 done
@@ -152,6 +155,8 @@ else
   actual_checksum="$(shasum -a 256 "$artifact" | awk '{print $1}')"
 fi
 [[ -n "$expected_checksum" && "$expected_checksum" == "$actual_checksum" ]] || fail 'backup checksum mismatch'
+[[ -z "$expected_artifact_sha256" || "$expected_artifact_sha256" == "$actual_checksum" ]] ||
+  fail 'backup checksum does not match the scheduled receipt'
 
 plain_dump="$work_dir/restore.dump"
 if [[ "$source_artifact" == *.age ]]; then

@@ -11,6 +11,7 @@ const scripts = [
   'pg-wal-archive.sh',
   'pg-wal-restore.sh',
   'pg-restore-drill.sh',
+  'run-pg-restore-drill-scheduled.sh',
   'postgres-init-roles.sh',
   'postgres-role-smoke.sh',
   'compose-chaos-drill.sh',

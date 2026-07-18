@@ -38,6 +38,7 @@ interface HarnessOptions {
   ageFailure?: boolean;
   checksumMismatch?: boolean;
   coreDataFailure?: boolean;
+  expectedArtifactSha256?: string;
   expectedMigration?: string;
   invariantFailure?: boolean;
   legalHoldFailure?: boolean;
@@ -198,6 +199,7 @@ esac
     PG_RESTORE_DRILL_ARTIFACT_DIR: artifactDirectory,
     PG_RESTORE_DRILL_CHECKSUM_VERSION_ID: checksumVersionId,
     PG_RESTORE_DRILL_CONTAINER: 'zutomayo-offsite-restore-test',
+    PG_RESTORE_DRILL_EXPECTED_SHA256: options.expectedArtifactSha256 ?? artifactSha256,
     PG_RESTORE_DRILL_IMAGE: pinnedImage,
     PG_RESTORE_DRILL_OBJECT_VERSION_ID: options.objectVersion ?? objectVersionId,
     PG_RESTORE_DRILL_REPORT_DIR: reportDirectory,
@@ -435,6 +437,11 @@ describe('encrypted off-site logical restore producer', { timeout: 20_000 }, () 
 
   it.each([
     ['checksum mismatch', { checksumMismatch: true }, 'backup checksum mismatch'],
+    [
+      'receipt checksum mismatch',
+      { expectedArtifactSha256: 'f'.repeat(64) },
+      'backup checksum does not match the scheduled receipt',
+    ],
     ['decryption failure', { ageFailure: true }, ''],
     ['schema binding failure', { schemaBindingFailure: true }, 'schema migration/checksum binding mismatch'],
     ['schema invariant failure', { invariantFailure: true }, 'restored invariant failed'],

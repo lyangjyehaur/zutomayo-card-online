@@ -1,0 +1,21 @@
+[Unit]
+Description=Zutomayo version-pinned isolated PostgreSQL restore drill
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=zutomayo-restore
+Group=zutomayo-restore
+SupplementaryGroups=zutomayo-backup
+EnvironmentFile=/etc/zutomayo/restore-drill.env
+ExecStart=/opt/zutomayo/scripts/run-pg-restore-drill-scheduled.sh
+TimeoutStartSec=30min
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+RestrictSUIDSGID=true
+LockPersonality=true
+ReadWritePaths=/var/log/zutomayo/restore-drills /var/lib/zutomayo/restore-artifacts /var/lib/node_exporter/textfile_collector
+ReadOnlyPaths=/var/backups/zutomayo/receipts
