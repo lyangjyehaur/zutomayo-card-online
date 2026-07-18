@@ -201,6 +201,9 @@ describe('operational shell scripts', () => {
     expect(pwaSmoke).toContain("matchMedia('(display-mode: standalone)').matches");
     expect(pwaSmoke).toContain('navigator.serviceWorker?.controller');
     expect(pwaSmoke).toContain('Network.emulateNetworkConditions');
+    expect(pwaSmoke).toContain("chrome.kill('SIGKILL')");
+    expect(pwaSmoke).toContain('maxRetries: 10');
+    expect(pwaSmoke).toContain('retryDelay: 200');
     for (const file of browserSmokeFiles) {
       const source = readFileSync(resolve(file), 'utf8');
       expect(source, file).toContain("from 'node:os'");

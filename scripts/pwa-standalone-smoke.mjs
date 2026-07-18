@@ -372,6 +372,10 @@ try {
     const exited = new Promise((resolve) => chrome.once('exit', resolve));
     chrome.kill('SIGTERM');
     await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 3000))]);
+    if (chrome.exitCode === null && chrome.signalCode === null) {
+      chrome.kill('SIGKILL');
+      await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 1000))]);
+    }
   }
-  await fs.rm(profileDir, { recursive: true, force: true });
+  await fs.rm(profileDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
 }

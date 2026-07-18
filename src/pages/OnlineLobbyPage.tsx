@@ -1634,6 +1634,7 @@ export function OnlineLobbyPage({
                   {friends.map((friend) => (
                     <div
                       key={friend.userId}
+                      data-friend-user-id={friend.userId}
                       className="grid min-h-14 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 rounded-sm border border-border-soft bg-surface-canvas/30 px-3 py-2"
                     >
                       <div className="min-w-0">
@@ -1644,11 +1645,14 @@ export function OnlineLobbyPage({
                         className="size-10 p-0"
                         variant="ghost"
                         type="button"
+                        data-friend-invite-action="send"
+                        data-friend-user-id={friend.userId}
                         onClick={() => void handleInviteFriend(friend)}
                         disabled={
                           friendInviteActionId !== null || friendInvitePeerId !== null || matchmakingActive || !canStart
                         }
                         aria-label={t('friend.invite')}
+                        title={friendInvitePeerId === friend.userId ? t('friend.inviteWaiting') : t('friend.invite')}
                       >
                         <Send className="size-3.5" strokeWidth={1.25} />
                       </Button>
@@ -1656,6 +1660,8 @@ export function OnlineLobbyPage({
                         className="size-10 p-0"
                         variant="ghost"
                         type="button"
+                        data-friend-invite-action="accept"
+                        data-friend-user-id={friend.userId}
                         onClick={() => void handleAcceptFriendInvite(friend)}
                         disabled={
                           friendInviteActionId !== null ||
@@ -1663,6 +1669,11 @@ export function OnlineLobbyPage({
                           (friendInvitePeerId !== null && friendInvitePeerId !== friend.userId)
                         }
                         aria-label={t('friend.acceptInvite')}
+                        title={
+                          friendInviteMode === 'incoming' && friendInvitePeerId === friend.userId
+                            ? t('friend.inviteIncoming')
+                            : t('friend.acceptInvite')
+                        }
                       >
                         <Check className="size-3.5" strokeWidth={1.25} />
                       </Button>

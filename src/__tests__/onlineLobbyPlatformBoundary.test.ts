@@ -174,6 +174,18 @@ describe('online lobby platform boundary', () => {
     expect(inviteSource).toContain("room?.send('boardgameMatchReady'");
   });
 
+  it('keeps friend invite controls observable across lobby UI refactors', () => {
+    const lobbySource = readRepoFile('src/pages/OnlineLobbyPage.tsx');
+
+    expect(lobbySource).toContain('data-friend-invite-action="send"');
+    expect(lobbySource).toContain('data-friend-invite-action="accept"');
+    expect(lobbySource).toContain('data-friend-user-id={friend.userId}');
+    expect(lobbySource).toContain(
+      "friendInvitePeerId === friend.userId ? t('friend.inviteWaiting') : t('friend.invite')",
+    );
+    expect(lobbySource).toContain("friendInviteMode === 'incoming' && friendInvitePeerId === friend.userId");
+  });
+
   it('resumes explicit accepted invite joins from Colyseus snapshots', () => {
     const lobbySource = readRepoFile('src/pages/OnlineLobbyPage.tsx');
     const resumeIndex = lobbySource.indexOf('const resumeJoinedInviteMatch =');
