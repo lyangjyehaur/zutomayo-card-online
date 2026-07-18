@@ -253,7 +253,7 @@ esac
         durationMs: 1_000,
         checkedAt: '2026-07-15T00:01:00.000Z',
         metrics: { rpoMinutes: 0, rtoMinutes: 1 / 60 },
-        thresholds: { maxRpoMinutes: 15, maxRtoMinutes: 60 },
+        thresholds: { maxRpoMinutes: 15, maxRtoMinutes: 30 },
         results: {
           schemaGatePassed: true,
           fixtureRoundTripPassed: true,

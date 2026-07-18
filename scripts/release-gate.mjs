@@ -24,7 +24,7 @@ const OPERATIONAL_EVIDENCE_POLICIES = Object.freeze({
   'restore-drill': Object.freeze({
     rawArtifactType: 'zutomayo-restore-drill-raw',
     offsiteArtifactType: 'zutomayo-encrypted-offsite-restore-raw',
-    thresholds: Object.freeze({ maxRpoMinutes: 15, maxRtoMinutes: 60 }),
+    thresholds: Object.freeze({ maxRpoMinutes: 15, maxRtoMinutes: 30 }),
   }),
   'chaos-reconnect': Object.freeze({
     rawArtifactType: 'zutomayo-chaos-reconnect-raw',

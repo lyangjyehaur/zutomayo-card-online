@@ -377,7 +377,7 @@ describe('encrypted off-site logical restore producer', { timeout: 20_000 }, () 
           rpoMinutes: (startedAtMs - Date.parse(run.recoveryPointAt)) / 60_000,
           rtoMinutes: (finishedAtMs - startedAtMs) / 60_000,
         },
-        thresholds: { maxRpoMinutes: 15, maxRtoMinutes: 60 },
+        thresholds: { maxRpoMinutes: 15, maxRtoMinutes: 30 },
         results: {
           schemaGatePassed: true,
           fixtureRoundTripPassed: true,

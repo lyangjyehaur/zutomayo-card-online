@@ -155,8 +155,8 @@ function restoreEvidence(directory: string) {
       artifactType: 'zutomayo-restore-drill-raw',
       releaseSha: 'a'.repeat(40),
       startedAt: '2026-07-13T00:00:00.000Z',
-      finishedAt: '2026-07-13T00:45:00.000Z',
-      durationSeconds: 45 * 60,
+      finishedAt: '2026-07-13T00:20:00.000Z',
+      durationSeconds: 20 * 60,
       success: true,
       exitCode: 0,
       backup: {
@@ -192,8 +192,8 @@ function restoreEvidence(directory: string) {
         deletedSocialViolations: 0,
       },
     },
-    metrics: { rpoMinutes: 10, rtoMinutes: 45 },
-    thresholds: { maxRpoMinutes: 15, maxRtoMinutes: 60 },
+    metrics: { rpoMinutes: 10, rtoMinutes: 20 },
+    thresholds: { maxRpoMinutes: 15, maxRtoMinutes: 30 },
     results: { schemaGatePassed: true, fixtureRoundTripPassed: true, legalHoldInvariantPassed: true },
   });
   const offsiteArtifact = writeEvidenceArtifact(
@@ -204,7 +204,7 @@ function restoreEvidence(directory: string) {
       artifactType: 'zutomayo-encrypted-offsite-restore-raw',
       releaseSha: 'a'.repeat(40),
       startedAt: '2026-07-13T00:00:00.000Z',
-      finishedAt: '2026-07-13T00:45:00.000Z',
+      finishedAt: '2026-07-13T00:20:00.000Z',
       backup: {
         remoteObjectUrl: 's3://zutomayo-staging-backups/logical/release.dump.age',
         objectVersionId: 'version-123',
@@ -880,13 +880,24 @@ describe('single release gate evidence model', () => {
     rewriteOperationalRawArtifact(restoreDirectory, restore, (raw) => {
       const details = raw.restore as Record<string, unknown>;
       details.recoveredThroughAt = '2026-07-12T23:35:00.000Z';
+      raw.finishedAt = '2026-07-13T00:31:00.000Z';
+      raw.durationSeconds = 31 * 60;
     });
+    rewriteRestoreOffsiteArtifact(restoreDirectory, restore, (raw) => {
+      raw.finishedAt = '2026-07-13T00:31:00.000Z';
+    });
+    restore.finishedAt = '2026-07-13T00:31:00.000Z';
+    restore.durationMs = 31 * 60 * 1_000;
     restore.metrics.rpoMinutes = 20;
+    restore.metrics.rtoMinutes = 31;
     restore.thresholds.maxRpoMinutes = 30;
+    restore.thresholds.maxRtoMinutes = 60;
     const restoreCheck = inspectOperationalEvidence(restoreDirectory, restore);
     expect(restoreCheck.status).toBe('blocked');
     expect(restoreCheck.reason).toContain('thresholds.maxRpoMinutes exactly 15');
+    expect(restoreCheck.reason).toContain('thresholds.maxRtoMinutes exactly 30');
     expect(restoreCheck.reason).toContain('worst-case restore RPO <= 15 minutes');
+    expect(restoreCheck.reason).toContain('worst-case restore RTO <= 30 minutes');
 
     const chaosDirectory = mkdtempSync(join(tmpdir(), 'release-gate-chaos-policy-'));
     mkdirSync(join(chaosDirectory, 'staging'));
@@ -1084,19 +1095,19 @@ describe('single release gate evidence model', () => {
     mkdirSync(join(directory, 'staging'));
     const restore = restoreEvidence(directory);
     rewriteRestoreOffsiteArtifact(directory, restore, (raw) => {
-      raw.finishedAt = '2026-07-13T01:01:00.000Z';
+      raw.finishedAt = '2026-07-13T00:31:00.000Z';
       const backup = raw.backup as Record<string, unknown>;
       backup.recoveryPointAt = '2026-07-12T23:40:00.000Z';
     });
-    restore.finishedAt = '2026-07-13T01:01:00.000Z';
-    restore.durationMs = 61 * 60 * 1_000;
-    restore.checkedAt = '2026-07-13T01:02:00.000Z';
+    restore.finishedAt = '2026-07-13T00:31:00.000Z';
+    restore.durationMs = 31 * 60 * 1_000;
+    restore.checkedAt = '2026-07-13T00:32:00.000Z';
 
     const check = inspectOperationalEvidence(directory, restore);
 
     expect(check.status).toBe('blocked');
     expect(check.reason).toContain('worst-case restore RPO <= 15 minutes');
-    expect(check.reason).toContain('worst-case restore RTO <= 60 minutes');
+    expect(check.reason).toContain('worst-case restore RTO <= 30 minutes');
   });
 
   it('accepts only the repository-owned 10% -> 50% -> 100% canary policy', () => {
