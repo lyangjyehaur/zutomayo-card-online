@@ -9,8 +9,9 @@ describe('song title config', () => {
   it('keeps string translations and drops malformed entries', () => {
     expect(
       normalizeSongTitleConfig({
-        袖のキルト: { 'zh-CN': '袖中棉绒', en: 'QUILT', ko: null },
+        袖のキルト: { 'zh-CN': '袖中棉绒', en: 'QUILT', ko: null, unsupported: 'ignored' },
         猫リセット: 'invalid',
+        '': { en: 'invalid' },
       }),
     ).toEqual({
       袖のキルト: { 'zh-CN': '袖中棉绒', en: 'QUILT' },

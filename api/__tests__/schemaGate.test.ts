@@ -401,6 +401,11 @@ describe('production schema gate', () => {
         }),
         expect.objectContaining({
           tableName: 'card_texts_i18n',
+          constraintName: 'card_texts_i18n_derived_review_status_check',
+          constraintType: 'c',
+        }),
+        expect.objectContaining({
+          tableName: 'card_texts_i18n',
           constraintType: 'p',
           fragments: ['primary key (card_id, lang)'],
         }),
@@ -591,6 +596,31 @@ describe('production schema gate', () => {
         expectedChecksum: CHECKSUM,
       }),
     ).rejects.toThrow('card_official_errata_english_source_check');
+  });
+
+  it('rejects a same-name derived review-status constraint with the wrong definition', async () => {
+    const constraints = allConstraintsPresent().map((row) =>
+      row.constraint_name === 'card_texts_i18n_derived_review_status_check'
+        ? { ...row, definition: "CHECK (review_status = 'verified')" }
+        : row,
+    );
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({ rows: [{ '?column?': 1 }] })
+      .mockResolvedValueOnce({ rows: [{ sha256: CHECKSUM }] })
+      .mockResolvedValueOnce({ rows: allTablesPresent() })
+      .mockResolvedValueOnce({ rows: allColumnsPresent() })
+      .mockResolvedValueOnce({ rows: allColumnContractsValid() })
+      .mockResolvedValueOnce({ rows: constraints })
+      .mockResolvedValueOnce({ rows: allIndexesPresent() });
+
+    await expect(
+      assertRuntimeSchema({
+        pool: { query },
+        expectedMigration: '000036_harden_card_i18n_contract',
+        expectedChecksum: CHECKSUM,
+      }),
+    ).rejects.toThrow('card_texts_i18n_derived_review_status_check');
   });
 
   it('rejects a missing or malformed partial index', async () => {

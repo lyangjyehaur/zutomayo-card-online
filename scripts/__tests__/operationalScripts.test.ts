@@ -127,14 +127,14 @@ describe('operational shell scripts', () => {
     expect(workflow).toContain('"${compose[@]}" run --rm e2e');
     expect(workflow).toContain('PG_BOOTSTRAP_USER: zutomayo_e2e_bootstrap');
     expect(workflow).toContain('CARD_DATA_DIR: /tmp/zutomayo-card-data');
-    expect(workflow).toContain('EXPECTED_SCHEMA_MIGRATION: 000035_remove_card_text_rollback_compat');
+    expect(workflow).toContain('EXPECTED_SCHEMA_MIGRATION: 000036_harden_card_i18n_contract');
     expect(workflow).toContain(
-      'EXPECTED_SCHEMA_CHECKSUM: 07ca7db8618ab6e84260ca55b564edc69da4b77ead072a2e0ea998a50c380aa4',
+      'EXPECTED_SCHEMA_CHECKSUM: 41115b0039694cd7eed955276d659b455e25f5a053dfdb13f815577b4a6045e9',
     );
     expect(browserMatrix).toContain('PG_BOOTSTRAP_USER: zutomayo_e2e_bootstrap');
-    expect(browserMatrix).toContain('EXPECTED_SCHEMA_MIGRATION: 000035_remove_card_text_rollback_compat');
+    expect(browserMatrix).toContain('EXPECTED_SCHEMA_MIGRATION: 000036_harden_card_i18n_contract');
     expect(browserMatrix).toContain(
-      'EXPECTED_SCHEMA_CHECKSUM: 07ca7db8618ab6e84260ca55b564edc69da4b77ead072a2e0ea998a50c380aa4',
+      'EXPECTED_SCHEMA_CHECKSUM: 41115b0039694cd7eed955276d659b455e25f5a053dfdb13f815577b4a6045e9',
     );
     expect(browserMatrix).not.toContain('export EXPECTED_SCHEMA_MIGRATION=');
     expect(workflow).not.toContain('--abort-on-container-exit');

@@ -182,8 +182,8 @@ jobs:
       REDIS_PASSWORD: ''
       METRICS_TOKEN: e2e-test-metrics-token
       PGSSLMODE: disable
-      EXPECTED_SCHEMA_MIGRATION: 000035_remove_card_text_rollback_compat
-      EXPECTED_SCHEMA_CHECKSUM: 07ca7db8618ab6e84260ca55b564edc69da4b77ead072a2e0ea998a50c380aa4
+      EXPECTED_SCHEMA_MIGRATION: 000036_harden_card_i18n_contract
+      EXPECTED_SCHEMA_CHECKSUM: 41115b0039694cd7eed955276d659b455e25f5a053dfdb13f815577b4a6045e9
       PG_MIGRATION_USER: zutomayo_migrator
       PG_MIGRATION_PASSWORD: e2e-test-migration-password
       PG_APP_USER: zutomayo_app

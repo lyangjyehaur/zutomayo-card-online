@@ -366,6 +366,7 @@ export function validateOperationalConfig() {
     's3:DeleteObjectVersion',
     '000032_announcements',
     '000035_remove_card_text_rollback_compat',
+    '000036_harden_card_i18n_contract',
     'LEGACY_TOMBSTONE_BACKFILL_APPROVED',
     'identity_anonymized_at IS NULL',
     '256 MiB',

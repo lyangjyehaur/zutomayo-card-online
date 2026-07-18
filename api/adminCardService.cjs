@@ -3,6 +3,23 @@
 const { CARD_SELECT, cardRowToDef, normalizeI18nLang } = require('./cardDataService.cjs');
 const { writeAuditLog } = require('./adminService.cjs');
 
+const CARD_SONG_TITLES_I18N_CONFIG_KEY = 'card_song_titles_i18n';
+const CARD_SONG_TITLE_LANGS = new Set(['zh-TW', 'zh-CN', 'zh-HK', 'en', 'ko']);
+
+function isValidSongTitleConfig(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  return Object.entries(value).every(
+    ([song, translations]) =>
+      song.trim().length > 0 &&
+      translations &&
+      typeof translations === 'object' &&
+      !Array.isArray(translations) &&
+      Object.entries(translations).every(
+        ([lang, title]) => CARD_SONG_TITLE_LANGS.has(lang) && typeof title === 'string',
+      ),
+  );
+}
+
 function cardDefToDbParams(card) {
   const attack =
     card.attack && typeof card.attack === 'object'
@@ -105,6 +122,19 @@ async function upsertCardI18n(pool, cardId, body, adminUserId) {
     return { ok: false, status: 400, error: 'Derived translations cannot be marked official' };
   }
   const reviewStatus = body?.reviewStatus || 'pending_review';
+  if (reviewStatus === 'verified' && (!hasName || !hasEffect)) {
+    return { ok: false, status: 400, error: 'Verified translations require both nameText and effectText' };
+  }
+  const card = (await pool.query('SELECT effect FROM cards WHERE id = $1', [cardId])).rows[0];
+  if (!card) return { ok: false, status: 404, error: 'Card not found' };
+  if (reviewStatus === 'verified') {
+    if (!body.nameText.trim()) {
+      return { ok: false, status: 400, error: 'Verified card name cannot be empty' };
+    }
+    if (String(card.effect || '').trim() && !body.effectText.trim()) {
+      return { ok: false, status: 400, error: 'Verified card effect cannot be empty' };
+    }
+  }
   const source = typeof body?.source === 'string' && body.source ? body.source : 'admin';
   const nameSource = typeof body?.nameSource === 'string' && body.nameSource ? body.nameSource : source;
   const effectSource = typeof body?.effectSource === 'string' && body.effectSource ? body.effectSource : source;
@@ -210,6 +240,9 @@ async function upsertGameConfig(pool, key, body, adminUserId) {
   if (!body || typeof body !== 'object' || !Object.prototype.hasOwnProperty.call(body, 'value')) {
     return { ok: false, status: 400, error: 'Config value required' };
   }
+  if (key === CARD_SONG_TITLES_I18N_CONFIG_KEY && !isValidSongTitleConfig(body.value)) {
+    return { ok: false, status: 400, error: 'Invalid card song title translations' };
+  }
   const description = typeof body.description === 'string' ? body.description : '';
   await pool.query(
     `INSERT INTO game_config (key, value, description)
@@ -232,6 +265,7 @@ async function upsertGameConfig(pool, key, body, adminUserId) {
 
 module.exports = {
   cardDefToDbParams,
+  isValidSongTitleConfig,
   normalizeCardForUpsert,
   upsertCard,
   upsertCardI18n,
