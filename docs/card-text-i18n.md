@@ -14,7 +14,7 @@
 6. `pending_review` 的衍生翻譯不得展示給玩家。只有 `verified`（或官方來源使用的 `official`）可以進入顯示鏈路。
 7. 勘誤影響的衍生翻譯必須使用已複核的勘誤文本；尚未複核時回退到 `cards` 的有效英文，再回退官方日文。
 8. 本機受控來源 `data/card-english-extraction.json` 中的英文必須先完成人工卡面複核，才能批量匯入 PostgreSQL；該檔及其他卡牌文本來源不得提交到 Git 或進入容器映像。
-9. 舊表 `card_effects_i18n` 已移除；同名 relation 只保留唯讀 rollback compatibility view。相容 API `/cards/i18n` 只從 `cards` 與 `card_texts_i18n` 投影，不得建立第二份效果資料。
+9. 舊表與相容 view `card_effects_i18n` 均已移除。相容 API `/cards/i18n` 只從 `cards` 與 `card_texts_i18n` 投影，不得建立第二份效果資料。
 
 ## 資料模型
 
@@ -57,8 +57,6 @@
 ### `card_official_errata`
 
 保存 12 條官方勘誤的歷史資訊，包括錯誤文本、日期、受影響欄位、英文複核狀態、英文來源類型和官方網址。修正後日文與英文不在此表重複保存，管理 API 會依受影響欄位從 canonical `cards` 即時回傳。
-
-舊映像 rollback 所需的 `corrected_japanese_text`、`corrected_english_text` 欄位是只允許 `NULL` 的相容 tombstone，`card_official_errata_no_corrected_text_cache` constraint 會拒絕任何文本寫入。
 
 `corrected_english_source` 只能是：
 
@@ -116,6 +114,7 @@
 - `migrations/000009_card_official_errata_english_source.js`
 - `migrations/000033_card_text_authority.js`
 - `migrations/000034_card_text_rollback_compat.js`
+- `migrations/000035_remove_card_text_rollback_compat.js`
 
 ## 日常翻譯流程
 
@@ -240,7 +239,7 @@ npm run import:card-official-texts
 - `hasOfficialErrata` 共 12 張。
 - `/api/cards/texts` 返回 422 張卡的文本資料。
 - 英文、日文和至少一個衍生語言實際 UI 的名稱、效果與勘誤 fallback。
-- `card_texts_i18n` 的 `ja`、`en` 列均為 0；`card_effects_i18n` 是唯讀 view 而非資料表。
+- `card_texts_i18n` 的 `ja`、`en` 列均為 0；資料庫中不存在 `card_effects_i18n` relation。
 
 ### 匯入已複核的衍生效果
 

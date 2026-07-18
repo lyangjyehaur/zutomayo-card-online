@@ -669,20 +669,6 @@ async function initSchema() {
     `ALTER TABLE card_official_errata
        DROP COLUMN IF EXISTS corrected_japanese_text,
        DROP COLUMN IF EXISTS corrected_english_text`,
-    `ALTER TABLE card_official_errata
-       ADD COLUMN corrected_japanese_text TEXT,
-       ADD COLUMN corrected_english_text TEXT,
-       ADD CONSTRAINT card_official_errata_no_corrected_text_cache
-         CHECK (corrected_japanese_text IS NULL AND corrected_english_text IS NULL)`,
-    `CREATE OR REPLACE VIEW card_effects_i18n AS
-       SELECT card_id, lang, effect_text
-         FROM card_texts_i18n
-       UNION ALL
-       SELECT id, 'ja'::text, effect
-         FROM cards
-       UNION ALL
-       SELECT id, 'en'::text, en_effect_official
-         FROM cards`,
 
     `CREATE TABLE IF NOT EXISTS game_config (
       key TEXT PRIMARY KEY,

@@ -137,6 +137,7 @@ describe('schema migrations', () => {
     const errataSource = readRepoFile('migrations/000030_card_official_errata_english_source.js');
     const authority = readRepoFile('migrations/000033_card_text_authority.js');
     const rollbackCompatibility = readRepoFile('migrations/000034_card_text_rollback_compat.js');
+    const removeRollbackCompatibility = readRepoFile('migrations/000035_remove_card_text_rollback_compat.js');
 
     expect(migrationRunner).toContain('migrationIgnorePatternForApplied');
     expect(developmentRunner).toContain('migrationIgnorePatternForApplied');
@@ -165,7 +166,17 @@ describe('schema migrations', () => {
     expect(rollbackCompatibility).toContain('CREATE VIEW card_effects_i18n');
     expect(rollbackCompatibility).toContain('card_official_errata_no_corrected_text_cache');
     expect(rollbackCompatibility).toContain('corrected_japanese_text IS NULL');
-    for (const migration of [cardTexts, errata, errataSource, authority, rollbackCompatibility]) {
+    expect(removeRollbackCompatibility).toContain('DROP VIEW IF EXISTS card_effects_i18n');
+    expect(removeRollbackCompatibility).toContain('DROP COLUMN IF EXISTS corrected_japanese_text');
+    expect(removeRollbackCompatibility).toContain('DROP COLUMN IF EXISTS corrected_english_text');
+    for (const migration of [
+      cardTexts,
+      errata,
+      errataSource,
+      authority,
+      rollbackCompatibility,
+      removeRollbackCompatibility,
+    ]) {
       expect(migration).toContain('export const down = false;');
     }
   });

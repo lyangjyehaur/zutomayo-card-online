@@ -224,7 +224,7 @@ function assertServer4DeployScript() {
   const requiredFragments = [
     'origin/master',
     'git reset --hard origin/master',
-    '000034_card_text_rollback_compat',
+    '000035_remove_card_text_rollback_compat',
     'APP_BUILD_ID',
     'APP_VERSION',
     'GAME_RULES_VERSION',
