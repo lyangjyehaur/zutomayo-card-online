@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
-# Deploy the current origin/master beta release to server4, or restore the
-# runtime images and configuration captured immediately before that release.
+# Deploy the current origin/master beta release to server4.
 #
 # Usage:
 #   ./scripts/deploy-server4.sh
 #   ./scripts/deploy-server4.sh --confirm
 #   ./scripts/deploy-server4.sh --dry-run
-#   ./scripts/deploy-server4.sh --rollback --confirm
 
 set -euo pipefail
 
@@ -30,15 +28,10 @@ PLATFORM_PORT="${PLATFORM_PORT:-3002}"
 SMOKE_LOCAL_GAME_PORT="${SMOKE_LOCAL_GAME_PORT:-13000}"
 SMOKE_LOCAL_API_PORT="${SMOKE_LOCAL_API_PORT:-13001}"
 SMOKE_LOCAL_PLATFORM_PORT="${SMOKE_LOCAL_PLATFORM_PORT:-13002}"
-GHCR_OWNER="${GHCR_OWNER:-lyangjyehaur}"
-GAME_IMAGE="ghcr.io/${GHCR_OWNER}/zutomayo-card-online-game"
-API_IMAGE="ghcr.io/${GHCR_OWNER}/zutomayo-card-online-api"
-PLATFORM_IMAGE="ghcr.io/${GHCR_OWNER}/zutomayo-card-online-platform"
 EXPECTED_SCHEMA_MIGRATION="000036_harden_card_i18n_contract"
 
 CONFIRM=false
 DRY_RUN=false
-ROLLBACK=false
 
 usage() {
   sed -n '2,10p' "$0"
@@ -49,7 +42,6 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --confirm) CONFIRM=true; shift ;;
     --dry-run) DRY_RUN=true; shift ;;
-    --rollback) ROLLBACK=true; shift ;;
     -h|--help) usage ;;
     *) printf 'unknown argument: %s\n' "$1" >&2; exit 2 ;;
   esac
@@ -138,8 +130,6 @@ remote_predeploy_backup() {
     chmod 0700 '$REMOTE_BACKUP_DIR'
     cp -p .env '$REMOTE_BACKUP_DIR/.env.'\"\$timestamp\"
     cp -p '$COMPOSE_FILE' '$REMOTE_BACKUP_DIR/$COMPOSE_FILE.'\"\$timestamp\"
-    cp -p .env .env.previous
-    cp -p '$COMPOSE_FILE' '$COMPOSE_FILE.previous'
     set -a
     . ./.env
     set +a
@@ -184,12 +174,11 @@ remote_sync_master_and_env() {
 
 sync_battle_assets() {
   local remote_stage="${REMOTE_BATTLE_ASSET_DIR}.next"
-  local remote_previous="$REMOTE_DIR/backups/battle-assets/previous"
   awk 'NF { print $2 }' "$BATTLE_ASSET_CHECKSUMS" \
     | COPYFILE_DISABLE=1 tar -C "$BATTLE_ASSET_DIR" -cf - -T - \
     | ssh -p "$SERVER_PORT" "$SERVER_USER@$SERVER_HOST" "set -euo pipefail
         rm -rf '$remote_stage'
-        mkdir -p '$remote_stage' '$REMOTE_DIR/backups/battle-assets'
+        mkdir -p '$remote_stage'
         tar -xf - -C '$remote_stage'
         find '$remote_stage' -type f -name '._*' -delete
         find '$remote_stage' -type d -exec chmod 0755 {} +
@@ -198,8 +187,7 @@ sync_battle_assets() {
         sha256sum --check '$REMOTE_DIR/scripts/battle-assets.sha256'
         actual_count=\$(find . -type f \( -iname '*.png' -o -iname '*.svg' \) | wc -l | tr -d '[:space:]')
         test \"\$actual_count\" = '$BATTLE_ASSET_COUNT'
-        rm -rf '$remote_previous'
-        if test -d '$REMOTE_BATTLE_ASSET_DIR'; then mv '$REMOTE_BATTLE_ASSET_DIR' '$remote_previous'; fi
+        rm -rf '$REMOTE_BATTLE_ASSET_DIR'
         mv '$remote_stage' '$REMOTE_BATTLE_ASSET_DIR'"
   log "synchronized and verified $BATTLE_ASSET_COUNT private battle assets"
 }
@@ -245,24 +233,6 @@ verify_remote_runtime_config() {
     echo 'Redis eviction policy: noeviction'"
 }
 
-capture_rollback_images() {
-  ssh_run "set -euo pipefail
-    cd '$REMOTE_DIR'
-    rm -f .server4-rollback-ready
-    if docker image inspect '$GAME_IMAGE:latest' '$API_IMAGE:latest' '$PLATFORM_IMAGE:latest' >/dev/null 2>&1; then
-      docker tag '$GAME_IMAGE:latest' '$GAME_IMAGE:rollback'
-      docker tag '$API_IMAGE:latest' '$API_IMAGE:rollback'
-      docker tag '$PLATFORM_IMAGE:latest' '$PLATFORM_IMAGE:rollback'
-      touch .server4-rollback-ready
-    elif grep -Eq '^GAME_IMAGE=.+@sha256:' .env.previous \
-      && grep -Eq '^API_IMAGE=.+@sha256:' .env.previous \
-      && grep -Eq '^PLATFORM_IMAGE=.+@sha256:' .env.previous; then
-      touch .server4-rollback-ready
-    else
-      echo 'warning: complete previous runtime image set was not found; automatic rollback is unavailable' >&2
-    fi"
-}
-
 remote_build_and_start() {
   ssh_run "set -euo pipefail
     cd '$REMOTE_DIR'
@@ -271,35 +241,8 @@ remote_build_and_start() {
     docker compose -f '$COMPOSE_FILE' ps"
 }
 
-remote_rollback() {
-  ssh_run "set -euo pipefail
-    cd '$REMOTE_DIR'
-    test -s .env.previous
-    test -s '$COMPOSE_FILE.previous'
-    cp -p .env .env.failed 2>/dev/null || true
-    cp -p '$COMPOSE_FILE' '$COMPOSE_FILE.failed' 2>/dev/null || true
-    cp -p .env.previous .env
-    cp -p '$COMPOSE_FILE.previous' '$COMPOSE_FILE'
-    if test -d '$REMOTE_DIR/backups/battle-assets/previous'; then
-      rm -rf '$REMOTE_DIR/backups/battle-assets/failed'
-      if test -d '$REMOTE_BATTLE_ASSET_DIR'; then
-        mv '$REMOTE_BATTLE_ASSET_DIR' '$REMOTE_DIR/backups/battle-assets/failed'
-      fi
-      mv '$REMOTE_DIR/backups/battle-assets/previous' '$REMOTE_BATTLE_ASSET_DIR'
-    fi
-    TAG=rollback docker compose -f '$COMPOSE_FILE' config --quiet
-    TAG=rollback docker compose -f '$COMPOSE_FILE' up -d --no-build --no-deps --wait \
-      --wait-timeout '$DEPLOY_WAIT_SECONDS' game api platform
-    date -u +%Y-%m-%dT%H:%M:%SZ > .release.rolled-back-at
-    docker compose -f '$COMPOSE_FILE' ps"
-}
-
-remote_build_id() {
-  ssh_run "set -euo pipefail; cd '$REMOTE_DIR'; sed -n 's/^APP_BUILD_ID=//p' .env | tail -n 1"
-}
-
 run_smoke() {
-  local expected_build_id="$1" check_battle_assets="${2:-true}" tunnel_pid status
+  local expected_build_id="$1" tunnel_pid status
   ssh -p "$SERVER_PORT" -o ExitOnForwardFailure=yes -N -T \
     -L "${SMOKE_LOCAL_GAME_PORT}:127.0.0.1:${GAME_PORT}" \
     -L "${SMOKE_LOCAL_API_PORT}:127.0.0.1:${API_PORT}" \
@@ -318,34 +261,13 @@ run_smoke() {
     --api-port "$SMOKE_LOCAL_API_PORT" \
     --platform-port "$SMOKE_LOCAL_PLATFORM_PORT" \
     --expected-build-id "$expected_build_id" \
-    --check-battle-assets "$check_battle_assets"
+    --check-battle-assets true
   status=$?
   set -e
   kill "$tunnel_pid" >/dev/null 2>&1 || true
   wait "$tunnel_pid" >/dev/null 2>&1 || true
   return "$status"
 }
-
-rollback_and_smoke() {
-  remote_rollback || return 1
-  local previous_build_id
-  previous_build_id="$(remote_build_id)"
-  [[ -n "$previous_build_id" ]] || return 1
-  run_smoke "$previous_build_id" false
-}
-
-if [[ "$ROLLBACK" == true ]]; then
-  confirm_action 'rollback to the previous server4 runtime images and configuration'
-  if [[ "$DRY_RUN" == true ]]; then
-    log '[dry-run] would restore .env.previous, the previous Compose file, and previous runtime images'
-    exit 0
-  fi
-  ssh_run "test -s '$REMOTE_DIR/.env.previous' && test -s '$REMOTE_DIR/$COMPOSE_FILE.previous'" || \
-    die 'previous server4 configuration is unavailable'
-  rollback_and_smoke || die 'rollback or rollback health verification failed'
-  log 'rollback completed and health checks passed'
-  exit 0
-fi
 
 load_local_release
 confirm_action "deploy origin/master $TARGET_SHORT"
@@ -368,27 +290,10 @@ log 'checking PostgreSQL TLS and shared Redis safety configuration'
 verify_remote_runtime_config
 log 'synchronizing private battle assets outside GitHub'
 sync_battle_assets
-capture_rollback_images
 
-if ! remote_build_and_start; then
-  if ssh_run "test -f '$REMOTE_DIR/.server4-rollback-ready'"; then
-    log 'deployment failed; restoring the previous runtime images and configuration'
-    rollback_and_smoke || log 'rollback verification failed; manual intervention is required'
-  else
-    log 'deployment failed and no complete rollback image set is available'
-  fi
-  exit 1
-fi
+remote_build_and_start || die 'deployment failed; inspect the server4 Compose logs before retrying'
 
-if ! run_smoke "$TARGET_SHA" true; then
-  if ssh_run "test -f '$REMOTE_DIR/.server4-rollback-ready'"; then
-    log 'health verification failed; restoring the previous runtime images and configuration'
-    rollback_and_smoke || log 'rollback verification failed; manual intervention is required'
-  else
-    log 'health verification failed and no complete rollback image set is available'
-  fi
-  exit 1
-fi
+run_smoke "$TARGET_SHA" || die 'health verification failed; inspect the deployed release before retrying'
 
 ssh_run "date -u +%Y-%m-%dT%H:%M:%SZ > '$REMOTE_DIR/.release.deployed-at'"
 log "deployment completed: origin/master $TARGET_SHORT"

@@ -234,8 +234,6 @@ function assertServer4DeployScript() {
     '--format=custom',
     'pg_restore --list',
     'sha256sum --check',
-    '.env.previous',
-    '$COMPOSE_FILE.previous',
     'extract_redis_db',
     'CONFIG GET maxmemory-policy',
     'noeviction',
@@ -245,7 +243,6 @@ function assertServer4DeployScript() {
     'deploy-smoke.mjs',
     'battle-assets.sha256',
     'sync_battle_assets',
-    'rollback_and_smoke',
   ];
   for (const fragment of requiredFragments) {
     if (!deploy.includes(fragment)) throw new Error(`${relativePath} is missing beta safety step: ${fragment}`);
@@ -263,6 +260,11 @@ function assertServer4DeployScript() {
     'PG_MONITOR_USER',
     'PG_BACKUP_USER',
     'PG_WAL_USER',
+    '--rollback',
+    'rollback_and_smoke',
+    '.env.previous',
+    '$COMPOSE_FILE.previous',
+    ':rollback',
   ]) {
     if (deploy.includes(forbidden)) throw new Error(`${relativePath} beta path must not require ${forbidden}`);
   }

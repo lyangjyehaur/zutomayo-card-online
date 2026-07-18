@@ -14,7 +14,6 @@ export interface CardTextI18nEntry {
   reviewNote: string;
 }
 
-let effectI18n: Record<string, Record<string, string>> = {};
 let cardTextsI18n: Record<string, Record<string, CardTextI18nEntry>> = {};
 let _initialized = false;
 
@@ -22,26 +21,8 @@ export function isI18nInitialized(): boolean {
   return _initialized;
 }
 
-/**
- * 從外部載入翻譯數據（遊戲伺服器啟動時呼叫，從 PostgreSQL 讀取）。
- */
-export function initEffectI18n(data: Record<string, Record<string, string>>): void {
-  effectI18n = data;
-  _initialized = true;
-}
-
 export function initCardTextsI18n(data: Record<string, Record<string, CardTextI18nEntry>>): void {
   cardTextsI18n = data;
-  effectI18n = Object.fromEntries(
-    Object.entries(data).map(([cardId, entries]) => [
-      cardId,
-      Object.fromEntries(
-        Object.entries(entries)
-          .filter(([, entry]) => entry.reviewStatus !== 'pending_review')
-          .map(([lang, entry]) => [lang, entry.effect]),
-      ),
-    ]),
-  );
   _initialized = true;
 }
 
@@ -56,24 +37,11 @@ async function fetchJson<T>(path: string): Promise<T | null> {
   }
 }
 
-/**
- * 從 PG-backed API 載入所有卡牌翻譯（批次）。
- * API 不可用時保留既有（可能為空）的翻譯資料。
- */
-export async function loadEffectI18nFromAPI(): Promise<void> {
-  const data = await fetchJson<Record<string, Record<string, string>>>('/api/cards/i18n');
-  if (data && typeof data === 'object') {
-    initEffectI18n(data);
-  }
-}
-
 export async function loadCardTextsI18nFromAPI(): Promise<void> {
   const data = await fetchJson<Record<string, Record<string, CardTextI18nEntry>>>('/api/cards/texts');
-  if (data && typeof data === 'object' && Object.keys(data).length > 0) {
+  if (data && typeof data === 'object' && !Array.isArray(data)) {
     initCardTextsI18n(data);
-    return;
   }
-  await loadEffectI18nFromAPI();
 }
 
 function reviewedTranslation(cardId: string, locale: string): CardTextI18nEntry | null {
@@ -238,10 +206,14 @@ function replaceDelimitedSegments(
 
 /**
  * 依 locale 取得卡牌效果翻譯。
- * 找不到對應語言時 fallback 到日文原文，再找不到回傳 null。
+ * 找不到對應語言時 fallback 到已發布英文，再 fallback 到官方日文；都沒有時回傳 null。
  */
 export function getTranslatedEffect(cardId: string, locale: string): string | null {
-  const entry = effectI18n[cardId];
-  if (!entry) return null;
-  return entry[locale] || entry['ja'] || null;
+  const entries = cardTextsI18n[cardId];
+  if (!entries) return null;
+  for (const language of [locale, 'en', 'ja']) {
+    const entry = reviewedTranslation(cardId, language);
+    if (entry?.effect) return entry.effect;
+  }
+  return null;
 }

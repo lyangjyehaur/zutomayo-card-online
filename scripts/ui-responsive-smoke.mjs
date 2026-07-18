@@ -209,7 +209,7 @@ const setup = `
     if (url.includes('/api/preset-decks')) return json([]);
     if (url.includes('/api/presence')) return json({ onlineCount: 7, activeWindowSeconds: 90 });
     if (url.includes('/api/config')) return json({});
-    if (url.includes('/api/cards/i18n')) return json({});
+    if (url.includes('/api/cards/texts')) return json({});
     if (url.includes('/api/app-version')) {
       return json({ appVersion: smokeVersion, buildId: smokeVersion, rulesVersion: smokeVersion });
     }
@@ -285,7 +285,6 @@ const setup = `
     }
     if (url.includes('/games/zutomayo-card/create')) return json({ matchID: 'ui-responsive-room' });
     if (url.includes('/games/zutomayo-card/ui-responsive-room/join')) return json({ playerCredentials: 'ui-responsive-credentials' });
-    if (url.includes('/api/matchmaking/')) throw new Error('UI smoke should not call legacy REST matchmaking');
     return originalFetch(input, init);
   };
 })()

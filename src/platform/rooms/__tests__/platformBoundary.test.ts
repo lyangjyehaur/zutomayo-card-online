@@ -144,9 +144,9 @@ const poisonedDurableChatPayload = {
   translationId: 'chat_translation_1',
 };
 
-function seatToken(): string {
+function seatToken(matchID = 'bgio-match-1', playerID: '0' | '1' = '0', userId = 'u_player'): string {
   process.env.PLATFORM_SEAT_TOKEN_SECRET = 'test-seat-token-secret-at-least-32-characters';
-  return createPlatformSeatToken({ matchID: 'bgio-match-1', playerID: '0' });
+  return createPlatformSeatToken({ matchID, playerID, userId });
 }
 
 describe('platform room boundary', () => {
@@ -188,7 +188,7 @@ describe('platform room boundary', () => {
       hasBoardgameCredentials: true,
       ...poisonedBoardgamePayload,
       ...poisonedDurableChatPayload,
-      platformSeatToken: seatToken(),
+      platformSeatToken: seatToken('bgio-match-1', '0', 'u_player'),
     });
 
     expectPlatformShellOnly(player.send.mock.calls);

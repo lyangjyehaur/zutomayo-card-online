@@ -234,18 +234,6 @@ const legalHoldListQuerySchema = z
   })
   .strict();
 
-// ===== Matchmaking =====
-const mmQueueSchema = z
-  .object({
-    deckName: z.string().max(60).optional(),
-    deckIds: z.array(z.string().max(40)).min(1).max(40).optional(),
-  })
-  .passthrough();
-
-const mmMatchSchema = z.object({
-  matchId: z.string().min(1).max(60),
-});
-
 // ===== Feedback =====
 const feedbackPostCreateSchema = z
   .object({
@@ -319,8 +307,6 @@ module.exports = {
   legalHoldCreateSchema,
   legalHoldReleaseSchema,
   legalHoldListQuerySchema,
-  mmQueueSchema,
-  mmMatchSchema,
   feedbackPostCreateSchema,
   feedbackCommentCreateSchema,
   feedbackStatusSchema,

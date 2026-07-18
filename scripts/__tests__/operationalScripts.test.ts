@@ -61,7 +61,7 @@ describe('operational shell scripts', () => {
     expect(smoke).toContain('api node social-concurrency-pg-smoke.cjs');
   });
 
-  it('keeps the server4 beta deployment backup, Redis, health, and rollback gates', () => {
+  it('keeps the server4 beta deployment backup, Redis, asset, and health gates', () => {
     const deploy = readFileSync(resolve('scripts/deploy-server4.sh'), 'utf8');
     const compose = readFileSync(resolve('docker-compose.server4.yml'), 'utf8');
     const smoke = readFileSync(resolve('scripts/deploy-smoke.mjs'), 'utf8');
@@ -80,9 +80,11 @@ describe('operational shell scripts', () => {
     expect(deploy).toContain('COPYFILE_DISABLE=1 tar');
     expect(deploy).toContain("-name '._*' -delete");
     expect(deploy).toContain('sha256sum --check');
-    expect(deploy).toContain('--check-battle-assets "$check_battle_assets"');
-    expect(deploy).toContain('run_smoke "$previous_build_id" false');
-    expect(deploy).toContain('rollback_and_smoke');
+    expect(deploy).toContain('--check-battle-assets true');
+    expect(deploy).not.toContain('--rollback');
+    expect(deploy).not.toContain('rollback_and_smoke');
+    expect(deploy).not.toContain('.env.previous');
+    expect(deploy).not.toContain('$COMPOSE_FILE.previous');
     expect(compose).toContain('${BATTLE_ASSET_DIR:-./public/battle}:/app/dist/battle:ro');
     expect(smoke).toContain('/battle/chronos.svg');
     expect(smoke).toContain('/battle/medal.png');

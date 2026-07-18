@@ -45,7 +45,7 @@ function syntheticCard(id: string, element: Element, type: CardType, index: numb
   };
 }
 
-export function createE2ECardSeed(): { schemaVersion: 1; cards: CardDef[]; i18n: Record<string, never> } {
+export function createE2ECardSeed(): { schemaVersion: 2; cards: CardDef[]; texts: Record<string, never> } {
   const cards: CardDef[] = [];
   let index = 1;
   for (const { code, element } of PRESET_ELEMENTS) {
@@ -58,7 +58,7 @@ export function createE2ECardSeed(): { schemaVersion: 1; cards: CardDef[]; i18n:
     cards.push(syntheticCard(tutorial.id, 'カオス', tutorial.type, index));
     index += 1;
   }
-  return { schemaVersion: 1, cards, i18n: {} };
+  return { schemaVersion: 2, cards, texts: {} };
 }
 
 async function main(): Promise<void> {

@@ -107,7 +107,7 @@
 - [x] 帳號資料匯出與匿名化刪除 service。
 - [ ] 帳號 lifecycle routes/UI、step-up 與 durable session revoke 已有；尚缺真實 email/Logto provider E2E 與故障恢復證據。
 - [x] Friend request 與 block service / migration；不再直接雙向加好友。
-- [ ] Direct chat、presence、legacy matchmaking 與 platform 已接 block/mute；已連線即時撤銷與 join/matched race 尚未完整。
+- [ ] Direct chat、presence 與 platform 已接 block/mute；已連線即時撤銷與 join/matched race 尚未完整。
 - [x] Season / placement / idempotent season rating service 與 migration。
 - [x] Season admin、player API/UI、關季與衰減流程。
 - [x] 投降、棄賽、reconnect deadline、rematch 與處罰政策落地。

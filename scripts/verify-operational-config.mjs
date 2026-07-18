@@ -187,7 +187,6 @@ export function validateOperationalConfig() {
     'dropped_iterations',
   ]);
   requireFragments('load-tests/websocket-load.js', ['WS_TARGET_CONNECTIONS', 'ws_connecting', 'ws_connect_success']);
-  requireFragments('load-tests/matchmaking-load.js', ['mm_matched']);
   requireFragments('load-tests/auth-load.js', ['auth_refresh_success']);
   requireFragments('.github/workflows/ci.yml', ['npm run ops:config']);
   requireFragments('.github/workflows/cd.yml', [

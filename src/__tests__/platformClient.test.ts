@@ -1211,7 +1211,7 @@ describe('platform client helpers', () => {
     expect(onBoardgameMatchReady).toHaveBeenCalledWith({ boardgameMatchID: 'bgio-match-1' });
   });
 
-  it('surfaces quick-match Colyseus join failures without legacy matchmaking fallback', async () => {
+  it('surfaces quick-match Colyseus join failures directly', async () => {
     const post = vi.fn<(url: string, request: { body: string }) => Promise<never>>(async () => {
       throw new Error('platform unavailable');
     });

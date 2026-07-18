@@ -666,14 +666,6 @@ export async function fetchCards(force = false): Promise<CardDef[]> {
   return data;
 }
 
-export async function fetchAllCardI18n(): Promise<Record<string, Record<string, string>>> {
-  return request<Record<string, Record<string, string>>>('/cards/i18n');
-}
-
-export async function fetchCardI18n(cardId: string): Promise<Record<string, string>> {
-  return request<Record<string, string>>(`/cards/${encodeURIComponent(cardId)}/i18n`);
-}
-
 export interface CardTextI18nEntry {
   name: string;
   effect: string;
@@ -1788,41 +1780,5 @@ export async function adminReloadGameCards(): Promise<void> {
   await request<{ ok: boolean }>('/admin/cards/reload', {
     method: 'POST',
     headers: adminAuthHeaders(),
-  });
-}
-
-// ===== Matchmaking =====
-export interface MatchmakingQueueResponse {
-  queueId: string;
-  status: 'queued' | 'matched';
-}
-
-export interface MatchmakingStatusResponse {
-  status: 'queued' | 'matched' | 'timeout';
-  matchId?: string;
-  opponentId?: string;
-  role?: 'host' | 'guest';
-  realMatchId?: string;
-}
-
-export async function matchmakingQueue(deckName?: string, deckIds?: string[]): Promise<MatchmakingQueueResponse> {
-  return request<MatchmakingQueueResponse>('/matchmaking/queue', {
-    method: 'POST',
-    body: JSON.stringify({ deckName, deckIds }),
-  });
-}
-
-export async function matchmakingStatus(): Promise<MatchmakingStatusResponse> {
-  return request<MatchmakingStatusResponse>('/matchmaking/status');
-}
-
-export async function matchmakingLeave(): Promise<void> {
-  await request<{ deleted: boolean }>('/matchmaking/queue', { method: 'DELETE' });
-}
-
-export async function matchmakingReportMatch(realMatchId: string): Promise<void> {
-  await request<{ ok: boolean }>('/matchmaking/match', {
-    method: 'PUT',
-    body: JSON.stringify({ matchId: realMatchId }),
   });
 }

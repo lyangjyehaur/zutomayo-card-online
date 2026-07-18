@@ -151,30 +151,6 @@ groups:
           summary: 'Synthetic player journey is stale'
           description: 'No synthetic player journey result has been written for more than 3 minutes.'
 
-  - name: zutomayo-matchmaking
-    interval: 30s
-    rules:
-      # Matchmaking queue depth > 50 for 5 minutes -> warning
-      - alert: MatchmakingQueueDepthHigh
-        expr: matchmaking_queue_depth > 50
-        for: 5m
-        labels:
-          severity: warning
-          team: backend
-        annotations:
-          summary: 'Matchmaking queue depth high'
-          description: 'Matchmaking queue depth is {{ $value }} (threshold 50) for 5 minutes. Consider scaling game server instances.'
-
-      - alert: MatchmakingQueueMetricReadFailed
-        expr: rate(matchmaking_queue_metric_failures_total[5m]) > 0
-        for: 5m
-        labels:
-          severity: warning
-          team: backend
-        annotations:
-          summary: 'Matchmaking queue metric read failed'
-          description: 'The API could not read the Redis matchmaking queue depth. Treat queue depth as unknown until the metric recovers.'
-
   - name: zutomayo-match-results
     interval: 30s
     rules:
