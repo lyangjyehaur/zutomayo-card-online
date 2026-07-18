@@ -12,6 +12,7 @@ const REQUIRED_RUNTIME_TABLES = Object.freeze([
   'deck_reservations',
   'matches',
   'cards',
+  'card_effects_i18n',
   'card_texts_i18n',
   'card_official_errata',
   'game_config',
@@ -102,6 +103,7 @@ const REQUIRED_RUNTIME_COLUMNS = Object.freeze({
     'official_errata_url',
     'updated_at',
   ],
+  card_effects_i18n: ['card_id', 'lang', 'effect_text'],
   card_texts_i18n: [
     'card_id',
     'lang',
@@ -120,6 +122,8 @@ const REQUIRED_RUNTIME_COLUMNS = Object.freeze({
     'affects_name',
     'affects_effect',
     'incorrect_text',
+    'corrected_japanese_text',
+    'corrected_english_text',
     'corrected_english_status',
     'corrected_english_source',
     'source_url',
@@ -783,6 +787,20 @@ const REQUIRED_RUNTIME_COLUMN_CONTRACTS = Object.freeze([
   },
   {
     tableName: 'card_official_errata',
+    columnName: 'corrected_japanese_text',
+    udtName: 'text',
+    nullable: true,
+    defaultToken: null,
+  },
+  {
+    tableName: 'card_official_errata',
+    columnName: 'corrected_english_text',
+    udtName: 'text',
+    nullable: true,
+    defaultToken: null,
+  },
+  {
+    tableName: 'card_official_errata',
     columnName: 'corrected_english_status',
     udtName: 'text',
     nullable: false,
@@ -1209,6 +1227,12 @@ const REQUIRED_RUNTIME_CONSTRAINTS = Object.freeze([
       'official_card_print_corrected',
       'official_japanese_errata_translation',
     ],
+  },
+  {
+    tableName: 'card_official_errata',
+    constraintName: 'card_official_errata_no_corrected_text_cache',
+    constraintType: 'c',
+    fragments: ['corrected_japanese_text is null', 'corrected_english_text is null'],
   },
   {
     tableName: 'card_texts_i18n',

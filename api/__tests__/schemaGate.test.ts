@@ -346,7 +346,7 @@ describe('production schema gate', () => {
   });
 
   it('requires official and localized card text schema', () => {
-    expect(REQUIRED_RUNTIME_TABLES).not.toContain('card_effects_i18n');
+    expect(REQUIRED_RUNTIME_TABLES).toContain('card_effects_i18n');
     expect(REQUIRED_RUNTIME_TABLES).toContain('card_texts_i18n');
     expect(REQUIRED_RUNTIME_TABLES).toContain('card_official_errata');
     expect(REQUIRED_RUNTIME_COLUMNS.cards).toContain('en_name_official');
@@ -360,12 +360,12 @@ describe('production schema gate', () => {
         'card_id',
         'published_at',
         'incorrect_text',
+        'corrected_japanese_text',
+        'corrected_english_text',
         'corrected_english_source',
         'updated_at',
       ]),
     );
-    expect(REQUIRED_RUNTIME_COLUMNS.card_official_errata).not.toContain('corrected_japanese_text');
-    expect(REQUIRED_RUNTIME_COLUMNS.card_official_errata).not.toContain('corrected_english_text');
     expect(
       REQUIRED_RUNTIME_COLUMN_CONTRACTS.filter(({ tableName }) => tableName === 'card_texts_i18n')
         .map(({ columnName }) => columnName)
@@ -391,6 +391,20 @@ describe('production schema gate', () => {
           udtName: 'text',
           nullable: false,
           defaultToken: "'official_japanese_errata_translation'",
+        },
+        {
+          tableName: 'card_official_errata',
+          columnName: 'corrected_japanese_text',
+          udtName: 'text',
+          nullable: true,
+          defaultToken: null,
+        },
+        {
+          tableName: 'card_official_errata',
+          columnName: 'corrected_english_text',
+          udtName: 'text',
+          nullable: true,
+          defaultToken: null,
         },
       ]),
     );
@@ -419,6 +433,11 @@ describe('production schema gate', () => {
         expect.objectContaining({
           tableName: 'card_official_errata',
           constraintName: 'card_official_errata_english_source_check',
+          constraintType: 'c',
+        }),
+        expect.objectContaining({
+          tableName: 'card_official_errata',
+          constraintName: 'card_official_errata_no_corrected_text_cache',
           constraintType: 'c',
         }),
       ]),
@@ -497,7 +516,7 @@ describe('production schema gate', () => {
     await expect(
       assertRuntimeSchema({
         pool: { query },
-        expectedMigration: '000033_card_text_authority',
+        expectedMigration: '000034_card_text_rollback_compat',
         expectedChecksum: CHECKSUM,
       }),
     ).rejects.toThrow('2 legacy deleted accounts pending identity anonymization');
@@ -589,7 +608,7 @@ describe('production schema gate', () => {
     await expect(
       assertRuntimeSchema({
         pool: { query },
-        expectedMigration: '000033_card_text_authority',
+        expectedMigration: '000034_card_text_rollback_compat',
         expectedChecksum: CHECKSUM,
       }),
     ).rejects.toThrow('card_official_errata_english_source_check');
@@ -633,7 +652,7 @@ describe('production schema gate', () => {
 });
 
 describe('boardgame runtime schema gate', () => {
-  const expectedMigration = '000033_card_text_authority';
+  const expectedMigration = '000034_card_text_rollback_compat';
   const allTablesPresent = () => REQUIRED_BOARDGAME_RUNTIME_TABLES.map((table_name) => ({ table_name, present: true }));
   const allColumnsPresent = () =>
     Object.entries(REQUIRED_BOARDGAME_RUNTIME_COLUMNS).flatMap(([table_name, columns]) =>

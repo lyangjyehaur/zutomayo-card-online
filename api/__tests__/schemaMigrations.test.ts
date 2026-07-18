@@ -228,6 +228,7 @@ describe('schema migrations', () => {
     const errata = readRepoFile('migrations/000029_card_official_errata.js');
     const errataSource = readRepoFile('migrations/000030_card_official_errata_english_source.js');
     const authority = readRepoFile('migrations/000033_card_text_authority.js');
+    const rollbackCompatibility = readRepoFile('migrations/000034_card_text_rollback_compat.js');
 
     expect(developmentRunner).toContain('ssl: postgresSslConfig(process.env)');
     for (const runner of [migrationRunner, developmentRunner]) {
@@ -252,7 +253,10 @@ describe('schema migrations', () => {
     expect(authority).toContain('DROP TABLE IF EXISTS card_effects_i18n');
     expect(authority).toContain('DROP COLUMN IF EXISTS corrected_japanese_text');
     expect(authority).toContain("CHECK (lang NOT IN ('ja', 'en'))");
-    for (const migration of [cardTexts, errata, errataSource, authority]) {
+    expect(rollbackCompatibility).toContain('CREATE VIEW card_effects_i18n');
+    expect(rollbackCompatibility).toContain('card_official_errata_no_corrected_text_cache');
+    expect(rollbackCompatibility).toContain('corrected_japanese_text IS NULL');
+    for (const migration of [cardTexts, errata, errataSource, authority, rollbackCompatibility]) {
       expect(migration).toContain('export const down = false;');
     }
   });

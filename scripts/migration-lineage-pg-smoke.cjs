@@ -42,6 +42,7 @@ const POST_CARD_MIGRATIONS = [
   '000032_official_card_data_releases',
   '000033_admin_linked_auth_contract',
   '000033_card_text_authority',
+  '000034_card_text_rollback_compat',
 ];
 
 function migrationFilePattern(names) {

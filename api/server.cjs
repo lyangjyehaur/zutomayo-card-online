@@ -730,6 +730,10 @@ async function initSchema() {
           WHERE table_schema = 'public'
             AND table_name = 'card_official_errata'
             AND column_name = 'corrected_japanese_text'
+       ) AND NOT EXISTS (
+         SELECT 1 FROM pg_constraint
+          WHERE conname = 'card_official_errata_no_corrected_text_cache'
+            AND conrelid = 'public.card_official_errata'::regclass
        ) THEN
          UPDATE cards AS card
             SET name = CASE
@@ -766,10 +770,35 @@ async function initSchema() {
            CHECK (lang NOT IN ('ja', 'en'));
        END IF;
      END $$`,
-    `DROP TABLE IF EXISTS card_effects_i18n`,
+    `DO $$
+     DECLARE relation_kind "char";
+     BEGIN
+       SELECT relkind INTO relation_kind
+         FROM pg_class
+        WHERE oid = to_regclass('public.card_effects_i18n');
+       IF relation_kind = 'v' THEN
+         DROP VIEW card_effects_i18n;
+       ELSIF relation_kind IS NOT NULL THEN
+         DROP TABLE card_effects_i18n;
+       END IF;
+     END $$`,
     `ALTER TABLE card_official_errata
        DROP COLUMN IF EXISTS corrected_japanese_text,
        DROP COLUMN IF EXISTS corrected_english_text`,
+    `ALTER TABLE card_official_errata
+       ADD COLUMN corrected_japanese_text TEXT,
+       ADD COLUMN corrected_english_text TEXT,
+       ADD CONSTRAINT card_official_errata_no_corrected_text_cache
+         CHECK (corrected_japanese_text IS NULL AND corrected_english_text IS NULL)`,
+    `CREATE OR REPLACE VIEW card_effects_i18n AS
+       SELECT card_id, lang, effect_text
+         FROM card_texts_i18n
+       UNION ALL
+       SELECT id, 'ja'::text, effect
+         FROM cards
+       UNION ALL
+       SELECT id, 'en'::text, en_effect_official
+         FROM cards`,
 
     `CREATE TABLE IF NOT EXISTS game_config (
       key TEXT PRIMARY KEY,
