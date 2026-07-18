@@ -68,11 +68,6 @@ async function loadCardsFromAPI(): Promise<CardDef[]> {
   const cards = await fetchJson<unknown>('/api/cards');
   if (isCardDefArray(cards)) {
     initCards(cards);
-  } else {
-    const bundledCards = await fetchJson<unknown>('/cards.json', 'default');
-    if (isCardDefArray(bundledCards)) {
-      initCards(bundledCards);
-    }
   }
   return getAllCardDefs();
 }

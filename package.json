@@ -70,7 +70,6 @@
     "load:api": "k6 run load-tests/api-load.js",
     "load:ws": "k6 run load-tests/websocket-load.js",
     "load:auth": "k6 run load-tests/auth-load.js",
-    "load:matchmaking": "k6 run load-tests/matchmaking-load.js",
     "load:operational-soak": "k6 run load-tests/operational-soak.js",
     "chaos:probe": "node --import tsx scripts/chaos-recovery-probe.ts",
     "chaos:compose": "bash scripts/compose-chaos-drill.sh",

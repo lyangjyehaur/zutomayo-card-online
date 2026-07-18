@@ -143,7 +143,7 @@ flowchart LR
 | 한국어           | ko    | `src/i18n/ko.ts`    |
 
 - 核心 `t()` / `translate()` 在 `src/i18n/index.ts`，語言偏好存 localStorage。
-- 250 張效果卡的翻譯由 API `/api/cards/i18n` 動態載入（卡牌效果原文為日文，由 `effects/parser.ts` 解析）。
+- 卡牌名稱與效果由 API `/api/cards/texts` 一次載入；日英投影自 `cards`，衍生語言來自 `card_texts_i18n`，顯示統一經 `game/cards/i18n.ts` 處理。
 
 ---
 
@@ -256,24 +256,23 @@ boardgame.io 多實例需要**兩個獨立的跨節點層**，兩者職責不同
 
 ### Service 模組
 
-| 模組                          | 職責                                                                                                                |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `accountService.cjs`          | 本地帳號註冊/登入、OAuth 身份連結/查詢/解除、密碼變更                                                               |
-| `adminService.cjs`            | Admin 登入、使用者列表、ELO 重設                                                                                    |
-| `adminCardService.cjs`        | 卡牌資料與效果翻譯寫入（`upsertCard` / `upsertCardI18n` / `upsertGameConfig`）                                      |
-| `cardDataService.cjs`         | 卡牌列表、單卡、i18n、動態設定、預設牌組（公開唯讀）                                                                |
-| `chatService.cjs`             | 持久化聊天、歷史同步、未讀、翻譯、檢舉、證據快照、審核與禁言制裁                                                    |
-| `chatTranslationProvider.cjs` | 可配置 HTTP/LLM 翻譯 provider，未配置時讓 ChatService 保持 pending 合約                                             |
-| `deckService.cjs`             | 個人牌組 CRUD                                                                                                       |
-| `friendService.cjs`           | 好友新增 / 列表 / 移除，供 lobby 與 platform friend presence 使用                                                   |
-| `matchmakingService.cjs`      | Legacy REST 配對佇列加入 / 狀態查詢 / 離開 / host 回報 boardgame.io matchID；前端 quick match 主路徑已改用 Colyseus |
-| `presenceService.cjs`         | 線上人數 presence heartbeat / 計數                                                                                  |
-| `matchQueries.cjs`            | 排行榜、個人對戰歷史、admin 對戰列表、已清理 action log                                                             |
-| `matchSubmission.cjs`         | 對戰結果上報 + ELO 計算（呼叫 `matchVerification`）                                                                 |
-| `matchVerification.cjs`       | 防作弊驗證（見下節）                                                                                                |
-| `feedbackService.cjs`         | 反饋看板（文章、投票、留言、標籤、emoji 反應、圖片附件、重複標記）                                                  |
-| `imgproxySigner.cjs`          | imgproxy 簽名 URL 產生與來源白名單                                                                                  |
-| `observability.cjs`           | pino log、Prometheus metrics、request tracing                                                                       |
+| 模組                          | 職責                                                                           |
+| ----------------------------- | ------------------------------------------------------------------------------ |
+| `accountService.cjs`          | 本地帳號註冊/登入、OAuth 身份連結/查詢/解除、密碼變更                          |
+| `adminService.cjs`            | Admin 登入、使用者列表、ELO 重設                                               |
+| `adminCardService.cjs`        | 卡牌資料與效果翻譯寫入（`upsertCard` / `upsertCardI18n` / `upsertGameConfig`） |
+| `cardDataService.cjs`         | 卡牌列表、單卡、i18n、動態設定、預設牌組（公開唯讀）                           |
+| `chatService.cjs`             | 持久化聊天、歷史同步、未讀、翻譯、檢舉、證據快照、審核與禁言制裁               |
+| `chatTranslationProvider.cjs` | 可配置 HTTP/LLM 翻譯 provider，未配置時讓 ChatService 保持 pending 合約        |
+| `deckService.cjs`             | 個人牌組 CRUD                                                                  |
+| `friendService.cjs`           | 好友新增 / 列表 / 移除，供 lobby 與 platform friend presence 使用              |
+| `presenceService.cjs`         | 線上人數 presence heartbeat / 計數                                             |
+| `matchQueries.cjs`            | 排行榜、個人對戰歷史、admin 對戰列表、已清理 action log                        |
+| `matchSubmission.cjs`         | 對戰結果上報 + ELO 計算（呼叫 `matchVerification`）                            |
+| `matchVerification.cjs`       | 防作弊驗證（見下節）                                                           |
+| `feedbackService.cjs`         | 反饋看板（文章、投票、留言、標籤、emoji 反應、圖片附件、重複標記）             |
+| `imgproxySigner.cjs`          | imgproxy 簽名 URL 產生與來源白名單                                             |
+| `observability.cjs`           | pino log、Prometheus metrics、request tracing                                  |
 
 ### 認證流程
 
@@ -443,7 +442,7 @@ flowchart LR
 ### PostgreSQL
 
 - **兩個 database**：
-  - `zutomayo`：應用資料（users / decks / matches / cards / card*effects_i18n / game_config / preset_decks / admin_audit_log / feedback*\* / `bjg_matches`）。
+  - `zutomayo`：應用資料（users / decks / matches / cards / card_texts_i18n / game_config / preset_decks / admin_audit_log / feedback\*\* / `bjg_matches`）。
   - `logto`：Logto 自管的身份 / session database（獨立，不由本專案 code 直接存取）。
 - **table 隔離**：boardgame.io state 用 `bjg_` 前綴（`bjg_matches`），其餘 API table 無前綴，兩者共存於同一個 `zutomayo` database。
 
@@ -451,14 +450,13 @@ flowchart LR
 
 Redis 同時扮演五種角色，全部透過 `REDIS_DB` 切到獨立 DB index（0-15）隔離：
 
-| 角色                       | key 模式                                       | 說明                                              |
-| -------------------------- | ---------------------------------------------- | ------------------------------------------------- |
-| boardgame.io PubSub        | `MATCH-{matchID}` channel                      | `RedisPubSub` 跨節點 sendAll 廣播                 |
-| `@socket.io/redis-adapter` | 內部 key                                       | Socket.IO rooms/sockets 同步（無法 prefix）       |
-| Colyseus rooms/presence    | Colyseus driver/presence keys                  | Platform service 多實例 room discovery / presence |
-| Legacy Matchmaking 佇列    | `mm:queue` (sorted set) / `mm:{userId}` (hash) | REST matchmaking compatibility path               |
-| Rate limit                 | `ratelimit:{ns}:{ip}:{window}`                 | `INCR` + `EXPIRE` 跨實例計數                      |
-| Presence                   | presence 相關 key                              | 線上人數 heartbeat                                |
+| 角色                       | key 模式                       | 說明                                              |
+| -------------------------- | ------------------------------ | ------------------------------------------------- |
+| boardgame.io PubSub        | `MATCH-{matchID}` channel      | `RedisPubSub` 跨節點 sendAll 廣播                 |
+| `@socket.io/redis-adapter` | 內部 key                       | Socket.IO rooms/sockets 同步（無法 prefix）       |
+| Colyseus rooms/presence    | Colyseus driver/presence keys  | Platform service 多實例 room discovery / presence |
+| Rate limit                 | `ratelimit:{ns}:{ip}:{window}` | `INCR` + `EXPIRE` 跨實例計數                      |
+| Presence                   | presence 相關 key              | 線上人數 heartbeat                                |
 
 > **為什麼用 DB index 而非 key prefix**：boardgame.io 內部 channel `MATCH-{matchID}` 與 `@socket.io/redis-adapter` 內部 key 無法從應用碼 prefix，唯有 DB index 能完整隔離。`duplicate()` 出的連線會繼承 `db` 選項。
 
@@ -497,35 +495,12 @@ connectPlatformQuickMatch()
   └─ host / guest 都拿到 boardgameMatchID 後再進入 boardgame.io match
 ```
 
-這條路徑避免舊 REST polling + Redis `realMatchId` handoff 在 lobby unmount 時讓 guest 卡住；配對 lifecycle、取消、match ID relay 都由 Colyseus 房間承擔，boardgame.io 仍只負責實際卡牌對局。
-
-### Legacy REST 配對（相容端點）
-
-`api/matchmakingService.cjs` + `api/server.cjs` 的 Lua 腳本：
-
-```text
-POST /api/matchmaking/queue
-  ├─ HSET mm:{userId} {queueId, joinedAt, deckName, deckIds, status:'queued'}
-  ├─ ZADD mm:queue {now} {userId}
-  └─ redis.mmTryMatch('mm:queue', userId, now, matchId, timeoutMs)
-        │  Lua 原子操作：
-        │  1. ZRANGEBYSCORE 清掉過期 queued 玩家（轉 timeout）
-        │  2. ZRANGE 取最早 waiting 對手
-        │  3. ZREM 雙方
-        │  4. userId 字串較小者為 host，較大者為 guest
-        │  5. HSET 雙方 mm:{userId} status='matched' + matchId + opponentId + role
-        ▼
-GET /api/matchmaking/status
-  ├─ redis.mmCleanExpired（清過期）
-  └─ 回 { status, matchId, opponentId, role, realMatchId }
-```
-
-Lua 保證多 API 實例下不會把同一人配給兩人（原子 ZREM + HSET）。這組 `/api/matchmaking/*` endpoint 目前保留為 legacy compatibility / 測試面；瀏覽器 quick match UI 不再以它作為主流程。
+配對 lifecycle、取消、match ID relay 都由 Colyseus 房間承擔，boardgame.io 只負責實際卡牌對局。舊 REST polling、Redis `mm:*` 佇列與 `realMatchId` handoff 已移除。
 
 ### 建房 / 加入
 
 - Colyseus quick match 成功後 **host** 用 boardgame.io lobby API `createMatch`（setupData 帶 `clientVersion`、雙方 deck 名/ids），取得 `matchID`。
-- host 透過 `quick_match` room 的 `boardgameMatchReady` 訊息回報 boardgame.io `matchID`，雙方再進入同一個 boardgame.io match。Legacy REST 路徑才使用 `PUT /api/matchmaking/match` / `realMatchId`。
+- host 透過 `quick_match` room 的 `boardgameMatchReady` 訊息回報 boardgame.io `matchID`，雙方再進入同一個 boardgame.io match。
 - 雙方各自 `POST /games/zutomayo-card/:id/join`：帶 `playerName` / `data` / `clientVersion`，server 驗版本後 `generateCredentials` 並 `setMetadata`。
 - client 將 `{ matchID, playerID, playerCredentials }` 存入 localStorage（`onlineSession.ts`）。
 
@@ -585,7 +560,6 @@ flowchart TB
 | `http_request_duration_seconds` | Histogram | 兩者 | labels: `method`/`path`/`status`，path 正規化（`:id`）限制 cardinality |
 | `http_requests_total`           | Counter   | 兩者 | 同上 labels                                                            |
 | `rate_limited_requests_total`   | Counter   | api  | label: `pathname`                                                      |
-| `matchmaking_queue_depth`       | Gauge     | api  | Redis matchmaking sorted-set 的即時深度                                |
 | `active_socket_connections`     | Gauge     | game | 當前 Socket.IO 連線數                                                  |
 | Node.js default metrics         | -         | 兩者 | event loop / GC / heap（`collectDefaultMetrics`）                      |
 
@@ -658,7 +632,7 @@ redis ────┬─> game (Pub/Sub + Socket.IO adapter + rate limit)
   - boardgame.io state → `PostgresAdapter` 寫 `bjg_matches`（stateID guard 防覆蓋）。
   - 跨節點廣播 → `RedisPubSub` + `@socket.io/redis-adapter`。
   - Colyseus lobby / quick_match / custom_room / invite / match_shell → `RedisDriver` + `RedisPresence`。
-  - Legacy REST 配對佇列 / 限流 → Redis shared。
+  - API 認證狀態 / 限流 → Redis shared。
 - **一致性要求**：所有同服務實例必須共享 `JWT_SECRET`、`REDIS_PASSWORD`；game / api 的 `ALLOWED_ORIGINS` 需一致，API 只應在 `TRUSTED_PROXY` 中列出真實反向代理，且 `APP_BUILD_ID` / `GAME_RULES_VERSION` 一致（否則 client 會被版本檢查擋下）。
 - **復用既有 PG/Redis**：用獨立 database（PG）與獨立 DB index（Redis）隔離，`docker-compose.override.yml` 移除內建 postgres/redis 服務。
 
@@ -679,7 +653,7 @@ checkout → setup-node → npm ci
 
 平行的 `e2e` job 以 `docker-compose.e2e.yml` 啟動隔離服務棧並執行 Playwright，失敗時上傳 report 與 test results。任一步驟失敗皆阻擋合併。`smoke:*` 與 k6 `load:*` 仍需依目標環境另行執行；本機以 `npm run verify` 對齊靜態檢查、單測與 build。
 
-`.github/workflows/cd.yml` 在 master 更新時建置 game/api/platform GHCR staging images，在 `v*` tag 建置 production images；`workflow_dispatch` 可選 staging／production SSH 部署。`docker-compose.staging.yml` 使用隔離 ports，但連接外部 PostgreSQL（`verify-full` + CA secret）與 Redis（`rediss://` + ACL/password）；bundled plaintext DB 只保留於 development Compose，正式 rollback 由 `scripts/deploy-server4.sh` 管理。
+`.github/workflows/cd.yml` 在 master 更新時建置 game/api/platform GHCR staging images，在 `v*` tag 建置 production images；`workflow_dispatch` 可選 staging／production SSH 部署。`docker-compose.staging.yml` 使用隔離 ports，但連接外部 PostgreSQL（`verify-full` + CA secret）與 Redis（`rediss://` + ACL/password）；bundled plaintext DB 只保留於 development Compose。Server4 beta 使用 `scripts/deploy-server4.sh` 從 `origin/master` 直接建置、啟動並執行 smoke，不保留舊 runtime 相容或回滾分支。
 
 ---
 
@@ -702,7 +676,6 @@ checkout → setup-node → npm ci
 | Platform Server   | `src/platform/server.ts`、`src/platform/rooms/*`                                   |
 | Platform Client   | `src/platformClient.ts`                                                            |
 | ChatService       | `api/chatService.cjs`、`api/chatTranslationProvider.cjs`                           |
-| Legacy 配對 Lua   | `api/server.cjs`（`MATCH_LUA` / `CLEAN_LUA`）+ `api/matchmakingService.cjs`        |
 | 防作弊驗證        | `api/matchVerification.cjs`、`api/matchSubmission.cjs`                             |
 | 線上 session      | `src/onlineSession.ts`、`src/onlineStateGuard.ts`、`src/components/OnlineGame.tsx` |
 | 版本相容          | `src/version.ts`、`src/clientVersion.ts`                                           |

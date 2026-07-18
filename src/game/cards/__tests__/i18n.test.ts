@@ -4,6 +4,7 @@ import {
   getLocalizedCardEffect,
   getLocalizedCardName,
   getLocalizedCardSearchTerms,
+  getTranslatedEffect,
   initCardTextsI18n,
   matchesLocalizedCardSearch,
 } from '../i18n';
@@ -81,6 +82,42 @@ describe('localized card text policy', () => {
 
     expect(getLocalizedCardName(card, 'ko')).toBe('OFFICIAL ENGLISH NAME');
     expect(getLocalizedCardEffect(card, 'ko')).toBe('OFFICIAL ENGLISH EFFECT');
+    expect(getTranslatedEffect(card.id, 'ko')).toBeNull();
+  });
+
+  it('uses unified reviewed card text when the card definition is unavailable', () => {
+    initCardTextsI18n({
+      test_1: {
+        ja: {
+          name: '公式日本語名',
+          effect: '公式日本語効果',
+          nameSource: 'official_card_print',
+          effectSource: 'official_card_print',
+          reviewStatus: 'official',
+          reviewNote: '',
+        },
+        en: {
+          name: 'OFFICIAL ENGLISH NAME',
+          effect: 'OFFICIAL ENGLISH EFFECT',
+          nameSource: 'official_card_print',
+          effectSource: 'official_card_print',
+          reviewStatus: 'official',
+          reviewNote: '',
+        },
+        'zh-TW': {
+          name: '已複核卡名',
+          effect: '已複核效果',
+          nameSource: 'bilingual_review',
+          effectSource: 'bilingual_review',
+          reviewStatus: 'verified',
+          reviewNote: '',
+        },
+      },
+    });
+
+    expect(getTranslatedEffect(card.id, 'zh-TW')).toBe('已複核效果');
+    expect(getTranslatedEffect(card.id, 'ko')).toBe('OFFICIAL ENGLISH EFFECT');
+    expect(getTranslatedEffect(card.id, 'ja')).toBe('公式日本語効果');
   });
 
   it('falls back from missing English print text to Japanese', () => {
@@ -152,6 +189,75 @@ describe('localized card text policy', () => {
   it('allows reviewed card-print English when the errata did not affect it', () => {
     const errataCard = { ...card, officialErrataAffectsEffect: true };
     expect(getLocalizedCardEffect(errataCard, 'en')).toBe('OFFICIAL ENGLISH EFFECT');
+  });
+
+  it('replaces the final card-name song annotation without touching earlier non-song parentheses', () => {
+    const songCard = {
+      ...card,
+      name: '灰版電機工業（株）研究所（Ham）',
+      song: 'Ham',
+    };
+    initCardTextsI18n({
+      test_1: {
+        ko: {
+          name: '회판전기공업(주) 연구소 (이전 곡명)',
+          effect: '',
+          nameSource: 'admin_bilingual_translation',
+          effectSource: 'admin_bilingual_translation',
+          reviewStatus: 'verified',
+          reviewNote: '',
+        },
+      },
+    });
+    gameConfig.card_song_titles_i18n = { Ham: { ko: 'Ham' } };
+
+    expect(getLocalizedCardName(songCard, 'ko')).toBe('회판전기공업(주) 연구소 (Ham)');
+  });
+
+  it('replaces only effect groups aligned with exact song groups in the Japanese source', () => {
+    const songCard = {
+      ...card,
+      song: '原曲',
+      effect: '（原曲）のカードなら有効（すでに処理された効果を除く）',
+    };
+    initCardTextsI18n({
+      test_1: {
+        'zh-TW': {
+          name: '卡名',
+          effect: '（舊歌名）的卡牌才有效（已經處理的效果除外）',
+          nameSource: 'admin_bilingual_translation',
+          effectSource: 'admin_bilingual_translation',
+          reviewStatus: 'verified',
+          reviewNote: '',
+        },
+      },
+    });
+    gameConfig.card_song_titles_i18n = { 原曲: { 'zh-TW': '新歌名' } };
+
+    expect(getLocalizedCardEffect(songCard, 'zh-TW')).toBe('（新歌名）的卡牌才有效（已經處理的效果除外）');
+  });
+
+  it('leaves translated effects unchanged when their delimiter structure cannot be aligned safely', () => {
+    const songCard = {
+      ...card,
+      song: '原曲',
+      effect: '（補充規則）に続いて（原曲）を使う',
+    };
+    initCardTextsI18n({
+      test_1: {
+        'zh-TW': {
+          name: '卡名',
+          effect: '只剩下一個（舊歌名）區段',
+          nameSource: 'admin_bilingual_translation',
+          effectSource: 'admin_bilingual_translation',
+          reviewStatus: 'verified',
+          reviewNote: '',
+        },
+      },
+    });
+    gameConfig.card_song_titles_i18n = { 原曲: { 'zh-TW': '新歌名' } };
+
+    expect(getLocalizedCardEffect(songCard, 'zh-TW')).toBe('只剩下一個（舊歌名）區段');
   });
 
   it('builds search terms from card names, songs, and effects in every requested locale', () => {

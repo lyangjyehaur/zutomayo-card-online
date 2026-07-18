@@ -13,17 +13,15 @@ describe('card loader', () => {
     vi.unstubAllGlobals();
   });
 
-  it('falls back to bundled cards when the API does not respond', async () => {
-    const fallbackCards = [{ id: 'fallback_card' }];
+  it('keeps existing PG-backed cards and does not request a JSON fallback when the API times out', async () => {
+    const existingCard = { id: 'existing_card' } as Parameters<typeof initCards>[0][number];
+    initCards([existingCard]);
     const fetchMock = vi.fn((path: string | URL | Request, init?: RequestInit) => {
       const pathname = String(path);
       if (pathname === '/api/cards') {
         return new Promise<Response>((_, reject) => {
           init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
         });
-      }
-      if (pathname === '/cards.json') {
-        return Promise.resolve(new Response(JSON.stringify(fallbackCards), { status: 200 }));
       }
       return Promise.resolve(new Response('{}', { status: 404 }));
     });
@@ -33,10 +31,10 @@ describe('card loader', () => {
     await vi.advanceTimersByTimeAsync(3000);
     const cards = await cardsPromise;
 
-    expect(cards).toEqual(fallbackCards);
-    expect(getCardDef('fallback_card')).toEqual(fallbackCards[0]);
+    expect(cards).toEqual([existingCard]);
+    expect(getCardDef('existing_card')).toEqual(existingCard);
     expect(fetchMock).toHaveBeenCalledWith('/api/cards', expect.objectContaining({ cache: 'no-store' }));
-    expect(fetchMock).toHaveBeenCalledWith('/cards.json', expect.objectContaining({ cache: 'default' }));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('refuses to build a random deck from an empty card pool', () => {

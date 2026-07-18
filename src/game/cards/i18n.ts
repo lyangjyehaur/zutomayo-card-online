@@ -14,20 +14,11 @@ export interface CardTextI18nEntry {
   reviewNote: string;
 }
 
-let effectI18n: Record<string, Record<string, string>> = {};
 let cardTextsI18n: Record<string, Record<string, CardTextI18nEntry>> = {};
 let _initialized = false;
 
 export function isI18nInitialized(): boolean {
   return _initialized;
-}
-
-/**
- * 從外部載入翻譯數據（遊戲伺服器啟動時呼叫，從 PostgreSQL 讀取）。
- */
-export function initEffectI18n(data: Record<string, Record<string, string>>): void {
-  effectI18n = data;
-  _initialized = true;
 }
 
 export function initCardTextsI18n(data: Record<string, Record<string, CardTextI18nEntry>>): void {
@@ -46,24 +37,11 @@ async function fetchJson<T>(path: string): Promise<T | null> {
   }
 }
 
-/**
- * 從 PG-backed API 載入所有卡牌翻譯（批次）。
- * API 不可用時保留既有（可能為空）的翻譯資料。
- */
-export async function loadEffectI18nFromAPI(): Promise<void> {
-  const data = await fetchJson<Record<string, Record<string, string>>>('/api/cards/i18n');
-  if (data && typeof data === 'object') {
-    initEffectI18n(data);
-  }
-}
-
 export async function loadCardTextsI18nFromAPI(): Promise<void> {
   const data = await fetchJson<Record<string, Record<string, CardTextI18nEntry>>>('/api/cards/texts');
-  if (data && typeof data === 'object' && Object.keys(data).length > 0) {
+  if (data && typeof data === 'object' && !Array.isArray(data)) {
     initCardTextsI18n(data);
-    return;
   }
-  await loadEffectI18nFromAPI();
 }
 
 function reviewedTranslation(cardId: string, locale: string): CardTextI18nEntry | null {
@@ -134,10 +112,14 @@ function songTitlesI18n(): Record<string, Record<string, string>> {
 }
 
 export function getLocalizedSongTitle(song: string, locale: string): string {
-  if (!song || locale === 'ja') return song;
+  return configuredSongTitle(song, locale) ?? song;
+}
+
+function configuredSongTitle(song: string, locale: string): string | null {
+  if (!song || locale === 'ja') return null;
   const titles = songTitlesI18n()[song];
-  if (!titles || typeof titles !== 'object') return song;
-  return titles[locale] || (locale === 'zh-HK' ? titles['zh-TW'] : undefined) || song;
+  if (!titles || typeof titles !== 'object') return null;
+  return titles[locale] || (locale === 'zh-HK' ? titles['zh-TW'] : undefined) || null;
 }
 
 export function getLocalizedCardSearchTerms(card: CardDef, locales: readonly string[]): string[] {
@@ -165,31 +147,73 @@ export function matchesLocalizedCardSearch(card: CardDef, searchText: string, lo
 }
 
 function canonicalizeSongTitleInCardName(text: string, card: CardDef, locale: string): string {
-  if (!card.song || !card.name.includes(card.song)) return text;
-  const title = getLocalizedSongTitle(card.song, locale);
-  if (!title || title === card.song) return text;
-  return text.replace(/([（(《])([^（）()《》]+)([）)》])/, `$1${title}$3`);
+  const title = configuredSongTitle(card.song, locale);
+  if (!title) return text;
+  const sourceSegments = delimitedSegments(card.name);
+  const sourceSongIndex = sourceSegments.map((segment) => segment.inner).lastIndexOf(card.song);
+  if (sourceSongIndex < 0) return text;
+
+  const targetSegments = delimitedSegments(text);
+  const targetIndex = targetSegments.length - (sourceSegments.length - sourceSongIndex);
+  if (targetIndex < 0) return text;
+  return replaceDelimitedSegments(text, targetSegments, [targetIndex], title);
 }
 
 function canonicalizeSongTitleInCardEffect(text: string, card: CardDef, locale: string): string {
-  if (!card.song || !card.effect.includes(card.song)) return text;
-  const title = getLocalizedSongTitle(card.song, locale);
-  if (!title || title === card.song) return text;
-  const occurrences = card.effect.split(card.song).length - 1;
-  let replaced = 0;
-  return text.replace(/([（(《])([^（）()《》]+)([）)》])/g, (match, open: string, _inner: string, close: string) => {
-    if (replaced >= occurrences) return match;
-    replaced += 1;
-    return `${open}${title}${close}`;
-  });
+  const title = configuredSongTitle(card.song, locale);
+  if (!title) return text;
+  const sourceSongIndexes = delimitedSegments(card.effect).flatMap((segment, index) =>
+    segment.inner === card.song ? [index] : [],
+  );
+  if (sourceSongIndexes.length === 0) return text;
+
+  const targetSegments = delimitedSegments(text);
+  if (sourceSongIndexes.some((index) => index >= targetSegments.length)) return text;
+  return replaceDelimitedSegments(text, targetSegments, sourceSongIndexes, title);
+}
+
+type DelimitedSegment = {
+  start: number;
+  end: number;
+  open: string;
+  inner: string;
+  close: string;
+};
+
+function delimitedSegments(text: string): DelimitedSegment[] {
+  return [...text.matchAll(/（([^（）]+)）|\(([^()]+)\)|《([^《》]+)》/g)].map((match) => ({
+    start: match.index,
+    end: match.index + match[0].length,
+    open: match[0][0],
+    inner: match[1] ?? match[2] ?? match[3] ?? '',
+    close: match[0][match[0].length - 1] ?? '',
+  }));
+}
+
+function replaceDelimitedSegments(
+  text: string,
+  segments: DelimitedSegment[],
+  indexes: readonly number[],
+  replacement: string,
+): string {
+  let result = text;
+  for (const index of [...indexes].sort((left, right) => right - left)) {
+    const segment = segments[index];
+    result = `${result.slice(0, segment.start)}${segment.open}${replacement}${segment.close}${result.slice(segment.end)}`;
+  }
+  return result;
 }
 
 /**
  * 依 locale 取得卡牌效果翻譯。
- * 找不到對應語言時 fallback 到日文原文，再找不到回傳 null。
+ * 找不到對應語言時 fallback 到已發布英文，再 fallback 到官方日文；都沒有時回傳 null。
  */
 export function getTranslatedEffect(cardId: string, locale: string): string | null {
-  const entry = effectI18n[cardId];
-  if (!entry) return null;
-  return entry[locale] || entry['ja'] || null;
+  const entries = cardTextsI18n[cardId];
+  if (!entries) return null;
+  for (const language of [locale, 'en', 'ja']) {
+    const entry = reviewedTranslation(cardId, language);
+    if (entry?.effect) return entry.effect;
+  }
+  return null;
 }

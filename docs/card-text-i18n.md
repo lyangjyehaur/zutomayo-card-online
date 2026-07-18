@@ -9,12 +9,13 @@
 1. `cards.name` 與 `cards.effect` 是官方修正後日文的權威來源，不得由英文 OCR、既有翻譯或卡面錯字覆蓋。
 2. `cards.en_name_official` 與 `cards.en_effect_official` 是官方有效英文的權威來源；有官方勘誤時直接保存勘誤後文本，不保留已失效卡面文本作為另一份有效值。
 3. `card_texts_i18n` 只保存衍生語言的名稱與效果、來源及複核狀態，禁止寫入 `ja` 或 `en`。
-4. `game_config.card_song_titles_i18n` 保存歌曲日文原題對應的多語歌名。卡名或效果包含歌名時，玩家端一律以這份設定訂正其中的歌名部分。
+4. `game_config.card_song_titles_i18n` 保存歌曲日文原題對應的多語歌名。卡名或效果包含歌名時，玩家端以這份設定產生有效顯示值；這是明確的顯示層覆寫規則，不是第二份卡牌效果資料。
 5. 衍生翻譯必須同時參考官方有效日文和英文；兩者有歧義時，以官方修正後日文語義為準。
-6. `pending_review` 的衍生翻譯不得展示給玩家。只有 `verified`（或官方來源使用的 `official`）可以進入顯示鏈路。
+6. `pending_review` 的衍生翻譯不得進入玩家顯示鏈路。`/cards/texts` 會保留狀態供管理頁編輯；瀏覽器與 game server 的顯示函式只使用 `verified`（或官方投影使用的 `official`）。
 7. 勘誤影響的衍生翻譯必須使用已複核的勘誤文本；尚未複核時回退到 `cards` 的有效英文，再回退官方日文。
 8. 本機受控來源 `data/card-english-extraction.json` 中的英文必須先完成人工卡面複核，才能批量匯入 PostgreSQL；該檔及其他卡牌文本來源不得提交到 Git 或進入容器映像。
-9. 舊表 `card_effects_i18n` 已移除；同名 relation 只保留唯讀 rollback compatibility view。相容 API `/cards/i18n` 只從 `cards` 與 `card_texts_i18n` 投影，不得建立第二份效果資料。
+9. 舊表與相容 view `card_effects_i18n`、效果專用 API `/cards/i18n` 均已移除。名稱與效果只透過 `/cards/texts` 從 `cards` 與 `card_texts_i18n` 投影，不得建立第二份效果資料。
+10. 瀏覽器與 game server 的執行時卡牌來源只有 PostgreSQL；`/api/cards` 失敗時不得回退 `/cards.json` 或任何本機快照。
 
 ## 資料模型
 
@@ -38,16 +39,18 @@
 | ------------------------------ | ---------------------------------------------- |
 | `name_text`, `effect_text`     | 該語言的卡名與效果                             |
 | `name_source`, `effect_source` | 名稱與效果各自的來源，不能只用一個來源推定兩者 |
-| `review_status`                | `official`、`verified` 或 `pending_review`     |
+| `review_status`                | `verified` 或 `pending_review`                 |
 | `review_note`                  | 複核依據、歧義或勘誤連結等備註                 |
 
 表內支援的語言代碼為 `zh-TW`、`zh-CN`、`zh-HK`、`ko`。舊式 `zhTW`、`zhCN`、`zhHK` 只作 API 輸入相容，新資料應使用帶連字號的正式代碼；API 回應中的 `ja`、`en` 是由 `cards` 即時投影，不是資料列。
 
 狀態規則：
 
-- `official`：只用於 API 投影的官方日文與英文，不可由衍生翻譯寫入。
+- `official`：只用於 API 投影的官方日文與英文，不是 `card_texts_i18n` 可保存的值。
 - `verified`：人工核對完成的衍生翻譯或勘誤後翻譯。
 - `pending_review`：草稿或既有但尚未重新核對的翻譯；前端不使用。
+
+`review_status` 是整列 `(card_id, lang)` 共用的狀態，不是名稱和效果各自一個狀態。管理 API 在標記 `verified` 時要求同時提交名稱和效果；有效果的卡不能發布空效果，無效果卡的效果欄可保持空白。只修改一個欄位的 API 請求會保持保守的 `pending_review` 行為，避免未複核內容被發布。
 
 常用來源值：
 
@@ -58,14 +61,16 @@
 
 保存 12 條官方勘誤的歷史資訊，包括錯誤文本、日期、受影響欄位、英文複核狀態、英文來源類型和官方網址。修正後日文與英文不在此表重複保存，管理 API 會依受影響欄位從 canonical `cards` 即時回傳。
 
-舊映像 rollback 所需的 `corrected_japanese_text`、`corrected_english_text` 欄位是只允許 `NULL` 的相容 tombstone，`card_official_errata_no_corrected_text_cache` constraint 會拒絕任何文本寫入。
-
 `corrected_english_source` 只能是：
 
 - `official_errata_notice`
 - `official_card_print_unaffected`
 - `official_card_print_corrected`
 - `official_japanese_errata_translation`
+
+### `game_config.card_song_titles_i18n`
+
+這是以日文原題為 key 的歌曲翻譯表，支援 `zh-TW`、`zh-CN`、`zh-HK`、`en`、`ko`。`zh-HK` 缺值時回退 `zh-TW`；其他語言缺值時，獨立歌名欄回退日文原題，卡名／效果則不套用歌名覆寫並保留其 raw 翻譯。管理 API 會拒絕陣列、非字串翻譯，以及未支援的語言 key。
 
 ## 前端顯示規則
 
@@ -89,6 +94,18 @@
 
 勘誤只保護實際受影響的衍生翻譯。例如勘誤只改效果時，名稱仍可正常使用既有複核翻譯。
 
+### 歌名的有效顯示值
+
+卡牌翻譯列保存的是完整的 raw 名稱和效果；玩家端載入一次 PG-backed 的卡牌、翻譯和 game config 後，在顯示／搜尋時呼叫 `getLocalizedCardName()` 與 `getLocalizedCardEffect()`，不會每次 render 重新查詢資料庫。
+
+替換只在官方日文來源中找到「由分隔符包住、內容完全等於 `cards.song`」的區段時發生：
+
+- 卡名以官方日文中歌名區段從結尾對齊翻譯名稱，避免 `（株）` 之類的前置括號被誤替換。
+- 效果以官方日文中的同序位區段對齊翻譯效果；每個歌名區段都能對齊時才替換，否則保留 raw 翻譯。
+- 支援成對的 `（...）`、`(...)`、`《...》`；不接受左右不配對的括號。
+
+因此修改歌名表後，玩家端的卡名／效果會得到新的有效歌名，即使 `card_texts_i18n` 裡的 raw 完整句子尚未重寫。這不是第二個文本來源：歌曲表是歌名 token 的 canonical source，卡牌翻譯列是其餘句子的 source。若修改的不只是歌名而是整句語序，才需要再修改相應卡牌翻譯。既有玩家頁面要重新載入 config 才會看到更新；管理頁儲存卡牌翻譯時會觸發 game server reload，歌名表則由下一次頁面載入取得。
+
 ## 主要資料與程式入口
 
 下表中的 JSON 來源／複核檔只存在於維護者本機或受控備份，不受 Git 追蹤，也會由 `.dockerignore` 排除。GitHub 只保存處理程式、schema、測試及維護指南。
@@ -104,27 +121,33 @@
 | `data/card-derived-effects-review.json`       | 本機衍生效果複核範圍、依據及來源檔雜湊              |
 | `scripts/audit-card-derived-effects.ts`       | 稽核 1,000 條衍生效果、語言混入、數值及舊英文       |
 | `scripts/import-card-derived-effects-pg.ts`   | 交易匯入已複核衍生效果                              |
+| `scripts/cardSource.ts`                       | seed 工具從 `/cards/texts` 載入統一卡牌文本         |
 | `scripts/card-official-text-review-server.ts` | 僅監聽本機的人工複核服務                            |
 | `api/cardDataService.cjs`                     | 對外卡牌及多語言文本查詢                            |
 | `api/adminCardService.cjs`                    | 衍生翻譯寫入、狀態限制與管理稽核紀錄                |
-| `src/game/cards/i18n.ts`                      | 玩家端唯一顯示與 fallback 策略                      |
+| `src/game/cards/loader.ts`                    | 從 PG-backed API 載入卡牌與 game config             |
+| `src/game/cards/i18n.ts`                      | 玩家端唯一顯示、fallback 與歌名覆寫策略             |
+| `src/server.ts`                               | game server 從 PG 載入已發布卡牌文本                |
 
-相關 schema migration 為：
+相關 schema migration（`000034` 僅為歷史相容 migration）為：
 
 - `migrations/000007_card_official_texts_i18n.js`
 - `migrations/000008_card_official_errata.js`
 - `migrations/000009_card_official_errata_english_source.js`
 - `migrations/000033_card_text_authority.js`
 - `migrations/000034_card_text_rollback_compat.js`
+- `migrations/000035_remove_card_text_rollback_compat.js`
+- `migrations/000036_harden_card_i18n_contract.js`
 
 ## 日常翻譯流程
 
-1. 在管理頁進入「卡牌翻譯」，選擇卡牌後會直接開啟「多語言」。日文與英文不在這個編輯器內修改。
+1. 在管理頁進入「卡牌翻譯」，選擇卡牌後會直接開啟「多語言」。日文與英文不在衍生翻譯編輯器內修改；官方文本只能在解鎖核心資料後維護。
 2. 翻譯名稱與效果時，同時核對官方修正後日文及官方有效英文。
 3. 尚未完成核對時保持 `pending_review`，並在 `review_note` 記錄歧義或待確認事項。
-4. 人工確認語義、術語、數值、卡牌數量及作用範圍後，改為 `verified`。
+4. 人工確認語義、術語、數值、卡牌數量及作用範圍後，名稱和效果一起改為 `verified`；有效果卡不得只驗證空效果。
 5. 若卡牌有勘誤，受影響欄位必須以官方修正後日文為準。管理頁會將其來源寫成 `official_japanese_errata_translation`。
-6. 驗證實際 UI，不要只檢查資料庫值，因為玩家端還會套用複核與 fallback 規則。
+6. 若只是修改歌名，先在「歌名翻譯」維護 canonical 歌名，不要逐張卡重複改寫同一個歌名 token。
+7. 驗證實際 UI，不要只檢查資料庫 raw 值，因為玩家端還會套用複核、fallback 與歌名覆寫規則。
 
 ### 歌名翻譯
 
@@ -132,7 +155,8 @@
 2. 列表以 `cards.song` 的日文原題彙整，並顯示引用該歌曲的卡牌數量；搜尋會比對日文及所有已填語言。
 3. 可使用「只看缺失」逐語言補值。繁中、英文與韓文以官方來源優先；簡中以社群慣用譯名優先；廣東話沒有獨立值時玩家端可回退繁中。
 4. 儲存會整份更新 `game_config.card_song_titles_i18n` 並寫入管理稽核紀錄。既有但目前沒有卡牌引用的歌曲也會保留。
-5. 卡名或效果包含歌曲日文原題時，玩家端會使用這份表統一替換歌名；不要在每張卡的翻譯內建立互相衝突的歌名版本。
+5. 卡名或效果包含歌曲日文原題時，玩家端會使用這份表統一替換歌名；不要只為了改歌名而逐張卡建立互相衝突的 raw 版本。若要修改句子其他部分，再進入「卡牌翻譯」逐卡調整。
+6. 儲存後目前已開啟的其他玩家頁面不會自動取得新 config，需重新載入頁面。
 
 衍生翻譯不能標記為 `official`，API 會拒絕此操作。管理端的修改會寫入管理稽核紀錄。
 
@@ -240,7 +264,7 @@ npm run import:card-official-texts
 - `hasOfficialErrata` 共 12 張。
 - `/api/cards/texts` 返回 422 張卡的文本資料。
 - 英文、日文和至少一個衍生語言實際 UI 的名稱、效果與勘誤 fallback。
-- `card_texts_i18n` 的 `ja`、`en` 列均為 0；`card_effects_i18n` 是唯讀 view 而非資料表。
+- `card_texts_i18n` 的 `ja`、`en` 列均為 0；資料庫中不存在 `card_effects_i18n` relation。
 
 ### 匯入已複核的衍生效果
 
@@ -265,8 +289,15 @@ npm run import:card-derived-effects
 
 ```bash
 npm run audit:card-derived-effects
-npm test -- src/game/cards/__tests__/i18n.test.ts
+npm test -- src/game/cards/__tests__/i18n.test.ts src/game/cards/__tests__/loader.test.ts api/__tests__/cardDataService.test.ts api/__tests__/adminCardService.test.ts
 npm run typecheck
+```
+
+歌名表或卡牌名稱中的歌名區段有變更時，另確認卡名區段對齊、效果區段對齊，以及 `pending_review` 不會出現在玩家顯示鏈路。完整收尾驗證使用：
+
+```bash
+npm run verify
+npm run db:roles:smoke
 ```
 
 改英文提取、勘誤、schema、API 或顯示策略時：

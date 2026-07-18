@@ -2,7 +2,7 @@ import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import { PRESET_DECKS } from '../src/game/cards/presetDecks';
 import type { CardDef } from '../src/game/types';
-import { loadSeedCardI18n, loadSeedCards } from './cardSource';
+import { loadSeedCards, loadSeedCardTexts } from './cardSource';
 
 const require = createRequire(import.meta.url);
 const { Pool } = require('pg') as typeof import('pg');
@@ -114,13 +114,14 @@ const SCHEMA_SQL = `
 
   CREATE TABLE IF NOT EXISTS card_texts_i18n (
     card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
-    lang TEXT NOT NULL CONSTRAINT card_texts_i18n_derived_lang_check CHECK (lang NOT IN ('ja', 'en')),
+    lang TEXT NOT NULL CONSTRAINT card_texts_i18n_derived_lang_check
+      CHECK (lang IN ('zh-TW', 'zh-CN', 'zh-HK', 'ko')),
     name_text TEXT NOT NULL DEFAULT '',
     effect_text TEXT NOT NULL DEFAULT '',
     name_source TEXT NOT NULL DEFAULT '',
     effect_source TEXT NOT NULL DEFAULT '',
     review_status TEXT NOT NULL DEFAULT 'pending_review'
-      CHECK (review_status IN ('official', 'verified', 'pending_review')),
+      CHECK (review_status IN ('verified', 'pending_review')),
     review_note TEXT NOT NULL DEFAULT '',
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (card_id, lang)
@@ -208,7 +209,7 @@ function cardParams(card: CardDef): unknown[] {
 
 async function main(): Promise<void> {
   const cards = await loadSeedCards();
-  const effectsI18n = await loadSeedCardI18n();
+  const cardTexts = await loadSeedCardTexts();
   const cardsById = new Map(cards.map((card) => [card.id, card]));
   const expectedErrataCount = allowEmptyOfficialErrata ? 0 : 12;
   if (
@@ -344,38 +345,63 @@ async function main(): Promise<void> {
       );
     }
 
-    for (const [cardId, translations] of Object.entries(effectsI18n)) {
-      for (const [lang, effectText] of Object.entries(translations)) {
-        if (lang.includes('name')) continue;
+    for (const [cardId, translations] of Object.entries(cardTexts)) {
+      if (!cardsById.has(cardId)) throw new Error(`${cardId}: card text source references an unknown card`);
+      for (const [lang, entry] of Object.entries(translations)) {
         if (lang === 'ja' || lang === 'en') continue;
+        if (!['zh-TW', 'zh-CN', 'zh-HK', 'ko'].includes(lang)) {
+          throw new Error(`${cardId}: unsupported card text language ${lang}`);
+        }
+        if (entry.reviewStatus !== 'verified' && entry.reviewStatus !== 'pending_review') {
+          throw new Error(`${cardId}/${lang}: invalid derived review status ${entry.reviewStatus}`);
+        }
         await client.query(
           `INSERT INTO card_texts_i18n (
-             card_id, lang, effect_text, effect_source, review_status
+             card_id, lang, name_text, effect_text, name_source, effect_source, review_status, review_note
            )
-           VALUES ($1, $2, $3, 'seed_card_effect_i18n', 'pending_review')
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
            ON CONFLICT (card_id, lang) DO UPDATE SET
+             name_text = CASE
+               WHEN card_texts_i18n.review_status = 'verified'
+                 THEN card_texts_i18n.name_text
+               ELSE EXCLUDED.name_text
+             END,
              effect_text = CASE
-               WHEN card_texts_i18n.review_status IN ('official', 'verified')
+               WHEN card_texts_i18n.review_status = 'verified'
                  THEN card_texts_i18n.effect_text
                ELSE EXCLUDED.effect_text
              END,
+             name_source = CASE
+               WHEN card_texts_i18n.review_status = 'verified'
+                 THEN card_texts_i18n.name_source
+               ELSE EXCLUDED.name_source
+             END,
              effect_source = CASE
-               WHEN card_texts_i18n.review_status IN ('official', 'verified')
+               WHEN card_texts_i18n.review_status = 'verified'
                  THEN card_texts_i18n.effect_source
                ELSE EXCLUDED.effect_source
              END,
              review_status = CASE
-               WHEN card_texts_i18n.review_status IN ('official', 'verified')
+               WHEN card_texts_i18n.review_status = 'verified'
                  THEN card_texts_i18n.review_status
-               ELSE 'pending_review'
+               ELSE EXCLUDED.review_status
              END,
              review_note = CASE
-               WHEN card_texts_i18n.review_status IN ('official', 'verified')
+               WHEN card_texts_i18n.review_status = 'verified'
                  THEN card_texts_i18n.review_note
-               ELSE ''
+               ELSE EXCLUDED.review_note
              END,
              updated_at = NOW()`,
-          [cardId, lang, effectText],
+          [
+            cardId,
+            lang,
+            entry.name,
+            entry.effect,
+            entry.nameSource,
+            entry.effectSource,
+            entry.reviewStatus,
+            entry.reviewNote,
+          ],
         );
         translationCount += 1;
       }

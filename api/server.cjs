@@ -55,7 +55,6 @@ const { assertRuntimeSchema } = require('./schemaGate.cjs');
 const { fetchWithResilience } = require('./oauthHttp.cjs');
 const {
   createRelationshipOutboxWorker,
-  RelationshipOutboxPermanentError,
   relationshipOutboxConfig,
   relationshipOutboxStats,
 } = require('./relationshipOutbox.cjs');
@@ -73,7 +72,6 @@ const {
   attachRequestObservability,
   metricsResponse,
   rateLimitedTotal,
-  refreshMatchmakingQueueDepth,
   relationshipOutboxDeadLetter,
   relationshipOutboxOldestAgeSeconds,
   relationshipOutboxPending,
@@ -85,9 +83,7 @@ const { validateBody } = require('./validate.cjs');
 const S = require('./schemas.cjs');
 const { buildSignedImgproxyUrl, parseAllowedSources } = require('./imgproxySigner.cjs');
 const {
-  getAllCardI18n,
   getAllCardTextsI18n,
-  getCardI18n,
   getCardOfficialErrata,
   getCardTextsI18n,
   getGameConfig,
@@ -111,15 +107,6 @@ const {
   sendChatMessage,
 } = require('./chatService.cjs');
 const { createUserDeck, deleteUserDeck, listUserDecks, reserveUserDeck, updateUserDeck } = require('./deckService.cjs');
-const {
-  applyMatchmakingBlock,
-  getMatchmakingStatus,
-  joinMatchmakingQueue,
-  leaveMatchmakingQueue,
-  listMatchmakingBlockedUserIds,
-  removeMatchmakingBlock,
-  reportRealMatch,
-} = require('./matchmakingService.cjs');
 const { countOnlinePresence, heartbeatOnlinePresence } = require('./presenceService.cjs');
 const { getAdminMatches, getLeaderboard, getMatchActionLog, getUserMatches } = require('./matchQueries.cjs');
 const { submitMatchResult } = require('./matchSubmission.cjs');
@@ -332,11 +319,6 @@ function validateSecurityConfig() {
   if (process.env.NODE_ENV !== 'production' && Buffer.byteLength(JWT_SECRET, 'utf8') < 32) {
     logger.warn('JWT_SECRET should be at least 32 bytes for security');
   }
-  if (process.env.ADMIN_PASSWORD) {
-    logger.warn(
-      'ADMIN_PASSWORD is deprecated and ignored; create an individual admin account with scripts/create-admin.cjs',
-    );
-  }
   if (OAUTH_TOKEN_ENCRYPTION_KEY && OAUTH_TOKEN_ENCRYPTION_KEY.length < 32) {
     logger.warn('OAUTH_TOKEN_ENCRYPTION_KEY should be at least 32 characters; falling back to JWT_SECRET-derived key');
   }
@@ -397,24 +379,6 @@ const relationshipOutboxWorker = createRelationshipOutboxWorker({
   redis,
   intervalMs: Number(process.env.RELATIONSHIP_OUTBOX_INTERVAL_MS) || 500,
   config: relationshipOutboxConfig(process.env),
-  projectEvent: async (event) => {
-    if (event.kind === 'account_deleted') {
-      await leaveMatchmakingQueue(redis, event.userIds[0]);
-      await redis.del(`mm:blocked:${event.userIds[0]}`);
-      return;
-    }
-    if (event.kind !== 'block_created' && event.kind !== 'block_removed') return;
-    const actorUserId = event.actorUserId;
-    if (!actorUserId) {
-      throw new RelationshipOutboxPermanentError(`Relationship outbox ${event.kind} event is missing actorUserId`);
-    }
-    const targetUserId = event.userIds.find((userId) => userId !== actorUserId);
-    if (!targetUserId) {
-      throw new RelationshipOutboxPermanentError(`Relationship outbox ${event.kind} event is missing targetUserId`);
-    }
-    if (event.kind === 'block_created') await applyMatchmakingBlock(redis, actorUserId, targetUserId);
-    else await removeMatchmakingBlock(redis, actorUserId, targetUserId);
-  },
   onResult: (result) => relationshipOutboxProcessedTotal.labels(result).inc(),
   onBatch: async () => {
     const stats = await relationshipOutboxStats(pool);
@@ -642,18 +606,16 @@ async function initSchema() {
        END IF;
      END $$`,
     `DELETE FROM card_texts_i18n WHERE lang IN ('ja', 'en')`,
-    `DO $$
-     BEGIN
-       IF NOT EXISTS (
-         SELECT 1 FROM pg_constraint
-          WHERE conname = 'card_texts_i18n_derived_lang_check'
-            AND conrelid = 'public.card_texts_i18n'::regclass
-       ) THEN
-         ALTER TABLE card_texts_i18n
-           ADD CONSTRAINT card_texts_i18n_derived_lang_check
-           CHECK (lang NOT IN ('ja', 'en'));
-       END IF;
-     END $$`,
+    `ALTER TABLE card_texts_i18n
+       DROP CONSTRAINT IF EXISTS card_texts_i18n_derived_lang_check,
+       DROP CONSTRAINT IF EXISTS card_texts_i18n_chck,
+       DROP CONSTRAINT IF EXISTS card_texts_i18n_review_status_check,
+       DROP CONSTRAINT IF EXISTS card_texts_i18n_derived_review_status_check`,
+    `ALTER TABLE card_texts_i18n
+       ADD CONSTRAINT card_texts_i18n_derived_lang_check
+         CHECK (lang IN ('zh-TW', 'zh-CN', 'zh-HK', 'ko')),
+       ADD CONSTRAINT card_texts_i18n_derived_review_status_check
+         CHECK (review_status IN ('verified', 'pending_review'))`,
     `DO $$
      DECLARE relation_kind "char";
      BEGIN
@@ -669,20 +631,6 @@ async function initSchema() {
     `ALTER TABLE card_official_errata
        DROP COLUMN IF EXISTS corrected_japanese_text,
        DROP COLUMN IF EXISTS corrected_english_text`,
-    `ALTER TABLE card_official_errata
-       ADD COLUMN corrected_japanese_text TEXT,
-       ADD COLUMN corrected_english_text TEXT,
-       ADD CONSTRAINT card_official_errata_no_corrected_text_cache
-         CHECK (corrected_japanese_text IS NULL AND corrected_english_text IS NULL)`,
-    `CREATE OR REPLACE VIEW card_effects_i18n AS
-       SELECT card_id, lang, effect_text
-         FROM card_texts_i18n
-       UNION ALL
-       SELECT id, 'ja'::text, effect
-         FROM cards
-       UNION ALL
-       SELECT id, 'en'::text, en_effect_official
-         FROM cards`,
 
     `CREATE TABLE IF NOT EXISTS game_config (
       key TEXT PRIMARY KEY,
@@ -2689,9 +2637,6 @@ const RATE_LIMIT_IMGPROXY = Number(process.env.RATE_LIMIT_IMGPROXY) || 600;
 const RATE_LIMIT_DEFAULT = 120;
 const RATE_LIMIT_UPLOAD = 10;
 const REDIS_LIMITER_TIMEOUT_MS = Math.max(100, Number(process.env.REDIS_LIMITER_TIMEOUT_MS) || 750);
-const MATCHMAKING_USER_LIMIT = Math.max(1, Number(process.env.MATCHMAKING_USER_LIMIT) || 6);
-const MATCHMAKING_IP_LIMIT = Math.max(1, Number(process.env.MATCHMAKING_IP_LIMIT) || 30);
-const MATCHMAKING_GLOBAL_LIMIT = Math.max(1, Number(process.env.MATCHMAKING_GLOBAL_LIMIT) || 2000);
 
 function boundedRedisCommand(command, timeoutMs = REDIS_LIMITER_TIMEOUT_MS) {
   let timer;
@@ -2716,16 +2661,6 @@ async function checkRateLimit(ip, limit, keyPrefix = 'ratelimit') {
     logger.error({ err, key }, 'rate limiter unavailable');
     return false;
   }
-}
-
-async function checkQuota({ ip, userId, namespace, ipLimit, userLimit, globalLimit }) {
-  const userKey = userId ? crypto.createHash('sha256').update(String(userId)).digest('hex').slice(0, 32) : 'anonymous';
-  const checks = await Promise.all([
-    checkRateLimit(ip || 'unknown', ipLimit, `quota:${namespace}:ip`),
-    checkRateLimit(userKey, userLimit, `quota:${namespace}:user`),
-    checkRateLimit('global', globalLimit, `quota:${namespace}:global`),
-  ]);
-  return checks.every(Boolean);
 }
 
 // 驗證上傳圖片的 magic bytes，防止偽造副檔名上傳惡意檔案。
@@ -2878,125 +2813,7 @@ function getCorsOrigin(reqOrigin) {
   return null;
 }
 
-// ===== Matchmaking (Redis Hash + Sorted Set + Lua 原子配對) =====
-// 結構：
-//   mm:queue      sorted set，score = joinedAt(ms)，member = userId
-//   mm:{userId}   hash，欄位：queueId/joinedAt/deckName/deckIds/status/matchId/opponentId/role/realMatchId
-const MATCHMAKING_TIMEOUT_MS = 60 * 1000;
-const MATCHMAKING_TIMEOUT_GRACE_MS = 10 * 1000;
-// entry TTL = timeout + grace（70 秒）
-const MM_TTL_SECONDS = Math.ceil((MATCHMAKING_TIMEOUT_MS + MATCHMAKING_TIMEOUT_GRACE_MS) / 1000);
 const PRESENCE_TTL_MS = Number(process.env.PRESENCE_TTL_MS) || 90 * 1000;
-
-function generateMatchmakingId() {
-  return 'mm_' + crypto.randomBytes(8).toString('hex');
-}
-
-// Lua：原子配對（多實例下不會把同一人配給兩人）。
-// KEYS[1] = mm:queue
-// ARGV[1] = userId, ARGV[2] = now(ms), ARGV[3] = matchId, ARGV[4] = timeoutMs
-const MATCH_LUA = `
-local userId = ARGV[1]
-local now = tonumber(ARGV[2])
-local matchId = ARGV[3]
-local timeoutMs = tonumber(ARGV[4])
-
--- 清掉過期的 queued 玩家（轉 timeout）
-local expired = redis.call('ZRANGEBYSCORE', KEYS[1], 0, now - timeoutMs)
-for i, uid in ipairs(expired) do
-  redis.call('HSET', 'mm:' .. uid, 'status', 'timeout')
-  redis.call('ZREM', KEYS[1], uid)
-end
-
-local requestBlocked = {}
-for i = 5, #ARGV do
-  requestBlocked[ARGV[i]] = true
-end
-
--- 找最早且雙向都沒有封鎖關係的 waiting 對手。Redis block set
--- 由 block API 即時維護，ARGV 則是本次排隊從 PostgreSQL 讀到的快照。
-local opponentId = nil
-local opponents = redis.call('ZRANGE', KEYS[1], 0, -1)
-for i, candidateId in ipairs(opponents) do
-  if candidateId ~= userId
-     and not requestBlocked[candidateId]
-     and redis.call('SISMEMBER', 'mm:blocked:' .. userId, candidateId) == 0
-     and redis.call('SISMEMBER', 'mm:blocked:' .. candidateId, userId) == 0
-     and redis.call('HGET', 'mm:' .. candidateId, 'status') == 'queued' then
-    opponentId = candidateId
-    break
-  end
-end
-if not opponentId then return '' end
-
--- 原子移除對手
-redis.call('ZREM', KEYS[1], opponentId)
-redis.call('ZREM', KEYS[1], userId)
-
--- userId 字串較小者為 host
-local hostId, guestId
-if userId < opponentId then
-  hostId = userId; guestId = opponentId
-else
-  hostId = opponentId; guestId = userId
-end
-
-redis.call('HSET', 'mm:' .. userId, 'status', 'matched', 'matchId', matchId, 'opponentId', opponentId, 'role', userId == hostId and 'host' or 'guest')
-redis.call('HSET', 'mm:' .. opponentId, 'status', 'matched', 'matchId', matchId, 'opponentId', userId, 'role', opponentId == hostId and 'host' or 'guest')
-
-return opponentId
-`;
-
-// Lua：清理過期 queued 玩家（status endpoint 用）。
-// KEYS[1] = mm:queue, ARGV[1] = now(ms), ARGV[2] = timeoutMs
-const CLEAN_LUA = `
-local now = tonumber(ARGV[1])
-local timeoutMs = tonumber(ARGV[2])
-local expired = redis.call('ZRANGEBYSCORE', KEYS[1], 0, now - timeoutMs)
-for i, uid in ipairs(expired) do
-  redis.call('HSET', 'mm:' .. uid, 'status', 'timeout')
-  redis.call('ZREM', KEYS[1], uid)
-end
-return #expired
-`;
-
-const CANCEL_MATCHMAKING_PAIR_LUA = `
-local function cancelIfMatched(userId, opponentId)
-  local key = 'mm:' .. userId
-  if redis.call('HGET', key, 'status') ~= 'matched' then return 0 end
-  if redis.call('HGET', key, 'opponentId') ~= opponentId then return 0 end
-  redis.call('HSET', key, 'status', 'timeout')
-  redis.call('HDEL', key, 'matchId', 'opponentId', 'role', 'realMatchId')
-  redis.call('ZREM', KEYS[1], userId)
-  return 1
-end
-
-local cancelled = cancelIfMatched(ARGV[1], ARGV[2])
-cancelled = cancelled + cancelIfMatched(ARGV[2], ARGV[1])
-return cancelled
-`;
-
-const APPLY_MATCHMAKING_BLOCK_LUA = `
-redis.call('SADD', 'mm:blocked:' .. ARGV[1], ARGV[2])
-local function cancelIfMatched(userId, opponentId)
-  local key = 'mm:' .. userId
-  if redis.call('HGET', key, 'status') ~= 'matched' then return 0 end
-  if redis.call('HGET', key, 'opponentId') ~= opponentId then return 0 end
-  redis.call('HSET', key, 'status', 'timeout')
-  redis.call('HDEL', key, 'matchId', 'opponentId', 'role', 'realMatchId')
-  redis.call('ZREM', KEYS[1], userId)
-  return 1
-end
-
-local cancelled = cancelIfMatched(ARGV[1], ARGV[2])
-cancelled = cancelled + cancelIfMatched(ARGV[2], ARGV[1])
-return cancelled
-`;
-
-redis.defineCommand('mmTryMatch', { numberOfKeys: 1, lua: MATCH_LUA });
-redis.defineCommand('mmCleanExpired', { numberOfKeys: 1, lua: CLEAN_LUA });
-redis.defineCommand('mmCancelPair', { numberOfKeys: 1, lua: CANCEL_MATCHMAKING_PAIR_LUA });
-redis.defineCommand('mmApplyBlock', { numberOfKeys: 1, lua: APPLY_MATCHMAKING_BLOCK_LUA });
 
 // ===== Trusted Proxy & Client IP =====
 // E10：信任代理 IP/CIDR 列表。僅當請求來自信任代理時才使用 X-Forwarded-For，
@@ -3254,11 +3071,6 @@ function handleRequest(req, res) {
 
     if (pathname === '/metrics' && method === 'GET') {
       if (!checkMetricsAuth(req)) return json({ error: 'Unauthorized' }, 401);
-      try {
-        await refreshMatchmakingQueueDepth(redis);
-      } catch {
-        // The auxiliary queue gauge is marked unknown; metrics serving remains available.
-      }
       return metricsResponse(res);
     }
 
@@ -3991,12 +3803,6 @@ function handleRequest(req, res) {
       if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
       const result = await blockUser({ pool, userId, targetUserId: parsed.data.targetUserId });
       if (!result.ok) return json({ error: result.error }, result.status);
-      await applyMatchmakingBlock(redis, userId, parsed.data.targetUserId).catch((error) =>
-        logger.error(
-          { err: error, userId, targetUserId: parsed.data.targetUserId },
-          'matchmaking block projection failed',
-        ),
-      );
       json(result.body);
       return;
     }
@@ -4007,9 +3813,6 @@ function handleRequest(req, res) {
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const result = await unblockUser({ pool, userId, targetUserId: decodeURIComponent(blockRoute[1]) });
       if (!result.ok) return json({ error: result.error }, result.status);
-      await removeMatchmakingBlock(redis, userId, decodeURIComponent(blockRoute[1])).catch((error) =>
-        logger.error({ err: error, userId }, 'matchmaking unblock projection failed'),
-      );
       json(result.body);
       return;
     }
@@ -4738,13 +4541,6 @@ function handleRequest(req, res) {
       return;
     }
 
-    // 批次 i18n 端點：回傳所有卡牌的所有語言翻譯。
-    if (pathname === '/api/cards/i18n' && method === 'GET') {
-      res.setHeader('Cache-Control', 'no-store');
-      json(await getAllCardI18n(pool));
-      return;
-    }
-
     if (pathname === '/api/cards/texts' && method === 'GET') {
       res.setHeader('Cache-Control', 'no-store');
       json(await getAllCardTextsI18n(pool));
@@ -4756,14 +4552,6 @@ function handleRequest(req, res) {
       const cardId = decodeURIComponent(publicCardTextsRoute[1]);
       res.setHeader('Cache-Control', 'no-store');
       json(await getCardTextsI18n(pool, cardId));
-      return;
-    }
-
-    const publicCardI18nRoute = pathname.match(/^\/api\/cards\/([^/]+)\/i18n$/);
-    if (publicCardI18nRoute && method === 'GET') {
-      const cardId = decodeURIComponent(publicCardI18nRoute[1]);
-      res.setHeader('Cache-Control', 'no-store');
-      json(await getCardI18n(pool, cardId));
       return;
     }
 
@@ -4833,75 +4621,6 @@ function handleRequest(req, res) {
       if (!admin) return json({ error: 'Unauthorized' }, 401);
       const key = decodeURIComponent(adminConfigRoute[1]);
       const result = await upsertGameConfig(pool, key, await readBody(), admin.adminUserId);
-      if (!result.ok) return json({ error: result.error }, result.status);
-      json(result.body);
-      return;
-    }
-
-    // ===== Matchmaking Routes =====
-
-    // POST /api/matchmaking/queue — 加入配對佇列
-    if (pathname === '/api/matchmaking/queue' && method === 'POST') {
-      const userId = await getAuthUserId(req);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
-      if (
-        !(await checkQuota({
-          ip: clientIp,
-          userId,
-          namespace: 'matchmaking',
-          ipLimit: MATCHMAKING_IP_LIMIT,
-          userLimit: MATCHMAKING_USER_LIMIT,
-          globalLimit: MATCHMAKING_GLOBAL_LIMIT,
-        }))
-      ) {
-        return json({ error: 'Matchmaking capacity is temporarily unavailable' }, 429);
-      }
-      const __body = await readBody();
-      const __parsed = validateBody(S.mmQueueSchema, __body);
-      if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
-      const blockedUserIds = await listMatchmakingBlockedUserIds({ pool, userId });
-      json(
-        await joinMatchmakingQueue({
-          redis,
-          userId,
-          body: __parsed.data,
-          sanitizeText,
-          generateQueueId: () => 'q_' + crypto.randomBytes(8).toString('hex'),
-          generateMatchId: generateMatchmakingId,
-          ttlSeconds: MM_TTL_SECONDS,
-          timeoutMs: MATCHMAKING_TIMEOUT_MS,
-          blockedUserIds,
-        }),
-      );
-      return;
-    }
-
-    // GET /api/matchmaking/status — 查詢配對狀態
-    if (pathname === '/api/matchmaking/status' && method === 'GET') {
-      const userId = await getAuthUserId(req);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
-      const blockedUserIds = await listMatchmakingBlockedUserIds({ pool, userId });
-      json(await getMatchmakingStatus(redis, userId, Date.now(), MATCHMAKING_TIMEOUT_MS, blockedUserIds));
-      return;
-    }
-
-    // DELETE /api/matchmaking/queue — 離開佇列
-    if (pathname === '/api/matchmaking/queue' && method === 'DELETE') {
-      const userId = await getAuthUserId(req);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
-      json(await leaveMatchmakingQueue(redis, userId));
-      return;
-    }
-
-    // PUT /api/matchmaking/match — host 回報真實 boardgame.io matchID
-    if (pathname === '/api/matchmaking/match' && method === 'PUT') {
-      const userId = await getAuthUserId(req);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
-      const __body = await readBody();
-      const __parsed = validateBody(S.mmMatchSchema, __body);
-      if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
-      const blockedUserIds = await listMatchmakingBlockedUserIds({ pool, userId });
-      const result = await reportRealMatch(redis, userId, __parsed.data.matchId, blockedUserIds);
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);
       return;

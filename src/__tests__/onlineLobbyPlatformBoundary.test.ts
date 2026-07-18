@@ -18,14 +18,14 @@ describe('online lobby platform boundary', () => {
     expect(lobbySource).not.toContain('realMatchId');
   });
 
-  it('keeps legacy REST matchmaking isolated to the API client compatibility surface', () => {
+  it('keeps quick matchmaking entirely on the platform client', () => {
     const platformClientSource = readRepoFile('src/platformClient.ts');
     const apiClientSource = readRepoFile('src/api/client.ts');
 
     expect(platformClientSource).toContain("joinPlatformRoom('quick_match'");
     expect(platformClientSource).not.toContain('/matchmaking/');
     expect(platformClientSource).not.toContain('realMatchId');
-    expect(apiClientSource).toContain('export async function matchmakingQueue');
+    expect(apiClientSource).not.toContain('/matchmaking/');
   });
 
   it('registers hosted custom rooms in Colyseus before exposing a shareable room code', () => {

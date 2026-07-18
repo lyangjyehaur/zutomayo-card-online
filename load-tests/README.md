@@ -25,7 +25,6 @@ docker run --rm -i grafana/k6 run - < load-tests/api-load.js
 | `api-load.js`         | API server                             | 對公開 API endpoint 施壓，記錄延遲與錯誤率。                     |
 | `websocket-load.js`   | game server                            | 對 socket.io WebSocket 連線進行並發壓力測試。                    |
 | `auth-load.js`        | API server                             | 模擬登入 / token refresh，記錄成功率與延遲。                     |
-| `matchmaking-load.js` | API server                             | 模擬多玩家加入配對佇列，記錄配對成功率與配對時間。               |
 | `operational-soak.js` | 全服務 readiness / representative URLs | 以觀測到的 peak 計算 2x constant-arrival-rate，預設執行 2 小時。 |
 
 ## 執行方式
@@ -45,8 +44,6 @@ k6 run load-tests/websocket-load.js
 BASE_URL=http://localhost:3001 LOGIN_EMAIL=test@example.com LOGIN_PASSWORD=secret \
   k6 run load-tests/auth-load.js
 
-# 配對負載測試
-BASE_URL=http://localhost:3001 k6 run load-tests/matchmaking-load.js
 ```
 
 或使用 package.json 的 script：
@@ -55,7 +52,6 @@ BASE_URL=http://localhost:3001 k6 run load-tests/matchmaking-load.js
 npm run load:api
 npm run load:ws
 npm run load:auth
-npm run load:matchmaking
 npm run load:operational-soak
 ```
 
@@ -128,8 +124,6 @@ docker compose -f docker-compose.yml -f docker-compose.load-test.yml up \
 | `WS_HOLD_MS`            | `90000`                                                    | 每條 WebSocket 連線持有的毫秒數。                                                                          |
 | `LOGIN_EMAIL`           | _(空)_                                                     | 認證 / 配對測試共用的登入 email；未設則每個 VU 註冊臨時帳號。                                              |
 | `LOGIN_PASSWORD`        | `loadtest123`                                              | 登入密碼。                                                                                                 |
-| `MM_POLL_TIMES`         | `5`                                                        | 配對測試輪詢狀態的次數。                                                                                   |
-| `MM_POLL_INTERVAL`      | `1`                                                        | 配對測試每次輪詢間隔（秒）。                                                                               |
 | `DEBUG`                 | _(空)_                                                     | 設為任意值時印出 WebSocket 除錯訊息。                                                                      |
 | `OBSERVED_PEAK_RPS`     | _(required)_                                               | 從 telemetry 取得的實測 peak；`operational-soak` 用它乘上 `PEAK_MULTIPLIER`。                              |
 | `PEAK_MULTIPLIER`       | `2`                                                        | 容量 gate 倍率。                                                                                           |
@@ -150,8 +144,6 @@ k6 的 `thresholds` 定義測試通過條件；若任一閾值未達標，k6 會
 - `ws_msgs_received: ['count>0']` — 至少收到一則訊息（確認連線雙向可用）。
 - `auth_success: ['rate>0.95']` — 認證成功率 > 95%。
 - `auth_refresh_success: ['rate>0.95']` — refresh token 成功率 > 95%。
-- `mm_join_success: ['rate>0.9']` — 加入佇列成功率 > 90%。
-- `mm_matched: ['rate>0.9']` — 配對成功率 > 90%。
 
 未通過時請檢視 k6 摘要中標示 `✗` 的指標，並對照下方「已知限制」判斷是系統瓶頸還是測試環境限制。
 
@@ -159,5 +151,4 @@ k6 的 `thresholds` 定義測試通過條件；若任一閾值未達標，k6 會
 
 - **API 速率限制**：API server 對每個 IP 限制 120 req/min（一般 endpoint）、10 req/min（`/api/login`、`/api/register`）。從單一來源 IP 高並發施壓會觸發 `429 Too Many Requests`，導致錯誤率上升。這代表瓶頸在限流；要測得真實服務容量，請在測試環境調高限流（`RATE_LIMIT_DEFAULT` / `RATE_LIMIT_AUTH` 於 `api/server.cjs`）或從多個來源 IP 分散請求。
 - **WebSocket 連線數限制**：game server 預設 `MAX_CONN_PER_IP=10`，單一 IP 超過即被 disconnect。進行 200/500 並發連線測試前請提高該值。
-- **配對需成對玩家**：matchmaking 需兩兩配對才能成立；奇數玩家會停留在佇列直到 timeout，`mm_matched` 比例會偏低。
 - **認證測試的資料庫污染**：未指定 `LOGIN_EMAIL` 時，每個 VU 會註冊臨時帳號，建議僅在可拋棄的測試環境使用。

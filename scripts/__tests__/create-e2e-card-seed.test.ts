@@ -6,7 +6,7 @@ describe('synthetic E2E card seed', () => {
     const fixture = createE2ECardSeed();
 
     expect(fixture.cards).toHaveLength(90);
-    expect(fixture.i18n).toEqual({});
+    expect(fixture.texts).toEqual({});
     expect(new Set(fixture.cards.map((card) => card.id)).size).toBe(fixture.cards.length);
     for (const element of ['闇', '炎', '電気', '風']) {
       expect(fixture.cards.filter((card) => card.element === element && card.type === 'Character')).toHaveLength(20);

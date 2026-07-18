@@ -49,12 +49,6 @@ const mockRedisSet = vi.fn().mockResolvedValue('OK');
 const mockRedisEval = vi.fn().mockResolvedValue(null);
 const mockRedisScan = vi.fn().mockResolvedValue(['0', []]);
 const mockRedisMget = vi.fn().mockResolvedValue([]);
-const mockRedisMmTryMatch = vi.fn().mockResolvedValue('');
-const mockRedisMmCleanExpired = vi.fn().mockResolvedValue(0);
-const mockRedisMmCancelPair = vi.fn().mockResolvedValue(0);
-const mockRedisMmApplyBlock = vi.fn().mockResolvedValue(0);
-const mockRedisSadd = vi.fn().mockResolvedValue(1);
-const mockRedisSrem = vi.fn().mockResolvedValue(1);
 const mockRedisPublish = vi.fn().mockResolvedValue(1);
 
 const mockRedis = {
@@ -77,12 +71,6 @@ const mockRedis = {
   eval: mockRedisEval,
   scan: mockRedisScan,
   mget: mockRedisMget,
-  mmTryMatch: mockRedisMmTryMatch,
-  mmCleanExpired: mockRedisMmCleanExpired,
-  mmCancelPair: mockRedisMmCancelPair,
-  mmApplyBlock: mockRedisMmApplyBlock,
-  sadd: mockRedisSadd,
-  srem: mockRedisSrem,
   publish: mockRedisPublish,
 };
 
@@ -801,6 +789,21 @@ describe('server routes', () => {
       const res = await sendRequest('GET', '/api/nonexistent');
       expect(res.statusCode).toBe(404);
     });
+
+    it.each([
+      ['GET', '/api/cards/i18n'],
+      ['GET', '/api/cards/1st_1/i18n'],
+      ['POST', '/api/matchmaking/queue'],
+      ['GET', '/api/matchmaking/status'],
+      ['DELETE', '/api/matchmaking/queue'],
+      ['PUT', '/api/matchmaking/match'],
+    ])('returns 404 for retired endpoint %s %s', async (method, path) => {
+      const csrfToken = 'valid-csrf-token-for-testing-1234567890';
+      const headers =
+        method === 'GET' ? undefined : { cookie: `zutomayo_csrf=${csrfToken}`, 'x-csrf-token': csrfToken };
+      const res = await sendRequest(method, path, null, headers);
+      expect(res.statusCode).toBe(404);
+    });
   });
 
   describe('admin role management', () => {
@@ -974,31 +977,6 @@ describe('server routes', () => {
       expect(mockQuery.mock.invocationCallOrder[outboxIndex]).toBeLessThan(
         mockQuery.mock.invocationCallOrder[commitIndex],
       );
-    });
-
-    it('keeps a committed block successful when the immediate Redis projection is unavailable', async () => {
-      mockQuery.mockImplementation(async (sql: string, params?: unknown[]) => {
-        if (sql === 'SELECT * FROM users WHERE id = $1 FOR UPDATE') {
-          return { rows: [{ id: String(params?.[0]), deleted_at: null }], rowCount: 1 };
-        }
-        if (sql.includes('INSERT INTO user_blocks')) {
-          return { rows: [{ created_at: '2026-07-13T00:00:00.000Z' }], rowCount: 1 };
-        }
-        if (sql.includes('INSERT INTO relationship_change_outbox')) {
-          return { rows: [{ event_id: 'event-redis-down' }], rowCount: 1 };
-        }
-        return { rows: [], rowCount: 0 };
-      });
-      mockRedisMmApplyBlock.mockRejectedValueOnce(new Error('Redis projection unavailable'));
-
-      const res = await sendRequest('POST', '/api/blocks', { targetUserId: 'u_target' }, userUnsafeHeaders('u_test'));
-
-      expect(res.statusCode).toBe(200);
-      expect(mockQuery).toHaveBeenCalledWith(
-        expect.stringContaining('INSERT INTO relationship_change_outbox'),
-        expect.any(Array),
-      );
-      expect(mockRedisPublish).not.toHaveBeenCalled();
     });
 
     it('GET /api/decks returns 401 without auth', async () => {
@@ -1212,11 +1190,6 @@ describe('server routes', () => {
         cookie: `zutomayo_csrf=${csrfToken}`,
         'x-csrf-token': csrfToken,
       });
-      expect(res.statusCode).toBe(401);
-    });
-
-    it('GET /api/matchmaking/status returns 401 without auth', async () => {
-      const res = await sendRequest('GET', '/api/matchmaking/status');
       expect(res.statusCode).toBe(401);
     });
   });

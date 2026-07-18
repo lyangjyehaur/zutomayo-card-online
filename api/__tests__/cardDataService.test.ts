@@ -8,9 +8,7 @@ type Queryable = {
 const require = createRequire(import.meta.url);
 const {
   cardRowToDef,
-  getAllCardI18n,
   getAllCardTextsI18n,
-  getCardI18n,
   getCardOfficialErrata,
   getCardTextsI18n,
   getGameConfig,
@@ -21,9 +19,7 @@ const {
   officialErrataRowToDef,
 } = require('../cardDataService.cjs') as {
   cardRowToDef: (row: Record<string, unknown>) => Record<string, unknown>;
-  getAllCardI18n: (pool: Queryable) => Promise<Record<string, unknown>>;
   getAllCardTextsI18n: (pool: Queryable) => Promise<Record<string, unknown>>;
-  getCardI18n: (pool: Queryable, cardId: string) => Promise<Record<string, string>>;
   getCardOfficialErrata: (pool: Queryable, cardId: string) => Promise<Record<string, unknown> | null>;
   getCardTextsI18n: (pool: Queryable, cardId: string) => Promise<Record<string, unknown>>;
   getGameConfig: (pool: Queryable) => Promise<Record<string, unknown>>;
@@ -115,20 +111,11 @@ describe('card data service', () => {
     ]);
   });
 
-  it('returns i18n data from PG with canonical language aliases', async () => {
+  it('normalizes supported language aliases', () => {
     expect(normalizeI18nLang('zhTW')).toBe('zh-TW');
+    expect(normalizeI18nLang('zhCN')).toBe('zh-CN');
+    expect(normalizeI18nLang('zhHK')).toBe('zh-HK');
     expect(normalizeI18nLang('xx')).toBeNull();
-
-    const pool = poolWithRows([{ card_id: 'c_1', lang: 'ja', effect_text: 'JP' }]);
-    await expect(getAllCardI18n(pool)).resolves.toEqual({
-      c_1: { ja: 'JP' },
-    });
-    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('FROM cards'));
-    expect(pool.query).not.toHaveBeenCalledWith(expect.stringContaining('card_effects_i18n'));
-    await expect(getCardI18n(poolWithRows([{ lang: 'zhTW', effect_text: 'TW' }]), 'c_1')).resolves.toMatchObject({
-      en: '',
-      'zh-TW': 'TW',
-    });
   });
 
   it('returns unified card text with provenance and review status', async () => {

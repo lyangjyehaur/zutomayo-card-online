@@ -81,15 +81,15 @@ describe('production schema gate', () => {
   });
 
   it('requires official and localized card text schema', () => {
-    expect(REQUIRED_RUNTIME_TABLES).toContain('card_effects_i18n');
+    expect(REQUIRED_RUNTIME_TABLES).not.toContain('card_effects_i18n');
     expect(REQUIRED_RUNTIME_TABLES).toContain('card_texts_i18n');
     expect(REQUIRED_RUNTIME_TABLES).toContain('card_official_errata');
     expect(REQUIRED_RUNTIME_COLUMNS.cards).toContain('en_name_official');
     expect(REQUIRED_RUNTIME_COLUMNS.cards).toContain('has_official_errata');
     expect(REQUIRED_RUNTIME_COLUMNS.card_texts_i18n).toContain('review_status');
     expect(REQUIRED_RUNTIME_COLUMNS.card_official_errata).toContain('corrected_english_source');
-    expect(REQUIRED_RUNTIME_COLUMNS.card_official_errata).toContain('corrected_japanese_text');
-    expect(REQUIRED_RUNTIME_COLUMNS.card_official_errata).toContain('corrected_english_text');
+    expect(REQUIRED_RUNTIME_COLUMNS.card_official_errata).not.toContain('corrected_japanese_text');
+    expect(REQUIRED_RUNTIME_COLUMNS.card_official_errata).not.toContain('corrected_english_text');
     expect(REQUIRED_RUNTIME_CONSTRAINTS).toContainEqual(
       expect.objectContaining({
         tableName: 'card_texts_i18n',
@@ -98,9 +98,12 @@ describe('production schema gate', () => {
     );
     expect(REQUIRED_RUNTIME_CONSTRAINTS).toContainEqual(
       expect.objectContaining({
-        tableName: 'card_official_errata',
-        constraintName: 'card_official_errata_no_corrected_text_cache',
+        tableName: 'card_texts_i18n',
+        constraintName: 'card_texts_i18n_derived_review_status_check',
       }),
+    );
+    expect(REQUIRED_RUNTIME_CONSTRAINTS).not.toContainEqual(
+      expect.objectContaining({ tableName: 'card_official_errata' }),
     );
   });
 

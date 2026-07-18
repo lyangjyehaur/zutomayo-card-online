@@ -142,34 +142,6 @@ async function getPublicCards(pool, searchParams) {
   }
 }
 
-async function getAllCardI18n(pool) {
-  try {
-    const rows = (await pool.query(`${CARD_TEXTS_SELECT} ORDER BY card_id, lang`)).rows;
-    const grouped = {};
-    for (const row of rows) {
-      if (!grouped[row.card_id]) grouped[row.card_id] = {};
-      grouped[row.card_id][row.lang] = typeof row.effect_text === 'string' ? row.effect_text : '';
-    }
-    return grouped;
-  } catch {
-    return {};
-  }
-}
-
-async function getCardI18n(pool, cardId) {
-  const translations = Object.fromEntries(I18N_LANGS.map((lang) => [lang, '']));
-  try {
-    const rows = (await pool.query(`${CARD_TEXTS_SELECT} WHERE card_id = $1 ORDER BY lang`, [cardId])).rows;
-    for (const row of rows) {
-      const lang = normalizeI18nLang(row.lang);
-      if (lang) translations[lang] = typeof row.effect_text === 'string' ? row.effect_text : '';
-    }
-  } catch {
-    // Return the empty language shape when PG is unavailable.
-  }
-  return translations;
-}
-
 async function getAllCardTextsI18n(pool) {
   try {
     const rows = (await pool.query(`${CARD_TEXTS_SELECT} ORDER BY card_id, lang`)).rows;
@@ -259,9 +231,7 @@ module.exports = {
   CARD_SELECT,
   cardTextRowToDef,
   cardRowToDef,
-  getAllCardI18n,
   getAllCardTextsI18n,
-  getCardI18n,
   getCardOfficialErrata,
   getCardTextsI18n,
   getGameConfig,

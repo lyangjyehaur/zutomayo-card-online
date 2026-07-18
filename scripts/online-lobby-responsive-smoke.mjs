@@ -301,9 +301,6 @@ const setup = `
     if (url.includes('/api/chat/read')) {
       return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'content-type': 'application/json' } });
     }
-    if (url.includes('/api/matchmaking/')) {
-      throw new Error('Online lobby smoke should not call legacy REST matchmaking');
-    }
     if (url.includes('/games/zutomayo-card/create')) {
       return new Response(JSON.stringify({ matchID: 'visual-room-0001' }), { status: 200, headers: { 'content-type': 'application/json' } });
     }
@@ -426,7 +423,6 @@ const accountWorkflowExpression = `
         request.body.includes('"conversationType":"room"') &&
         request.body.includes('"subjectId":"ROOM42"')
       ),
-      noLegacyMatchmaking: !requests.some((request) => request.url.includes('/api/matchmaking/')),
     },
     requests,
   };
