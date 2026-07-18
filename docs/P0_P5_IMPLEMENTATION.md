@@ -15,14 +15,14 @@
 ## 2026-07-19 P0-P5 integration evidence
 
 - 已將本地 `master` 的 `13d60742` 卡牌多語契約同步進隔離 worktree，保留 immutable manifest、signed dataset、七映像與九角色 gate；current release schema 綁定更新為 `000036_harden_card_i18n_contract` 與 checksum `41115b0039694cd7eed955276d659b455e25f5a053dfdb13f815577b4a6045e9`。
-- `npm run verify` 對整合 tree 通過：Vitest 167 個 test files、1457 tests、coverage、release/operational config、兩套 typecheck、i18n、資料來源政策與 production/PWA build。卡牌原始 JSON 仍未被 Git 追蹤或複製進 image。
+- `npm run verify` 對整合 tree 通過：Vitest 166 個 test files、1447 tests、coverage、release/operational config、兩套 typecheck、i18n、資料來源政策與 production/PWA build。卡牌原始 JSON 仍未被 Git 追蹤或複製進 image。
 - Fresh PostgreSQL role-matrix smoke 從空資料卷實際套用 35 筆 canonical migrations 至 `000036`，通過 migration checksum/runtime schema、API/platform 最小權限、card-first 歷史 normalization、relationship outbox、social/account-deletion/boardgame metadata、platform relationship writer race、admin credential lifecycle 與九角色權限矩陣。首次執行找出舊 schema gate 仍要求 derived row 的 `official` review status；修正後以具名 `card_texts_i18n_derived_review_status_check` 精確驗證 `verified`／`pending_review`，並新增同名錯誤定義的 fail-closed 測試。
 - CD 已允許未合併 staging SHA，但只接受同倉庫、base `master`、open PR 的精確 head 且該 SHA 的 CI 已成功；manual staging 必須先 build、scan、簽署並 attestation 七映像。Production 仍只接受位於 `master` ancestry 的 exact `v<semver>` tag，manual dispatch 不重建 production image。
 - 精確 commit release gate 的本機／設定層預期維持 18 passed；authenticated E2E、off-site restore/PITR、chaos、2x/2h soak、Alertmanager delivery、10/50/100 canary/rollback 與真 email/Logto provider 七項仍必須由 staging 外部證據解除，不能由本機 smoke 代替。
 
 ## 2026-07-18 current-tree evidence
 
-- Current merge tree 的 `npm run verify` 通過：Vitest 167 個 test files、1443 tests、dependency patch、資料來源政策、release/operational config、coverage gate、i18n 與 production/PWA build。Pushed hardening commit `8de8a86c` 的 GitHub CI run `29635089382` 四個 jobs 全部通過，E2E 40 passed／1 skipped、無 retry/flaky；該 run 同時暴露 `upload-artifact` 的 Node 20 annotation，本次完整 action runtime 修正仍須通過相同 remote CI 才能視為最終自動化證據。
+- Current merge tree 的 `npm run verify` 通過：Vitest 166 個 test files、1447 tests、dependency patch、資料來源政策、release/operational config、coverage gate、i18n 與 production/PWA build。Pushed hardening commit `8de8a86c` 的 GitHub CI run `29635089382` 四個 jobs 全部通過，E2E 40 passed／1 skipped、無 retry/flaky；該 run 同時暴露 `upload-artifact` 的 Node 20 annotation。`codex/p0-p5-completion` 尚未推送，故本次整合 tree 仍待 remote CI 自我驗證。
 - `npm run rule:audit` 對本機 422 張線上資料副本通過：250 張效果卡、267 行效果全部解析，`unparsedLines=0`、`parsedButPartial=0`、`falseDraw=0`。
 - 當前 merge tree 的 Fresh PostgreSQL 九角色 smoke 通過 canonical `000001`→`000033`、API role matrix、platform 獨立最小權限 schema gate、relationship outbox、social/account-deletion concurrency、boardgame metadata、admin credential lifecycle，以及 QuickMatch block／Invite friendship-removal writer transaction 與真 platform relay 的 distinct-role 並行競態；另自動重現 card-first 歷史，補套 `000019`–`000027`與 `000031`–`000033`、正規化為 30 筆 canonical migration metadata，再以 `checkOrder=true` 嚴格重跑。
 - Legacy deleted-account backfill 已改為受審核、精確數量、fail-closed 的 release step。單元測試覆蓋零筆 no-op、未核准、數量漂移、逐筆成功與 hash-only failure；真 PostgreSQL smoke 造出既有 tombstone，驗證 legal-hold/account lock、全 identity-domain 匿名化、purge/retry 與 `users.identity_anonymized_at` marker。API 與 platform schema gate 都拒絕任何未清零 tombstone。
@@ -143,8 +143,8 @@
 
 ## 最終驗收
 
-- [x] `npm run verify`：2026-07-19 P0-P5 integration tree 通過，Vitest 166 test files / 1447 tests / production-PWA build；先前 pushed hardening commit `8de8a86c` 的 GitHub CI run `29635089382` 四個 jobs 全部通過，本次 `000036`／CD 整合 commit 仍待 remote CI。
-- [x] `npm run test:coverage`：167 test files / 1457 tests，repository coverage thresholds 通過。
+- [x] `npm run verify`：2026-07-19 P0-P5 integration tree 通過，Vitest 166 test files / 1447 tests / production-PWA build；先前 pushed hardening commit `8de8a86c` 的 GitHub CI run `29635089382` 四個 jobs 全部通過，本次 `codex/p0-p5-completion` 尚未推送，remote CI 仍待執行。
+- [x] `npm run test:coverage`：166 test files / 1447 tests，repository coverage thresholds 通過。
 - [x] Compose-backed Chromium E2E：current-tree fresh images/volumes、migration/seed 後 40/40，含自然完成 authenticated 對局與獨立重新登入跨裝置 history。
 - [x] `npm run rule:audit`：422 cards／250 effect cards／267 effect lines，unsupported/partial/false-draw 全為 0。
 - [x] Production/development Compose 靜態 config、fresh role matrix、platform least-privilege schema gate 與 fresh-volume E2E 均由 current tree 通過。
