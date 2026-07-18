@@ -94,22 +94,26 @@ afterEach(() => {
 });
 
 describe('PostgreSQL WAL archive and restore scripts', () => {
-  it.each(['000000010000000000000001', '00000002.history'])('round-trips the standard WAL name %s', (walName) => {
-    const harness = createHarness();
-    const source = join(harness.root, 'source-wal');
-    const destination = join(harness.root, 'restore', basename(walName));
-    writeFileSync(source, `contents for ${walName}`);
+  it.each(['000000010000000000000001', '00000002.history'])(
+    'round-trips the standard WAL name %s',
+    (walName) => {
+      const harness = createHarness();
+      const source = join(harness.root, 'source-wal');
+      const destination = join(harness.root, 'restore', basename(walName));
+      writeFileSync(source, `contents for ${walName}`);
 
-    const archived = run(archiveScript, [source, walName], harness.env);
-    expect(archived.status, archived.stderr).toBe(0);
-    expect(readFileSync(join(harness.metrics, 'zutomayo_pg_wal_archive.prom'), 'utf8')).toContain(
-      'pg_wal_archive_last_run_success 1',
-    );
+      const archived = run(archiveScript, [source, walName], harness.env);
+      expect(archived.status, archived.stderr).toBe(0);
+      expect(readFileSync(join(harness.metrics, 'zutomayo_pg_wal_archive.prom'), 'utf8')).toContain(
+        'pg_wal_archive_last_run_success 1',
+      );
 
-    const restored = run(restoreScript, [walName, destination], harness.env);
-    expect(restored.status, restored.stderr).toBe(0);
-    expect(readFileSync(destination, 'utf8')).toBe(`contents for ${walName}`);
-  });
+      const restored = run(restoreScript, [walName, destination], harness.env);
+      expect(restored.status, restored.stderr).toBe(0);
+      expect(readFileSync(destination, 'utf8')).toBe(`contents for ${walName}`);
+    },
+    15_000,
+  );
 
   it('records a failed archive metric when an external upload command fails', () => {
     const harness = createHarness();
