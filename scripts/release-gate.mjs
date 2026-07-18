@@ -300,6 +300,7 @@ function composeFixtureEnv() {
     ACCOUNT_EXPORT_S3_VERSIONING_MODE: 'disabled',
     ACCOUNT_EXPORT_S3_LIFECYCLE_CONFIRMED: 'true',
     ACCOUNT_EXPORT_PSEUDONYM_KEY: 'release-gate-export-pseudonym-key-32chars-minimum',
+    CARD_DATA_DIR: '/tmp/zutomayo-release-gate-card-data',
     OAUTH_PUBLIC_BASE_URL: 'https://game.example.invalid',
     METRICS_TOKEN: 'release-gate-metrics-token',
     SLACK_ALERT_WEBHOOK: 'https://hooks.example.invalid/services/release-gate',

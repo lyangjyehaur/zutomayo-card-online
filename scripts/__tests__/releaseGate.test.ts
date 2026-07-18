@@ -5,8 +5,16 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 type GateCheck = { id: string; category: string; status: string; reason: string };
+type GateResult = { status: string; reason: string };
 type GateModule = {
   aggregateStatus(checks: Array<{ status: string }>): string;
+  runReleaseGate(
+    options?: { evidenceDir?: string; releaseSha?: string; format?: string },
+    dependencies?: {
+      run?: (command: string, args: string[], env?: NodeJS.ProcessEnv) => GateResult;
+      pipeline?: (commands: unknown[], env?: NodeJS.ProcessEnv) => GateResult;
+    },
+  ): Promise<{ status: string; checks: GateCheck[] }>;
   inspectStagingGates(
     stagingEvidenceDir?: string,
     options?: {
@@ -29,7 +37,8 @@ type GateModule = {
 };
 
 // @ts-expect-error The runtime MJS module intentionally has no generated declarations.
-const { aggregateStatus, inspectStagingGates, renderMarkdown } = (await import('../release-gate.mjs')) as GateModule;
+const releaseGateModule = await import('../release-gate.mjs');
+const { aggregateStatus, inspectStagingGates, renderMarkdown, runReleaseGate } = releaseGateModule as GateModule;
 
 function authenticatedEvidence(directory: string) {
   const artifactPath = 'staging/authenticated-e2e-report.json';
@@ -700,6 +709,29 @@ describe('single release gate evidence model', () => {
     expect(aggregateStatus([{ status: 'passed' }, { status: 'blocked' }])).toBe('blocked');
     expect(aggregateStatus([{ status: 'blocked' }, { status: 'failed' }])).toBe('failed');
     expect(aggregateStatus([{ status: 'passed' }])).toBe('passed');
+  });
+
+  it('passes the private card-data fixture to every local Compose render gate', async () => {
+    const evidenceDir = mkdtempSync(join(tmpdir(), 'release-gate-local-fixture-'));
+    const composeEnvironments: NodeJS.ProcessEnv[] = [];
+    const passed: GateResult = { status: 'passed', reason: 'stubbed local command' };
+    const summary = await runReleaseGate(
+      { evidenceDir, releaseSha: 'a'.repeat(40), format: 'json' },
+      {
+        run(command, args, env) {
+          if (command === 'docker' && args[0] === 'compose') composeEnvironments.push(env ?? {});
+          return passed;
+        },
+        pipeline(_commands, env) {
+          composeEnvironments.push(env ?? {});
+          return passed;
+        },
+      },
+    );
+
+    expect(summary.status).toBe('blocked');
+    expect(composeEnvironments.length).toBeGreaterThan(0);
+    expect(composeEnvironments.every((env) => env.CARD_DATA_DIR === '/tmp/zutomayo-release-gate-card-data')).toBe(true);
   });
 
   it('marks every staging-only gate blocked when external evidence is absent', () => {
