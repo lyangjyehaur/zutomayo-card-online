@@ -38,8 +38,6 @@ const mockRedis = {
   del: vi.fn().mockResolvedValue(1),
   get: vi.fn().mockResolvedValue(null),
   set: vi.fn().mockResolvedValue('OK'),
-  mmTryMatch: vi.fn().mockResolvedValue(''),
-  mmCleanExpired: vi.fn().mockResolvedValue(0),
 };
 
 const mockFetch = vi.fn().mockResolvedValue({

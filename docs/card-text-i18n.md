@@ -11,10 +11,10 @@
 3. `card_texts_i18n` 只保存衍生語言的名稱與效果、來源及複核狀態，禁止寫入 `ja` 或 `en`。
 4. `game_config.card_song_titles_i18n` 保存歌曲日文原題對應的多語歌名。卡名或效果包含歌名時，玩家端以這份設定產生有效顯示值；這是明確的顯示層覆寫規則，不是第二份卡牌效果資料。
 5. 衍生翻譯必須同時參考官方有效日文和英文；兩者有歧義時，以官方修正後日文語義為準。
-6. `pending_review` 的衍生翻譯不得進入玩家顯示鏈路。`/cards/texts` 會保留狀態供管理頁編輯；相容 API `/cards/i18n` 與 game server 只使用已發布列。只有 `verified`（或官方投影使用的 `official`）可以進入玩家顯示鏈路。
+6. `pending_review` 的衍生翻譯不得進入玩家顯示鏈路。`/cards/texts` 會保留狀態供管理頁編輯；瀏覽器與 game server 的顯示函式只使用 `verified`（或官方投影使用的 `official`）。
 7. 勘誤影響的衍生翻譯必須使用已複核的勘誤文本；尚未複核時回退到 `cards` 的有效英文，再回退官方日文。
 8. 本機受控來源 `data/card-english-extraction.json` 中的英文必須先完成人工卡面複核，才能批量匯入 PostgreSQL；該檔及其他卡牌文本來源不得提交到 Git 或進入容器映像。
-9. 舊表與相容 view `card_effects_i18n` 均已移除。相容 API `/cards/i18n` 只從 `cards` 與 `card_texts_i18n` 投影，且會排除 `pending_review`，不得建立第二份效果資料。
+9. 舊表與相容 view `card_effects_i18n`、效果專用 API `/cards/i18n` 均已移除。名稱與效果只透過 `/cards/texts` 從 `cards` 與 `card_texts_i18n` 投影，不得建立第二份效果資料。
 10. 瀏覽器與 game server 的執行時卡牌來源只有 PostgreSQL；`/api/cards` 失敗時不得回退 `/cards.json` 或任何本機快照。
 
 ## 資料模型
@@ -121,6 +121,7 @@
 | `data/card-derived-effects-review.json`       | 本機衍生效果複核範圍、依據及來源檔雜湊              |
 | `scripts/audit-card-derived-effects.ts`       | 稽核 1,000 條衍生效果、語言混入、數值及舊英文       |
 | `scripts/import-card-derived-effects-pg.ts`   | 交易匯入已複核衍生效果                              |
+| `scripts/cardSource.ts`                       | seed 工具從 `/cards/texts` 載入統一卡牌文本         |
 | `scripts/card-official-text-review-server.ts` | 僅監聽本機的人工複核服務                            |
 | `api/cardDataService.cjs`                     | 對外卡牌及多語言文本查詢                            |
 | `api/adminCardService.cjs`                    | 衍生翻譯寫入、狀態限制與管理稽核紀錄                |

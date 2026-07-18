@@ -146,7 +146,7 @@ describe('operational shell scripts', () => {
     const seed = readFileSync(resolve('scripts/seed-cards-pg.ts'), 'utf8');
     const server = readFileSync(resolve('api/server.cjs'), 'utf8');
 
-    expect(generator).toContain('createSeedCardDataRelease(cards, i18n, releaseSha)');
+    expect(generator).toContain('createSeedCardDataRelease(cards, texts, releaseSha)');
     expect(seed).toContain('loadSeedCardDataRelease()');
     expect(seed).toContain('INSERT INTO official_card_data_releases');
     expect(seed).toContain('Card seed release metadata does not match APP_BUILD_ID');
@@ -237,7 +237,7 @@ describe('operational shell scripts', () => {
     expect(uiSmoke).not.toContain('evalChecked(client, setup)');
     expect(adminCss).toMatch(/@media \(max-width: 1179px\) \{[\s\S]*\.admin-responsive-table/);
     expect(adminCss).toMatch(/\.admin-nav-item \{[\s\S]*min-height: var\(--touch-target-min\)/);
-    expect(viteConfig).toContain("['/api/cards', '/api/cards/i18n', '/api/cards/texts']");
+    expect(viteConfig).toContain("['/api/cards', '/api/cards/texts']");
     expect(viteConfig).toContain("handler: 'NetworkFirst'");
     expect(viteConfig).toContain('cacheName: `card-data-${cardDataCacheKey}`');
   });

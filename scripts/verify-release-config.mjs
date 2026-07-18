@@ -327,9 +327,6 @@ function assertRuntimeEnvironmentInventory(relativePath) {
     'RELATIONSHIP_OUTBOX_MAX_RETRY_MS',
     'RELATIONSHIP_OUTBOX_RETRY_JITTER_RATIO',
     'REDIS_LIMITER_TIMEOUT_MS',
-    'MATCHMAKING_USER_LIMIT',
-    'MATCHMAKING_IP_LIMIT',
-    'MATCHMAKING_GLOBAL_LIMIT',
     'PRESENCE_TTL_MS',
   ];
   for (const variable of requiredApiVariables) {

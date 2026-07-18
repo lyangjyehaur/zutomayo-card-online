@@ -249,13 +249,12 @@ try {
       const cacheName = ${JSON.stringify(`card-data-${cacheKey}`)};
       const cache = await caches.open(cacheName);
       for (const request of await cache.keys()) {
-        if (['/api/cards', '/api/cards/i18n', '/api/cards/texts'].includes(new URL(request.url).pathname)) {
+        if (['/api/cards', '/api/cards/texts'].includes(new URL(request.url).pathname)) {
           await cache.delete(request, { ignoreVary: true });
         }
       }
       await Promise.all([
         cache.put('/api/cards', new Response(JSON.stringify(cards), { status: 200, headers })),
-        cache.put('/api/cards/i18n', new Response('{}', { status: 200, headers })),
         cache.put('/api/cards/texts', new Response('{}', { status: 200, headers }))
       ]);
       const stored = await cache.match('/api/cards');

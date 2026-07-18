@@ -76,7 +76,6 @@ const { assertRuntimeSchema } = require('./schemaGate.cjs');
 const { fetchWithResilience } = require('./oauthHttp.cjs');
 const {
   createRelationshipOutboxWorker,
-  RelationshipOutboxPermanentError,
   relationshipOutboxConfig,
   relationshipOutboxStats,
 } = require('./relationshipOutbox.cjs');
@@ -94,7 +93,6 @@ const {
   attachRequestObservability,
   metricsResponse,
   rateLimitedTotal,
-  refreshMatchmakingQueueDepth,
   relationshipOutboxDeadLetter,
   relationshipOutboxOldestAgeSeconds,
   relationshipOutboxPending,
@@ -114,9 +112,7 @@ const { validateBody } = require('./validate.cjs');
 const S = require('./schemas.cjs');
 const { buildSignedImgproxyUrl, parseAllowedSources } = require('./imgproxySigner.cjs');
 const {
-  getAllCardI18n,
   getAllCardTextsI18n,
-  getCardI18n,
   getCardOfficialErrata,
   getCardTextsI18n,
   getGameConfig,
@@ -141,11 +137,6 @@ const {
   sendChatMessage,
 } = require('./chatService.cjs');
 const { createUserDeck, deleteUserDeck, listUserDecks, reserveUserDeck, updateUserDeck } = require('./deckService.cjs');
-const {
-  applyMatchmakingBlock,
-  purgeDeletedMatchmakingAccount,
-  removeMatchmakingBlock,
-} = require('./matchmakingService.cjs');
 const { countOnlinePresence, heartbeatOnlinePresence } = require('./presenceService.cjs');
 const { getAdminMatches, getLeaderboard, getMatchActionLog, getUserMatches } = require('./matchQueries.cjs');
 const { submitMatchResult } = require('./matchSubmission.cjs');
@@ -397,11 +388,6 @@ function validateSecurityConfig() {
     logger.fatal('ADMIN_TOTP_ENCRYPTION_KEY must be at least 32 characters in production');
     process.exit(1);
   }
-  if (process.env.ADMIN_PASSWORD) {
-    logger.warn(
-      'ADMIN_PASSWORD is deprecated and ignored; create an individual admin account with scripts/create-admin.cjs',
-    );
-  }
   if (OAUTH_TOKEN_ENCRYPTION_KEY && OAUTH_TOKEN_ENCRYPTION_KEY.length < 32) {
     logger.warn('OAUTH_TOKEN_ENCRYPTION_KEY should be at least 32 characters; falling back to JWT_SECRET-derived key');
   }
@@ -420,7 +406,7 @@ const PG_USER = process.env.PG_USER || 'postgres';
 const PG_PASSWORD = process.env.PG_PASSWORD || '';
 const PG_DATABASE = process.env.PG_DATABASE || 'postgres';
 
-// Redis 設定（matchmaking 佇列 + rate limit）
+// Redis 設定（rate limit、session 與跨節點事件）
 // 復用服務器既有 Redis 時用 REDIS_DB 切到獨立 DB index（0-15）避免與其他服務的 key 衝突。
 const REDIS_CONNECTION = resolveRedisConnectionConfig(process.env);
 const REDIS_URL = REDIS_CONNECTION.url;
@@ -462,23 +448,6 @@ const relationshipOutboxWorker = createRelationshipOutboxWorker({
   redis,
   intervalMs: Number(process.env.RELATIONSHIP_OUTBOX_INTERVAL_MS) || 500,
   config: relationshipOutboxConfig(process.env),
-  projectEvent: async (event) => {
-    if (event.kind === 'account_deleted') {
-      await purgeDeletedMatchmakingAccount(redis, event.userIds[0]);
-      return;
-    }
-    if (event.kind !== 'block_created' && event.kind !== 'block_removed') return;
-    const actorUserId = event.actorUserId;
-    if (!actorUserId) {
-      throw new RelationshipOutboxPermanentError(`Relationship outbox ${event.kind} event is missing actorUserId`);
-    }
-    const targetUserId = event.userIds.find((userId) => userId !== actorUserId);
-    if (!targetUserId) {
-      throw new RelationshipOutboxPermanentError(`Relationship outbox ${event.kind} event is missing targetUserId`);
-    }
-    if (event.kind === 'block_created') await applyMatchmakingBlock(redis, actorUserId, targetUserId);
-    else await removeMatchmakingBlock(redis, actorUserId, targetUserId);
-  },
   onResult: (result) => relationshipOutboxProcessedTotal.labels(result).inc(),
   onBatch: async () => {
     const stats = await relationshipOutboxStats(pool);
@@ -3007,43 +2976,6 @@ function getCorsOrigin(reqOrigin) {
 }
 
 const PRESENCE_TTL_MS = Number(process.env.PRESENCE_TTL_MS) || 90 * 1000;
-
-const CANCEL_MATCHMAKING_PAIR_LUA = `
-local function cancelIfMatched(userId, opponentId)
-  local key = 'mm:' .. userId
-  if redis.call('HGET', key, 'status') ~= 'matched' then return 0 end
-  if redis.call('HGET', key, 'opponentId') ~= opponentId then return 0 end
-  redis.call('HSET', key, 'status', 'timeout')
-  redis.call('HDEL', key, 'matchId', 'opponentId', 'role', 'realMatchId')
-  redis.call('ZREM', KEYS[1], userId)
-  return 1
-end
-
-local cancelled = cancelIfMatched(ARGV[1], ARGV[2])
-cancelled = cancelled + cancelIfMatched(ARGV[2], ARGV[1])
-return cancelled
-`;
-
-const APPLY_MATCHMAKING_BLOCK_LUA = `
-redis.call('SADD', 'mm:blocked:' .. ARGV[1], ARGV[2])
-local function cancelIfMatched(userId, opponentId)
-  local key = 'mm:' .. userId
-  if redis.call('HGET', key, 'status') ~= 'matched' then return 0 end
-  if redis.call('HGET', key, 'opponentId') ~= opponentId then return 0 end
-  redis.call('HSET', key, 'status', 'timeout')
-  redis.call('HDEL', key, 'matchId', 'opponentId', 'role', 'realMatchId')
-  redis.call('ZREM', KEYS[1], userId)
-  return 1
-end
-
-local cancelled = cancelIfMatched(ARGV[1], ARGV[2])
-cancelled = cancelled + cancelIfMatched(ARGV[2], ARGV[1])
-return cancelled
-`;
-
-redis.defineCommand('mmCancelPair', { numberOfKeys: 1, lua: CANCEL_MATCHMAKING_PAIR_LUA });
-redis.defineCommand('mmApplyBlock', { numberOfKeys: 1, lua: APPLY_MATCHMAKING_BLOCK_LUA });
-
 // ===== Trusted Proxy & Client IP =====
 // E10：信任代理 IP/CIDR 列表。僅當請求來自信任代理時才使用 X-Forwarded-For，
 // 防止攻擊者偽造 header 繞過 rate limit。未設定時固定使用 req.socket.remoteAddress。
@@ -3300,11 +3232,6 @@ function handleRequest(req, res) {
 
     if (pathname === '/metrics' && method === 'GET') {
       if (!checkMetricsAuth(req)) return json({ error: 'Unauthorized' }, 401);
-      try {
-        await refreshMatchmakingQueueDepth(redis);
-      } catch {
-        // The auxiliary queue gauge is marked unknown; metrics serving remains available.
-      }
       return metricsResponse(res);
     }
 
@@ -5089,12 +5016,6 @@ function handleRequest(req, res) {
       return;
     }
 
-    // 批次 i18n 端點：回傳所有卡牌的所有語言翻譯。
-    if (pathname === '/api/cards/i18n' && method === 'GET') {
-      await sendVersionedCardData(() => getAllCardI18n(pool));
-      return;
-    }
-
     if (pathname === '/api/cards/texts' && method === 'GET') {
       await sendVersionedCardData(() => getAllCardTextsI18n(pool));
       return;
@@ -5105,14 +5026,6 @@ function handleRequest(req, res) {
       const cardId = decodeURIComponent(publicCardTextsRoute[1]);
       res.setHeader('Cache-Control', 'no-store');
       json(await getCardTextsI18n(pool, cardId));
-      return;
-    }
-
-    const publicCardI18nRoute = pathname.match(/^\/api\/cards\/([^/]+)\/i18n$/);
-    if (publicCardI18nRoute && method === 'GET') {
-      const cardId = decodeURIComponent(publicCardI18nRoute[1]);
-      res.setHeader('Cache-Control', 'no-store');
-      json(await getCardI18n(pool, cardId));
       return;
     }
 
@@ -5184,22 +5097,6 @@ function handleRequest(req, res) {
       const result = await upsertGameConfig(pool, key, await readBody(), admin.adminUserId);
       if (!result.ok) return json({ error: result.error }, result.status);
       json(result.body);
-      return;
-    }
-
-    // ===== Matchmaking Routes =====
-
-    const legacyMatchmakingRoute =
-      (pathname === '/api/matchmaking/queue' && (method === 'POST' || method === 'DELETE')) ||
-      (pathname === '/api/matchmaking/status' && method === 'GET') ||
-      (pathname === '/api/matchmaking/match' && method === 'PUT');
-    if (legacyMatchmakingRoute) {
-      const userId = await getAuthUserId(req);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
-      res.setHeader('Cache-Control', 'no-store');
-      res.setHeader('Deprecation', 'true');
-      res.setHeader('Sunset', 'Wed, 15 Jul 2026 00:00:00 GMT');
-      json({ error: 'Legacy REST matchmaking was removed; use the Colyseus quick_match room' }, 410);
       return;
     }
 

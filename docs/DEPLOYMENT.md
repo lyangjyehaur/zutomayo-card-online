@@ -3,10 +3,10 @@
 Production deployment uses [docker-compose.yml](../docker-compose.yml) with six services:
 
 - `postgres`: PostgreSQL 16 (`postgres:16.4-alpine`) database. Shared data layer for both boardgame.io match state (`bjg_matches` table) and API data (users/decks/matches). Healthcheck: `pg_isready`.
-- `redis`: Redis 7 (`redis:7.2.5-alpine`, `appendonly yes`, `maxmemory-policy noeviction`). Powers boardgame.io PubSub, Socket.IO redis-adapter, Colyseus room/presence backing, legacy matchmaking queue, authentication revocation/refresh state, and rate-limit counters. Healthcheck: `redis-cli ping`. `noeviction` is required because evicting a blacklist or `auth:revoked-before:*` key would silently resurrect a revoked session.
+- `redis`: Redis 7 (`redis:7.2.5-alpine`, `appendonly yes`, `maxmemory-policy noeviction`). Powers boardgame.io PubSub, Socket.IO redis-adapter, Colyseus room/presence backing, authentication revocation/refresh state, and rate-limit counters. Healthcheck: `redis-cli ping`. `noeviction` is required because evicting a blacklist or `auth:revoked-before:*` key would silently resurrect a revoked session.
 - `migrate`: One-shot schema/data release service (least-privilege migration role). It applies migrations and, when `REQUIRE_OFFICIAL_CARD_DATA=true`, audits/imports the signed 422-card official-text dataset and requires the 422-card/12-errata completeness gate before app services start. Exits `0` on success; app services wait via `depends_on: service_completed_successfully`.
 - `game`: boardgame.io server, built React app, static card/admin assets, and `/api/*` proxy. Persists match state via `PostgresAdapter` and broadcasts cross-node via `RedisPubSub` + `@socket.io/redis-adapter`.
-- `api`: REST API service with PostgreSQL + Redis persistence. Uses `pg.Pool` for users/decks/matches/chat and Redis for the legacy matchmaking queue (sorted set + Lua atomic pairing) and rate limit (`INCR` + `EXPIRE`).
+- `api`: REST API service with PostgreSQL + Redis persistence. Uses `pg.Pool` for users/decks/matches/chat and Redis for authentication state, relationship-event delivery, and rate limiting.
 - `platform`: Colyseus platform service for lobby presence, quick matchmaking, custom-room lifecycle, invitations, spectator presence, and realtime room coordination. Uses Redis driver/presence in Compose and PostgreSQL-backed friend lookup.
 
 Target host: `149.104.6.238` on Debian 12, 8 cores, 8 GB RAM.
@@ -283,7 +283,6 @@ Exposed metrics include:
 - `http_request_duration_seconds` (Histogram, labels: `method`, `path`, `status`) — dynamic path segments are normalized to `:id` to bound cardinality.
 - `http_requests_total` (Counter, labels: `method`, `path`, `status`)
 - `rate_limited_requests_total` (Counter, label: `pathname`) — requests rejected by the rate limiter (api server).
-- `matchmaking_queue_depth` (Gauge) — live Redis sorted-set depth, refreshed by API matchmaking operations.
 - `active_socket_connections` (Gauge) — active Socket.IO connections (game server).
 - `match_result_outbox_pending`, `match_result_outbox_oldest_age_seconds`, and `match_result_outbox_rows{status}` — durable ranked-result delivery state from PostgreSQL.
 - `relationship_change_outbox_pending`, `relationship_change_outbox_oldest_age_seconds`, `relationship_change_outbox_dead_letter`, and `relationship_change_outbox_metrics_refresh_success` — durable friend/block/account-revocation delivery health.
@@ -337,7 +336,7 @@ A ready-to-use monitoring stack is defined in [docker-compose.monitoring.yml](..
 | Platform Server | `platform-server` | Active rooms, connections, match participants, chat rate, Redis op latency                                     |
 | Infrastructure  | `infrastructure`  | PostgreSQL connections/query rate, Redis memory/ops/connections, Docker CPU/memory                             |
 
-**Alerting rules** (`observability/grafana/alerting/alerts.yml`) cover 5xx error rate, PG pool saturation, Redis memory, WebSocket limits, event loop lag, service availability, the full synthetic player journey, and matchmaking queue depth. Contact points (`contact-points.yml`) route critical alerts to Slack and warnings to email via environment-variable substitution.
+**Alerting rules** (`observability/grafana/alerting/alerts.yml`) cover 5xx error rate, PG pool saturation, Redis memory, WebSocket limits, event loop lag, service availability, the full synthetic player journey, and durable outbox health. Contact points (`contact-points.yml`) route critical alerts to Slack and warnings to email via environment-variable substitution.
 
 **Starting the monitoring stack**
 
@@ -375,10 +374,10 @@ Install the one-minute homepage/login/create/join synthetic timer using [`docs/r
 
 ## Volumes / 資料卷
 
-| Volume       | Mount                               | Purpose                                                                                                                                                                |
-| ------------ | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pg-data`    | `postgres:/var/lib/postgresql/data` | PostgreSQL data directory. Source of truth for boardgame.io match state (`bjg_matches`) and API data (users/decks/matches/leaderboard).                                |
-| `redis-data` | `redis:/data`                       | Redis AOF persistence directory. Holds Colyseus room/presence backing, legacy matchmaking queue, and rate-limit counters; loss is tolerable but causes a cold restart. |
+| Volume       | Mount                               | Purpose                                                                                                                                                                                    |
+| ------------ | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `pg-data`    | `postgres:/var/lib/postgresql/data` | PostgreSQL data directory. Source of truth for boardgame.io match state (`bjg_matches`) and API data (users/decks/matches/leaderboard).                                                    |
+| `redis-data` | `redis:/data`                       | Redis AOF persistence directory. Holds Colyseus room/presence backing, authentication state, event delivery, and rate-limit counters; loss causes session invalidation and a cold restart. |
 
 ## PostgreSQL Backup / Restore
 
@@ -484,12 +483,11 @@ Use `pgm.addColumn` / `pgm.createTable` / `pgm.alterTable` etc. For irreversible
 
 The `game`, `api`, and `platform` services can be replicated (multiple instances) to scale horizontally. PostgreSQL serves as the shared data layer — boardgame.io uses `PostgresAdapter` for the `bjg_matches` table, the API uses `pg.Pool` for durable product/chat data, and the platform service uses PostgreSQL for server-side friend presence lookup plus durable match/custom-room participant evidence used by ChatService access control.
 
-Redis serves five roles simultaneously:
+Redis serves four roles simultaneously:
 
 - boardgame.io PubSub (custom `RedisPubSub` implementing `GenericPubSub`) for cross-node match-state broadcast.
 - `@socket.io/redis-adapter` for Socket.IO horizontal scaling.
 - Colyseus room and presence backing for the `platform` service via `RedisDriver` and `RedisPresence`.
-- Legacy REST matchmaking queue shared across API instances: a Redis sorted set (`mm:queue`) plus a hash (`mm:{userId}`) plus a Lua script perform atomic pairing, so multiple instances never match the same user twice.
 - Rate-limit counters shared across API instances: Redis `INCR` + `EXPIRE` for cross-instance counting.
 
 Game and API can be scaled by increasing their replica counts. Platform processes must be declared or injected with per-process configuration instead of blindly using `docker compose --scale platform=N`: every process needs a unique `PLATFORM_PUBLIC_ADDRESS` that the gateway routes back to that exact process, while all processes use `PLATFORM_REDIS_MODE=redis` for shared room discovery and presence. Reusing one advertised address across arbitrary platform replicas can send a reserved WebSocket seat to the wrong process. PostgreSQL and Redis remain shared services; keep `JWT_SECRET` and `ALLOWED_ORIGINS` consistent across their consumers.
@@ -599,7 +597,7 @@ Schemas are applied by the one-shot migration image before application startup (
 
 ### Redis — separate DB index
 
-Redis databases (0-15) are logical namespaces — all keys in DB index N are invisible to clients using a different index. Use a dedicated index to avoid key collisions with other services (the app uses `ratelimit:*`, `mm:*`, `MATCH-*`, Colyseus presence/driver keys, and Socket.IO adapter internal keys).
+Redis databases (0-15) are logical namespaces — all keys in DB index N are invisible to clients using a different index. Use a dedicated index to avoid key collisions with other services (the app uses `ratelimit:*`, authentication/revocation keys, `MATCH-*`, Colyseus presence/driver keys, and Socket.IO adapter internal keys).
 
 Pick an index not used by other services (e.g. `2`) and set the same value on both `game` and `api`:
 
@@ -608,7 +606,7 @@ REDIS_URL=redis://<existing-redis-host>:6379
 REDIS_DB=2
 ```
 
-The `REDIS_DB` option is applied to every ioredis connection (publish, subscribe, and `duplicate()`-d connections inherit it), so boardgame.io PubSub channels, Socket.IO adapter keys, Colyseus room/presence backing, legacy matchmaking, and rate-limit counters all land in the same isolated DB index.
+The `REDIS_DB` option is applied to every ioredis connection (publish, subscribe, and `duplicate()`-d connections inherit it), so boardgame.io PubSub channels, Socket.IO adapter keys, Colyseus room/presence backing, authentication/event keys, and rate-limit counters all land in the same isolated DB index.
 
 At minimum, the API/relationship Redis ACL must permit connection selection plus the commands exercised by authentication, rate limiting, presence, relationship projection, and account-deletion purge: `SELECT`, `PING`, `GET`, `GETDEL`, `SET`, `DEL`, `MGET`, `SCAN`, `INCR`, `EXPIRE`, `EVAL`, `PUBLISH`, `SUBSCRIBE`, `HGET`, `HGETALL`, `HSET`, `HDEL`, `SADD`, `SREM`, `SISMEMBER`, `ZADD`, `ZREM`, `ZCARD`, `ZCOUNT`, and `ZREMRANGEBYSCORE`. Grant only the additional commands and key/channel patterns required by boardgame.io, Socket.IO, or Colyseus; do not grant `ACL`, `CONFIG`, `FLUSH*`, or other administrative commands to runtime users.
 

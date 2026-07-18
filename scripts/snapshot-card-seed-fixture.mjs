@@ -18,19 +18,19 @@ async function fetchJson(path) {
   return response.json();
 }
 
-const [cards, i18n] = await Promise.all([fetchJson('cards'), fetchJson('cards/i18n')]);
+const [cards, texts] = await Promise.all([fetchJson('cards'), fetchJson('cards/texts')]);
 if (!Array.isArray(cards) || cards.length !== 422) {
   throw new Error(`Expected 422 cards, received ${Array.isArray(cards) ? cards.length : 'invalid data'}`);
 }
-if (!i18n || typeof i18n !== 'object' || Array.isArray(i18n)) {
-  throw new Error('Card i18n endpoint returned invalid data');
+if (!texts || typeof texts !== 'object' || Array.isArray(texts)) {
+  throw new Error('Card text endpoint returned invalid data');
 }
 
 const cardIds = new Set(cards.map((card) => card.id));
 if (cardIds.size !== cards.length || cardIds.has(undefined))
   throw new Error('Card fixture contains invalid or duplicate IDs');
 
-const fixture = { schemaVersion: 1, cards, i18n };
+const fixture = { schemaVersion: 2, cards, texts };
 const target = resolve(process.cwd(), outputPath);
 await writeFile(target, `${JSON.stringify(fixture, null, 2)}\n`, 'utf8');
-console.log(`Wrote ${cards.length} cards and ${Object.keys(i18n).length} i18n entries to ${target}`);
+console.log(`Wrote ${cards.length} cards and ${Object.keys(texts).length} text entries to ${target}`);

@@ -316,9 +316,9 @@
 
 #### C7. 🟢 P3 — ELO 配對（matchmaking 改進）
 
-- **現狀：** matchmaking Lua 腳本似僅 FIFO 配對，未依 ELO 匹配
+- **現狀：** Colyseus `QuickMatchRoom` 目前採先到先配，未依 ELO 匹配
 - **實作步驟：**
-  1. 修改 `mmTryMatch` Lua 腳本：優先匹配 ELO 差距 ≤ 200 的玩家，擴大窗口隨排隊時間增長
+  1. 在 platform quick-match coordinator 優先匹配 ELO 差距 ≤ 200 的玩家，並隨排隊時間擴大窗口
   2. 加入 `queued_at` 時間戳，超時（如 30s）放寬匹配範圍
   3. 前端顯示預估等待時間
   4. 配對成功通知（整合 C10 通知系統）
@@ -384,10 +384,10 @@
 #### D2. 🟠 P1 — 負載測試
 
 - **實作步驟：**
-  1. `npm i -D k6`
-  2. `tests/load/socket.io.test.js`：模擬 100/500/1000 並發 WebSocket 連線
-  3. `tests/load/api.test.js`：模擬配對佇列、對戰提交高頻請求
-  4. `tests/load/matchmaking.test.js`：模擬 100 人同時排隊配對
+  1. 安裝獨立的 k6 runner
+  2. `load-tests/websocket-load.js`：模擬並發 WebSocket 連線
+  3. `load-tests/api-load.js`：模擬 API 與對戰提交高頻請求
+  4. 以 Colyseus quick-match client 補齊大量玩家同時排隊的壓測
   5. 記錄 P50/P95/P99 latency、錯誤率、PG/Redis 連線數
 - **預估工作量：** 3 天
 
@@ -406,7 +406,7 @@
 
 - **修復內容：**
   - 4 個 Grafana dashboard：game-server（8 panels）、api-server（7 panels）、platform-server（5 panels）、infrastructure（6 panels）
-  - 8 條告警規則：HighErrorRate5xx、PgPoolWaitingHigh、PgConnectionsNearMax、RedisMemoryNearMax、WebSocketConnectionsNearLimit、HighEventLoopLag、ServiceDown、MatchmakingQueueDepthHigh
+  - 告警已覆蓋 HTTP/platform 錯誤、PG/Redis、WebSocket、event loop、服務健康、synthetic journey、outbox、帳號匯出、backup/WAL/restore 與 retention
   - Slack（critical）+ Email（warning）contact points，用 `$__env{...}` 變數替換
   - Prometheus scrape config（6 jobs）+ Grafana provisioning（datasources + dashboards）
   - `docker-compose.monitoring.yml`：prometheus:9090、grafana:3003、postgres-exporter:9187、redis-exporter:9121、cadvisor:8080

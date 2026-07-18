@@ -17,7 +17,6 @@ COPY api/schemaGate.cjs ./api/schemaGate.cjs
 COPY api/runtimeSecurityConfig.cjs ./api/runtimeSecurityConfig.cjs
 COPY api/relationshipEvents.cjs ./api/relationshipEvents.cjs
 COPY api/observability.cjs ./api/observability.cjs
-COPY api/matchmakingService.cjs ./api/matchmakingService.cjs
 COPY api/accountMutationLock.cjs ./api/accountMutationLock.cjs
 COPY api/accountLifecycleService.cjs ./api/accountLifecycleService.cjs
 COPY api/accountExportService.cjs ./api/accountExportService.cjs

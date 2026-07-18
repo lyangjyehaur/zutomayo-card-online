@@ -85,6 +85,41 @@ describe('localized card text policy', () => {
     expect(getTranslatedEffect(card.id, 'ko')).toBeNull();
   });
 
+  it('uses unified reviewed card text when the card definition is unavailable', () => {
+    initCardTextsI18n({
+      test_1: {
+        ja: {
+          name: '公式日本語名',
+          effect: '公式日本語効果',
+          nameSource: 'official_card_print',
+          effectSource: 'official_card_print',
+          reviewStatus: 'official',
+          reviewNote: '',
+        },
+        en: {
+          name: 'OFFICIAL ENGLISH NAME',
+          effect: 'OFFICIAL ENGLISH EFFECT',
+          nameSource: 'official_card_print',
+          effectSource: 'official_card_print',
+          reviewStatus: 'official',
+          reviewNote: '',
+        },
+        'zh-TW': {
+          name: '已複核卡名',
+          effect: '已複核效果',
+          nameSource: 'bilingual_review',
+          effectSource: 'bilingual_review',
+          reviewStatus: 'verified',
+          reviewNote: '',
+        },
+      },
+    });
+
+    expect(getTranslatedEffect(card.id, 'zh-TW')).toBe('已複核效果');
+    expect(getTranslatedEffect(card.id, 'ko')).toBe('OFFICIAL ENGLISH EFFECT');
+    expect(getTranslatedEffect(card.id, 'ja')).toBe('公式日本語効果');
+  });
+
   it('falls back from missing English print text to Japanese', () => {
     const japaneseOnly = { ...card, enNameOfficial: '', enEffectOfficial: '' };
     expect(getLocalizedCardName(japaneseOnly, 'zh-CN')).toBe('公式日本語名');

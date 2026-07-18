@@ -133,7 +133,7 @@
 - [x] Async 帳號匯出、下載授權、物件 expiry/purge 與刪除匿名化 service 已有；000027 對新刪除涵蓋 match/boardgame/direct-chat/translation/admin audit/outbox，legacy tombstone 以精確核准數量回填並由 runtime schema gate 要求清零；fresh PG 已驗證 marker、legal hold、purge/retry 與全域不變量。
 - [ ] 帳號 lifecycle routes/UI、step-up 與 durable session revoke 已有；尚缺真實 email/Logto provider E2E 與故障恢復證據。
 - [x] Friend request 與 block service / migration；不再直接雙向加好友。
-- [x] Direct chat、presence、legacy matchmaking 與 platform 已接 block/mute；QuickMatch/Invite 最終 relay 已加入同 relationship writer advisory-lock fence，鎖後重查 live users、block/friendship。除 room/unit race 外，fresh PostgreSQL 九角色 smoke 亦以獨立 API/platform role 驗證 QuickMatch block writer 與 Invite friendship-removal writer 在 transaction 中暫停時，真 platform relay 會等待同一 advisory fence，commit 後取消房間且不廣播 `boardgameMatchReady`。
+- [x] Direct chat、presence 與 platform 已接 block/mute；QuickMatch/Invite 最終 relay 已加入同 relationship writer advisory-lock fence，鎖後重查 live users、block/friendship。除 room/unit race 外，fresh PostgreSQL 九角色 smoke 亦以獨立 API/platform role 驗證 QuickMatch block writer 與 Invite friendship-removal writer 在 transaction 中暫停時，真 platform relay 會等待同一 advisory fence，commit 後取消房間且不廣播 `boardgameMatchReady`。
 - [x] Season / placement / idempotent season rating service 與 migration。
 - [x] Season admin、player API/UI、關季與衰減流程。
 - [x] 投降、棄賽、reconnect deadline、rematch 與處罰政策落地。
@@ -143,7 +143,7 @@
 
 ## 最終驗收
 
-- [x] `npm run verify`：2026-07-19 P0-P5 integration tree 通過，Vitest 167 test files / 1457 tests / production-PWA build；先前 pushed hardening commit `8de8a86c` 的 GitHub CI run `29635089382` 四個 jobs 全部通過，本次 `000036`／CD 整合 commit 仍待 remote CI。
+- [x] `npm run verify`：2026-07-19 P0-P5 integration tree 通過，Vitest 166 test files / 1447 tests / production-PWA build；先前 pushed hardening commit `8de8a86c` 的 GitHub CI run `29635089382` 四個 jobs 全部通過，本次 `000036`／CD 整合 commit 仍待 remote CI。
 - [x] `npm run test:coverage`：167 test files / 1457 tests，repository coverage thresholds 通過。
 - [x] Compose-backed Chromium E2E：current-tree fresh images/volumes、migration/seed 後 40/40，含自然完成 authenticated 對局與獨立重新登入跨裝置 history。
 - [x] `npm run rule:audit`：422 cards／250 effect cards／267 effect lines，unsupported/partial/false-draw 全為 0。

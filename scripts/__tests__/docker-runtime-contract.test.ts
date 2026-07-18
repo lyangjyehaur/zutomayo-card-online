@@ -104,7 +104,6 @@ describe('game runtime image contract', () => {
     expect(dockerfile).toContain('COPY api/relationshipEvents.cjs ./api/relationshipEvents.cjs');
     expect(dockerfile).toContain('COPY api/relationshipOutbox.cjs ./api/relationshipOutbox.cjs');
     expect(dockerfile).toContain('COPY api/observability.cjs ./api/observability.cjs');
-    expect(dockerfile).toContain('COPY api/matchmakingService.cjs ./api/matchmakingService.cjs');
     expect(dockerfile).toContain('COPY api/accountLifecycleService.cjs ./api/accountLifecycleService.cjs');
     expect(dockerfile).toContain('COPY api/accountExportService.cjs ./api/accountExportService.cjs');
     expect(dockerfile).toContain('COPY api/legalHoldService.cjs ./api/legalHoldService.cjs');
@@ -120,7 +119,6 @@ describe('game runtime image contract', () => {
     expect(dockerignore).toContain('!api/relationshipEvents.cjs');
     expect(dockerignore).toContain('!api/relationshipOutbox.cjs');
     expect(dockerignore).toContain('!api/observability.cjs');
-    expect(dockerignore).toContain('!api/matchmakingService.cjs');
     expect(dockerfile).toContain('COPY scripts/postgres-role-gate.cjs ./scripts/postgres-role-gate.cjs');
     expect(dockerfile).toContain('COPY scripts/migration-order-compat.cjs ./scripts/migration-order-compat.cjs');
     expect(dockerfile).toContain(

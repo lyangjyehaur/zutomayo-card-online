@@ -38,27 +38,13 @@ function hasValidBoardgamePlayerSeat(
   boardgameMatchID: string | undefined,
   userId: string,
 ): boolean {
-  const boundTokenValid =
+  return (
     options.hasBoardgameCredentials === true &&
     verifyPlatformSeatToken({
       token: options.platformSeatToken,
       matchID: boardgameMatchID,
       playerID: options.boardgamePlayerID,
       userId,
-    });
-  if (boundTokenValid) return true;
-  // Existing development sessions may hold pre-binding tokens. Never allow
-  // this compatibility path in production; newly issued tokens are always
-  // user-bound. It is opt-in even for development so a default deployment
-  // cannot silently weaken the trust chain.
-  return (
-    process.env.NODE_ENV !== 'production' &&
-    process.env.ALLOW_LEGACY_SEAT_TOKEN === 'true' &&
-    options.hasBoardgameCredentials === true &&
-    verifyPlatformSeatToken({
-      token: options.platformSeatToken,
-      matchID: boardgameMatchID,
-      playerID: options.boardgamePlayerID,
     })
   );
 }

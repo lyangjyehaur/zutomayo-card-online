@@ -103,8 +103,7 @@ export default defineConfig({
         runtimeCaching: [
           {
             urlPattern: ({ url }) =>
-              url.origin === globalThis.location.origin &&
-              ['/api/cards', '/api/cards/i18n', '/api/cards/texts'].includes(url.pathname),
+              url.origin === globalThis.location.origin && ['/api/cards', '/api/cards/texts'].includes(url.pathname),
             handler: 'NetworkFirst',
             options: {
               cacheName: `card-data-${cardDataCacheKey}`,

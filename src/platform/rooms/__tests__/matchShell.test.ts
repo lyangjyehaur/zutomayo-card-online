@@ -19,8 +19,6 @@ function authContext(): AuthContext {
 
 const originalSeatTokenSecret = process.env.PLATFORM_SEAT_TOKEN_SECRET;
 const originalJwtSecret = process.env.JWT_SECRET;
-const originalLegacySeatTokenFlag = process.env.ALLOW_LEGACY_SEAT_TOKEN;
-const originalNodeEnv = process.env.NODE_ENV;
 
 function base64urlJson(value: unknown): string {
   return Buffer.from(JSON.stringify(value)).toString('base64url');
@@ -52,10 +50,18 @@ function cookieAuthContext(userId: string): AuthContext {
   };
 }
 
-function seatToken(matchID = 'bgio-match-1', playerID: '0' | '1' = '0'): string {
+function seatToken(matchID = 'bgio-match-1', playerID: '0' | '1' = '0', userId = 'guest:player'): string {
   process.env.PLATFORM_SEAT_TOKEN_SECRET = 'test-seat-token-secret-at-least-32-characters';
-  process.env.ALLOW_LEGACY_SEAT_TOKEN = 'true';
-  return createPlatformSeatToken({ matchID, playerID });
+  return createPlatformSeatToken({ matchID, playerID, userId });
+}
+
+function unboundSeatToken(matchID = 'bgio-match-1', playerID: '0' | '1' = '0'): string {
+  process.env.PLATFORM_SEAT_TOKEN_SECRET = 'test-seat-token-secret-at-least-32-characters';
+  const payload = Buffer.from(
+    JSON.stringify({ matchID, playerID, iat: Date.now(), exp: Date.now() + 60_000 }),
+  ).toString('base64url');
+  const input = `pst1.${payload}`;
+  return `${input}.${crypto.createHmac('sha256', process.env.PLATFORM_SEAT_TOKEN_SECRET).update(input).digest('base64url')}`;
 }
 
 function allowChatPreviewBroadcasts(): void {
@@ -69,15 +75,12 @@ function allowChatPreviewBroadcasts(): void {
 afterEach(() => {
   process.env.PLATFORM_SEAT_TOKEN_SECRET = originalSeatTokenSecret;
   process.env.JWT_SECRET = originalJwtSecret;
-  process.env.ALLOW_LEGACY_SEAT_TOKEN = originalLegacySeatTokenFlag;
-  process.env.NODE_ENV = originalNodeEnv;
   MatchShellRoom.configureParticipantStore(createEmptyPlatformMatchParticipantStore());
   MatchShellRoom.configureChatPreviewStore(createEmptyPlatformChatPreviewStore());
 });
 
 describe('match shell room', () => {
-  it('never accepts an unbound legacy seat token in production', async () => {
-    process.env.NODE_ENV = 'production';
+  it('never accepts an unbound seat token', async () => {
     const room = new MatchShellRoom();
     vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
     vi.spyOn(room, 'onMessage').mockImplementation((() => room) as never);
@@ -92,7 +95,7 @@ describe('match shell room', () => {
         boardgameMatchID: 'bgio-match-1',
         boardgamePlayerID: '0',
         hasBoardgameCredentials: true,
-        platformSeatToken: seatToken(),
+        platformSeatToken: unboundSeatToken(),
       },
       authContext(),
     );
@@ -355,7 +358,7 @@ describe('match shell room', () => {
         role: 'player',
         boardgamePlayerID: '0',
         hasBoardgameCredentials: true,
-        platformSeatToken: seatToken(),
+        platformSeatToken: seatToken('bgio-match-1', '0', 'u_cookie_player'),
       },
       cookieAuthContext('u_cookie_player'),
     );
@@ -370,7 +373,7 @@ describe('match shell room', () => {
       boardgameMatchID: 'bgio-match-1',
       boardgamePlayerID: '0',
       hasBoardgameCredentials: true,
-      platformSeatToken: seatToken(),
+      platformSeatToken: seatToken('bgio-match-1', '0', 'u_cookie_player'),
     });
 
     expect(recordParticipant).toHaveBeenCalledWith({
@@ -440,7 +443,7 @@ describe('match shell room', () => {
           boardgameMatchID: 'bgio-match-2',
           boardgamePlayerID: '0',
           hasBoardgameCredentials: true,
-          platformSeatToken: seatToken(),
+          platformSeatToken: seatToken('bgio-match-1', '0', 'u_player'),
         },
         authContext(),
       ),
@@ -469,7 +472,7 @@ describe('match shell room', () => {
       boardgameMatchID: 'bgio-match-1',
       boardgamePlayerID: '0',
       hasBoardgameCredentials: true,
-      platformSeatToken: seatToken(),
+      platformSeatToken: seatToken('bgio-match-1', '0', 'guest:existing'),
     });
 
     const duplicateAuth = await room.onAuth(
@@ -481,7 +484,7 @@ describe('match shell room', () => {
         boardgameMatchID: 'bgio-match-1',
         boardgamePlayerID: '0',
         hasBoardgameCredentials: true,
-        platformSeatToken: seatToken(),
+        platformSeatToken: seatToken('bgio-match-1', '0', 'guest:duplicate'),
       },
       authContext(),
     );
@@ -522,7 +525,7 @@ describe('match shell room', () => {
       boardgameMatchID: 'bgio-match-1',
       boardgamePlayerID: '0',
       hasBoardgameCredentials: true,
-      platformSeatToken: seatToken(),
+      platformSeatToken: seatToken('bgio-match-1', '0', 'guest:player'),
     });
 
     const reconnectAuth = await room.onAuth(
@@ -604,7 +607,7 @@ describe('match shell room', () => {
       boardgameMatchID: 'bgio-match-1',
       boardgamePlayerID: '0',
       hasBoardgameCredentials: true,
-      platformSeatToken: seatToken(),
+      platformSeatToken: seatToken('bgio-match-1', '0', 'u_player'),
     });
     room.clients.push(spectator);
     await room.onJoin(spectator, { boardgameMatchID: 'bgio-match-1' });

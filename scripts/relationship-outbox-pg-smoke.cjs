@@ -11,7 +11,6 @@ const {
   enqueueRelationshipChange,
 } = require('../api/relationshipOutbox.cjs');
 const { RELATIONSHIP_CHANGE_CHANNEL } = require('../api/relationshipEvents.cjs');
-const { purgeDeletedMatchmakingAccount } = require('../api/matchmakingService.cjs');
 
 const prefix = `role-smoke:${process.pid}:${Date.now()}`;
 const redisDb = Number(process.env.REDIS_DB || 0);
@@ -30,19 +29,6 @@ const redisUrl = process.env.REDIS_URL;
 const redisOptions = { db: redisDb, maxRetriesPerRequest: 1 };
 const publisher = new Redis(redisUrl, redisOptions);
 const createdEventIds = [];
-const deletedUserId = `${prefix}:deleted`;
-const stalePeerId = `${prefix}:stale-peer`;
-const repairedPeerId = `${prefix}:repaired-peer`;
-const repairedOpponentId = `${prefix}:new-opponent`;
-const reverseBlockOwnerId = `${prefix}:reverse-block-owner`;
-const retainedBlockMemberId = `${prefix}:retained-block-member`;
-const matchmakingFixtureKeys = [
-  `mm:${deletedUserId}`,
-  `mm:${stalePeerId}`,
-  `mm:${repairedPeerId}`,
-  `mm:blocked:${deletedUserId}`,
-  `mm:blocked:${reverseBlockOwnerId}`,
-];
 
 const config = {
   batchSize: 1,
@@ -66,16 +52,11 @@ async function removeCreatedEvents() {
   await pool.query('DELETE FROM relationship_change_outbox WHERE event_id = ANY($1::text[])', [createdEventIds]);
 }
 
-async function removeMatchmakingFixture() {
-  await publisher.zrem('mm:queue', deletedUserId, stalePeerId, repairedPeerId);
-  await publisher.del(...matchmakingFixtureKeys);
-}
-
 async function verifyRedisAclContract() {
   const stringKey = `refresh:${prefix}:acl:string`;
   const counterKey = `ratelimit:${prefix}:acl:counter`;
-  const hashKey = `mm:${prefix}:acl:hash`;
-  const setKey = `mm:blocked:${prefix}:acl:set`;
+  const hashKey = `relationship:${prefix}:acl:hash`;
+  const setKey = `relationship:blocked:${prefix}:acl:set`;
   const sortedSetKey = `presence:${prefix}:acl:zset`;
   const keys = [stringKey, counterKey, hashKey, setKey, sortedSetKey];
   try {
@@ -122,49 +103,6 @@ async function verifyRedisAclContract() {
   }
 }
 
-async function verifyDeletedMatchmakingPurge() {
-  await removeMatchmakingFixture();
-  const baseScore = Date.now();
-  await publisher.hset(`mm:${deletedUserId}`, {
-    status: 'matched',
-    opponentId: stalePeerId,
-    matchId: `${prefix}:deleted-match`,
-    role: 'host',
-    realMatchId: `${prefix}:deleted-real-match`,
-  });
-  await publisher.hset(`mm:${stalePeerId}`, {
-    status: 'matched',
-    opponentId: deletedUserId,
-    matchId: `${prefix}:stale-match`,
-    role: 'guest',
-    realMatchId: `${prefix}:stale-real-match`,
-  });
-  const repairedPeer = {
-    status: 'matched',
-    opponentId: repairedOpponentId,
-    matchId: `${prefix}:repaired-match`,
-    role: 'host',
-    realMatchId: `${prefix}:repaired-real-match`,
-  };
-  await publisher.hset(`mm:${repairedPeerId}`, repairedPeer);
-  await publisher.zadd('mm:queue', baseScore, deletedUserId, baseScore + 1, stalePeerId, baseScore + 2, repairedPeerId);
-  await publisher.sadd(`mm:blocked:${deletedUserId}`, retainedBlockMemberId);
-  await publisher.sadd(`mm:blocked:${reverseBlockOwnerId}`, deletedUserId, retainedBlockMemberId);
-
-  await purgeDeletedMatchmakingAccount(publisher, deletedUserId);
-  await purgeDeletedMatchmakingAccount(publisher, deletedUserId);
-
-  assert.deepEqual(await publisher.hgetall(`mm:${deletedUserId}`), {});
-  assert.equal(await publisher.sismember(`mm:blocked:${deletedUserId}`, retainedBlockMemberId), 0);
-  assert.equal(await publisher.sismember(`mm:blocked:${reverseBlockOwnerId}`, deletedUserId), 0);
-  assert.equal(await publisher.sismember(`mm:blocked:${reverseBlockOwnerId}`, retainedBlockMemberId), 1);
-  assert.deepEqual(await publisher.hgetall(`mm:${stalePeerId}`), { status: 'timeout' });
-  assert.deepEqual(await publisher.hgetall(`mm:${repairedPeerId}`), repairedPeer);
-  assert.equal(await publisher.zcount('mm:queue', baseScore, baseScore), 0);
-  assert.equal(await publisher.zcount('mm:queue', baseScore + 1, baseScore + 1), 0);
-  assert.equal(await publisher.zcount('mm:queue', baseScore + 2, baseScore + 2), 1);
-}
-
 async function createSubscriber() {
   const client = new Redis(redisUrl, redisOptions);
   let resolveReceived;
@@ -209,7 +147,6 @@ async function waitForDelivered(eventId, timeoutMs = 5_000) {
 async function main() {
   try {
     await verifyRedisAclContract();
-    await verifyDeletedMatchmakingPurge();
 
     await enqueue('concurrent-1');
     await enqueue('concurrent-2');
@@ -282,7 +219,6 @@ async function main() {
     process.stdout.write('Relationship outbox PostgreSQL/Redis smoke passed\n');
   } finally {
     await removeCreatedEvents();
-    await removeMatchmakingFixture();
     await publisher.quit();
     await pool.end();
   }

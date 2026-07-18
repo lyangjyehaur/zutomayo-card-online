@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createE2ECardSeed } from '../create-e2e-card-seed';
-import { loadSeedCardDataRelease, loadSeedCardI18n, loadSeedCards } from '../cardSource';
+import { loadSeedCardDataRelease, loadSeedCards, loadSeedCardTexts } from '../cardSource';
 
 const directory = mkdtempSync(resolve(tmpdir(), 'zutomayo-card-source-'));
 const fixturePath = resolve(directory, 'synthetic.json');
@@ -26,7 +26,7 @@ describe('E2E card seed fixture', () => {
     vi.stubEnv('SEED_CARD_FIXTURE_FILE', fixturePath);
 
     await expect(loadSeedCards()).resolves.toEqual(fixture.cards);
-    await expect(loadSeedCardI18n()).resolves.toEqual({});
+    await expect(loadSeedCardTexts()).resolves.toEqual({});
     await expect(loadSeedCardDataRelease()).resolves.toEqual(fixture.cardDataRelease);
   });
 

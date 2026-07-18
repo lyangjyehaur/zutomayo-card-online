@@ -7,7 +7,6 @@ api/*
 !api/schemaGate.cjs
 !api/relationshipEvents.cjs
 !api/observability.cjs
-!api/matchmakingService.cjs
 !api/accountMutationLock.cjs
 !api/friendService.cjs
 !api/socialSafetyService.cjs

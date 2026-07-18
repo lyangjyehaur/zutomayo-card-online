@@ -18,7 +18,7 @@ describe('online lobby platform boundary', () => {
     expect(lobbySource).not.toContain('realMatchId');
   });
 
-  it('does not expose legacy REST matchmaking through platform or API clients', () => {
+  it('keeps quick matchmaking entirely on the platform client', () => {
     const platformClientSource = readRepoFile('src/platformClient.ts');
     const apiClientSource = readRepoFile('src/api/client.ts');
 

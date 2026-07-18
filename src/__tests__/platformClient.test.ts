@@ -1352,7 +1352,7 @@ describe('platform client helpers', () => {
     expect(room.send).toHaveBeenCalledWith('requestQuickMatchSnapshot', {});
   });
 
-  it('surfaces quick-match Colyseus join failures without legacy matchmaking fallback', async () => {
+  it('surfaces quick-match Colyseus join failures directly', async () => {
     const post = vi.fn<(url: string, request: { body: string }) => Promise<never>>(async () => {
       throw new Error('platform unavailable');
     });

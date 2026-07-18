@@ -614,24 +614,3 @@ Errors: `401`.
 | `POST`   | `/api/admin/chat/messages/:id/moderation`                   | Set message status to `visible`, `blocked`, or `deleted`.            |
 | `POST`   | `/api/admin/chat/sanctions`                                 | Create a durable `chat_mute`, optionally linked to a report/message. |
 | `DELETE` | `/api/admin/chat/sanctions/:id`                             | Revoke a durable chat sanction.                                      |
-
-## Legacy Matchmaking / 舊版配對佇列
-
-The Redis-backed REST queue was retired on 2026-07-15. The browser and supported clients use the Colyseus `quick_match` room for queueing, cancellation, pairing, and boardgame.io match ID relay; see [MULTIPLAYER_PLATFORM_ARCHITECTURE.md](./MULTIPLAYER_PLATFORM_ARCHITECTURE.md).
-
-The following authenticated routes remain as tombstones so old clients fail explicitly without reading or writing Redis:
-
-- `POST /api/matchmaking/queue`
-- `GET /api/matchmaking/status`
-- `DELETE /api/matchmaking/queue`
-- `PUT /api/matchmaking/match`
-
-Response:
-
-```json
-{
-  "error": "Legacy REST matchmaking was removed; use the Colyseus quick_match room"
-}
-```
-
-Errors: `401` without a valid user session; otherwise `410 Gone`. The response includes `Deprecation: true`, `Sunset`, and `Cache-Control: no-store`.

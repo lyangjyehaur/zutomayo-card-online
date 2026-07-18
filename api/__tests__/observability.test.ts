@@ -1,5 +1,5 @@
 import { createRequire } from 'node:module';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 const require = createRequire(import.meta.url);
 const {
@@ -9,7 +9,6 @@ const {
   accountExportPurgePending,
   accountExportPurgeRetrying,
   register,
-  refreshMatchmakingQueueDepth,
 } = require('../observability.cjs') as {
   accountExportJobsFailed: { set: (value: number) => void };
   accountExportJobsPending: { set: (value: number) => void };
@@ -17,23 +16,9 @@ const {
   accountExportPurgePending: { set: (value: number) => void };
   accountExportPurgeRetrying: { set: (value: number) => void };
   register: { resetMetrics: () => void; metrics: () => Promise<string> };
-  refreshMatchmakingQueueDepth: (redis: { zcard: (key: string) => Promise<number> }) => Promise<void>;
 };
 
 describe('API operational metrics', () => {
-  it('exports the live Redis matchmaking queue depth', async () => {
-    register.resetMetrics();
-    const zcard = vi.fn(async (key: string) => {
-      expect(key).toBe('mm:queue');
-      return 7;
-    });
-
-    await refreshMatchmakingQueueDepth({ zcard });
-    const metrics = await register.metrics();
-    expect(metrics).toContain('matchmaking_queue_depth 7');
-    expect(zcard).toHaveBeenCalledOnce();
-  });
-
   it('exports account export backlog, failure, purge, and refresh health', async () => {
     register.resetMetrics();
     accountExportJobsPending.set(3);

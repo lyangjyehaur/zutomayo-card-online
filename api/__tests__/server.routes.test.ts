@@ -77,12 +77,6 @@ const mockRedisSet = vi.fn().mockResolvedValue('OK');
 const mockRedisEval = vi.fn().mockResolvedValue(null);
 const mockRedisScan = vi.fn().mockResolvedValue(['0', []]);
 const mockRedisMget = vi.fn().mockResolvedValue([]);
-const mockRedisMmTryMatch = vi.fn().mockResolvedValue('');
-const mockRedisMmCleanExpired = vi.fn().mockResolvedValue(0);
-const mockRedisMmCancelPair = vi.fn().mockResolvedValue(0);
-const mockRedisMmApplyBlock = vi.fn().mockResolvedValue(0);
-const mockRedisSadd = vi.fn().mockResolvedValue(1);
-const mockRedisSrem = vi.fn().mockResolvedValue(1);
 const mockRedisPublish = vi.fn().mockResolvedValue(1);
 
 const mockRedis = {
@@ -105,12 +99,6 @@ const mockRedis = {
   eval: mockRedisEval,
   scan: mockRedisScan,
   mget: mockRedisMget,
-  mmTryMatch: mockRedisMmTryMatch,
-  mmCleanExpired: mockRedisMmCleanExpired,
-  mmCancelPair: mockRedisMmCancelPair,
-  mmApplyBlock: mockRedisMmApplyBlock,
-  sadd: mockRedisSadd,
-  srem: mockRedisSrem,
   publish: mockRedisPublish,
 };
 
@@ -859,6 +847,21 @@ describe('server routes', () => {
       const res = await sendRequest('GET', '/api/nonexistent');
       expect(res.statusCode).toBe(404);
     });
+
+    it.each([
+      ['GET', '/api/cards/i18n'],
+      ['GET', '/api/cards/1st_1/i18n'],
+      ['POST', '/api/matchmaking/queue'],
+      ['GET', '/api/matchmaking/status'],
+      ['DELETE', '/api/matchmaking/queue'],
+      ['PUT', '/api/matchmaking/match'],
+    ])('returns 404 for retired endpoint %s %s', async (method, path) => {
+      const csrfToken = 'valid-csrf-token-for-testing-1234567890';
+      const headers =
+        method === 'GET' ? undefined : { cookie: `zutomayo_csrf=${csrfToken}`, 'x-csrf-token': csrfToken };
+      const res = await sendRequest(method, path, null, headers);
+      expect(res.statusCode).toBe(404);
+    });
   });
 
   describe('admin role management', () => {
@@ -1025,7 +1028,6 @@ describe('server routes', () => {
         expect.arrayContaining([expect.stringMatching(/^[a-f0-9]{64}$/)]),
       );
       expect(mockRedisPublish).not.toHaveBeenCalled();
-      expect(mockRedisMmApplyBlock).not.toHaveBeenCalled();
       const commitIndex = mockQuery.mock.calls.findIndex(([sql]) => sql === 'COMMIT');
       const outboxIndex = mockQuery.mock.calls.findIndex(([sql]) =>
         sql.includes('INSERT INTO relationship_change_outbox'),
@@ -1056,7 +1058,6 @@ describe('server routes', () => {
         expect.any(Array),
       );
       expect(mockRedisPublish).not.toHaveBeenCalled();
-      expect(mockRedisMmApplyBlock).not.toHaveBeenCalled();
     });
 
     it('leaves Redis unblock projection exclusively to the ordered outbox worker', async () => {
@@ -1080,9 +1081,7 @@ describe('server routes', () => {
         expect.stringContaining('INSERT INTO relationship_change_outbox'),
         expect.any(Array),
       );
-      expect(mockRedisSrem).not.toHaveBeenCalled();
     });
-
     it('GET /api/decks returns 401 without auth', async () => {
       const res = await sendRequest('GET', '/api/decks');
       expect(res.statusCode).toBe(401);
@@ -1295,33 +1294,6 @@ describe('server routes', () => {
         'x-csrf-token': csrfToken,
       });
       expect(res.statusCode).toBe(401);
-    });
-
-    it('GET /api/matchmaking/status returns 401 without auth', async () => {
-      const res = await sendRequest('GET', '/api/matchmaking/status');
-      expect(res.statusCode).toBe(401);
-    });
-
-    it.each([
-      ['POST', '/api/matchmaking/queue', {}],
-      ['GET', '/api/matchmaking/status', null],
-      ['DELETE', '/api/matchmaking/queue', null],
-      ['PUT', '/api/matchmaking/match', { matchId: 'bg_retired' }],
-    ])('retires authenticated legacy matchmaking route %s %s without Redis writes', async (method, path, body) => {
-      const res = await sendRequest(method, path, body, userUnsafeHeaders());
-
-      expect(res.statusCode).toBe(410);
-      expect(parseBody(res)).toEqual({
-        error: 'Legacy REST matchmaking was removed; use the Colyseus quick_match room',
-      });
-      expect(res.headers.deprecation).toBe('true');
-      expect(res.headers['cache-control']).toBe('no-store');
-      expect(mockRedisHgetall).not.toHaveBeenCalled();
-      expect(mockRedisHset).not.toHaveBeenCalled();
-      expect(mockRedisZadd).not.toHaveBeenCalled();
-      expect(mockRedisZrem).not.toHaveBeenCalled();
-      expect(mockRedisMmTryMatch).not.toHaveBeenCalled();
-      expect(mockRedisMmCleanExpired).not.toHaveBeenCalled();
     });
   });
 
