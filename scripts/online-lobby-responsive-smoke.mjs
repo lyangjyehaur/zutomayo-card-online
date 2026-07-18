@@ -525,12 +525,14 @@ try {
     screenWidth: 1024,
     screenHeight: 900,
   });
-  await client.send('Page.navigate', { url: `${baseUrl}/online?smokeAccount=1` });
-  await waitFor(client, `Boolean(document.querySelector('[data-chat-surface="unread"]'))`);
+  await client.send('Page.navigate', { url: `${baseUrl}/community?smokeAccount=1` });
+  await waitFor(client, `Boolean(document.querySelector('[data-chat-surface="global"]'))`);
   await waitFor(client, `Boolean(document.querySelector('[data-chat-message="global"]'))`);
   await waitFor(client, `Boolean(document.querySelector('[data-friend-user-id="u_friend"]'))`);
+  const globalEvidence = await evalChecked(client, accountWorkflowExpression);
   await evalChecked(client, `document.querySelector('[data-direct-chat-open="u_friend"]')?.click()`);
   await waitFor(client, `Boolean(document.querySelector('[data-chat-message="direct"]'))`);
+  const directEvidence = await evalChecked(client, accountWorkflowExpression);
   await evalChecked(
     client,
     `document.querySelector('[data-unread-conversation="room"][data-unread-subject="ROOM42"]')?.click()`,
@@ -541,6 +543,13 @@ try {
   );
   await new Promise((resolve) => setTimeout(resolve, 500));
   const workflow = await evalChecked(client, accountWorkflowExpression);
+  workflow.visibleSurfaces = [
+    ...globalEvidence.visibleSurfaces,
+    ...directEvidence.visibleSurfaces,
+    ...workflow.visibleSurfaces,
+  ];
+  workflow.unreadTypes = globalEvidence.unreadTypes;
+  workflow.messages = [...globalEvidence.messages, ...directEvidence.messages, ...workflow.messages];
   const workflowFailures = [];
   for (const [name, ok] of Object.entries(workflow.requestChecks)) {
     if (!ok) workflowFailures.push(`missing request check: ${name}`);

@@ -127,8 +127,17 @@ describe('online lobby platform boundary', () => {
     expect(openUnreadSource).toContain("setView('global')");
     expect(openUnreadSource).toContain("setView('direct')");
     expect(communitySource).toContain("const conversationType = view === 'global' ? 'global' : 'direct'");
+    expect(communitySource).toContain('data-chat-surface={view}');
+    expect(communitySource).toContain('data-chat-subject={subjectId}');
+    expect(communitySource).toContain('data-chat-message={conversationType}');
+    expect(communitySource).toContain('data-unread-conversation={conversation.type}');
+    expect(communitySource).toContain('data-unread-subject={conversation.subjectId}');
+    expect(communitySource).toContain('data-friend-user-id={friend.userId}');
+    expect(communitySource).toContain('data-direct-chat-open={friend.userId}');
     expect(lobbySource).not.toContain("conversationType: 'global'");
     expect(lobbySource).not.toContain("conversationType: 'direct'");
+    expect(lobbySource).not.toContain('data-unread-conversation');
+    expect(lobbySource).not.toContain('data-direct-chat-open');
   });
 
   it('emits match chat previews only after durable REST persistence and without message content', () => {

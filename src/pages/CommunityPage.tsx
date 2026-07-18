@@ -276,10 +276,12 @@ export function CommunityPage({ onAuthChanged }: { onAuthChanged: () => void | P
             {friends.map((friend) => (
               <div
                 key={friend.userId}
+                data-friend-user-id={friend.userId}
                 className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-sm border px-3 py-2 ${selectedFriend?.userId === friend.userId ? 'border-accent-primary bg-accent-primary/10' : 'border-border-soft'}`}
               >
                 <button
                   type="button"
+                  data-direct-chat-open={friend.userId}
                   className="min-w-0 text-left"
                   onClick={() => {
                     setSelectedFriend(friend);
@@ -307,6 +309,8 @@ export function CommunityPage({ onAuthChanged }: { onAuthChanged: () => void | P
                   <button
                     key={conversation.id}
                     type="button"
+                    data-unread-conversation={conversation.type}
+                    data-unread-subject={conversation.subjectId}
                     className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-sm border border-border-soft px-3 py-2 text-left"
                     onClick={() => openUnreadConversation(conversation)}
                   >
@@ -319,7 +323,11 @@ export function CommunityPage({ onAuthChanged }: { onAuthChanged: () => void | P
           )}
         </aside>
 
-        <section className="grid min-h-[65vh] min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] border border-border-soft bg-surface-base/45">
+        <section
+          data-chat-surface={view}
+          data-chat-subject={subjectId}
+          className="grid min-h-[65vh] min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] border border-border-soft bg-surface-base/45"
+        >
           <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border-soft p-3">
             <SegmentedControl
               ariaLabel={t('community.title')}
@@ -351,7 +359,11 @@ export function CommunityPage({ onAuthChanged }: { onAuthChanged: () => void | P
             {messages.map((message) => {
               const self = message.authorUserId === profile?.id;
               return (
-                <article key={message.id} className={`max-w-[85%] ${self ? 'self-end text-right' : 'self-start'}`}>
+                <article
+                  key={message.id}
+                  data-chat-message={conversationType}
+                  className={`max-w-[85%] ${self ? 'self-end text-right' : 'self-start'}`}
+                >
                   <div className="mb-1 flex items-center gap-1 text-minutia text-content-dim">
                     <span>{message.authorDisplayName || t('auth.guest')}</span>
                     <IconButton
