@@ -19,9 +19,20 @@ const COMPOSE_FILES = [
 ];
 const RELEASE_COMPOSE_FILES = ['docker-compose.staging.yml', 'docker-compose.server4.yml'];
 const REQUIRED_IMAGES = ['GAME_IMAGE', 'API_IMAGE', 'PLATFORM_IMAGE', 'MIGRATE_IMAGE'];
-const REQUIRED_CORE_ACTION_COMMITS = Object.freeze({
+const REVIEWED_WORKFLOW_ACTION_COMMITS = Object.freeze({
   'actions/checkout': '9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0',
   'actions/setup-node': '820762786026740c76f36085b0efc47a31fe5020',
+  'actions/upload-artifact': '043fb46d1a93c77aae656e7c1c64a875d1fc6a0a',
+  'actions/download-artifact': '3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c',
+  'actions/attest-build-provenance': '0f67c3f4856b2e3261c31976d6725780e5e4c373',
+  'aquasecurity/trivy-action': 'ed142fd0673e97e23eac54620cfb913e5ce36c25',
+  'sigstore/cosign-installer': 'd7d6bc7722e3daa8354c50bcb52f4837da5e9b6a',
+  'docker/setup-buildx-action': 'bb05f3f5519dd87d3ba754cc423b652a5edd6d2c',
+  'docker/login-action': 'af1e73f918a031802d376d3c8bbc3fe56130a9b0',
+  'docker/build-push-action': '53b7df96c91f9c12dcc8a07bcb9ccacbed38856a',
+  'anchore/sbom-action/download-syft': 'e22c389904149dbc22b58101806040fa8d37a610',
+  'softprops/action-gh-release': '3d0d9888cb7fd7b750713d6e236d1fcb99157228',
+  'webfactory/ssh-agent': 'e83874834305fe9a4a2997156cb26c5de65a8555',
 });
 
 function read(relativePath) {
@@ -56,15 +67,17 @@ export function findUnpinnedWorkflowActions(contents) {
   });
 }
 
-export function findOutdatedCoreWorkflowActions(contents) {
+export function findUnreviewedWorkflowActions(contents) {
   return nonCommentLines(contents).flatMap((line) => {
     const match = line.match(/^(?:-\s*)?uses:\s*([^\s]+)$/);
     if (!match) return [];
     const actionReference = match[1];
+    if (actionReference.startsWith('./')) return [];
     const separator = actionReference.lastIndexOf('@');
     const action = separator >= 0 ? actionReference.slice(0, separator) : actionReference;
-    const expectedCommit = REQUIRED_CORE_ACTION_COMMITS[action];
-    if (!expectedCommit || actionReference === `${action}@${expectedCommit}`) return [];
+    const expectedCommit = REVIEWED_WORKFLOW_ACTION_COMMITS[action];
+    if (!expectedCommit) return [`${actionReference} (action is not in the reviewed workflow allowlist)`];
+    if (actionReference === `${action}@${expectedCommit}`) return [];
     return [`${actionReference} (required ${action}@${expectedCommit})`];
   });
 }
@@ -85,9 +98,9 @@ function assertPinnedWorkflowActions() {
         `${relativePath} contains actions not pinned to full 40-character commit SHAs:\n${unpinned.join('\n')}`,
       );
     }
-    const outdatedCoreActions = findOutdatedCoreWorkflowActions(read(relativePath));
-    if (outdatedCoreActions.length > 0)
-      throw new Error(`${relativePath} contains retired core action runtimes:\n${outdatedCoreActions.join('\n')}`);
+    const unreviewedActions = findUnreviewedWorkflowActions(read(relativePath));
+    if (unreviewedActions.length > 0)
+      throw new Error(`${relativePath} contains unreviewed action commits:\n${unreviewedActions.join('\n')}`);
   }
 }
 

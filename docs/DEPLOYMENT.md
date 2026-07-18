@@ -720,6 +720,8 @@ Pipeline steps, in order:
 9. `npm test` — vitest unit tests.
 10. `npm run build` — full production build (repeats both typechecks before `vite build`).
 
+CI、CD 與 browser matrix 的外部 Action 全部鎖定至已審核 allowlist 內的完整 40 字元 commit SHA；直接或 composite dependency graph 內的 JavaScript Action 均已驗證使用 Node 24 runtime。`npm run release:config` 會拒絕可變 tag、舊 Node 20 commit、任意其他 commit 與未列入 allowlist 的 Action。
+
 A failing step blocks the merge. The `smoke:*` scripts are intentionally not part of CI because they require a running API/boardgame.io server.
 
 ### Local pre-push checklist / 本機推送前檢查

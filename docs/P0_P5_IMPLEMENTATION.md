@@ -14,7 +14,7 @@
 
 ## 2026-07-18 current-tree evidence
 
-- Current merge tree 的 `npm run verify` 通過：Vitest 167 個 test files、1443 tests、dependency patch、資料來源政策、release/operational config、coverage gate、i18n 與 production/PWA build。前一個 pushed hardening commit `ecb442ad` 的 GitHub CI run `29633548114` 四個 jobs 全部通過，E2E 40 passed／1 skipped、無 retry/flaky；本次尚未 push 的 action runtime 變更仍須通過相同 remote CI 才能視為最終自動化證據。
+- Current merge tree 的 `npm run verify` 通過：Vitest 167 個 test files、1443 tests、dependency patch、資料來源政策、release/operational config、coverage gate、i18n 與 production/PWA build。Pushed hardening commit `8de8a86c` 的 GitHub CI run `29635089382` 四個 jobs 全部通過，E2E 40 passed／1 skipped、無 retry/flaky；該 run 同時暴露 `upload-artifact` 的 Node 20 annotation，本次完整 action runtime 修正仍須通過相同 remote CI 才能視為最終自動化證據。
 - `npm run rule:audit` 對本機 422 張線上資料副本通過：250 張效果卡、267 行效果全部解析，`unparsedLines=0`、`parsedButPartial=0`、`falseDraw=0`。
 - 當前 merge tree 的 Fresh PostgreSQL 九角色 smoke 通過 canonical `000001`→`000033`、API role matrix、platform 獨立最小權限 schema gate、relationship outbox、social/account-deletion concurrency、boardgame metadata、admin credential lifecycle，以及 QuickMatch block／Invite friendship-removal writer transaction 與真 platform relay 的 distinct-role 並行競態；另自動重現 card-first 歷史，補套 `000019`–`000027`與 `000031`–`000033`、正規化為 30 筆 canonical migration metadata，再以 `checkOrder=true` 嚴格重跑。
 - Legacy deleted-account backfill 已改為受審核、精確數量、fail-closed 的 release step。單元測試覆蓋零筆 no-op、未核准、數量漂移、逐筆成功與 hash-only failure；真 PostgreSQL smoke 造出既有 tombstone，驗證 legal-hold/account lock、全 identity-domain 匿名化、purge/retry 與 `users.identity_anonymized_at` marker。API 與 platform schema gate 都拒絕任何未清零 tombstone。
@@ -24,7 +24,7 @@
 - Fresh-volume authenticated process-restart E2E 通過：兩個 browser 完成 setup 並停在持久化 `turnSet`，宿主機實際重啟 game/platform 容器且驗證兩者 `StartedAt` 改變與 health 恢復；原 browser 離開 disconnected/reconnecting 後從同一局投降結算，雙方 server history 對該 source match 各恰好一筆且共用同一 canonical history ID。
 - GitHub `master` branch protection 已於 2026-07-17 透過 API 建立並回讀：要求最新 `Lint & Test`、`E2E Tests`、PR、linear history 與 resolved conversations，套用至管理員且禁止 force-push／刪除。`production` environment 要求 `lyangjyehaur` 明確批准、只接受 protected branch 且關閉 admin bypass；`staging` 同樣只接受 protected branch。
 - Repository 已補 daily logical backup 的 exact S3 artifact/checksum `VersionId` receipt、SHA-256 綁定、最近成功狀態保留、weekly version-pinned restore systemd timer，以及 logical/physical backup 最新一次執行失敗的即時告警。自動測試真實執行 shell，覆蓋雙 upload 成功、任一 `VersionId: null`、receipt stale/writable/symlink/malformed 與 restore child failure；仍缺 versioned off-site bucket 與隔離 runner 的 staging/production 實跑、restore evidence 及 alert firing/resolved 外部證據。
-- CI／CD／browser matrix 的 `actions/checkout` 與 `actions/setup-node` 已由 retired Node 20 runtime 升到官方 `v7.0.0` Node 24 runtime，仍以 verified full commit SHA pin 住；release config 新增 exact core-action commit 契約，mutable tag、舊 runtime SHA 或任意其他 pinned commit 都會 fail closed。本機完整 verify 已通過，仍待本次 remote CI 自我驗證。
+- CI／CD／browser matrix 的 Checkout、Node setup、artifact upload/download、Docker build、SBOM、provenance、GitHub Release 與 SSH agent JavaScript Action 已全部升到已逐一驗證的 Node 24 runtime 正式版，composite dependency graph 亦逐層核對；release config 對全部 13 個外部 Action 執行 allowlist + exact commit 契約，mutable tag、舊 runtime SHA、任意其他 pinned commit 或未知 Action 都會 fail closed。本機完整 verify 已通過，仍待本次 remote CI 自我驗證。
 - 以上應用程式驗證仍是 local/current-tree automated evidence，不是 staging/server4/production evidence；GitHub Actions 尚未配置任何 repository/environment deploy secrets，因此 signed-image staging rehearsal、HA/canary/off-site restore/load/alert、provider account E2E、production admin recovery 與法務項目仍阻擋 production。
 
 ## 修補波次
@@ -135,7 +135,7 @@
 
 ## 最終驗收
 
-- [x] `npm run verify`：2026-07-18 current merge tree 通過，Vitest 167 test files / 1443 tests / production-PWA build；前一個 pushed hardening commit `ecb442ad` 的 GitHub CI run `29633548114` 四個 jobs 全部通過，本次 action runtime 變更待 remote CI。
+- [x] `npm run verify`：2026-07-18 current merge tree 通過，Vitest 167 test files / 1443 tests / production-PWA build；pushed hardening commit `8de8a86c` 的 GitHub CI run `29635089382` 四個 jobs 全部通過，本次完整 action runtime 修正待 remote CI。
 - [x] `npm run test:coverage`：167 test files / 1443 tests，repository coverage thresholds 通過。
 - [x] Compose-backed Chromium E2E：current-tree fresh images/volumes、migration/seed 後 40/40，含自然完成 authenticated 對局與獨立重新登入跨裝置 history。
 - [x] `npm run rule:audit`：422 cards／250 effect cards／267 effect lines，unsupported/partial/false-draw 全為 0。

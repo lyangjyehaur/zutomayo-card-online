@@ -273,10 +273,10 @@ jobs:
         run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -308,11 +308,11 @@ jobs:
         uses: sigstore/cosign-installer@d7d6bc7722e3daa8354c50bcb52f4837da5e9b6a
 
       - name: Set up Syft
-        uses: anchore/sbom-action/download-syft@d94f46e13c6c62f59525ac9a1e147a99dc0b9bf5
+        uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610
 
       - name: Build and push Docker image
         id: build
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
@@ -364,7 +364,7 @@ jobs:
           echo "${{ matrix.app }}=${IMAGE}@${DIGEST}" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publish build provenance attestation
-        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373
         with:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.app }}
           subject-digest: ${{ steps.build.outputs.digest }}
@@ -378,7 +378,7 @@ jobs:
 
       - name: Upload SBOM artifact
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: sbom-${{ matrix.app }}-${{ needs.preflight.outputs.release_sha }}
           path: ${{ runner.temp }}/${{ matrix.app }}.spdx.json
@@ -401,7 +401,7 @@ jobs:
           fetch-depth: 0
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -436,7 +436,7 @@ jobs:
           done < .release.env
 
       - name: Upload verified release manifest
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: release-manifest-${{ needs.preflight.outputs.release_sha }}
           path: .release.env
@@ -459,7 +459,7 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228
         with:
           generate_release_notes: true
           draft: false
@@ -481,7 +481,7 @@ jobs:
           ref: ${{ needs.preflight.outputs.release_sha }}
           fetch-depth: 0
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -497,7 +497,7 @@ jobs:
           EXPECTED_SCHEMA_CHECKSUM: ${{ needs.preflight.outputs.expected_checksum }}
         run: ./scripts/resolve-release-manifest.sh "$RELEASE_SHA" "$EXPECTED_SCHEMA_MIGRATION" "$EXPECTED_SCHEMA_CHECKSUM" .release.env
       - name: Upload verified release manifest
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: manual-release-manifest-${{ needs.preflight.outputs.release_sha }}
           path: .release.env
@@ -529,7 +529,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Download verified release manifest
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: manual-release-manifest-${{ needs.preflight.outputs.release_sha }}
           path: .
@@ -575,7 +575,7 @@ jobs:
           exit "$status"
       - name: Upload release gate evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: release-gate-${{ needs.preflight.outputs.release_sha }}
           path: artifacts/release-gate/
@@ -604,7 +604,7 @@ jobs:
           ref: ${{ needs.preflight.outputs.release_sha }}
           fetch-depth: 0
       - name: Download verified release manifest
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: manual-release-manifest-${{ needs.preflight.outputs.release_sha }}
           path: .
@@ -616,7 +616,7 @@ jobs:
       - name: Install production smoke dependencies
         run: npm ci --omit=dev --ignore-scripts
       - name: Configure SSH key
-        uses: webfactory/ssh-agent@a6f90b1f127823b31d4d4a8d96047790581349bd
+        uses: webfactory/ssh-agent@e83874834305fe9a4a2997156cb26c5de65a8555
         with:
           ssh-private-key: ${{ inputs.environment == 'staging' && secrets.STAGING_DEPLOY_SSH_KEY || secrets.DEPLOY_SSH_KEY }}
       - name: Configure pinned SSH host key
