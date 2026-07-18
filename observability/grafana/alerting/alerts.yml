@@ -100,9 +100,10 @@ groups:
   - name: zutomayo-availability
     interval: 30s
     rules:
-      # Service down: /metrics scrape (proxy for /health) returns non-200 for 1 minute -> critical
+      # Blue/green and legacy targets coexist during rollout. Alert only when no
+      # discovered target for the logical service is reachable.
       - alert: ServiceDown
-        expr: up{job=~"zutomayo-(game|api|platform)"} == 0
+        expr: max by (job, service) (up{job=~"zutomayo-(game|api|platform)"}) == 0
         for: 1m
         labels:
           severity: critical
@@ -112,7 +113,7 @@ groups:
           description: '{{ $labels.job }} has been unreachable (scrape failing) for 1 minute. Check /health endpoint and container status.'
 
       - alert: PlatformHealthProbeFailed
-        expr: probe_success{job="zutomayo-platform-health"} == 0
+        expr: max by (job, service) (probe_success{job="zutomayo-platform-health"}) == 0
         for: 1m
         labels:
           severity: critical
@@ -122,7 +123,7 @@ groups:
           description: 'The platform /health endpoint has failed its synthetic probe for 1 minute.'
 
       - alert: ReadinessProbeFailed
-        expr: probe_success{job="zutomayo-readiness"} == 0
+        expr: max by (job, service) (probe_success{job="zutomayo-readiness"}) == 0
         for: 1m
         labels:
           severity: critical
@@ -256,6 +257,72 @@ groups:
           summary: 'Relationship outbox metrics are stale'
           description: 'The API cannot refresh relationship outbox metrics from PostgreSQL. Revocation queue health is unknown.'
 
+  - name: zutomayo-account-exports
+    interval: 30s
+    rules:
+      - alert: AccountExportOldestJob
+        expr: account_export_oldest_age_seconds > 300
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: 'Account export processing is delayed'
+          description: 'The oldest queued or processing account export is {{ $value | humanizeDuration }} old.'
+
+      - alert: AccountExportJobFailed
+        expr: increase(account_export_processed_total{result="failed"}[15m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: 'Account export exhausted its retry budget'
+          description: 'At least one account export failed permanently during the last 15 minutes.'
+
+      - alert: AccountExportPurgeDelayed
+        expr: account_export_purge_pending > 0
+        for: 10m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: 'Expired account export objects were not deleted'
+          description: '{{ $value }} expired account export objects are still awaiting physical deletion.'
+
+      - alert: AccountExportPurgeRetrying
+        expr: account_export_purge_retrying > 0
+        for: 10m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: 'Account export object deletion is retrying'
+          description: '{{ $value }} account export objects have failed at least one physical deletion attempt.'
+
+      - alert: AccountExportOrphanCleanupFailed
+        expr: increase(account_export_processed_total{result="orphan_cleanup_failed"}[15m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: 'Account export orphan cleanup failed'
+          description: 'An uploaded DSAR object could not be deleted after fencing or processing failure. Verify the mandatory bucket lifecycle rule.'
+
+      - alert: AccountExportMetricsStale
+        expr: |
+          absent(account_export_metrics_refresh_success)
+          or account_export_metrics_refresh_success == 0
+          or time() - account_export_metrics_last_success_unixtime_seconds > 120
+        for: 2m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: 'Account export worker metrics are stale'
+          description: 'The API cannot refresh account export metrics from PostgreSQL. DSAR queue and purge health are unknown.'
+
   - name: zutomayo-backups
     interval: 1m
     rules:
@@ -263,6 +330,16 @@ groups:
       # scripts/pg-wal-archive.sh through the node-exporter textfile collector.
       # A missing metric is intentionally critical in production; configure a
       # separate rule group or silence this group in local development.
+      - alert: PostgresBackupRunFailed
+        expr: pg_backup_last_run_success == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: 'Latest PostgreSQL encrypted backup failed'
+          description: 'The latest logical backup did not complete its verified, versioned off-site upload.'
+
       - alert: PostgresBackupMissingOrStale
         expr: absent(pg_backup_last_success_unixtime_seconds) or time() - pg_backup_last_success_unixtime_seconds > 93600
         for: 15m
@@ -312,6 +389,16 @@ groups:
         annotations:
           summary: 'PostgreSQL physical base backup is missing or stale'
           description: 'No successful encrypted physical base backup has been recorded within 8 days; WAL PITR coverage is at risk.'
+
+      - alert: PostgresBaseBackupRunFailed
+        expr: pg_base_backup_last_run_success == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: 'Latest PostgreSQL physical base backup failed'
+          description: 'The latest physical base backup did not complete its verified off-site upload.'
 
   - name: zutomayo-retention
     interval: 1m

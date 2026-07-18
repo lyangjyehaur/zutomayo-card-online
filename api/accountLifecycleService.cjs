@@ -3,7 +3,8 @@
 const crypto = require('crypto');
 const { findActiveLegalHoldForAccount } = require('./legalHoldService.cjs');
 const { AccountMutationError, acquireAccountMutationLocks } = require('./accountMutationLock.cjs');
-const { enqueueRelationshipChange } = require('./relationshipOutbox.cjs');
+const { expireAccountExportJobsForUser } = require('./accountExportService.cjs');
+const { enqueueRelationshipChange, redactRelationshipChangesForDeletedUser } = require('./relationshipOutbox.cjs');
 
 const ACCOUNT_ACTIONS = new Set(['verify_email', 'reset_password']);
 const DEFAULT_TOKEN_TTL_SECONDS = 30 * 60;
@@ -25,9 +26,232 @@ function hashAccountToken(token) {
     .digest('hex');
 }
 
+function randomDeletionRef(domain) {
+  return `deleted-${domain}-${crypto.randomBytes(16).toString('hex')}`;
+}
+
+function redactIdentityInText(value, userId, replacement) {
+  return typeof value === 'string' ? value.split(userId).join(replacement) : value;
+}
+
+function redactIdentityInJson(value, userId, replacement) {
+  if (typeof value === 'string') return redactIdentityInText(value, userId, replacement);
+  if (Array.isArray(value)) return value.map((entry) => redactIdentityInJson(entry, userId, replacement));
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(
+    Object.entries(value).map(([key, entry]) => [
+      redactIdentityInText(key, userId, replacement),
+      redactIdentityInJson(entry, userId, replacement),
+    ]),
+  );
+}
+
+function redactDirectConversationSubject(subjectId, userId, replacement) {
+  const clean = String(subjectId || '').trim();
+  const versioned = clean.startsWith('v1:');
+  const encodedParticipants = (versioned ? clean.slice(3) : clean).split(':');
+  const participants = encodedParticipants.map((value) => {
+    try {
+      return versioned ? decodeURIComponent(value) : value;
+    } catch {
+      return '';
+    }
+  });
+  if (participants.length !== 2 || !participants.includes(userId)) return null;
+  const redacted = participants.map((value) => (value === userId ? replacement : value)).sort();
+  return versioned ? `v1:${redacted.map(encodeURIComponent).join(':')}` : redacted.join(':');
+}
+
+function boardgamePlayerIdsForUser(metadata, userId) {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return [];
+  const players = metadata.players;
+  if (!players || typeof players !== 'object' || Array.isArray(players)) return [];
+  return Object.entries(players)
+    .filter(([, player]) => {
+      if (!player || typeof player !== 'object' || Array.isArray(player)) return false;
+      const data = player.data;
+      return Boolean(data && typeof data === 'object' && !Array.isArray(data) && data.userId === userId);
+    })
+    .map(([playerId]) => playerId);
+}
+
+async function redactBoardgameIdentityPayloads(client, userId) {
+  const { rows } = await client.query(
+    `SELECT m.match_id, m.state, m.initial_state, m.metadata, m.log,
+            ARRAY(
+              SELECT seat.player_id
+                FROM bjg_match_seats AS seat
+               WHERE seat.match_id = m.match_id AND seat.user_id = $1
+               ORDER BY seat.player_id
+            ) AS deleted_player_ids
+       FROM bjg_matches AS m
+      WHERE EXISTS (
+              SELECT 1
+                FROM bjg_match_seats AS seat
+               WHERE seat.match_id = m.match_id AND seat.user_id = $1
+            )
+         OR strpos(COALESCE(m.state::text, ''), $1) > 0
+         OR strpos(COALESCE(m.initial_state::text, ''), $1) > 0
+         OR strpos(COALESCE(m.metadata::text, ''), $1) > 0
+         OR strpos(COALESCE(m.log::text, ''), $1) > 0
+      ORDER BY m.match_id
+      FOR UPDATE OF m`,
+    [userId],
+  );
+
+  let updated = 0;
+  for (const row of rows) {
+    if (typeof row.match_id !== 'string' || !row.match_id) continue;
+    const replacement = randomDeletionRef('boardgame');
+    const deletedPlayerIds = new Set([
+      ...(Array.isArray(row.deleted_player_ids) ? row.deleted_player_ids.map(String) : []),
+      ...boardgamePlayerIdsForUser(row.metadata, userId),
+    ]);
+    const metadata = redactIdentityInJson(row.metadata, userId, replacement);
+    if (metadata && typeof metadata === 'object' && !Array.isArray(metadata)) {
+      metadata.accountDeletionLocked = true;
+    }
+    const players = metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata.players : null;
+    if (players && typeof players === 'object') {
+      for (const playerId of deletedPlayerIds) {
+        const player = players[String(playerId)];
+        if (!player || typeof player !== 'object' || Array.isArray(player)) continue;
+        delete player.name;
+        delete player.credentials;
+        delete player.data;
+      }
+    }
+    const jsonParam = (value) => (value === null || value === undefined ? null : JSON.stringify(value));
+    const result = await client.query(
+      `UPDATE bjg_matches
+          SET state = $2::jsonb,
+              initial_state = $3::jsonb,
+              metadata = $4::jsonb,
+              log = $5::jsonb,
+              updated_at = NOW()
+        WHERE match_id = $1`,
+      [
+        row.match_id,
+        jsonParam(redactIdentityInJson(row.state, userId, replacement)),
+        jsonParam(redactIdentityInJson(row.initial_state, userId, replacement)),
+        jsonParam(metadata),
+        jsonParam(redactIdentityInJson(row.log, userId, replacement)),
+      ],
+    );
+    updated += Number(result.rowCount) || 0;
+  }
+  return updated;
+}
+
+async function redactDirectConversationIdentities(client, userId, replacement) {
+  const { rows } = await client.query(
+    `SELECT id, subject_id, title, status, created_at
+       FROM chat_conversations
+      WHERE type = 'direct'
+      FOR UPDATE`,
+  );
+  let updated = 0;
+  for (const row of rows) {
+    const subjectId = redactDirectConversationSubject(row.subject_id, userId, replacement);
+    if (!subjectId) continue;
+    const conversationId = `direct:${subjectId}`;
+    if (conversationId === row.id) {
+      await client.query(
+        "UPDATE chat_conversations SET subject_id = $2, title = '', updated_at = NOW() WHERE id = $1",
+        [row.id, subjectId],
+      );
+    } else {
+      await client.query(
+        `INSERT INTO chat_conversations
+           (id, type, subject_id, title, status, created_at, updated_at)
+         VALUES ($1, 'direct', $2, '', $3, COALESCE($4::timestamptz, NOW()), NOW())`,
+        [conversationId, subjectId, row.status || 'active', row.created_at || null],
+      );
+      for (const tableName of [
+        'chat_messages',
+        'chat_read_states',
+        'chat_reports',
+        'chat_moderation_events',
+        'chat_user_sanctions',
+      ]) {
+        await client.query(`UPDATE ${tableName} SET conversation_id = $2 WHERE conversation_id = $1`, [
+          row.id,
+          conversationId,
+        ]);
+      }
+      await client.query('DELETE FROM chat_conversations WHERE id = $1', [row.id]);
+    }
+    await client.query(
+      `UPDATE legal_hold_objects
+          SET object_id = CASE WHEN object_id = $1 THEN $2 ELSE $3 END
+        WHERE object_type = 'conversation' AND object_id IN ($1, $4)`,
+      [row.id, conversationId, subjectId, row.subject_id],
+    );
+    await client.query(
+      `UPDATE legal_holds
+          SET subject_id = CASE WHEN subject_id = $1 THEN $2 ELSE $3 END
+        WHERE subject_type = 'conversation' AND subject_id IN ($1, $4)`,
+      [row.id, conversationId, subjectId, row.subject_id],
+    );
+    updated += 1;
+  }
+  return updated;
+}
+
+async function redactReleasedLegalHoldIdentity(client, userId, replacement) {
+  const { rows } = await client.query(
+    `SELECT id, subject_id, reason, metadata
+       FROM legal_holds
+      WHERE (released_at IS NOT NULL OR expires_at <= NOW())
+        AND (
+          strpos(subject_id, $1) > 0
+          OR strpos(reason, $1) > 0
+          OR strpos(COALESCE(metadata::text, ''), $1) > 0
+        )
+      FOR UPDATE`,
+    [userId],
+  );
+  for (const row of rows) {
+    await client.query(
+      `UPDATE legal_holds
+          SET subject_id = $2,
+              reason = $3,
+              metadata = $4::jsonb
+        WHERE id = $1`,
+      [
+        row.id,
+        redactIdentityInText(row.subject_id, userId, replacement),
+        redactIdentityInText(row.reason, userId, replacement),
+        JSON.stringify(redactIdentityInJson(row.metadata, userId, replacement)),
+      ],
+    );
+  }
+  await client.query(
+    `UPDATE legal_hold_objects AS object
+        SET object_id = replace(object.object_id, $1, $2)
+       FROM legal_holds AS hold
+      WHERE hold.id = object.hold_id
+        AND (hold.released_at IS NOT NULL OR hold.expires_at <= NOW())
+        AND strpos(object.object_id, $1) > 0`,
+    [userId, replacement],
+  );
+  return rows.length;
+}
+
+async function redactAdminAuditIdentity(client, userId, replacement) {
+  const result = await client.query('SELECT public.zutomayo_anonymize_admin_audit_identity($1, $2) AS affected', [
+    userId,
+    replacement,
+  ]);
+  return Number(result.rows?.[0]?.affected) || 0;
+}
+
 async function withTransaction(pool, operation) {
-  const client = typeof pool.connect === 'function' ? await pool.connect() : pool;
-  const release = typeof client.release === 'function' ? () => client.release() : () => undefined;
+  // A pg PoolClient exposes both connect() and release(); a Pool exposes only
+  // connect(). Keep a caller-owned lease client checked out across transactions.
+  const ownsClient = typeof pool.connect === 'function' && typeof pool.release !== 'function';
+  const client = ownsClient ? await pool.connect() : pool;
+  const release = ownsClient && typeof client.release === 'function' ? () => client.release() : () => undefined;
   try {
     await client.query('BEGIN');
     const result = await operation(client);
@@ -214,7 +438,7 @@ async function verifyRecentPassword({
   return { ok: true };
 }
 
-async function exportAccountData({
+async function collectAccountData({
   pool,
   userId,
   maxBytes = DEFAULT_ACCOUNT_EXPORT_MAX_BYTES,
@@ -238,7 +462,9 @@ async function exportAccountData({
     ).rows[0];
     if (!user) return { ok: false, status: 404, error: 'User not found' };
 
-    const queryCollection = (sql) => client.query(sql, [userId, rowLimit + 1]);
+    const queryCollection = (sql) => {
+      return client.query(sql, [userId, rowLimit + 1]);
+    };
     const [
       identities,
       decks,
@@ -257,68 +483,59 @@ async function exportAccountData({
       seasonRewards,
       seasonRewardEntitlements,
     ] = await Promise.all([
-      client.query(
+      queryCollection(
         `SELECT provider, email, email_verified, display_name, created_at, updated_at
        FROM user_identities WHERE user_id = $1 ORDER BY created_at LIMIT $2`,
-        [userId, rowLimit + 1],
       ),
       queryCollection(
         'SELECT id, name, card_ids, created_at, updated_at FROM decks WHERE user_id = $1 ORDER BY created_at LIMIT $2',
       ),
-      client.query(
+      queryCollection(
         `SELECT id, source_match_id, player0_id, player1_id, winner_id, loser_id,
               winner_elo_change, loser_elo_change, turns, duration_seconds, rules_version, created_at
        FROM matches WHERE player0_id = $1 OR player1_id = $1 ORDER BY created_at DESC LIMIT $2`,
-        [userId, rowLimit + 1],
       ),
       queryCollection(
         'SELECT friend_user_id, created_at FROM user_friends WHERE user_id = $1 ORDER BY created_at LIMIT $2',
       ),
-      client.query(
+      queryCollection(
         `SELECT id, requester_user_id, recipient_user_id, status, created_at, updated_at, responded_at
        FROM friend_requests
        WHERE requester_user_id = $1 OR recipient_user_id = $1 ORDER BY created_at LIMIT $2`,
-        [userId, rowLimit + 1],
       ),
       queryCollection(
         'SELECT blocked_user_id, created_at FROM user_blocks WHERE blocker_user_id = $1 ORDER BY created_at LIMIT $2',
       ),
-      client.query(
+      queryCollection(
         `SELECT m.id, c.type AS conversation_type, m.author_display_name, m.author_role,
               m.content, m.source_language, m.moderation_status, m.created_at, m.edited_at, m.deleted_at
        FROM chat_messages m JOIN chat_conversations c ON c.id = m.conversation_id
        WHERE m.author_user_id = $1 ORDER BY m.created_at DESC LIMIT $2`,
-        [userId, rowLimit + 1],
       ),
-      client.query(
+      queryCollection(
         `SELECT id, message_id, conversation_id, reason, note, status, created_at, reviewed_at
        FROM chat_reports WHERE reporter_user_id = $1 ORDER BY created_at DESC LIMIT $2`,
-        [userId, rowLimit + 1],
       ),
-      client.query(
+      queryCollection(
         `SELECT id, title, description, status, tag, created_at, updated_at, edited_at
        FROM feedback_posts WHERE author_user_id = $1 ORDER BY created_at DESC LIMIT $2`,
-        [userId, rowLimit + 1],
       ),
-      client.query(
+      queryCollection(
         `SELECT id, post_id, content, is_official, created_at, edited_at
        FROM feedback_comments WHERE author_user_id = $1 ORDER BY created_at DESC LIMIT $2`,
-        [userId, rowLimit + 1],
       ),
       queryCollection(
         'SELECT post_id, created_at FROM feedback_votes WHERE voter_user_id = $1 ORDER BY created_at DESC LIMIT $2',
       ),
-      client.query(
+      queryCollection(
         `SELECT comment_id, emoji, created_at
        FROM feedback_comment_reactions WHERE voter_user_id = $1 ORDER BY created_at DESC LIMIT $2`,
-        [userId, rowLimit + 1],
       ),
-      client.query(
+      queryCollection(
         `SELECT id, type, status, reason, source_report_id, source_message_id, conversation_id,
               created_at, expires_at, revoked_at, revocation_reason
        FROM chat_user_sanctions WHERE target_user_id = $1 OR created_by_user_id = $1
        ORDER BY created_at DESC LIMIT $2`,
-        [userId, rowLimit + 1],
       ),
       queryCollection(
         `SELECT sr.season_id, s.name AS season_name, s.status AS season_status,
@@ -375,6 +592,7 @@ async function exportAccountData({
     }
 
     const body = {
+      formatVersion: 1,
       exportedAt: new Date().toISOString(),
       account: user,
       identities: identities.rows,
@@ -395,10 +613,18 @@ async function exportAccountData({
       seasonRewardEntitlements: seasonRewardEntitlements.rows,
     };
     if (Buffer.byteLength(JSON.stringify(body), 'utf8') > byteLimit) {
-      return { ok: false, status: 413, error: 'Account export exceeds the synchronous size limit' };
+      return {
+        ok: false,
+        status: 413,
+        error: 'Account export exceeds the synchronous size limit',
+      };
     }
     return { ok: true, body };
   });
+}
+
+async function exportAccountData(options) {
+  return collectAccountData(options);
 }
 
 async function deleteAccount({
@@ -408,6 +634,8 @@ async function deleteAccount({
   stepUpVerified = false,
   beforeDelete,
   deletionRequestId,
+  legacyBackfill = false,
+  emitRelationshipEvent = true,
 }) {
   if (requireStepUp && stepUpVerified !== true) {
     return { ok: false, status: 401, error: 'Recent password verification required' };
@@ -417,10 +645,28 @@ async function deleteAccount({
     // the same lock here prevents a delete from racing a retention batch that
     // could otherwise remove or inspect the account's evidence concurrently.
     try {
-      await acquireAccountMutationLocks(client, [userId], { includeRetention: true });
+      await acquireAccountMutationLocks(client, [userId], {
+        includeRetention: true,
+        requireLiveUsers: !legacyBackfill,
+      });
     } catch (error) {
       if (error instanceof AccountMutationError) return { ok: false, status: 404, error: 'User not found' };
       throw error;
+    }
+    if (legacyBackfill) {
+      const tombstone = (
+        await client.query(
+          `SELECT id, identity_anonymized_at
+             FROM users
+            WHERE id = $1 AND deleted_at IS NOT NULL
+            FOR UPDATE`,
+          [userId],
+        )
+      ).rows[0];
+      if (!tombstone) return { ok: false, status: 404, error: 'Legacy deleted account not found' };
+      if (tombstone.identity_anonymized_at) {
+        return { ok: true, body: { deleted: true, alreadyBackfilled: true } };
+      }
     }
     const activeLegalHold = await findActiveLegalHoldForAccount(client, userId);
     if (activeLegalHold) {
@@ -433,7 +679,9 @@ async function deleteAccount({
     // transaction. Without an id, reject any in-flight saga so callers cannot
     // bypass the provider tombstone protocol.
     let deletionRequest = null;
-    if (deletionRequestId) {
+    if (legacyBackfill) {
+      deletionRequest = null;
+    } else if (deletionRequestId) {
       deletionRequest = (
         await client.query(
           `SELECT id, user_id, provider, status
@@ -476,6 +724,51 @@ async function deleteAccount({
     // delete later commits, and avoids logging a held account out needlessly.
     if (typeof beforeDelete === 'function') await beforeDelete();
 
+    // Revoke queued downloads in the same transaction as anonymization. Ready
+    // objects are denied immediately and removed asynchronously by the export
+    // worker, so deletion never leaves a still-authorized DSAR artifact.
+    await expireAccountExportJobsForUser({ client, userId });
+
+    // Persisted domains receive independent random references. No value stored
+    // in one table can be used as a key to derive another domain's pseudonym.
+    const emailRef = crypto.randomBytes(16).toString('hex');
+    const feedbackRef = randomDeletionRef('feedback');
+    const conversationRef = randomDeletionRef('conversation');
+    const deletionRequestRef = randomDeletionRef('request');
+    const providerRequestRef = randomDeletionRef('provider');
+    const legalHoldRef = randomDeletionRef('hold');
+    const adminAuditRef = randomDeletionRef('admin-audit');
+
+    // Mark the account deleted before invoking the SECURITY DEFINER audit
+    // scrubbers. Their database-level guard rejects active-account targets;
+    // this tombstone and every following mutation still commit atomically.
+    await client.query(
+      `UPDATE users
+       SET email = $2,
+           nickname = 'Deleted Player',
+           password_hash = $3,
+           salt = '',
+           email_verified = FALSE,
+           auth_version = auth_version + 1,
+           elo = 1000,
+           match_count = 0,
+           wins = 0,
+           deleted_at = COALESCE(deleted_at, NOW()),
+           identity_anonymized_at = NOW()
+       WHERE id = $1`,
+      [userId, `deleted+${emailRef}@invalid.local`, `deleted:${crypto.randomBytes(24).toString('hex')}`],
+    );
+
+    await client.query('SELECT public.zutomayo_anonymize_account_export_audit($1)', [userId]);
+    await client.query(
+      `UPDATE account_export_jobs
+          SET user_id = NULL,
+              identity_anonymized_at = COALESCE(identity_anonymized_at, NOW()),
+              updated_at = NOW()
+        WHERE user_id = $1`,
+      [userId],
+    );
+
     await client.query('DELETE FROM user_identities WHERE user_id = $1', [userId]);
     await client.query('DELETE FROM deck_reservations WHERE user_id = $1', [userId]);
     await client.query('DELETE FROM decks WHERE user_id = $1', [userId]);
@@ -488,6 +781,7 @@ async function deleteAccount({
     // through platform presence, room membership, or a reconnect credential.
     await client.query('DELETE FROM platform_match_participants WHERE user_id = $1', [userId]);
     await client.query('DELETE FROM platform_room_participants WHERE user_id = $1', [userId]);
+    await redactBoardgameIdentityPayloads(client, userId);
     await client.query('DELETE FROM bjg_match_seats WHERE user_id = $1', [userId]);
     // A result outbox row may still be pending when the provider deletion
     // finishes. Preserve the delivery audit row, but make it explicitly
@@ -524,7 +818,9 @@ async function deleteAccount({
                 SET player0_id = CASE WHEN m.player0_id = $1 THEN NULL ELSE m.player0_id END,
                     player1_id = CASE WHEN m.player1_id = $1 THEN NULL ELSE m.player1_id END,
                     winner_id = CASE WHEN m.winner_id = $1 THEN NULL ELSE m.winner_id END,
-                    loser_id = CASE WHEN m.loser_id = $1 THEN NULL ELSE m.loser_id END
+                    loser_id = CASE WHEN m.loser_id = $1 THEN NULL ELSE m.loser_id END,
+                    action_log = NULL,
+                    action_log_purged_at = COALESCE(m.action_log_purged_at, NOW())
                FROM touched
               WHERE m.id = touched.id
            RETURNING m.id
@@ -538,16 +834,28 @@ async function deleteAccount({
           AND m.winner_id IS NULL AND m.loser_id IS NULL`,
       [userId],
     );
-    // Ratings/rewards are account-derived profile data. Immutable
-    // season_match_results remain as audit evidence and are filtered from
-    // public views through the users.deleted_at contract.
+    // Ratings/rewards are account-derived profile data. Season result rows
+    // remain as aggregate audit evidence, but direct account identifiers do
+    // not survive deletion.
+    await client.query(
+      `UPDATE season_match_results
+          SET winner_user_id = CASE WHEN winner_user_id = $1 THEN NULL ELSE winner_user_id END,
+              loser_user_id = CASE WHEN loser_user_id = $1 THEN NULL ELSE loser_user_id END,
+              identity_anonymized_at = COALESCE(identity_anonymized_at, NOW())
+        WHERE winner_user_id = $1 OR loser_user_id = $1`,
+      [userId],
+    );
     await client.query('DELETE FROM season_reward_entitlements WHERE user_id = $1', [userId]);
     await client.query('DELETE FROM season_rewards WHERE user_id = $1', [userId]);
     await client.query('DELETE FROM season_ratings WHERE user_id = $1', [userId]);
-    // This value is also used by legacy feedback ownership checks. Make it
-    // unpredictable even though deleted authors no longer receive it.
-    const tombstoneRef = crypto.randomBytes(16).toString('hex');
-    const anonymousRef = `deleted-${tombstoneRef}`;
+    await redactDirectConversationIdentities(client, userId, conversationRef);
+    await client.query(
+      `DELETE FROM chat_message_translations AS translation
+       USING chat_messages AS message
+       WHERE translation.message_id = message.id
+         AND message.author_user_id = $1`,
+      [userId],
+    );
     await client.query(
       `UPDATE chat_messages
        SET author_user_id = NULL, author_display_name = 'Deleted Player', content = '[redacted]',
@@ -575,37 +883,25 @@ async function deleteAccount({
     await client.query('UPDATE chat_moderation_events SET actor_user_id = NULL WHERE actor_user_id = $1', [userId]);
     await client.query(`UPDATE feedback_posts SET author_user_id = NULL, anonymous_id = $2 WHERE author_user_id = $1`, [
       userId,
-      anonymousRef,
+      feedbackRef,
     ]);
     await client.query(
       `UPDATE feedback_comments SET author_user_id = NULL, anonymous_id = $2 WHERE author_user_id = $1`,
-      [userId, anonymousRef],
+      [userId, feedbackRef],
     );
     await client.query('DELETE FROM feedback_votes WHERE voter_user_id = $1', [userId]);
     await client.query('DELETE FROM feedback_comment_votes WHERE voter_user_id = $1', [userId]);
     await client.query('DELETE FROM feedback_comment_reactions WHERE voter_user_id = $1', [userId]);
     await client.query('DELETE FROM chat_read_states WHERE user_id = $1', [userId]);
+    await client.query('DELETE FROM chat_user_sanctions WHERE target_user_id = $1', [userId]);
     await client.query(
       `UPDATE chat_user_sanctions
        SET created_by_user_id = NULL, revoked_by_user_id = NULL
        WHERE created_by_user_id = $1 OR revoked_by_user_id = $1`,
       [userId],
     );
-    await client.query(
-      `UPDATE users
-       SET email = $2,
-           nickname = 'Deleted Player',
-           password_hash = $3,
-           salt = '',
-           email_verified = FALSE,
-           auth_version = auth_version + 1,
-           elo = 1000,
-           match_count = 0,
-           wins = 0,
-           deleted_at = NOW()
-       WHERE id = $1`,
-      [userId, `deleted+${tombstoneRef}@invalid.local`, `deleted:${crypto.randomBytes(24).toString('hex')}`],
-    );
+    await redactReleasedLegalHoldIdentity(client, userId, legalHoldRef);
+    await redactAdminAuditIdentity(client, userId, adminAuditRef);
     if (deletionRequest) {
       await client.query(
         `UPDATE account_deletion_requests
@@ -615,10 +911,32 @@ async function deleteAccount({
         [deletionRequest.id, userId],
       );
     }
-    await enqueueRelationshipChange(client, 'account_deleted', [userId], {
-      idempotencyKey: `account_deleted:${userId}`,
-    });
+    await client.query(
+      `UPDATE account_deletion_requests
+          SET user_id = $2,
+              provider_user_id = $3,
+              last_error = '',
+              identity_anonymized_at = COALESCE(identity_anonymized_at, NOW()),
+              updated_at = NOW()
+        WHERE user_id = $1`,
+      [userId, deletionRequestRef, providerRequestRef],
+    );
+    await redactRelationshipChangesForDeletedUser(client, userId);
+    if (emitRelationshipEvent) {
+      await enqueueRelationshipChange(client, 'account_deleted', [userId], {
+        idempotencyKey: `account_deleted:${userId}`,
+      });
+    }
     return { ok: true, body: { deleted: true } };
+  });
+}
+
+async function backfillLegacyDeletedAccount({ pool, userId }) {
+  return deleteAccount({
+    pool,
+    userId,
+    legacyBackfill: true,
+    emitRelationshipEvent: false,
   });
 }
 
@@ -627,6 +945,7 @@ module.exports = {
   DEFAULT_ACCOUNT_EXPORT_MAX_ROWS_PER_COLLECTION,
   DEFAULT_TOKEN_TTL_SECONDS,
   MIN_PASSWORD_LENGTH,
+  backfillLegacyDeletedAccount,
   deleteAccount,
   exportAccountData,
   hashAccountToken,

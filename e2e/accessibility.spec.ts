@@ -1,6 +1,10 @@
 import { expect, test, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-import { openOnlineSeat, provisionOnlineMatch } from './helpers/online';
+import {
+  openOnlineSeat,
+  provisionAuthenticatedOnlineMatch,
+  registerAuthenticatedOnlineAccount,
+} from './helpers/online';
 
 const FOCUSABLE_SELECTOR = [
   'a[href]',
@@ -23,6 +27,33 @@ async function expectNoBlockingAxeViolations(page: Page, surface: string) {
     })
     .join('\n');
   expect(blocking, `${surface} has blocking axe violations:\n${details}`).toEqual([]);
+}
+
+async function createAnonymousFeedbackPost(page: Page, title: string): Promise<void> {
+  const anonymousId = `e2e_a11y_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+  await page.addInitScript((id) => {
+    localStorage.setItem('zutomayo_feedback_anon_id', id);
+    localStorage.setItem('zutomayo_locale', 'zh-TW');
+  }, anonymousId);
+
+  const csrfResponse = await page.request.get('/api/csrf-token');
+  expect(csrfResponse.ok()).toBeTruthy();
+  const csrfBody = (await csrfResponse.json()) as { token?: unknown };
+  expect(typeof csrfBody.token).toBe('string');
+  const csrfToken = String(csrfBody.token);
+
+  const response = await page.request.post('/api/feedback/posts', {
+    data: {
+      title,
+      description: '用於驗證詳情 dialog 的鍵盤操作與無障礙語意。',
+      anonymousId,
+    },
+    headers: {
+      Cookie: `zutomayo_csrf=${encodeURIComponent(csrfToken)}`,
+      'X-CSRF-Token': csrfToken,
+    },
+  });
+  expect(response.ok(), `建立 feedback 測試資料失敗：${response.status()} ${await response.text()}`).toBeTruthy();
 }
 
 test.describe('核心頁面無障礙 @a11y', () => {
@@ -92,15 +123,62 @@ test.describe('登入 dialog 無障礙 @a11y', () => {
   });
 });
 
+test.describe('Feedback 詳情 dialog 無障礙 @a11y @requires-backend', () => {
+  test('通過 axe 並維持焦點循環、背景 inert 與 trigger focus restore', async ({ page }) => {
+    const title = `E2E Feedback dialog ${Date.now().toString(36)}`;
+    await createAnonymousFeedbackPost(page, title);
+    await page.goto('/feedback');
+
+    const trigger = page.getByRole('button', { name: `查看詳情: ${title}` });
+    await expect(trigger).toBeVisible({ timeout: 30_000 });
+    await trigger.focus();
+    await page.keyboard.press('Enter');
+
+    const dialog = page.getByRole('dialog', { name: title });
+    await expect(dialog).toBeVisible();
+    await expectNoBlockingAxeViolations(page, 'Feedback 詳情 dialog');
+
+    const root = page.locator('#root');
+    await expect(root).toHaveAttribute('aria-hidden', 'true');
+    await expect.poll(() => root.evaluate((element) => (element as HTMLElement).inert)).toBe(true);
+
+    const focusable = dialog.locator(FOCUSABLE_SELECTOR);
+    expect(await focusable.count()).toBeGreaterThan(2);
+    const first = focusable.first();
+    const last = focusable.last();
+    await expect(first).toHaveAccessibleName('關閉');
+    await expect(first).toBeFocused();
+
+    await page.keyboard.press('Shift+Tab');
+    await expect(last).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(first).toBeFocused();
+
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+    await expect(trigger).toBeFocused();
+    await expect(root).not.toHaveAttribute('aria-hidden', 'true');
+    await expect.poll(() => root.evaluate((element) => (element as HTMLElement).inert)).toBe(false);
+  });
+});
+
 test.describe('線上 Battle/Result 無障礙 @a11y @requires-backend', () => {
-  test('正式 Battle 與結算 Result 通過 axe，且 Battle drawer 維持焦點隔離', async ({ browser, page, request }) => {
+  test('正式 Battle 與結算 Result 通過 axe，且 Battle drawer 維持焦點隔離', async ({ browser, page }) => {
     test.setTimeout(120_000);
     const baseURL = process.env.E2E_BASE_URL ?? 'http://localhost:3000';
     const guestContext = await browser.newContext({ baseURL });
     const guestPage = await guestContext.newPage();
+    const syncWarnings: string[] = [];
+    page.on('console', (message) => {
+      if (message.text().includes('[online-sync] detected')) syncWarnings.push(message.text());
+    });
 
     try {
-      const match = await provisionOnlineMatch(request);
+      const [hostAccount, guestAccount] = await Promise.all([
+        registerAuthenticatedOnlineAccount(page.context(), 'E2E A11y Host'),
+        registerAuthenticatedOnlineAccount(guestContext, 'E2E A11y Guest'),
+      ]);
+      const match = await provisionAuthenticatedOnlineMatch(page.context(), hostAccount, guestContext, guestAccount);
       await Promise.all([openOnlineSeat(page, match, '0'), openOnlineSeat(guestPage, match, '1')]);
       await expect(page.locator('[data-game-step="janken"]')).toBeVisible({ timeout: 30_000 });
       await expect(guestPage.locator('[data-game-step="janken"]')).toBeVisible({ timeout: 30_000 });
@@ -161,10 +239,32 @@ test.describe('線上 Battle/Result 無障礙 @a11y @requires-backend', () => {
       await expect(pause).toBeFocused();
       await expect.poll(() => board.evaluate((element) => (element as HTMLElement).inert)).toBe(false);
 
+      const matchSubmissionResponses = Promise.all([
+        page.waitForResponse(
+          (response) => response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/matches',
+          { timeout: 30_000 },
+        ),
+        guestPage.waitForResponse(
+          (response) => response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/matches',
+          { timeout: 30_000 },
+        ),
+      ]);
       await pause.click();
       await page.getByRole('dialog').getByRole('button', { name: '投降' }).click();
-      await expect(page.locator('[data-result-outcome="defeat"]')).toBeVisible({ timeout: 15_000 });
+      await Promise.all([
+        expect(page.locator('[data-result-outcome="defeat"]')).toBeVisible({ timeout: 20_000 }),
+        expect(guestPage.locator('[data-result-outcome="victory"]')).toBeVisible({ timeout: 20_000 }),
+      ]);
+      const responses = await matchSubmissionResponses;
+      expect(
+        responses.map((response) => response.status()),
+        'Both authenticated result submissions should satisfy the integer/durable source-match contract',
+      ).toEqual([200, 200]);
+      expect(syncWarnings).toEqual([]);
       await expectNoBlockingAxeViolations(page, 'Result defeat');
+
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await expect(page.locator('[data-result-outcome="defeat"]')).toBeVisible({ timeout: 20_000 });
     } finally {
       await guestContext.close();
     }

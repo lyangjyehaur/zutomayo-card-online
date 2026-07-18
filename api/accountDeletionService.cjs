@@ -7,10 +7,14 @@ const { AccountMutationError, acquireAccountMutationLocks } = require('./account
 const RECOVERABLE_DELETION_STATUSES = ['provider_deleting', 'provider_deleted'];
 const TOMBSTONE_DELETION_STATUSES = ['provider_deleting', 'provider_deleted', 'completed'];
 const ACTIVE_DELETION_STATUSES = ['prepared', 'provider_deleting', 'provider_deleted', 'provider_failed'];
+const ACCOUNT_DELETION_RECOVERY_LOCK_NAMESPACE = 'zutomayo:account-deletion-recovery:v1';
 
 async function withTransaction(pool, operation) {
-  const client = typeof pool.connect === 'function' ? await pool.connect() : pool;
-  const release = typeof client.release === 'function' ? () => client.release() : () => undefined;
+  // A pg PoolClient exposes both connect() and release(); a Pool exposes only
+  // connect(). Keep a caller-owned lease client checked out across transactions.
+  const ownsClient = typeof pool.connect === 'function' && typeof pool.release !== 'function';
+  const client = ownsClient ? await pool.connect() : pool;
+  const release = ownsClient && typeof client.release === 'function' ? () => client.release() : () => undefined;
   try {
     await client.query('BEGIN');
     const result = await operation(client);
@@ -195,6 +199,57 @@ async function listRecoverableAccountDeletions({ pool, limit = 20 }) {
   return rows.map(mapDeletionRequest);
 }
 
+async function withAccountDeletionRecoveryLease({
+  pool,
+  requestId,
+  statuses = RECOVERABLE_DELETION_STATUSES,
+  operation,
+}) {
+  if (!pool || typeof pool.connect !== 'function') {
+    throw new Error('Account deletion recovery lease requires a PostgreSQL pool');
+  }
+  if (typeof operation !== 'function') throw new Error('Account deletion recovery lease requires an operation');
+
+  const client = await pool.connect();
+  let acquired = false;
+  try {
+    const lock = await client.query('SELECT pg_try_advisory_lock(hashtext($1), hashtext($2)) AS acquired', [
+      ACCOUNT_DELETION_RECOVERY_LOCK_NAMESPACE,
+      String(requestId),
+    ]);
+    acquired = lock.rows[0]?.acquired === true;
+    if (!acquired) return { acquired: false };
+
+    const row = (
+      await client.query(
+        `SELECT * FROM account_deletion_requests
+         WHERE id = $1 AND status = ANY($2::text[])
+         LIMIT 1`,
+        [requestId, statuses],
+      )
+    ).rows[0];
+    if (!row) return { acquired: true, request: null, result: null };
+    const request = mapDeletionRequest(row);
+    return { acquired: true, request, result: await operation(request, client) };
+  } finally {
+    let releaseError;
+    if (acquired) {
+      try {
+        await client.query('SELECT pg_advisory_unlock(hashtext($1), hashtext($2))', [
+          ACCOUNT_DELETION_RECOVERY_LOCK_NAMESPACE,
+          String(requestId),
+        ]);
+      } catch (error) {
+        // A session advisory lock survives transaction rollback and remains on
+        // a pooled connection. Destroy the client when unlock cannot be
+        // confirmed so a poisoned session can never retain the lease forever.
+        releaseError = error;
+      }
+    }
+    client.release(releaseError);
+  }
+}
+
 async function isPrincipalDeletionTombstoned({ pool, provider, providerUserId }) {
   if (!provider || !providerUserId) return false;
   const row = (
@@ -221,4 +276,5 @@ module.exports = {
   markProviderDeletionFailure,
   markProviderDeletionStarted,
   prepareLogtoAccountDeletion,
+  withAccountDeletionRecoveryLease,
 };

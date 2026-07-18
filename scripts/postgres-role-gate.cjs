@@ -1,6 +1,10 @@
 'use strict';
 
-const PROTECTED_SCHEMA_TABLES = Object.freeze(['schema_migrations', 'schema_migration_checksums']);
+const PROTECTED_SCHEMA_TABLES = Object.freeze([
+  'schema_migrations',
+  'schema_migration_checksums',
+  'official_card_data_releases',
+]);
 
 // Keep this list explicit. A new public table must be added to the role matrix
 // in the same change as its migration; otherwise the release gate fails closed.
@@ -47,6 +51,8 @@ const APPLICATION_TABLES = Object.freeze([
   'retention_runs',
   'account_action_tokens',
   'account_deletion_requests',
+  'account_export_jobs',
+  'account_export_audit',
   'relationship_change_outbox',
   'admin_users',
   'admin_sessions',
@@ -58,26 +64,19 @@ const APPLICATION_TABLES = Object.freeze([
 const ALL_TABLES = Object.freeze([...PROTECTED_SCHEMA_TABLES, ...APPLICATION_TABLES]);
 const COMPATIBILITY_VIEWS = Object.freeze(['card_effects_i18n']);
 const ALL_RELATIONS = Object.freeze([...ALL_TABLES, ...COMPATIBILITY_VIEWS]);
-const ROLE_TYPES = Object.freeze(['api', 'game', 'platform', 'retention', 'monitor', 'backup', 'wal']);
+const API_APPEND_ONLY_AUDIT_TABLES = Object.freeze(['admin_audit_log', 'account_export_audit']);
+const API_CRUD_TABLES = Object.freeze(
+  APPLICATION_TABLES.filter((tableName) => !API_APPEND_ONLY_AUDIT_TABLES.includes(tableName)),
+);
+const ROLE_TYPES = Object.freeze(['api', 'game', 'platform', 'retention', 'monitor', 'backup', 'wal', 'walOperator']);
 const APP_ALIAS_TYPES = Object.freeze(new Set(['api', 'game', 'platform']));
 const TABLE_PRIVILEGES = Object.freeze(['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER']);
 const SEQUENCE_PRIVILEGES = Object.freeze(['USAGE', 'SELECT', 'UPDATE']);
 const COLUMN_PRIVILEGES = Object.freeze(['SELECT', 'INSERT', 'UPDATE', 'REFERENCES']);
-const USER_COLUMNS = Object.freeze([
-  'id',
-  'email',
-  'password_hash',
-  'salt',
-  'nickname',
-  'elo',
-  'match_count',
-  'wins',
-  'created_at',
-  'email_verified',
-  'auth_version',
-  'deleted_at',
+const ACCOUNT_ANONYMIZATION_FUNCTIONS = Object.freeze([
+  'public.zutomayo_anonymize_account_export_audit(text)',
+  'public.zutomayo_anonymize_admin_audit_identity(text,text)',
 ]);
-
 const GAME_READ_TABLES = Object.freeze([
   'cards',
   'card_texts_i18n',
@@ -128,10 +127,13 @@ const RETENTION_TABLE_PRIVILEGES = Object.freeze({
   legal_hold_objects: ['SELECT', 'INSERT'],
   admin_audit_log: ['SELECT', 'DELETE'],
   account_action_tokens: ['SELECT', 'DELETE'],
+  account_export_jobs: ['SELECT', 'DELETE'],
+  account_export_audit: ['SELECT', 'DELETE'],
   relationship_change_outbox: ['SELECT', 'DELETE'],
   retention_runs: ['INSERT', 'UPDATE'],
   schema_migrations: ['SELECT'],
   schema_migration_checksums: ['SELECT'],
+  official_card_data_releases: ['SELECT'],
 });
 
 function quoteIdentifier(value) {
@@ -150,6 +152,7 @@ function normalizeRoleUsers({ appUser, roleUsers = {}, requireComplete = false }
     monitor: String(roleUsers.monitor || '').trim(),
     backup: String(roleUsers.backup || '').trim(),
     wal: String(roleUsers.wal || '').trim(),
+    walOperator: String(roleUsers.walOperator || '').trim(),
   };
   const missing = requireComplete ? ROLE_TYPES.filter((type) => !values[type]) : [];
   if (missing.length > 0) throw new Error(`PostgreSQL role matrix is incomplete: ${missing.join(', ')}`);
@@ -209,6 +212,8 @@ function tableRulesFor(roleUsers, requiredRoleTypes) {
         connect: false,
         monitor: false,
         replication: false,
+        inherit: true,
+        walSwitch: false,
       });
     }
     return rules.get(roleName);
@@ -218,9 +223,11 @@ function tableRulesFor(roleUsers, requiredRoleTypes) {
     const rule = ensure(roleUsers[type]);
     for (const table of tables) addTablePrivileges(rule.tables, table, privileges);
     rule.connect = type !== 'wal';
-    rule.schemaUsage = type !== 'monitor' && type !== 'wal';
+    rule.schemaUsage = type !== 'monitor' && type !== 'wal' && type !== 'walOperator';
     rule.monitor = type === 'monitor';
     rule.replication = type === 'wal';
+    rule.inherit = type !== 'wal' && type !== 'walOperator';
+    rule.walSwitch = type === 'walOperator';
   };
   const grantTableRules = (type, tableRules) => {
     if (!requiredRoleTypes.includes(type) || !roleUsers[type]) return;
@@ -239,7 +246,8 @@ function tableRulesFor(roleUsers, requiredRoleTypes) {
 
   // API owns the HTTP data plane. It gets row-level application CRUD but no
   // DDL, privilege-management, or writes to migration history.
-  grant('api', APPLICATION_TABLES, ['SELECT', 'INSERT', 'UPDATE', 'DELETE']);
+  grant('api', API_CRUD_TABLES, ['SELECT', 'INSERT', 'UPDATE', 'DELETE']);
+  grant('api', API_APPEND_ONLY_AUDIT_TABLES, ['SELECT', 'INSERT']);
   grant('api', PROTECTED_SCHEMA_TABLES, ['SELECT']);
   grant('api', COMPATIBILITY_VIEWS, ['SELECT']);
 
@@ -253,7 +261,7 @@ function tableRulesFor(roleUsers, requiredRoleTypes) {
 
   grant('platform', PLATFORM_READ_TABLES, ['SELECT']);
   grant('platform', PLATFORM_WRITE_TABLES, ['SELECT', 'INSERT', 'UPDATE']);
-  grantColumns('platform', 'users', { SELECT: ['id', 'auth_version', 'deleted_at'] });
+  grantColumns('platform', 'users', { SELECT: ['id', 'auth_version', 'deleted_at', 'identity_anonymized_at'] });
 
   grantTableRules('retention', RETENTION_TABLE_PRIVILEGES);
   grantColumns('retention', 'users', { SELECT: ['id', 'deleted_at'] });
@@ -266,9 +274,11 @@ function tableRulesFor(roleUsers, requiredRoleTypes) {
     if (!roleUsers[type]) continue;
     const rule = ensure(roleUsers[type]);
     rule.connect = type !== 'wal';
-    rule.schemaUsage = type !== 'monitor' && type !== 'wal';
+    rule.schemaUsage = type !== 'monitor' && type !== 'wal' && type !== 'walOperator';
     rule.monitor = type === 'monitor';
     rule.replication = type === 'wal';
+    rule.inherit = type !== 'wal' && type !== 'walOperator';
+    rule.walSwitch = type === 'walOperator';
     if (type === 'api') {
       rule.sequences = new Set(SEQUENCE_PRIVILEGES);
     } else if (type === 'backup') {
@@ -304,16 +314,16 @@ function expectedSequenceChecks(rules) {
   return checks;
 }
 
-function expectedColumnChecks(rules) {
+function expectedColumnChecks(rules, actualColumns) {
   const checks = [];
   for (const [roleName, rule] of rules) {
-    for (const columnName of USER_COLUMNS) {
+    for (const { table_name: tableName, column_name: columnName } of actualColumns) {
       for (const privilege of COLUMN_PRIVILEGES) {
-        const tableGrant = rule.tables.get('users')?.has(privilege) === true;
-        const columnGrant = rule.columns.get('users')?.get(privilege)?.has(columnName) === true;
+        const tableGrant = rule.tables.get(tableName)?.has(privilege) === true;
+        const columnGrant = rule.columns.get(tableName)?.get(privilege)?.has(columnName) === true;
         checks.push({
           role_name: roleName,
-          table_name: 'users',
+          table_name: tableName,
           column_name: columnName,
           privilege,
           allowed: tableGrant || columnGrant,
@@ -382,7 +392,7 @@ async function enforceRuntimeRolePrivileges(pool, options = {}) {
       attrs.rolcreaterole !== false ||
       attrs.rolbypassrls !== false ||
       attrs.rolreplication !== expectedReplication ||
-      attrs.rolinherit !== !expectedReplication
+      attrs.rolinherit !== rule.inherit
     ) {
       throw new Error(`PostgreSQL role attributes are unsafe or mismatched: ${roleName}`);
     }
@@ -411,10 +421,23 @@ async function enforceRuntimeRolePrivileges(pool, options = {}) {
   if (unknownTables.length > 0) {
     throw new Error(`Public tables are missing from the PostgreSQL role matrix: ${unknownTables.join(', ')}`);
   }
+  const actualColumns = (
+    await pool.query(
+      `SELECT table_name, column_name
+         FROM information_schema.columns
+        WHERE table_schema = 'public'
+        ORDER BY table_name, ordinal_position`,
+    )
+  ).rows.filter(({ table_name: tableName }) => declaredTables.has(tableName));
 
   return withAclTransaction(pool, async (client) => {
     const database = quoteIdentifier(databaseName);
-    const quotedUserColumns = USER_COLUMNS.map(quoteIdentifier).join(', ');
+    const columnsByTable = new Map();
+    for (const { table_name: tableName, column_name: columnName } of actualColumns) {
+      const columns = columnsByTable.get(tableName) || [];
+      columns.push(columnName);
+      columnsByTable.set(tableName, columns);
+    }
     await client.query(`REVOKE CONNECT ON DATABASE ${database} FROM PUBLIC`);
     await client.query(`REVOKE ALL ON SCHEMA public FROM PUBLIC`);
 
@@ -423,8 +446,12 @@ async function enforceRuntimeRolePrivileges(pool, options = {}) {
       await client.query(`REVOKE CONNECT ON DATABASE ${database} FROM ${role}`);
       await client.query(`REVOKE ALL PRIVILEGES ON SCHEMA public FROM ${role}`);
       await client.query(`REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM ${role}`);
-      for (const privilege of COLUMN_PRIVILEGES) {
-        await client.query(`REVOKE ${privilege} (${quotedUserColumns}) ON TABLE public."users" FROM ${role}`);
+      for (const [tableName, columns] of columnsByTable) {
+        const table = quoteIdentifier(tableName);
+        const columnList = columns.map(quoteIdentifier).join(', ');
+        for (const privilege of COLUMN_PRIVILEGES) {
+          await client.query(`REVOKE ${privilege} (${columnList}) ON TABLE public.${table} FROM ${role}`);
+        }
       }
       await client.query(`REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM ${role}`);
       await client.query(`ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON TABLES FROM ${role}`);
@@ -444,6 +471,16 @@ async function enforceRuntimeRolePrivileges(pool, options = {}) {
       }
       if (rule.sequences.size > 0) {
         await client.query(`GRANT ${[...rule.sequences].join(', ')} ON ALL SEQUENCES IN SCHEMA public TO ${role}`);
+      }
+    }
+
+    for (const signature of ACCOUNT_ANONYMIZATION_FUNCTIONS) {
+      await client.query(`REVOKE ALL ON FUNCTION ${signature} FROM PUBLIC`);
+      for (const roleName of rules.keys()) {
+        await client.query(`REVOKE ALL ON FUNCTION ${signature} FROM ${quoteIdentifier(roleName)}`);
+      }
+      if (roleUsers.api) {
+        await client.query(`GRANT EXECUTE ON FUNCTION ${signature} TO ${quoteIdentifier(roleUsers.api)}`);
       }
     }
 
@@ -477,10 +514,80 @@ async function enforceRuntimeRolePrivileges(pool, options = {}) {
                 column_name,
                 privilege
               ) IS DISTINCT FROM allowed`,
-      [JSON.stringify(expectedColumnChecks(rules))],
+      [JSON.stringify(expectedColumnChecks(rules, actualColumns))],
     );
     if ((columnVerification.rows || []).length > 0) {
       throw new Error('PostgreSQL role column privileges do not match the declared matrix');
+    }
+
+    const functionContract = await client.query(
+      `SELECT signature,
+              function_oid IS NOT NULL AS present,
+              COALESCE(security_definer, FALSE) AS security_definer,
+              COALESCE(configuration @> ARRAY['search_path=pg_catalog, public'], FALSE) AS safe_search_path,
+              owner_name,
+              NOT EXISTS (
+                SELECT 1
+                  FROM aclexplode(COALESCE(function_acl, acldefault('f', function_owner))) AS privilege
+                 WHERE privilege.grantee = 0
+                   AND privilege.privilege_type = 'EXECUTE'
+              ) AS public_execute_revoked
+         FROM (
+           SELECT signature,
+                  to_regprocedure(signature) AS function_oid,
+                  proc.prosecdef AS security_definer,
+                  proc.proconfig AS configuration,
+                  proc.proacl AS function_acl,
+                  proc.proowner AS function_owner,
+                  owner.rolname AS owner_name
+             FROM unnest($1::text[]) AS expected(signature)
+             LEFT JOIN pg_proc AS proc ON proc.oid = to_regprocedure(signature)
+             LEFT JOIN pg_roles AS owner ON owner.oid = proc.proowner
+         ) AS functions`,
+      [ACCOUNT_ANONYMIZATION_FUNCTIONS],
+    );
+    if (
+      (functionContract.rows || []).some(
+        ({
+          present,
+          security_definer: securityDefiner,
+          safe_search_path: safeSearchPath,
+          owner_name: ownerName,
+          public_execute_revoked: publicExecuteRevoked,
+        }) =>
+          present !== true ||
+          securityDefiner !== true ||
+          safeSearchPath !== true ||
+          ownerName !== migrationUser ||
+          publicExecuteRevoked !== true,
+      )
+    ) {
+      throw new Error('Account anonymization function contract is missing or unsafe');
+    }
+    const functionChecks = [];
+    for (const roleName of rules.keys()) {
+      for (const signature of ACCOUNT_ANONYMIZATION_FUNCTIONS) {
+        functionChecks.push({
+          role_name: roleName,
+          function_signature: signature,
+          allowed: roleName === roleUsers.api,
+        });
+      }
+    }
+    const functionVerification = await client.query(
+      `WITH expected AS (
+         SELECT role_name, function_signature, allowed
+           FROM jsonb_to_recordset($1::jsonb)
+                AS item(role_name text, function_signature text, allowed boolean)
+       )
+       SELECT role_name, function_signature
+         FROM expected
+        WHERE has_function_privilege(role_name, function_signature, 'EXECUTE')
+              IS DISTINCT FROM allowed`,
+      [JSON.stringify(functionChecks)],
+    );
+    if ((functionVerification.rows || []).length > 0) {
+      throw new Error('Account anonymization function privileges do not match the declared matrix');
     }
 
     const sequenceVerification = await client.query(
@@ -530,6 +637,64 @@ async function enforceRuntimeRolePrivileges(pool, options = {}) {
       return !rule || row.can_connect !== rule.connect;
     });
     if (badDatabase.length > 0) throw new Error('PostgreSQL role database privileges do not match the declared matrix');
+
+    const walWrapper = await client.query(
+      `SELECT procedure.oid AS function_oid,
+              procedure.prosecdef AS security_definer,
+              language.lanname AS language_name,
+              btrim(procedure.prosrc) AS source,
+              procedure.proconfig AS configuration,
+              owner.rolsuper AS owner_superuser
+         FROM pg_proc procedure
+         JOIN pg_namespace namespace ON namespace.oid = procedure.pronamespace
+         JOIN pg_language language ON language.oid = procedure.prolang
+         JOIN pg_roles owner ON owner.oid = procedure.proowner
+        WHERE namespace.nspname = 'zutomayo_ops'
+          AND procedure.proname = 'switch_wal'
+          AND procedure.pronargs = 0
+          AND procedure.prorettype = 'pg_lsn'::regtype`,
+    );
+    const wrapper = walWrapper.rows?.[0];
+    if (
+      walWrapper.rows?.length !== 1 ||
+      wrapper?.security_definer !== true ||
+      wrapper?.language_name !== 'sql' ||
+      wrapper?.source !== 'SELECT pg_catalog.pg_switch_wal()' ||
+      wrapper?.owner_superuser !== true ||
+      !Array.isArray(wrapper?.configuration) ||
+      !wrapper.configuration.includes('search_path=pg_catalog')
+    ) {
+      throw new Error('PostgreSQL WAL switch wrapper is missing or unsafe');
+    }
+
+    const walSchemaVerification = await client.query(
+      `SELECT role_name,
+              has_schema_privilege(role_name, 'zutomayo_ops', 'USAGE') AS can_use,
+              has_schema_privilege(role_name, 'zutomayo_ops', 'CREATE') AS can_create
+         FROM unnest($1::text[]) AS roles(role_name)`,
+      [uniqueUsers],
+    );
+    const badWalSchema = (walSchemaVerification.rows || []).filter((row) => {
+      const rule = rules.get(row.role_name);
+      return !rule || row.can_use !== rule.walSwitch || row.can_create === true;
+    });
+    if (badWalSchema.length > 0) {
+      throw new Error('PostgreSQL WAL operations schema privileges do not match the declared matrix');
+    }
+
+    const walSwitchVerification = await client.query(
+      `SELECT role_name,
+              has_function_privilege(role_name, $2::oid, 'EXECUTE') AS can_switch_wal
+         FROM unnest($1::text[]) AS roles(role_name)`,
+      [uniqueUsers, wrapper.function_oid],
+    );
+    const badWalSwitch = (walSwitchVerification.rows || []).filter((row) => {
+      const rule = rules.get(row.role_name);
+      return !rule || row.can_switch_wal !== rule.walSwitch;
+    });
+    if (badWalSwitch.length > 0) {
+      throw new Error('PostgreSQL WAL switch privilege does not match the declared matrix');
+    }
 
     const monitorRole = await client.query("SELECT rolcanlogin FROM pg_roles WHERE rolname = 'pg_monitor'");
     if (monitorRole.rows?.[0]?.rolcanlogin !== false)

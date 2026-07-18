@@ -37,7 +37,7 @@ export function AppHeader({ title, subtitle, backTo, leftMeta, actions, classNam
         {backTo ? (
           <button
             type="button"
-            className="-my-1 -ml-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-sm text-content-muted transition hover:text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--focus-ring-color]"
+            className="-my-1 -ml-1 flex size-11 shrink-0 items-center justify-center rounded-sm text-content-muted transition hover:text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--focus-ring-color]"
             aria-label="back"
             onClick={() => navigate(backTo)}
           >

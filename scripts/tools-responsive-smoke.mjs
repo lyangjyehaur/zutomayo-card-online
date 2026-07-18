@@ -1,13 +1,15 @@
 import fs from 'node:fs/promises';
 import http from 'node:http';
 import { spawn } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const chromePath = process.env.CHROME_PATH ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const baseUrl = process.env.BASE_URL ?? 'http://127.0.0.1:3000';
-const outDir = process.env.OUT_DIR ?? '/private/tmp/zutomayo-tools-responsive-screenshots';
-const reportPath = process.env.REPORT_PATH ?? '/private/tmp/zutomayo-tools-responsive-report.json';
+const outDir = process.env.OUT_DIR ?? join(tmpdir(), 'zutomayo-tools-responsive-screenshots');
+const reportPath = process.env.REPORT_PATH ?? join(tmpdir(), 'zutomayo-tools-responsive-report.json');
 const port = Number(process.env.CDP_PORT ?? 9911);
-const profileDir = `/private/tmp/zutomayo-tools-responsive-profile-${process.pid}-${Date.now()}`;
+const profileDir = join(tmpdir(), `zutomayo-tools-responsive-profile-${process.pid}-${Date.now()}`);
 
 const cases = [
   { name: 'feedback-360x740', path: '/feedback', width: 360, height: 740, waitFor: '.feedback-toolbar' },
@@ -272,7 +274,7 @@ const metricsExpression = `
     },
     shell: visible('main').slice(0, 1),
     toolbar: visible('.feedback-toolbar, .responsive-data-list, .i18n-responsive-table, article').slice(0, 8),
-    smallTargets: targets.filter((item) => item.width < 40 || item.height < 40).slice(0, 12),
+    smallTargets: targets.filter((item) => item.width < 44 || item.height < 44).slice(0, 12),
     offscreen: [...document.body.querySelectorAll('*')]
       .filter(isVisible)
       .map(box)

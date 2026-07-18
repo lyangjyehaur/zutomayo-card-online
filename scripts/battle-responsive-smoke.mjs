@@ -1,13 +1,15 @@
 import fs from 'node:fs/promises';
 import http from 'node:http';
 import { spawn } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const chromePath = process.env.CHROME_PATH ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const baseUrl = process.env.BASE_URL ?? 'http://127.0.0.1:3000';
-const outDir = process.env.OUT_DIR ?? '/private/tmp/zutomayo-battle-responsive-screenshots';
-const reportPath = process.env.REPORT_PATH ?? '/private/tmp/zutomayo-battle-responsive-report.json';
+const outDir = process.env.OUT_DIR ?? join(tmpdir(), 'zutomayo-battle-responsive-screenshots');
+const reportPath = process.env.REPORT_PATH ?? join(tmpdir(), 'zutomayo-battle-responsive-report.json');
 const port = Number(process.env.CDP_PORT ?? 9666);
-const profileDir = `/private/tmp/zutomayo-battle-responsive-profile-${process.pid}-${Date.now()}`;
+const profileDir = join(tmpdir(), `zutomayo-battle-responsive-profile-${process.pid}-${Date.now()}`);
 
 const cases = [
   { name: '1920x1080__turn-set', width: 1920, height: 1080, state: 'turn-set' },

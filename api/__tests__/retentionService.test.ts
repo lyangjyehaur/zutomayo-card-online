@@ -47,6 +47,8 @@ describe('retention service', () => {
       reports: 2,
       adminAudit: 2,
       accountTokens: 2,
+      accountExportJobs: 2,
+      accountExportAudit: 2,
       relationshipOutbox: 2,
     });
     expect(pool.queries.some(({ sql }) => sql.startsWith('UPDATE matches'))).toBe(false);
@@ -79,6 +81,40 @@ describe('retention service', () => {
       pool.queries.find(({ sql }) => sql.includes('FROM relationship_change_outbox o'))?.sql || '';
     expect(relationshipQuery).toContain("h.subject_type = 'account'");
     expect(relationshipQuery).toContain('h.subject_id = ANY(o.user_ids)');
+  });
+
+  it('removes only old terminal export metadata after its artifact is gone', async () => {
+    const pool = createPool();
+    await runRetention({ pool, dryRun: false, runId: 'retention_account_exports' });
+
+    const jobQuery = pool.queries.find(({ sql }) => sql.includes('DELETE FROM account_export_jobs'))?.sql || '';
+    expect(jobQuery).toContain("j.status IN ('failed', 'expired')");
+    expect(jobQuery).toContain('j.object_key IS NULL');
+    expect(jobQuery).toContain('j.object_version_id IS NULL');
+    expect(jobQuery).toContain('j.updated_at < $1');
+    expect(jobQuery).toContain("h.subject_type = 'account'");
+    expect(jobQuery).toContain('h.subject_id = j.user_id');
+    expect(jobQuery).not.toMatch(/SET\s+expires_at/i);
+
+    const auditQuery = pool.queries.find(({ sql }) => sql.includes('DELETE FROM account_export_audit'))?.sql || '';
+    expect(auditQuery).toContain('a.created_at < $1');
+    expect(auditQuery).toContain('a.job_id IS NULL');
+    expect(auditQuery).toContain("j.status IN ('failed', 'expired')");
+    expect(auditQuery).toContain('j.object_key IS NULL');
+    expect(auditQuery).toContain("h.subject_type = 'account'");
+    expect(auditQuery).toContain('h.subject_id = a.user_id');
+  });
+
+  it('uses independent 365-day cutoffs for export metadata and audit history', async () => {
+    const pool = createPool();
+    const now = '2026-07-14T00:00:00.000Z';
+    await runRetention({ pool, now, dryRun: true, runId: 'retention_account_export_cutoffs' });
+
+    const expectedCutoff = retentionCutoff(now, 365);
+    const jobQuery = pool.queries.find(({ sql }) => sql.includes('FROM account_export_jobs j'));
+    const auditQuery = pool.queries.find(({ sql }) => sql.includes('FROM account_export_audit a'));
+    expect(jobQuery?.params).toEqual([expectedCutoff]);
+    expect(auditQuery?.params).toEqual([expectedCutoff]);
   });
 
   it('uses one shared lock key for retention, hold creation, and account deletion', () => {

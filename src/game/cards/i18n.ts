@@ -2,6 +2,7 @@
 // 日英有效官方文本來自 PG cards，其餘語言來自 card_texts_i18n。
 
 import type { CardDef } from '../types';
+import { acceptCardDataResponse } from './dataContract';
 import { getGameConfig } from './loader';
 import { CARD_SONG_TITLES_I18N_CONFIG_KEY, normalizeSongTitleConfig } from './songTitleConfig';
 
@@ -40,6 +41,7 @@ async function fetchJson<T>(path: string): Promise<T | null> {
   try {
     const response = await fetch(path);
     if (!response.ok) return null;
+    if (!acceptCardDataResponse(response)) return null;
     return (await response.json()) as T;
   } catch {
     return null;

@@ -41,6 +41,7 @@ ENV SENTRY_URL=$SENTRY_URL
 ENV SENTRY_ORG=$SENTRY_ORG
 ENV SENTRY_PROJECT=$SENTRY_PROJECT
 COPY package.json package-lock.json ./
+COPY patches ./patches
 RUN npm ci
 COPY . .
 RUN --mount=type=secret,id=sentry_auth_token,required=false \
@@ -62,6 +63,9 @@ RUN apk upgrade --no-cache \
     && npm cache clean --force
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
+COPY --from=builder /app/node_modules/boardgame.io/dist/cjs/master-9bf9c1d4.js ./node_modules/boardgame.io/dist/cjs/master-9bf9c1d4.js
+COPY --from=builder /app/node_modules/boardgame.io/dist/cjs/server.js ./node_modules/boardgame.io/dist/cjs/server.js
+COPY --from=builder /app/node_modules/boardgame.io/dist/esm/master-17425f07.js ./node_modules/boardgame.io/dist/esm/master-17425f07.js
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/src ./src
 COPY --from=builder /app/scripts ./scripts
@@ -69,6 +73,7 @@ COPY --from=builder /app/api/deckService.cjs ./api/deckService.cjs
 COPY --from=builder /app/api/schemaGate.cjs ./api/schemaGate.cjs
 COPY --from=builder /app/api/relationshipEvents.cjs ./api/relationshipEvents.cjs
 COPY --from=builder /app/api/accountMutationLock.cjs ./api/accountMutationLock.cjs
+COPY --from=builder /app/api/backgroundWorkerConfig.cjs ./api/backgroundWorkerConfig.cjs
 COPY --from=builder /app/api/relationshipOutbox.cjs ./api/relationshipOutbox.cjs
 COPY --from=builder /app/api/runtimeSecurityConfig.cjs ./api/runtimeSecurityConfig.cjs
 COPY --from=builder /app/api/seasonResultService.cjs ./api/seasonResultService.cjs

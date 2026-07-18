@@ -67,7 +67,7 @@ export function VersionUpdateTrigger() {
 
   return (
     <Button
-      className="version-update-trigger"
+      className="version-update-trigger min-h-11"
       variant="ghost"
       size="sm"
       type="button"

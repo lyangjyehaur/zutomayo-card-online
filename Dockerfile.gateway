@@ -1,0 +1,15 @@
+# syntax=docker/dockerfile:1.7
+
+# Pin the multi-platform upstream manifest; CD publishes this minimal runtime as
+# a repository-owned, scanned, SBOM-attested, and Cosign-signed image.
+FROM haproxy:3.2-alpine@sha256:66e25cc9a8332635f4e897f7f4b1e5622c25f09f0ee23cddc6ce9bdb3a24772a
+
+ARG APP_VERSION
+ARG APP_BUILD_ID
+LABEL org.opencontainers.image.title="Zutomayo release gateway" \
+      org.opencontainers.image.version="$APP_VERSION" \
+      org.opencontainers.image.revision="$APP_BUILD_ID"
+
+# 8080 is unprivileged. The Compose contract provides writable uid/gid 99
+# tmpfs mounts for the master-worker PID and runtime API socket.
+USER haproxy

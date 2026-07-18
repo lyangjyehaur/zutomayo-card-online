@@ -14,7 +14,7 @@ function mockClient(
 ): MockClient {
   return {
     query: vi.fn(async (sql: string, params?: unknown[]) => {
-      if (sql === 'SELECT * FROM users WHERE id = $1 FOR UPDATE') {
+      if (sql === 'SELECT id, deleted_at, elo, match_count, wins FROM users WHERE id = $1 FOR UPDATE') {
         const row = accountRow ? { id: params?.[0], ...accountRow } : null;
         return { rows: row ? [row] : [], rowCount: row ? 1 : 0 };
       }
@@ -335,7 +335,7 @@ describe('PostgresAdapter trust-chain transactions', () => {
 
     await adapter.setMetadata('match_1', { ...metadata(), updatedAt: 123 } as never);
 
-    const write = transactionClient.query.mock.calls.find(([sql]) => String(sql).startsWith('INSERT INTO bjg_matches'));
+    const write = transactionClient.query.mock.calls.find(([sql]) => String(sql).startsWith('UPDATE bjg_matches'));
     expect(write).toBeDefined();
     const persisted = JSON.parse(String(write?.[1]?.[1])) as typeof reservedMetadata & { updatedAt: number };
     expect(persisted.updatedAt).toBe(123);
@@ -403,8 +403,17 @@ describe('PostgresAdapter trust-chain transactions', () => {
   it('writes terminal state and canonical outbox row in the same transaction', async () => {
     const schemaClient = mockClient();
     const transactionClient = mockClient(async (sql) => {
-      if (sql.startsWith('SELECT metadata FROM bjg_matches')) {
-        return { rows: [{ metadata: { setupData: { rulesVersion: 'legacy' } } }], rowCount: 1 };
+      if (sql.includes('SELECT match_id, state, metadata FROM bjg_matches')) {
+        return {
+          rows: [
+            {
+              match_id: 'match_1',
+              state: { _stateID: 0 },
+              metadata: { setupData: { rulesVersion: 'legacy' } },
+            },
+          ],
+          rowCount: 1,
+        };
       }
       if (sql.includes('FROM bjg_match_seats')) {
         return {
@@ -450,6 +459,18 @@ describe('PostgresAdapter trust-chain transactions', () => {
   it('marks eligible results unrated when ranked delivery is disabled', async () => {
     const schemaClient = mockClient();
     const transactionClient = mockClient(async (sql) => {
+      if (sql.includes('SELECT match_id, state, metadata FROM bjg_matches')) {
+        return {
+          rows: [
+            {
+              match_id: 'match_1',
+              state: { _stateID: 0 },
+              metadata: { setupData: { rulesVersion: 'legacy' } },
+            },
+          ],
+          rowCount: 1,
+        };
+      }
       if (sql.includes('FROM bjg_match_seats')) {
         return {
           rows: [

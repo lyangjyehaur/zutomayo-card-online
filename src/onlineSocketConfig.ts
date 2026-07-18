@@ -2,8 +2,9 @@ export function onlineSocketOptions(): {
   transports: ['websocket'];
   upgrade: false;
 } {
-  // HTTP polling requires affinity between the handshake and every follow-up
-  // request. WebSocket-only keeps one connection on one game process and also
-  // matches the server transport contract used by server4.
+  // Multiple game replicas share durable state and PubSub, but Socket.IO HTTP
+  // polling still requires load-balancer affinity between the handshake and
+  // every follow-up request. A WebSocket-only transport keeps each connection
+  // on one replica while allowing reconnects to land on any healthy replica.
   return { transports: ['websocket'], upgrade: false };
 }

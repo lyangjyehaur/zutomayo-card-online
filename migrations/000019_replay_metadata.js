@@ -3,12 +3,20 @@ export const shorthands = undefined;
 
 /** @param pgm {import('node-pg-migrate').MigrationBuilder} */
 export const up = (pgm) => {
-  pgm.addColumns('matches', {
-    rules_version: { type: 'text', notNull: true, default: 'legacy' },
-  });
-  pgm.addColumns('bjg_match_result_outbox', {
-    rules_version: { type: 'text', notNull: true, default: 'legacy' },
-  });
+  pgm.addColumns(
+    'matches',
+    {
+      rules_version: { type: 'text', notNull: true, default: 'legacy' },
+    },
+    { ifNotExists: true },
+  );
+  pgm.addColumns(
+    'bjg_match_result_outbox',
+    {
+      rules_version: { type: 'text', notNull: true, default: 'legacy' },
+    },
+    { ifNotExists: true },
+  );
 };
 
 /** @param pgm {import('node-pg-migrate').MigrationBuilder} */

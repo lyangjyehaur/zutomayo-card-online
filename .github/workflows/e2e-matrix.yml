@@ -22,27 +22,37 @@ jobs:
         browser: [chromium, firefox, webkit, android, iphone]
     env:
       PG_PASSWORD: e2e-test-password
+      PG_BOOTSTRAP_USER: zutomayo_e2e_bootstrap
+      PG_BOOTSTRAP_PASSWORD: e2e-test-bootstrap-password
       PG_MIGRATION_USER: zutomayo_migrator
       PG_MIGRATION_PASSWORD: e2e-test-migration-password
       PG_APP_USER: zutomayo_app
       PG_APP_PASSWORD: e2e-test-app-password
-      JWT_SECRET: e2e-test-jwt-secret-32chars-min
+      JWT_SECRET: e2e-test-jwt-secret-at-least-32-bytes
+      ACCOUNT_EXPORT_S3_BUCKET: zutomayo-e2e-account-exports
+      ACCOUNT_EXPORT_S3_REGION: us-east-1
+      ACCOUNT_EXPORT_S3_CREDENTIALS_MODE: default
+      ACCOUNT_EXPORT_S3_VERSIONING_MODE: disabled
+      ACCOUNT_EXPORT_S3_LIFECYCLE_CONFIRMED: 'true'
+      ACCOUNT_EXPORT_PSEUDONYM_KEY: e2e-test-export-pseudonym-key-at-least-32-bytes
       REDIS_PASSWORD: ''
       METRICS_TOKEN: e2e-test-metrics-token
       PGSSLMODE: disable
       E2E_BROWSER_MATRIX: full
+      EXPECTED_SCHEMA_MIGRATION: 000034_card_text_rollback_compat
+      EXPECTED_SCHEMA_CHECKSUM: b2639d75bc6f9c39c74bd038052f4db2df12c77db0f7c45477a41693ebc53274
 
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: '22'
           cache: npm
       - run: npm ci
       - name: Run browser-specific E2E stack
         run: |
-          export EXPECTED_SCHEMA_MIGRATION="$(find migrations -maxdepth 1 -type f -name '*.js' -printf '%f\n' | sort | tail -n 1 | sed 's/\.js$//')"
-          export EXPECTED_SCHEMA_CHECKSUM="$(sha256sum "migrations/${EXPECTED_SCHEMA_MIGRATION}.js" | awk '{print $1}')"
+          test "$EXPECTED_SCHEMA_MIGRATION" = "$(find migrations -maxdepth 1 -type f -name '*.js' -printf '%f\n' | sort | tail -n 1 | sed 's/\.js$//')"
+          test "$EXPECTED_SCHEMA_CHECKSUM" = "$(sha256sum "migrations/${EXPECTED_SCHEMA_MIGRATION}.js" | awk '{print $1}')"
           docker compose \
             -f docker-compose.yml \
             -f docker-compose.e2e.yml \
@@ -52,7 +62,7 @@ jobs:
         timeout-minutes: 30
       - name: Upload Playwright report
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: playwright-${{ matrix.browser }}
           path: playwright-report/

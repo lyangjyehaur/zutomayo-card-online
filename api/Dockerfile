@@ -20,6 +20,7 @@ COPY ./*.cjs ./
 # server4 checks out source with a restrictive umask. Docker COPY preserves
 # those modes, so normalize runtime inputs before dropping privileges.
 RUN chmod 0444 package.json package-lock.json ./*.cjs
+RUN mkdir -p /app/data/feedback-uploads && chown -R node:node /app/data
 ENV API_PORT=3001
 ENV NODE_ENV=production
 ENV APP_VERSION=$APP_VERSION

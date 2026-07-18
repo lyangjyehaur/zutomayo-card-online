@@ -2,6 +2,18 @@
 
 const { refreshMatchmakingQueueDepth } = require('./observability.cjs');
 
+const PURGE_MATCHMAKING_PEER_LUA = `
+local peerKey = KEYS[2]
+if redis.call('HGET', peerKey, 'opponentId') ~= ARGV[1] then return 0 end
+local status = redis.call('HGET', peerKey, 'status')
+redis.call('HDEL', peerKey, 'opponentId', 'matchId', 'role', 'realMatchId')
+if status == 'matched' then
+  redis.call('HSET', peerKey, 'status', 'timeout')
+  redis.call('ZREM', KEYS[1], ARGV[2])
+end
+return 1
+`;
+
 async function refreshQueueMetric(redis) {
   try {
     await refreshMatchmakingQueueDepth(redis);
@@ -54,6 +66,32 @@ async function applyMatchmakingBlock(redis, blockerUserId, blockedUserId) {
 
 async function removeMatchmakingBlock(redis, blockerUserId, blockedUserId) {
   await redis.srem(`mm:blocked:${blockerUserId}`, blockedUserId);
+}
+
+async function scanRedisKeys(redis, args, visit) {
+  let cursor = '0';
+  do {
+    const [nextCursor, keys] = await redis.scan(cursor, ...args);
+    for (const key of keys) await visit(key);
+    cursor = String(nextCursor);
+  } while (cursor !== '0');
+}
+
+async function purgeDeletedMatchmakingAccount(redis, userId) {
+  const ownMatchmakingKey = `mm:${userId}`;
+  const ownBlockKey = `mm:blocked:${userId}`;
+
+  await redis.zrem('mm:queue', userId);
+  await redis.del(ownMatchmakingKey);
+  await scanRedisKeys(redis, ['MATCH', 'mm:blocked:*', 'COUNT', 200], async (key) => {
+    if (key !== ownBlockKey) await redis.srem(key, userId);
+  });
+  await scanRedisKeys(redis, ['MATCH', 'mm:*', 'COUNT', 200, 'TYPE', 'hash'], async (key) => {
+    if (key === ownMatchmakingKey) return;
+    await redis.eval(PURGE_MATCHMAKING_PEER_LUA, 2, 'mm:queue', key, userId, key.slice(3));
+  });
+  await redis.del(ownBlockKey);
+  await refreshQueueMetric(redis);
 }
 
 async function joinMatchmakingQueue({
@@ -164,6 +202,7 @@ module.exports = {
   joinMatchmakingQueue,
   leaveMatchmakingQueue,
   listMatchmakingBlockedUserIds,
+  purgeDeletedMatchmakingAccount,
   removeMatchmakingBlock,
   reportRealMatch,
 };

@@ -234,9 +234,12 @@ export function validateProductionRuntimeSecurity(env: RuntimeEnvironment = proc
   if (String(env.NODE_TLS_REJECT_UNAUTHORIZED || '').trim() === '0') {
     throw new Error('NODE_TLS_REJECT_UNAUTHORIZED=0 is forbidden in production');
   }
-  requireStrongSecret('JWT_SECRET', env.JWT_SECRET);
+  const jwtSecret = requireStrongSecret('JWT_SECRET', env.JWT_SECRET);
   const seatSecret = env.PLATFORM_SEAT_TOKEN_SECRET || env.JWT_SECRET;
-  requireStrongSecret('PLATFORM_SEAT_TOKEN_SECRET or JWT_SECRET', seatSecret);
+  const validatedSeatSecret = requireStrongSecret('PLATFORM_SEAT_TOKEN_SECRET or JWT_SECRET', seatSecret);
+  if (env.PLATFORM_SEAT_TOKEN_SECRET && validatedSeatSecret === jwtSecret) {
+    throw new Error('PLATFORM_SEAT_TOKEN_SECRET must be distinct from JWT_SECRET');
+  }
   resolveRedisConnectionConfig(env);
   postgresSslConfig(env);
   return true;

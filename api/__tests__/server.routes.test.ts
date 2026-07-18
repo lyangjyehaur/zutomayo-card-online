@@ -28,7 +28,35 @@ vi.stubGlobal('fetch', mockFetch);
 const mockQuery = vi.fn().mockResolvedValue({ rows: [], rowCount: 0 });
 const mockPoolEnd = vi.fn().mockResolvedValue(undefined);
 const mockPoolOn = vi.fn();
-const mockPool = { query: mockQuery, end: mockPoolEnd, on: mockPoolOn };
+const mockPoolRelease = vi.fn();
+const leaseQueryCalls: unknown[][] = [];
+let mockAccountMutationLease = false;
+let lastChatMessageResult: { rows: unknown[]; rowCount?: number } | null = null;
+const mockLeaseQuery = vi.fn(async (sql: string, params?: unknown[]) => {
+  leaseQueryCalls.push([sql, params]);
+  if (mockAccountMutationLease) {
+    if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(sql) || sql.includes('pg_advisory_xact_lock')) {
+      return { rows: [], rowCount: 0 };
+    }
+    if (sql === 'SELECT id, deleted_at, elo, match_count, wins FROM users WHERE id = $1 FOR UPDATE') {
+      return { rows: [{ id: params?.[0], deleted_at: null }], rowCount: 1 };
+    }
+    if (sql === 'SELECT auth_version, deleted_at FROM users WHERE id = $1') {
+      return { rows: [{ auth_version: 1, deleted_at: null }], rowCount: 1 };
+    }
+    if (sql.includes('FOR SHARE OF m, c') && lastChatMessageResult) return lastChatMessageResult;
+  }
+  return params === undefined ? mockQuery(sql) : mockQuery(sql, params);
+});
+const mockPoolConnect = vi.fn(async () => ({ query: mockLeaseQuery, release: mockPoolRelease }));
+const mockPoolQuery = async (sql: string, params?: unknown[]) => {
+  const result = params === undefined ? await mockQuery(sql) : await mockQuery(sql, params);
+  if (sql.includes('FROM chat_messages m') && sql.includes('JOIN chat_conversations c') && result?.rows?.[0]?.id) {
+    lastChatMessageResult = result;
+  }
+  return result;
+};
+const mockPool = { query: mockPoolQuery, connect: mockPoolConnect, end: mockPoolEnd, on: mockPoolOn };
 
 const mockRedisIncr = vi.fn().mockResolvedValue(1);
 const mockRedisExpire = vi.fn().mockResolvedValue(1);
@@ -117,11 +145,33 @@ Module_._load = function (request: string, parent: NodeJS.Module | undefined, is
 const require_ = createRequire(import.meta.url);
 const serverModule = require_('../server.cjs') as {
   handleRequest: (req: unknown, res: unknown) => void;
+  createGracefulShutdown: (options: {
+    httpServer: {
+      listening?: boolean;
+      close: (callback: (error?: Error) => void) => void;
+      closeIdleConnections?: () => void;
+      closeAllConnections?: () => void;
+    };
+    beginDrain: () => void;
+    stopWorkers: () => Promise<void>;
+    closeResources: () => Promise<void>;
+    closeTelemetry?: () => Promise<void>;
+    httpDrainTimeoutMs?: number;
+    shutdownTimeoutMs?: number;
+    log?: {
+      info: (...args: unknown[]) => void;
+      warn: (...args: unknown[]) => void;
+      error: (...args: unknown[]) => void;
+    };
+    setExitCode?: (code: number) => void;
+    forceExit?: (code: number) => void;
+  }) => (signal?: string) => Promise<void>;
+  markApiDraining: () => void;
   recoverAccountDeletions: () => Promise<void>;
 };
 Module_._load = originalLoad;
 
-const { handleRequest, recoverAccountDeletions } = serverModule;
+const { createGracefulShutdown, handleRequest, markApiDraining, recoverAccountDeletions } = serverModule;
 
 // ===== Mock req/res helpers =====
 
@@ -354,6 +404,9 @@ function adminUnsafeHeaders() {
 describe('server routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    leaseQueryCalls.length = 0;
+    mockAccountMutationLease = false;
+    lastChatMessageResult = null;
     mockFetch.mockReset();
     // Reset default mock behavior after clearAllMocks
     mockQuery.mockResolvedValue({ rows: [], rowCount: 0 });
@@ -606,6 +659,7 @@ describe('server routes', () => {
         return 'OK';
       });
       mockRedisEval.mockImplementation(async (_script: string, _keyCount: number, key: string) => {
+        if (key.startsWith('refresh:')) return 1;
         if (!key.startsWith('oauth:')) return null;
         const value = oauthValues.get(key) || null;
         oauthValues.delete(key);
@@ -676,6 +730,7 @@ describe('server routes', () => {
       const ticket = callback._body.match(/body: JSON\.stringify\(\{ ticket: "([^"]+)" \}\)/)?.[1];
       expect(ticket).toBeTruthy();
 
+      mockAccountMutationLease = true;
       const firstRedeem = await sendRequest('POST', '/api/oauth/session', { ticket });
       expect(firstRedeem.statusCode).toBe(200);
       const secondRedeem = await sendRequest('POST', '/api/oauth/session', { ticket });
@@ -745,7 +800,10 @@ describe('server routes', () => {
     it('POST /api/admin/session exchanges a linked user session for an admin session', async () => {
       mockQuery.mockReset();
       mockQuery
+        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
         .mockResolvedValueOnce({ rows: [{ id: 'admin_linked', role: 'admin' }], rowCount: 1 })
+        .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+        .mockResolvedValueOnce({ rows: [], rowCount: 1 })
         .mockResolvedValueOnce({ rows: [], rowCount: 1 })
         .mockResolvedValueOnce({ rows: [], rowCount: 1 });
 
@@ -755,7 +813,7 @@ describe('server routes', () => {
       expect(parseBody(res)).toEqual(
         expect.objectContaining({ token: expect.any(String), role: 'admin', expiresIn: 3600 }),
       );
-      expect(mockQuery).toHaveBeenNthCalledWith(1, expect.stringContaining('a.user_id = $1'), ['u_linked']);
+      expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('a.user_id = $1'), ['u_linked']);
     });
 
     it('POST /api/admin/session rejects an unlinked user without revoking the account session', async () => {
@@ -944,7 +1002,7 @@ describe('server routes', () => {
 
     it('commits a block relationship event to the outbox instead of publishing from the route', async () => {
       mockQuery.mockImplementation(async (sql: string, params?: unknown[]) => {
-        if (sql === 'SELECT * FROM users WHERE id = $1 FOR UPDATE') {
+        if (sql === 'SELECT id, deleted_at, elo, match_count, wins FROM users WHERE id = $1 FOR UPDATE') {
           return { rows: [{ id: String(params?.[0]), deleted_at: null }], rowCount: 1 };
         }
         if (sql.includes('INSERT INTO user_blocks')) {
@@ -964,9 +1022,10 @@ describe('server routes', () => {
       );
       expect(mockQuery).toHaveBeenCalledWith(
         expect.stringContaining('INSERT INTO relationship_change_outbox'),
-        expect.arrayContaining(['block_created:u_test:u_target:2026-07-13T00:00:00.000Z']),
+        expect.arrayContaining([expect.stringMatching(/^[a-f0-9]{64}$/)]),
       );
       expect(mockRedisPublish).not.toHaveBeenCalled();
+      expect(mockRedisMmApplyBlock).not.toHaveBeenCalled();
       const commitIndex = mockQuery.mock.calls.findIndex(([sql]) => sql === 'COMMIT');
       const outboxIndex = mockQuery.mock.calls.findIndex(([sql]) =>
         sql.includes('INSERT INTO relationship_change_outbox'),
@@ -976,9 +1035,9 @@ describe('server routes', () => {
       );
     });
 
-    it('keeps a committed block successful when the immediate Redis projection is unavailable', async () => {
+    it('leaves Redis block projection exclusively to the ordered outbox worker', async () => {
       mockQuery.mockImplementation(async (sql: string, params?: unknown[]) => {
-        if (sql === 'SELECT * FROM users WHERE id = $1 FOR UPDATE') {
+        if (sql === 'SELECT id, deleted_at, elo, match_count, wins FROM users WHERE id = $1 FOR UPDATE') {
           return { rows: [{ id: String(params?.[0]), deleted_at: null }], rowCount: 1 };
         }
         if (sql.includes('INSERT INTO user_blocks')) {
@@ -989,8 +1048,6 @@ describe('server routes', () => {
         }
         return { rows: [], rowCount: 0 };
       });
-      mockRedisMmApplyBlock.mockRejectedValueOnce(new Error('Redis projection unavailable'));
-
       const res = await sendRequest('POST', '/api/blocks', { targetUserId: 'u_target' }, userUnsafeHeaders('u_test'));
 
       expect(res.statusCode).toBe(200);
@@ -999,6 +1056,31 @@ describe('server routes', () => {
         expect.any(Array),
       );
       expect(mockRedisPublish).not.toHaveBeenCalled();
+      expect(mockRedisMmApplyBlock).not.toHaveBeenCalled();
+    });
+
+    it('leaves Redis unblock projection exclusively to the ordered outbox worker', async () => {
+      mockQuery.mockImplementation(async (sql: string, params?: unknown[]) => {
+        if (sql === 'SELECT id, deleted_at, elo, match_count, wins FROM users WHERE id = $1 FOR UPDATE') {
+          return { rows: [{ id: String(params?.[0]), deleted_at: null }], rowCount: 1 };
+        }
+        if (sql.includes('DELETE FROM user_blocks')) {
+          return { rows: [{ created_at: '2026-07-13T00:00:00.000Z' }], rowCount: 1 };
+        }
+        if (sql.includes('INSERT INTO relationship_change_outbox')) {
+          return { rows: [{ event_id: 'event-unblock' }], rowCount: 1 };
+        }
+        return { rows: [], rowCount: 0 };
+      });
+
+      const res = await sendRequest('DELETE', '/api/blocks/u_target', null, userUnsafeHeaders('u_test'));
+
+      expect(res.statusCode).toBe(200);
+      expect(mockQuery).toHaveBeenCalledWith(
+        expect.stringContaining('INSERT INTO relationship_change_outbox'),
+        expect.any(Array),
+      );
+      expect(mockRedisSrem).not.toHaveBeenCalled();
     });
 
     it('GET /api/decks returns 401 without auth', async () => {
@@ -1219,9 +1301,34 @@ describe('server routes', () => {
       const res = await sendRequest('GET', '/api/matchmaking/status');
       expect(res.statusCode).toBe(401);
     });
+
+    it.each([
+      ['POST', '/api/matchmaking/queue', {}],
+      ['GET', '/api/matchmaking/status', null],
+      ['DELETE', '/api/matchmaking/queue', null],
+      ['PUT', '/api/matchmaking/match', { matchId: 'bg_retired' }],
+    ])('retires authenticated legacy matchmaking route %s %s without Redis writes', async (method, path, body) => {
+      const res = await sendRequest(method, path, body, userUnsafeHeaders());
+
+      expect(res.statusCode).toBe(410);
+      expect(parseBody(res)).toEqual({
+        error: 'Legacy REST matchmaking was removed; use the Colyseus quick_match room',
+      });
+      expect(res.headers.deprecation).toBe('true');
+      expect(res.headers['cache-control']).toBe('no-store');
+      expect(mockRedisHgetall).not.toHaveBeenCalled();
+      expect(mockRedisHset).not.toHaveBeenCalled();
+      expect(mockRedisZadd).not.toHaveBeenCalled();
+      expect(mockRedisZrem).not.toHaveBeenCalled();
+      expect(mockRedisMmTryMatch).not.toHaveBeenCalled();
+      expect(mockRedisMmCleanExpired).not.toHaveBeenCalled();
+    });
   });
 
   describe('chat routes', () => {
+    beforeEach(() => {
+      mockAccountMutationLease = true;
+    });
     it('GET /api/chat/messages syncs every durable conversation type through the same route', async () => {
       const cases = [
         {
@@ -1505,8 +1612,11 @@ describe('server routes', () => {
       const directMessageRow = {
         id: directMessageId,
         conversation_id: directConversationId,
+        author_user_id: 'u_stranger',
         content: 'private direct message',
         source_language: 'ja',
+        moderation_status: 'visible',
+        deleted_at: null,
         type: 'direct',
         subject_id: directSubjectId,
       };
@@ -1676,8 +1786,11 @@ describe('server routes', () => {
         const messageRow = {
           id: testCase.messageId,
           conversation_id: testCase.conversationId,
+          author_user_id: 'u_author',
           content: 'secret message',
           source_language: 'ja',
+          moderation_status: 'visible',
+          deleted_at: null,
           type: testCase.type,
           subject_id: testCase.subjectId,
         };
@@ -1787,8 +1900,11 @@ describe('server routes', () => {
             {
               id: 'chat_msg_1',
               conversation_id: 'match:bgio-match-1',
+              author_user_id: 'u_author',
               content: 'こんにちは',
               source_language: 'ja',
+              moderation_status: 'visible',
+              deleted_at: null,
               type: 'match',
               subject_id: 'bgio-match-1',
             },
@@ -1797,6 +1913,7 @@ describe('server routes', () => {
         })
         .mockResolvedValueOnce({ rows: [{ exists: 1 }], rowCount: 1 })
         .mockResolvedValueOnce({ rows: [], rowCount: 0 })
+        .mockResolvedValueOnce({ rows: [{ exists: 1 }], rowCount: 1 })
         .mockResolvedValueOnce({
           rows: [
             {
@@ -1876,8 +1993,11 @@ describe('server routes', () => {
             {
               id: testCase.messageId,
               conversation_id: testCase.conversationId,
+              author_user_id: 'u_author',
               content: `こんにちは ${testCase.type}`,
               source_language: 'ja',
+              moderation_status: 'visible',
+              deleted_at: null,
               type: testCase.type,
               subject_id: testCase.subjectId,
             },
@@ -1893,7 +2013,17 @@ describe('server routes', () => {
         if (testCase.type === 'direct') {
           mockQuery.mockResolvedValueOnce({ rows: [{ exists: 1 }], rowCount: 1 });
         }
-        mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 }).mockResolvedValueOnce({
+        mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+        if (testCase.type === 'match') {
+          mockMatchParticipant();
+        }
+        if (testCase.type === 'room') {
+          mockRoomParticipant();
+        }
+        if (testCase.type === 'direct') {
+          mockQuery.mockResolvedValueOnce({ rows: [{ exists: 1 }], rowCount: 1 });
+        }
+        mockQuery.mockResolvedValueOnce({
           rows: [
             {
               message_id: testCase.messageId,
@@ -2073,6 +2203,9 @@ describe('server routes', () => {
   });
 
   describe('admin chat moderation routes', () => {
+    beforeEach(() => {
+      mockAccountMutationLease = true;
+    });
     it('GET /api/admin/chat/reports returns snapshotted message evidence', async () => {
       mockQuery.mockResolvedValueOnce({
         rows: [
@@ -2516,19 +2649,24 @@ describe('server routes', () => {
   });
 
   describe('auth refresh', () => {
+    beforeEach(() => {
+      mockAccountMutationLease = true;
+    });
+
     it('POST /api/auth/refresh returns 401 without refresh cookie', async () => {
       const res = await sendRequest('POST', '/api/auth/refresh');
       expect(res.statusCode).toBe(401);
     });
 
     it('consumes refresh tokens through the revocation-aware atomic path', async () => {
-      mockRedisEval.mockResolvedValueOnce('u_test');
+      mockRedisEval.mockResolvedValueOnce('u_test').mockResolvedValueOnce(1);
       const refreshToken = createRefreshJwt();
       const res = await sendRequest('POST', '/api/auth/refresh', null, {
         cookie: `zutomayo_refresh=${encodeURIComponent(refreshToken)}`,
       });
       expect(res.statusCode).toBe(200);
-      expect(mockRedisEval).toHaveBeenCalledWith(
+      expect(mockRedisEval).toHaveBeenNthCalledWith(
+        1,
         expect.stringContaining('revokedBefore'),
         2,
         'refresh:refresh-token-test',
@@ -2536,12 +2674,21 @@ describe('server routes', () => {
         expect.any(String),
         'u_test',
       );
-      expect(mockRedisSet).toHaveBeenCalledWith(expect.stringMatching(/^refresh:/), 'u_test', 'EX', expect.any(Number));
+      expect(mockRedisEval).toHaveBeenNthCalledWith(
+        2,
+        expect.stringContaining("redis.call('SET'"),
+        2,
+        expect.stringMatching(/^refresh:/),
+        'auth:revoked-before:u_test',
+        'u_test',
+        expect.any(String),
+        expect.any(String),
+      );
     });
 
     it('preserves the original session lineage when rotating a refresh token', async () => {
       const sessionIat = Math.floor(Date.now() / 1000) - 120;
-      mockRedisEval.mockResolvedValueOnce('u_test');
+      mockRedisEval.mockResolvedValueOnce('u_test').mockResolvedValueOnce(1);
       const res = await sendRequest('POST', '/api/auth/refresh', null, {
         cookie: `zutomayo_refresh=${encodeURIComponent(createRefreshJwt('u_test', sessionIat))}`,
       });
@@ -2616,6 +2763,7 @@ describe('server routes', () => {
         updated_at: new Date().toISOString(),
       });
       mockQuery.mockImplementation(async (sql: string) => {
+        if (sql.includes('pg_try_advisory_lock')) return { rows: [{ acquired: true }], rowCount: 1 };
         if (sql.includes('has_logto_identity')) {
           return { rows: [{ password_hash: 'oauth:disabled', has_logto_identity: true }], rowCount: 1 };
         }
@@ -2636,6 +2784,9 @@ describe('server routes', () => {
         }
         if (sql.includes('INSERT INTO account_deletion_requests')) {
           deletionStatus = 'prepared';
+          return { rows: [deletionRequest()], rowCount: 1 };
+        }
+        if (sql.includes('SELECT * FROM account_deletion_requests') && sql.includes('WHERE id = $1')) {
           return { rows: [deletionRequest()], rowCount: 1 };
         }
         if (sql.includes('SELECT * FROM account_deletion_requests')) {
@@ -2791,6 +2942,9 @@ describe('server routes', () => {
       );
       expect(mockRedisSet).toHaveBeenCalledWith('blacklist:bearer-access-token-test', '1', 'EX', expect.any(Number));
       expect(mockRedisSet).toHaveBeenCalledWith('blacklist:cookie-access-token-test', '1', 'EX', expect.any(Number));
+      expect(
+        leaseQueryCalls.some(([sql]) => String(sql).includes('UPDATE users') && String(sql).includes('auth_version')),
+      ).toBe(true);
       expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining("SET status = 'completed'"), [
         'account_delete_test',
         'u_test',
@@ -2810,7 +2964,11 @@ describe('server routes', () => {
         updated_at: '2026-07-13T00:00:00.000Z',
       });
       mockQuery.mockImplementation(async (sql: string) => {
+        if (sql.includes('pg_try_advisory_lock')) return { rows: [{ acquired: true }], rowCount: 1 };
         if (sql.includes('WHERE status = ANY($1::text[])')) return { rows: [requestRow()], rowCount: 1 };
+        if (sql.includes('WHERE id = $1 AND status = ANY($2::text[])')) {
+          return { rows: [requestRow()], rowCount: 1 };
+        }
         if (sql.includes('SELECT id, user_id FROM account_deletion_requests')) {
           return { rows: [{ id: 'account_delete_recovery', user_id: 'u_recovery' }], rowCount: 1 };
         }
@@ -2855,6 +3013,10 @@ describe('server routes', () => {
       expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining("SET status = 'completed'"), [
         'account_delete_recovery',
         'u_recovery',
+      ]);
+      expect(mockQuery).toHaveBeenCalledWith('SELECT pg_advisory_unlock(hashtext($1), hashtext($2))', [
+        'zutomayo:account-deletion-recovery:v1',
+        'account_delete_recovery',
       ]);
     });
   });
@@ -3014,6 +3176,202 @@ describe('server routes', () => {
         'season-2026-1',
         'u_claimant',
       ]);
+    });
+  });
+
+  describe('API graceful shutdown', () => {
+    function shutdownLog() {
+      return { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    }
+
+    it('marks readiness down synchronously, drains HTTP, then stops workers and dependencies in order', async () => {
+      const events: string[] = [];
+      let finishHttpDrain: ((error?: Error) => void) | undefined;
+      const setExitCode = vi.fn();
+      const httpServer = {
+        listening: true,
+        close: vi.fn((callback: (error?: Error) => void) => {
+          events.push('server.close');
+          finishHttpDrain = callback;
+        }),
+        closeIdleConnections: vi.fn(() => events.push('server.closeIdleConnections')),
+        closeAllConnections: vi.fn(),
+      };
+      const shutdown = createGracefulShutdown({
+        httpServer,
+        beginDrain: () => events.push('readiness-down'),
+        stopWorkers: async () => {
+          events.push('workers');
+        },
+        closeResources: async () => {
+          events.push('postgres-redis');
+        },
+        closeTelemetry: async () => {
+          events.push('telemetry');
+        },
+        httpDrainTimeoutMs: 1_000,
+        shutdownTimeoutMs: 2_000,
+        log: shutdownLog(),
+        setExitCode,
+        forceExit: vi.fn(),
+      });
+
+      const shutdownPromise = shutdown('SIGTERM');
+
+      expect(events).toEqual(['readiness-down', 'server.close', 'server.closeIdleConnections']);
+      expect(setExitCode).not.toHaveBeenCalled();
+      finishHttpDrain?.();
+      await shutdownPromise;
+
+      expect(events).toEqual([
+        'readiness-down',
+        'server.close',
+        'server.closeIdleConnections',
+        'workers',
+        'postgres-redis',
+        'telemetry',
+      ]);
+      expect(setExitCode).toHaveBeenCalledWith(0);
+    });
+
+    it('bounds HTTP drain time before stopping workers', async () => {
+      const events: string[] = [];
+      const httpServer = {
+        listening: true,
+        close: vi.fn(() => events.push('server.close')),
+        closeIdleConnections: vi.fn(),
+        closeAllConnections: vi.fn(() => events.push('forced-connections')),
+      };
+      const shutdown = createGracefulShutdown({
+        httpServer,
+        beginDrain: () => events.push('readiness-down'),
+        stopWorkers: async () => {
+          events.push('workers');
+        },
+        closeResources: async () => {
+          events.push('resources');
+        },
+        httpDrainTimeoutMs: 5,
+        shutdownTimeoutMs: 1_000,
+        log: shutdownLog(),
+        setExitCode: vi.fn(),
+        forceExit: vi.fn(),
+      });
+
+      await shutdown();
+
+      expect(events).toEqual(['readiness-down', 'server.close', 'forced-connections', 'workers', 'resources']);
+    });
+
+    it('coalesces repeated shutdown signals into the same drain', async () => {
+      let finishHttpDrain: (() => void) | undefined;
+      const beginDrain = vi.fn();
+      const stopWorkers = vi.fn(async () => undefined);
+      const closeResources = vi.fn(async () => undefined);
+      const setExitCode = vi.fn();
+      const httpServer = {
+        listening: true,
+        close: vi.fn((callback: () => void) => {
+          finishHttpDrain = callback;
+        }),
+        closeIdleConnections: vi.fn(),
+        closeAllConnections: vi.fn(),
+      };
+      const shutdown = createGracefulShutdown({
+        httpServer,
+        beginDrain,
+        stopWorkers,
+        closeResources,
+        httpDrainTimeoutMs: 1_000,
+        shutdownTimeoutMs: 2_000,
+        log: shutdownLog(),
+        setExitCode,
+        forceExit: vi.fn(),
+      });
+
+      const sigtermShutdown = shutdown('SIGTERM');
+      const sigintShutdown = shutdown('SIGINT');
+
+      expect(sigintShutdown).toBe(sigtermShutdown);
+      expect(beginDrain).toHaveBeenCalledOnce();
+      expect(httpServer.close).toHaveBeenCalledOnce();
+
+      finishHttpDrain?.();
+      await Promise.all([sigtermShutdown, sigintShutdown]);
+
+      expect(stopWorkers).toHaveBeenCalledOnce();
+      expect(closeResources).toHaveBeenCalledOnce();
+      expect(setExitCode).toHaveBeenCalledOnce();
+    });
+
+    it('uses the hard watchdog without stopping dependencies ahead of in-flight HTTP', async () => {
+      let finishHttpDrain: ((error?: Error) => void) | undefined;
+      const stopWorkers = vi.fn(async () => undefined);
+      const closeResources = vi.fn(async () => undefined);
+      const forceExit = vi.fn();
+      const httpServer = {
+        listening: true,
+        close: vi.fn((callback: (error?: Error) => void) => {
+          finishHttpDrain = callback;
+        }),
+        closeIdleConnections: vi.fn(),
+        closeAllConnections: vi.fn(() => finishHttpDrain?.()),
+      };
+      const shutdown = createGracefulShutdown({
+        httpServer,
+        beginDrain: vi.fn(),
+        stopWorkers,
+        closeResources,
+        httpDrainTimeoutMs: 1_000,
+        shutdownTimeoutMs: 5,
+        log: shutdownLog(),
+        setExitCode: vi.fn(),
+        forceExit,
+      });
+
+      await shutdown();
+
+      expect(httpServer.closeAllConnections).toHaveBeenCalledOnce();
+      expect(forceExit).toHaveBeenCalledWith(1);
+      expect(stopWorkers).not.toHaveBeenCalled();
+      expect(closeResources).not.toHaveBeenCalled();
+    });
+
+    it('returns readiness 503 when drain begins during a dependency probe while keeping health available', async () => {
+      let resolvePostgresProbe: ((value: { rows: Array<Record<string, number>> }) => void) | undefined;
+      let signalPostgresProbeStarted: (() => void) | undefined;
+      const postgresProbeStarted = new Promise<void>((resolve) => {
+        signalPostgresProbeStarted = resolve;
+      });
+      let deferNextPostgresProbe = true;
+      mockQuery.mockImplementation((sql: string) => {
+        if (sql === 'SELECT 1' && deferNextPostgresProbe) {
+          deferNextPostgresProbe = false;
+          signalPostgresProbeStarted?.();
+          return new Promise((resolve) => {
+            resolvePostgresProbe = resolve;
+          });
+        }
+        if (sql === 'SELECT 1') return Promise.resolve({ rows: [{ '?column?': 1 }], rowCount: 1 });
+        return Promise.resolve({ rows: [], rowCount: 0 });
+      });
+      mockRedisPing.mockResolvedValue('PONG');
+
+      const readyResponsePromise = sendRequest('GET', '/ready');
+      await postgresProbeStarted;
+      markApiDraining();
+      resolvePostgresProbe?.({ rows: [{ '?column?': 1 }] });
+
+      const readyResponse = await readyResponsePromise;
+      expect(readyResponse.statusCode).toBe(503);
+      expect(parseBody(readyResponse)).toMatchObject({
+        ready: false,
+        checks: { draining: 'down', postgres: 'up', redis: 'up' },
+      });
+
+      const healthResponse = await sendRequest('GET', '/health');
+      expect(healthResponse.statusCode).toBe(200);
+      expect(parseBody(healthResponse)).toMatchObject({ status: 'ok' });
     });
   });
 });

@@ -20,7 +20,7 @@
   --color-accent-primary-soft: var(--accent-primary-soft);
   --color-accent-action: var(--accent-action);
   --color-accent-danger: var(--accent-danger);
-  --color-accent-danger-hover: var(--accent-danger-hover);
+  --color-accent-danger-surface: var(--accent-danger-surface);
   --color-accent-success: var(--accent-success);
   --color-accent-info: var(--accent-info);
   --color-border-default: var(--border-default);
@@ -873,7 +873,7 @@ input:focus {
 
 .version-update-trigger {
   display: inline-flex;
-  min-height: 2.5rem;
+  min-height: var(--touch-target-min);
   min-width: 10.5rem;
   align-items: center;
   border: 0;
@@ -987,7 +987,6 @@ input:focus {
   padding: 1rem;
   background: rgba(5, 7, 16, 0.62);
   backdrop-filter: blur(8px);
-  animation: motion-overlay-enter var(--motion-duration-base) var(--motion-ease-out);
 }
 
 .app-drawer-panel {
@@ -1148,11 +1147,9 @@ input:focus {
 
 @keyframes drawer-rise {
   from {
-    opacity: 0;
     transform: translateY(0.65rem);
   }
   to {
-    opacity: 1;
     transform: translateY(0);
   }
 }
@@ -3710,6 +3707,15 @@ button.zone:focus-visible {
 }
 
 @media (max-width: 768px) {
+  .deck-library-actions .deck-library-action {
+    width: var(--touch-target-min);
+    min-width: var(--touch-target-min);
+  }
+
+  .deck-save-action {
+    min-width: var(--touch-target-min);
+  }
+
   .opponent-stats-bar {
     min-height: 2rem;
     gap: 0.35rem;

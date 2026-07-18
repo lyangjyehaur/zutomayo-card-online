@@ -1,13 +1,21 @@
 import fs from 'node:fs/promises';
 import http from 'node:http';
 import { spawn } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const chromePath = process.env.CHROME_PATH ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const baseUrl = process.env.BASE_URL ?? 'http://127.0.0.1:3000';
-const outDir = process.env.OUT_DIR ?? '/private/tmp/zutomayo-admin-responsive-screenshots';
-const reportPath = process.env.REPORT_PATH ?? '/private/tmp/zutomayo-admin-responsive-report.json';
+const outDir = process.env.OUT_DIR ?? join(tmpdir(), 'zutomayo-admin-responsive-screenshots');
+const reportPath = process.env.REPORT_PATH ?? join(tmpdir(), 'zutomayo-admin-responsive-report.json');
 const port = Number(process.env.CDP_PORT ?? 9899);
-const profileDir = `/private/tmp/zutomayo-admin-responsive-profile-${process.pid}-${Date.now()}`;
+const profileDir = join(tmpdir(), `zutomayo-admin-responsive-profile-${process.pid}-${Date.now()}`);
+const packageJson = JSON.parse(await fs.readFile(new URL('../package.json', import.meta.url), 'utf8'));
+const appVersion = process.env.APP_VERSION ?? packageJson.version;
+const buildId = process.env.APP_BUILD_ID ?? appVersion;
+const rulesVersion = process.env.GAME_RULES_VERSION ?? appVersion;
+const releaseSha = /^[a-f0-9]{40}$/.test(buildId) ? buildId : 'b'.repeat(40);
+const datasetSha256 = 'a'.repeat(64);
 
 const cases = [
   { name: 'admin-360x740', width: 360, height: 740, surface: 'cards' },
@@ -16,9 +24,9 @@ const cases = [
   { name: 'admin-768x1024', width: 768, height: 1024, surface: 'cards' },
   { name: 'admin-1024x768', width: 1024, height: 768, surface: 'cards' },
   { name: 'admin-users-360x740', width: 360, height: 740, surface: 'table', tab: '使用者' },
-  { name: 'admin-matches-360x740', width: 360, height: 740, surface: 'table', tab: '對戰' },
+  { name: 'admin-matches-360x740', width: 360, height: 740, surface: 'table', tab: '對戰紀錄' },
   { name: 'admin-users-390x844', width: 390, height: 844, surface: 'table', tab: '使用者' },
-  { name: 'admin-matches-768x1024', width: 768, height: 1024, surface: 'table', tab: '對戰' },
+  { name: 'admin-matches-768x1024', width: 768, height: 1024, surface: 'table', tab: '對戰紀錄' },
   { name: 'admin-users-1024x768', width: 1024, height: 768, surface: 'table', tab: '使用者' },
 ];
 
@@ -146,7 +154,55 @@ const setupAuth = `
   sessionStorage.setItem('zutomayo_admin_token', 'responsive-smoke-admin');
   const originalFetch = window.fetch.bind(window);
   window.fetch = async (input, init) => {
-    const url = typeof input === 'string' ? input : input.url;
+    const url = input instanceof Request ? input.url : String(input);
+    if (new URL(url, location.href).pathname === '/api/cards') {
+      return new Response(JSON.stringify([
+        {
+          id: 'admin-responsive-card-001',
+          name: 'Admin Responsive Character',
+          pack: 'qa',
+          song: 'qa',
+          illustrator: 'qa',
+          rarity: 'N',
+          element: '闇',
+          type: 'Character',
+          clock: 1,
+          attack: { night: 100, day: 100 },
+          powerCost: 1,
+          sendToPower: 1,
+          effect: '',
+          image: '',
+          errata: ''
+        },
+        {
+          id: 'admin-responsive-card-002',
+          name: 'Admin Responsive Enchant',
+          pack: 'qa',
+          song: 'qa',
+          illustrator: 'qa',
+          rarity: 'N',
+          element: '炎',
+          type: 'Enchant',
+          clock: 1,
+          powerCost: 1,
+          sendToPower: 0,
+          effect: 'Draw 1.',
+          image: '',
+          errata: ''
+        }
+      ]), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Card-Dataset-Sha256': ${JSON.stringify(datasetSha256)},
+          'X-Card-Dataset-Release-Sha': ${JSON.stringify(releaseSha)},
+          'X-Card-Dataset-Count': '2',
+          'X-Card-Data-App-Version': ${JSON.stringify(appVersion)},
+          'X-Card-Data-Build-Id': ${JSON.stringify(buildId)},
+          'X-Card-Data-Rules-Version': ${JSON.stringify(rulesVersion)}
+        }
+      });
+    }
     if (url.includes('/api/admin/users')) {
       return new Response(JSON.stringify({
         users: [
@@ -230,13 +286,13 @@ const pageMetrics = `
     },
     header: visible('.admin-header'),
     tabs: visible('.admin-tablist'),
-    summary: visible('.admin-mobile-filter-summary'),
+    summary: visible('.admin-card-browser-actions'),
     advanced: visible('.admin-filter-advanced'),
     filterRows: visible('.admin-filter-row'),
-    cards: visible('.admin-card-grid > button').slice(0, 10),
-    smallTargets: buttons.filter((item) => item.width < 40 || item.height < 40),
+    cards: visible('.admin-card-list-item').slice(0, 10),
+    smallTargets: buttons.filter((item) => item.width < 44 || item.height < 44),
     offscreen: [...document.body.querySelectorAll('*')]
-      .filter((el) => !el.closest('.admin-filter-row, .admin-tablist, .admin-card-modal-tabs'))
+      .filter((el) => !el.closest('.admin-sidebar, .admin-filter-row, .admin-tablist, .admin-card-modal-tabs'))
       .map(box)
       .filter((item) => item.visible && item.offscreenX)
       .slice(0, 20),
@@ -279,7 +335,7 @@ const tableMetrics = `
     rows: visible('.admin-responsive-table tbody tr').slice(0, 5),
     cells: visible('.admin-responsive-table td').slice(0, 14),
     controls: targets,
-    smallTargets: targets.filter((item) => item.width < 40 || item.height < 40),
+    smallTargets: targets.filter((item) => item.width < 44 || item.height < 44),
     offscreen: [...document.querySelectorAll('.admin-responsive-table, .admin-responsive-table *')]
       .filter(isVisible)
       .map(box)
@@ -353,19 +409,33 @@ try {
       `history.pushState({}, '', '/admin'); window.dispatchEvent(new PopStateEvent('popstate', { state: history.state }));`,
     );
     if (testCase.surface === 'table') {
-      await waitForSelector(client, '[role="tab"]');
+      await waitForSelector(client, '.admin-nav-item');
       await new Promise((resolve) => setTimeout(resolve, 700));
       await evalChecked(
         client,
-        `[...document.querySelectorAll('[role="tab"]')].find((button) => button.textContent.trim() === ${JSON.stringify(testCase.tab)})?.click()`,
+        `[...document.querySelectorAll('.admin-nav-item')].find((button) => button.getAttribute('aria-label') === ${JSON.stringify(testCase.tab)})?.click()`,
       );
       await waitForSelector(client, '.admin-responsive-table tbody tr');
       await new Promise((resolve) => setTimeout(resolve, 600));
     } else {
-      await waitForSelector(client, '.admin-card-grid');
+      try {
+        await waitForSelector(client, '.admin-card-list');
+      } catch {
+        await client.send('Page.navigate', { url: `${baseUrl}/` });
+        await waitForSelector(client, 'main');
+        await new Promise((resolve) => setTimeout(resolve, 3200));
+        await evalChecked(
+          client,
+          `history.pushState({}, '', '/admin'); window.dispatchEvent(new PopStateEvent('popstate', { state: history.state }));`,
+        );
+        await waitForSelector(client, '.admin-card-list');
+      }
       await new Promise((resolve) => setTimeout(resolve, 700));
       if (testCase.openFilters) {
-        await evalChecked(client, `document.querySelector('.admin-mobile-filter-summary button')?.click()`);
+        await evalChecked(
+          client,
+          `document.querySelector('.admin-card-browser-actions button[aria-expanded]')?.click()`,
+        );
         await new Promise((resolve) => setTimeout(resolve, 400));
       }
     }

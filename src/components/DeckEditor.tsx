@@ -370,7 +370,7 @@ export function DeckEditor({
     return (
       <div className="mb-3 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2 rounded-sm border border-content-primary/10 bg-surface-base/55 p-2">
         <label className="grid min-w-0 gap-1">
-          <span className="font-mono text-minutia uppercase tracking-[var(--tracking-control)] text-content-muted">
+          <span className="font-mono text-minutia uppercase tracking-[var(--tracking-control)] text-content-dim">
             {t('deckEditor.deckLibrary')}
           </span>
           <div className="relative min-w-0">
@@ -397,13 +397,13 @@ export function DeckEditor({
             />
           </div>
         </label>
-        <div className="flex items-end gap-2">
+        <div className="deck-library-actions flex shrink-0 items-end gap-2">
           {onNewDeck && (
             <Button
               type="button"
               variant="secondary"
               size="sm"
-              className="min-h-11 min-w-11 !px-0 sm:!px-3"
+              className="deck-library-action min-h-11 min-w-11 shrink-0 !px-0 sm:!px-3"
               onClick={onNewDeck}
               aria-label={t('deckEditor.newDeck')}
             >
@@ -416,7 +416,7 @@ export function DeckEditor({
               type="button"
               variant="secondary"
               size="sm"
-              className="min-h-11 min-w-11 !px-0 sm:!px-3"
+              className="deck-library-action min-h-11 min-w-11 shrink-0 !px-0 sm:!px-3"
               onClick={onImportDeck}
               aria-label={t('deckEditor.importDeck')}
             >
@@ -429,7 +429,7 @@ export function DeckEditor({
               type="button"
               variant="secondary"
               size="sm"
-              className="min-h-11 min-w-11 !px-0 sm:!px-3"
+              className="deck-library-action min-h-11 min-w-11 shrink-0 !px-0 sm:!px-3"
               onClick={() => onExportDeck(deck)}
               disabled={deck.length === 0}
               aria-label={t('deckEditor.exportDeck')}
@@ -447,8 +447,8 @@ export function DeckEditor({
     const compact = mode === 'compact';
     const fieldsetClass = compact ? 'flex min-w-0 items-center gap-2' : 'flex flex-wrap items-center gap-3';
     const legendClass = compact
-      ? 'shrink-0 text-minutia uppercase tracking-[var(--tracking-control)] text-content-muted'
-      : 'w-full text-caption uppercase tracking-[var(--tracking-kicker)] text-content-muted sm:w-auto';
+      ? 'shrink-0 text-minutia uppercase tracking-[var(--tracking-control)] text-content-dim'
+      : 'w-full text-caption uppercase tracking-[var(--tracking-kicker)] text-content-dim sm:w-auto';
     const chipGroupClass = compact ? 'deck-filter-chip-group gap-1' : 'deck-filter-chip-group';
     const chipOptionClass = compact ? 'px-2' : undefined;
     const chipSize = compact ? 'sm' : 'md';
@@ -559,7 +559,7 @@ export function DeckEditor({
         </div>
       </div>
 
-      <div className="mb-3 space-y-1 font-mono text-caption uppercase tracking-normal text-content-muted">
+      <div className="mb-3 space-y-1 font-mono text-caption uppercase tracking-normal text-content-dim">
         <div className="flex items-center justify-between">
           <span>{t('deckEditor.ruleCharacters')}</span>
           <span className={characterCount >= Math.ceil(DECK_SIZE * 0.5) ? 'text-accent-primary' : 'text-accent-action'}>
@@ -598,7 +598,7 @@ export function DeckEditor({
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <span
-                className="font-mono text-caption text-content-primary/40"
+                className="font-mono text-caption text-content-dim"
                 aria-label={`${t('deckEditor.copyCount')} ${count}`}
               >
                 ×{count}
@@ -615,7 +615,7 @@ export function DeckEditor({
         {Array.from({ length: emptySlotCount }, (_, index) => (
           <div
             key={`empty-${index}`}
-            className="rounded-xs border border-dashed border-content-primary/10 px-3 py-2 text-caption text-content-muted"
+            className="rounded-xs border border-dashed border-content-primary/10 px-3 py-2 text-caption text-content-dim"
             role="listitem"
             aria-label={t('deckEditor.emptySlot')}
           >
@@ -696,7 +696,7 @@ export function DeckEditor({
               )}
               {syncLabel && (
                 <span
-                  className={`hidden font-mono text-caption uppercase tracking-[var(--tracking-kicker)] sm:inline ${synced ? 'text-accent-primary' : 'text-content-primary/40'}`}
+                  className={`hidden font-mono text-caption uppercase tracking-[var(--tracking-kicker)] sm:inline ${synced ? 'text-accent-primary' : 'text-content-dim'}`}
                   aria-live="polite"
                 >
                   {syncLabel}
@@ -709,7 +709,7 @@ export function DeckEditor({
                 size="sm"
                 variant="primary"
                 aria-label={saveLabel ?? t('deckEditor.saveDeck')}
-                className="min-h-11 min-w-11 px-3"
+                className="deck-save-action min-h-11 min-w-11 shrink-0 px-3"
               >
                 <Save className="size-3.5" aria-hidden="true" />
                 <span className="hidden sm:inline">{saveLabel ?? t('deckEditor.saveDeck')}</span>
@@ -797,8 +797,8 @@ export function DeckEditor({
               className="flex min-h-6 flex-wrap items-center gap-x-3 gap-y-1 font-mono text-minutia uppercase tracking-[var(--tracking-control)] lg:hidden"
               aria-live="polite"
             >
-              <span className={isValid ? 'text-accent-primary/70' : 'text-accent-action/70'}>{deckStatusLabel}</span>
-              <span className="min-w-0 truncate text-content-muted">{filterSummary}</span>
+              <span className={isValid ? 'text-accent-primary/70' : 'text-accent-action'}>{deckStatusLabel}</span>
+              <span className="min-w-0 truncate text-content-dim">{filterSummary}</span>
             </div>
           }
         />
@@ -807,7 +807,7 @@ export function DeckEditor({
 
         <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <span
-            className="font-mono text-caption uppercase tracking-[var(--tracking-control)] text-content-muted md:tracking-[var(--tracking-kicker)]"
+            className="font-mono text-caption uppercase tracking-[var(--tracking-control)] text-content-dim md:tracking-[var(--tracking-kicker)]"
             aria-live="polite"
           >
             {t('deck.foundCards').replace('{count}', String(filteredCards.length))} · {currentPage + 1}/{totalPages}

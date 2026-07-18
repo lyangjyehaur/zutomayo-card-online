@@ -2,9 +2,11 @@ services:
   postgres:
     image: postgres:16.4-alpine
     environment:
-      POSTGRES_USER: ${PG_MIGRATION_USER:-zutomayo}
-      POSTGRES_PASSWORD: ${PG_MIGRATION_PASSWORD:-${PG_PASSWORD:?Set PG_MIGRATION_PASSWORD or PG_PASSWORD in your environment or .env file}}
+      POSTGRES_USER: ${PG_BOOTSTRAP_USER:-${PG_MIGRATION_USER:-zutomayo}}
+      POSTGRES_PASSWORD: ${PG_BOOTSTRAP_PASSWORD:-${PG_MIGRATION_PASSWORD:-${PG_PASSWORD:?Set PG_BOOTSTRAP_PASSWORD, PG_MIGRATION_PASSWORD, or PG_PASSWORD in your environment or .env file}}}
       POSTGRES_DB: ${PG_DATABASE:-zutomayo}
+      PG_MIGRATION_USER: ${PG_MIGRATION_USER:-zutomayo}
+      PG_MIGRATION_PASSWORD: ${PG_MIGRATION_PASSWORD:-${PG_PASSWORD:?Set PG_MIGRATION_PASSWORD or PG_PASSWORD in your environment or .env file}}
       PG_APP_USER: ${PG_APP_USER:-zutomayo_app}
       PG_APP_PASSWORD: ${PG_APP_PASSWORD:-${PG_PASSWORD:?Set PG_APP_PASSWORD or PG_PASSWORD in your environment or .env file}}
       PG_API_USER: ${PG_API_USER:-${PG_APP_USER:-zutomayo_app}}
@@ -21,11 +23,13 @@ services:
       PG_BACKUP_PASSWORD: ${PG_BACKUP_PASSWORD:-${PG_APP_PASSWORD:-${PG_PASSWORD:?Set PG_BACKUP_PASSWORD or PG_APP_PASSWORD in your environment or .env file}}}
       PG_WAL_USER: ${PG_WAL_USER:-zutomayo_wal}
       PG_WAL_PASSWORD: ${PG_WAL_PASSWORD:-${PG_APP_PASSWORD:-${PG_PASSWORD:?Set PG_WAL_PASSWORD or PG_APP_PASSWORD in your environment or .env file}}}
+      PG_WAL_OPERATOR_USER: ${PG_WAL_OPERATOR_USER:-zutomayo_wal_operator}
+      PG_WAL_OPERATOR_PASSWORD: ${PG_WAL_OPERATOR_PASSWORD:-${PG_APP_PASSWORD:-${PG_PASSWORD:?Set PG_WAL_OPERATOR_PASSWORD or PG_APP_PASSWORD in your environment or .env file}}}
     volumes:
       - pg-data:/var/lib/postgresql/data
       - ./scripts/postgres-init-roles.sh:/docker-entrypoint-initdb.d/10-roles.sh:ro
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${PG_MIGRATION_USER:-zutomayo} -d ${PG_DATABASE:-zutomayo}']
+      test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
       interval: 5s
       timeout: 3s
       retries: 10
@@ -82,12 +86,16 @@ services:
       - PG_MONITOR_USER=${PG_MONITOR_USER:-zutomayo_monitor}
       - PG_BACKUP_USER=${PG_BACKUP_USER:-zutomayo_backup}
       - PG_WAL_USER=${PG_WAL_USER:-zutomayo_wal}
+      - PG_WAL_OPERATOR_USER=${PG_WAL_OPERATOR_USER:-zutomayo_wal_operator}
       - REQUIRE_APP_ROLE_GATE=true
       - REQUIRE_ROLE_MATRIX_GATE=${REQUIRE_ROLE_MATRIX_GATE:-true}
       - REQUIRE_DISTINCT_DB_ROLES=${REQUIRE_DISTINCT_DB_ROLES:-false}
       - DATABASE_URL=
       - EXPECTED_SCHEMA_MIGRATION=${EXPECTED_SCHEMA_MIGRATION:?Set EXPECTED_SCHEMA_MIGRATION to the release migration basename}
       - EXPECTED_SCHEMA_CHECKSUM=${EXPECTED_SCHEMA_CHECKSUM:?Set EXPECTED_SCHEMA_CHECKSUM to the release migration SHA-256}
+      - LEGACY_TOMBSTONE_BACKFILL_APPROVED=${LEGACY_TOMBSTONE_BACKFILL_APPROVED:-false}
+      - LEGACY_TOMBSTONE_BACKFILL_EXPECTED_COUNT=${LEGACY_TOMBSTONE_BACKFILL_EXPECTED_COUNT:-0}
+      - REQUIRE_OFFICIAL_CARD_DATA=${REQUIRE_OFFICIAL_CARD_DATA:-false}
     depends_on:
       postgres:
         condition: service_healthy
@@ -118,6 +126,10 @@ services:
         SENTRY_PROJECT: ${SENTRY_PROJECT:-}
     ports:
       - '3000:3000'
+    networks:
+      default:
+        aliases:
+          - game-legacy
     environment:
       - PORT=3000
       - NODE_ENV=production
@@ -154,7 +166,7 @@ services:
       migrate:
         condition: service_completed_successfully
     healthcheck:
-      test: ['CMD-SHELL', 'wget --spider -q http://localhost:3000/health || exit 1']
+      test: ['CMD-SHELL', 'wget --spider -q http://localhost:3000/ready || exit 1']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -172,6 +184,10 @@ services:
         GAME_RULES_VERSION: ${GAME_RULES_VERSION:-}
     ports:
       - '3001:3001'
+    networks:
+      default:
+        aliases:
+          - api-legacy
     environment:
       - API_PORT=3001
       - NODE_ENV=production
@@ -201,7 +217,35 @@ services:
       - LOGTO_MANAGEMENT_RESOURCE=${LOGTO_MANAGEMENT_RESOURCE:-}
       - LOGTO_MANAGEMENT_SCOPE=${LOGTO_MANAGEMENT_SCOPE:-}
       - ACCOUNT_DELETION_RECOVERY_INTERVAL_MS=${ACCOUNT_DELETION_RECOVERY_INTERVAL_MS:-60000}
-      - ACCOUNT_EXPORT_MAX_BYTES=${ACCOUNT_EXPORT_MAX_BYTES:-8388608}
+      - ACCOUNT_EXPORT_STORAGE_MODE=s3
+      - ACCOUNT_EXPORT_S3_BUCKET=${ACCOUNT_EXPORT_S3_BUCKET:?Set the private account export S3 bucket}
+      - ACCOUNT_EXPORT_S3_REGION=${ACCOUNT_EXPORT_S3_REGION:?Set the account export S3 region}
+      - ACCOUNT_EXPORT_S3_PREFIX=${ACCOUNT_EXPORT_S3_PREFIX:-account-exports}
+      - ACCOUNT_EXPORT_S3_ENDPOINT=${ACCOUNT_EXPORT_S3_ENDPOINT:-}
+      - ACCOUNT_EXPORT_S3_FORCE_PATH_STYLE=${ACCOUNT_EXPORT_S3_FORCE_PATH_STYLE:-}
+      - ACCOUNT_EXPORT_S3_CREDENTIALS_MODE=${ACCOUNT_EXPORT_S3_CREDENTIALS_MODE:?Set ACCOUNT_EXPORT_S3_CREDENTIALS_MODE to default or static}
+      - ACCOUNT_EXPORT_S3_ACCESS_KEY_ID=${ACCOUNT_EXPORT_S3_ACCESS_KEY_ID:-}
+      - ACCOUNT_EXPORT_S3_ACCESS_KEY_ID_FILE=${ACCOUNT_EXPORT_S3_ACCESS_KEY_ID_FILE:-}
+      - ACCOUNT_EXPORT_S3_SECRET_ACCESS_KEY=${ACCOUNT_EXPORT_S3_SECRET_ACCESS_KEY:-}
+      - ACCOUNT_EXPORT_S3_SECRET_ACCESS_KEY_FILE=${ACCOUNT_EXPORT_S3_SECRET_ACCESS_KEY_FILE:-}
+      - ACCOUNT_EXPORT_S3_SESSION_TOKEN=${ACCOUNT_EXPORT_S3_SESSION_TOKEN:-}
+      - ACCOUNT_EXPORT_S3_SESSION_TOKEN_FILE=${ACCOUNT_EXPORT_S3_SESSION_TOKEN_FILE:-}
+      - ACCOUNT_EXPORT_S3_SERVER_SIDE_ENCRYPTION=${ACCOUNT_EXPORT_S3_SERVER_SIDE_ENCRYPTION:-AES256}
+      - ACCOUNT_EXPORT_S3_KMS_KEY_ID=${ACCOUNT_EXPORT_S3_KMS_KEY_ID:-}
+      - ACCOUNT_EXPORT_S3_VERSIONING_MODE=${ACCOUNT_EXPORT_S3_VERSIONING_MODE:?Set ACCOUNT_EXPORT_S3_VERSIONING_MODE to disabled or required}
+      - ACCOUNT_EXPORT_S3_LIFECYCLE_CONFIRMED=${ACCOUNT_EXPORT_S3_LIFECYCLE_CONFIRMED:?Set true only after enforcing lifecycle cleanup on the export prefix}
+      - ACCOUNT_EXPORT_S3_TIMEOUT_MS=${ACCOUNT_EXPORT_S3_TIMEOUT_MS:-60000}
+      - ACCOUNT_EXPORT_PSEUDONYM_KEY=${ACCOUNT_EXPORT_PSEUDONYM_KEY:?Set an independent 32+ byte ACCOUNT_EXPORT_PSEUDONYM_KEY}
+      - ACCOUNT_EXPORT_TMP_DIR=/app/data/account-exports
+      - ACCOUNT_EXPORT_INTERVAL_MS=${ACCOUNT_EXPORT_INTERVAL_MS:-1000}
+      - ACCOUNT_EXPORT_LEASE_MS=${ACCOUNT_EXPORT_LEASE_MS:-300000}
+      - ACCOUNT_EXPORT_BATCH_SIZE=${ACCOUNT_EXPORT_BATCH_SIZE:-2}
+      - ACCOUNT_EXPORT_DOWNLOAD_CONCURRENCY=${ACCOUNT_EXPORT_DOWNLOAD_CONCURRENCY:-1}
+      - ACCOUNT_EXPORT_EXPIRY_SECONDS=${ACCOUNT_EXPORT_EXPIRY_SECONDS:-604800}
+      - ACCOUNT_EXPORT_MAX_ATTEMPTS=${ACCOUNT_EXPORT_MAX_ATTEMPTS:-5}
+      - ACCOUNT_EXPORT_BASE_RETRY_MS=${ACCOUNT_EXPORT_BASE_RETRY_MS:-5000}
+      - ACCOUNT_EXPORT_MAX_RETRY_MS=${ACCOUNT_EXPORT_MAX_RETRY_MS:-300000}
+      - ACCOUNT_EXPORT_MAX_BYTES=${ACCOUNT_EXPORT_MAX_BYTES:-104857600}
       - RANKED_MATCHES_ENABLED=${RANKED_MATCHES_ENABLED:-false}
       - TRUSTED_PROXY=${TRUSTED_PROXY:-172.16.0.0/12,127.0.0.1,::1}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
@@ -223,6 +267,10 @@ services:
       - TRANSLATION_TIMEOUT_MS=${TRANSLATION_TIMEOUT_MS:-10000}
       - SENTRY_DSN=${SENTRY_DSN:-}
       - LOG_LEVEL=${LOG_LEVEL:-info}
+      - API_HTTP_DRAIN_TIMEOUT_MS=${API_HTTP_DRAIN_TIMEOUT_MS:-10000}
+      - SHUTDOWN_TIMEOUT_MS=${SHUTDOWN_TIMEOUT_MS:-30000}
+    tmpfs:
+      - /app/data/account-exports:rw,noexec,nosuid,nodev,size=268435456,mode=0700,uid=1000,gid=1000
     depends_on:
       postgres:
         condition: service_healthy
@@ -231,7 +279,7 @@ services:
       migrate:
         condition: service_completed_successfully
     healthcheck:
-      test: ['CMD-SHELL', 'wget --spider -q http://localhost:3001/health || exit 1']
+      test: ['CMD-SHELL', 'wget --spider -q http://localhost:3001/ready || exit 1']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -250,8 +298,13 @@ services:
     command: ['npm', 'run', 'platform']
     ports:
       - '3002:3002'
+    networks:
+      default:
+        aliases:
+          - platform-legacy
     environment:
       - PLATFORM_PORT=3002
+      - PLATFORM_PUBLIC_ADDRESS=${PLATFORM_PUBLIC_ADDRESS:-ws://localhost:3002}
       - NODE_ENV=production
       - PG_HOST=${PG_HOST:-postgres}
       - PG_PORT=${PG_PORT:-5432}
@@ -294,7 +347,7 @@ services:
       api:
         condition: service_healthy
     healthcheck:
-      test: ['CMD-SHELL', 'wget --spider -q http://localhost:3002/health || exit 1']
+      test: ['CMD-SHELL', 'wget --spider -q http://localhost:3002/ready || exit 1']
       interval: 10s
       timeout: 5s
       retries: 5

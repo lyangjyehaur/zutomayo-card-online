@@ -145,5 +145,8 @@ describe('runtime security connection contracts', () => {
     expect(() => validateProductionRuntimeSecurity({ ...env, NODE_TLS_REJECT_UNAUTHORIZED: '0' })).toThrow(
       'NODE_TLS_REJECT_UNAUTHORIZED',
     );
+    expect(() => validateProductionRuntimeSecurity({ ...env, PLATFORM_SEAT_TOKEN_SECRET: env.JWT_SECRET })).toThrow(
+      'PLATFORM_SEAT_TOKEN_SECRET must be distinct',
+    );
   });
 });

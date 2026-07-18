@@ -60,6 +60,18 @@ export function platformAdmissionLimitsFromEnv(env: NodeJS.ProcessEnv = process.
   };
 }
 
+export function platformPendingInviteDiscoveryLimitsFromEnv(
+  env: NodeJS.ProcessEnv = process.env,
+): PlatformAdmissionLimits {
+  return {
+    ipLimit: boundedInteger(env.PLATFORM_INVITE_DISCOVERY_IP_LIMIT, 600, 1, 100_000),
+    userLimit: boundedInteger(env.PLATFORM_INVITE_DISCOVERY_USER_LIMIT, 30, 1, 100_000),
+    globalLimit: boundedInteger(env.PLATFORM_INVITE_DISCOVERY_GLOBAL_LIMIT, 20_000, 1, 1_000_000),
+    windowSeconds: boundedInteger(env.PLATFORM_INVITE_DISCOVERY_WINDOW_SECONDS, DEFAULT_WINDOW_SECONDS, 10, 3_600),
+    timeoutMs: boundedInteger(env.PLATFORM_INVITE_DISCOVERY_REDIS_TIMEOUT_MS, 750, 50, 5_000),
+  };
+}
+
 function identityHash(value: string): string {
   return crypto.createHash('sha256').update(value).digest('hex').slice(0, 32);
 }
@@ -74,13 +86,14 @@ export class RedisPlatformAdmissionLimiter implements PlatformAdmissionLimiter {
   constructor(
     private readonly redis: PlatformAdmissionRedis,
     private readonly limits: PlatformAdmissionLimits,
+    private readonly namespacePrefix = 'platform:admission',
   ) {}
 
   async check(identity: PlatformAdmissionIdentity, nowMs = Date.now()): Promise<boolean> {
     if (!identity.ip) return false;
     const window = Math.floor(nowMs / (this.limits.windowSeconds * 1_000));
     const userIdentity = identity.userId || `guest-ip:${identity.ip}`;
-    const namespace = `platform:admission:{v1:${window}}`;
+    const namespace = `${this.namespacePrefix}:{v1:${window}}`;
     const keys = [
       `${namespace}:ip:${identityHash(identity.ip)}`,
       `${namespace}:user:${identityHash(userIdentity)}`,
@@ -132,10 +145,26 @@ const rejectAdmission: PlatformAdmissionLimiter = {
 
 export function createPlatformAdmissionLimiter(
   redis: PlatformAdmissionRedis | null,
+  options: { nodeEnv?: string; limits?: PlatformAdmissionLimits; namespacePrefix?: string } = {},
+): PlatformAdmissionLimiter {
+  if (redis)
+    return new RedisPlatformAdmissionLimiter(
+      redis,
+      options.limits ?? platformAdmissionLimitsFromEnv(),
+      options.namespacePrefix,
+    );
+  return options.nodeEnv === 'production' ? rejectAdmission : allowLocalAdmission;
+}
+
+export function createPlatformPendingInviteDiscoveryLimiter(
+  redis: PlatformAdmissionRedis | null,
   options: { nodeEnv?: string; limits?: PlatformAdmissionLimits } = {},
 ): PlatformAdmissionLimiter {
-  if (redis) return new RedisPlatformAdmissionLimiter(redis, options.limits ?? platformAdmissionLimitsFromEnv());
-  return options.nodeEnv === 'production' ? rejectAdmission : allowLocalAdmission;
+  return createPlatformAdmissionLimiter(redis, {
+    nodeEnv: options.nodeEnv,
+    limits: options.limits ?? platformPendingInviteDiscoveryLimitsFromEnv(),
+    namespacePrefix: 'platform:invite-discovery',
+  });
 }
 
 function normalizeIp(value: string): string {

@@ -68,6 +68,13 @@ scripts/card-english-*.json
 .env.*
 !.env.example
 
+# Generated release manifests and evidence artifacts
+.release.env
+.release-evidence/
+staging-evidence/
+artifacts/release-gate/
+artifacts/pg-pitr-drill/
+
 # Standalone admin HTML (replaced by React admin)
 admin/
 

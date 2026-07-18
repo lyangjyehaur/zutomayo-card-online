@@ -1,13 +1,15 @@
 import fs from 'node:fs/promises';
 import http from 'node:http';
 import { spawn } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const chromePath = process.env.CHROME_PATH ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const baseUrl = process.env.BASE_URL ?? 'http://127.0.0.1:3000';
-const outDir = process.env.OUT_DIR ?? '/private/tmp/zutomayo-ui-responsive-screenshots';
-const reportPath = process.env.REPORT_PATH ?? '/private/tmp/zutomayo-ui-responsive-report.json';
+const outDir = process.env.OUT_DIR ?? join(tmpdir(), 'zutomayo-ui-responsive-screenshots');
+const reportPath = process.env.REPORT_PATH ?? join(tmpdir(), 'zutomayo-ui-responsive-report.json');
 const port = Number(process.env.CDP_PORT ?? 9947);
-const profileDir = `/private/tmp/zutomayo-ui-responsive-profile-${process.pid}-${Date.now()}`;
+const profileDir = join(tmpdir(), `zutomayo-ui-responsive-profile-${process.pid}-${Date.now()}`);
 const packageJson = JSON.parse(await fs.readFile(new URL('../package.json', import.meta.url), 'utf8'));
 if (typeof packageJson.version !== 'string' || !packageJson.version) {
   throw new Error('package.json version is required');
@@ -355,8 +357,9 @@ const metricsExpression = `
     checkedSurface: visible(
       'nav[aria-label] button, .bf-main, .feedback-toolbar, .admin-page, .i18n-responsive-table, .deck-editor, .card-browser, [data-room-panel], [aria-label="Card Pool"], article',
     ).slice(0, 8),
-    smallTargets: targets.filter((item) => item.width < 40 || item.height < 40).slice(0, 12),
+    smallTargets: targets.filter((item) => item.width < 44 || item.height < 44).slice(0, 12),
     offscreen: [...document.body.querySelectorAll('*')]
+      .filter((el) => !el.closest('.admin-sidebar'))
       .filter(isVisible)
       .map(box)
       .filter((item) => item.offscreenX)
@@ -399,6 +402,7 @@ try {
   client = await connect(tab.webSocketDebuggerUrl);
   await client.send('Page.enable');
   await client.send('Runtime.enable');
+  await client.send('Page.addScriptToEvaluateOnNewDocument', { source: setup });
 
   for (const testCase of cases) {
     console.log(`case ${testCase.name}`);
@@ -411,9 +415,6 @@ try {
       screenHeight: testCase.height,
     });
     await client.send('Page.navigate', { url: `${baseUrl}${testCase.path}` });
-    await waitForPage(client, testCase);
-    await evalChecked(client, setup);
-    await client.send('Page.reload', { ignoreCache: true });
     await waitForPage(client, testCase);
     await new Promise((resolve) => setTimeout(resolve, 300));
     let metrics = await evalChecked(client, metricsExpression);

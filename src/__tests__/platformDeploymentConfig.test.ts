@@ -17,7 +17,8 @@ describe('platform deployment config', () => {
 
     expect(compose).toContain("command: ['npm', 'run', 'platform']");
     expect(compose).toContain("'3002:3002'");
-    expect(compose).toContain('http://localhost:3002/health');
+    expect(compose).toContain('http://localhost:3002/ready');
+    expect(compose).toContain('PLATFORM_PUBLIC_ADDRESS=${PLATFORM_PUBLIC_ADDRESS:-ws://localhost:3002}');
     expect(compose).toContain('PLATFORM_REDIS_MODE=redis');
     expect(compose).toContain('PLATFORM_FRIEND_STORE=postgres');
     expect(compose).toContain('PLATFORM_MATCH_PARTICIPANT_STORE=postgres');
@@ -28,6 +29,7 @@ describe('platform deployment config', () => {
     const envExample = readRepoFile('.env.example');
 
     expect(envExample).toContain('PLATFORM_REDIS_MODE=memory');
+    expect(envExample).toContain('PLATFORM_PUBLIC_ADDRESS=ws://localhost:3002');
     expect(envExample).toContain('PLATFORM_FRIEND_STORE=none');
     expect(envExample).toContain('PLATFORM_MATCH_PARTICIPANT_STORE=none');
     expect(envExample).toContain('PLATFORM_CHAT_PREVIEW_STORE=none');
@@ -36,10 +38,22 @@ describe('platform deployment config', () => {
   it('wires the Colyseus runtime as a platform shell instead of durable game or chat state', () => {
     const platformServer = readRepoFile('src/platform/server.ts');
     const platformRuntime = readRepoFile('src/platform/runtime.ts');
+    const closeStoresStart = platformRuntime.indexOf('const closeStores =');
+    const gameServerStart = platformRuntime.indexOf('const gameServer =');
+    const closeStoresSource = platformRuntime.slice(closeStoresStart, gameServerStart);
 
     expect(platformServer).toContain('createPlatformRuntime()');
+    expect(closeStoresStart).toBeGreaterThan(-1);
+    expect(gameServerStart).toBeGreaterThan(closeStoresStart);
     expect(platformRuntime).toContain('new RedisPresence(colyseusRedisUrl)');
+    expect(platformRuntime).toContain('commandTimeout: commandTimeoutMs');
     expect(platformRuntime).toContain('new RedisDriver(colyseusRedisUrl)');
+    expect(platformRuntime).toContain('createRedisPendingInviteRoomQuery(pendingInviteDiscoveryRedis)');
+    expect(platformRuntime).toContain('queryRooms: pendingInviteRedisQuery');
+    expect(platformRuntime).toContain('driver: colyseusDriver');
+    expect(platformRuntime).toContain('queryTimeoutMs: pendingInviteTimeouts.queryTimeoutMs');
+    expect(closeStoresSource).toContain('pendingInviteDiscoveryRedis?.quit()');
+    expect(platformRuntime).not.toContain('new RedisDriver(pendingInviteDiscoveryRedis)');
     expect(platformRuntime).toContain('LobbyRoom.configureFriendStore(friendStore)');
     expect(platformRuntime).toContain('InviteRoom.configureFriendStore(friendStore, { enforceFriendship:');
     expect(platformRuntime).toContain('CustomRoom.configureParticipantStore(matchParticipantStore)');

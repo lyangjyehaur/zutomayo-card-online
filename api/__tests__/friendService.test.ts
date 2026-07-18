@@ -73,7 +73,7 @@ describe('friend service', () => {
   it('adds friends symmetrically after verifying the target user exists', async () => {
     const pool: Queryable = {
       query: vi.fn(async (sql: string, params?: unknown[]) => {
-        if (sql === 'SELECT * FROM users WHERE id = $1 FOR UPDATE') {
+        if (sql === 'SELECT id, deleted_at, elo, match_count, wins FROM users WHERE id = $1 FOR UPDATE') {
           return { rows: [{ id: String(params?.[0]), deleted_at: null }], rowCount: 1 };
         }
         if (sql.includes('INSERT INTO user_friends')) {
@@ -92,7 +92,7 @@ describe('friend service', () => {
     expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('VALUES ($1, $2), ($2, $1)'), ['u_me', 'u_friend']);
     expect(pool.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO relationship_change_outbox'),
-      expect.arrayContaining(['friendship_added:u_me:u_friend:2026-07-13T00:00:00.000Z']),
+      expect.arrayContaining([expect.stringMatching(/^[a-f0-9]{64}$/)]),
     );
   });
 
@@ -119,7 +119,7 @@ describe('friend service', () => {
   it('removes friend rows in both directions', async () => {
     const pool: Queryable = {
       query: vi.fn(async (sql: string, params?: unknown[]) => {
-        if (sql === 'SELECT * FROM users WHERE id = $1 FOR UPDATE') {
+        if (sql === 'SELECT id, deleted_at, elo, match_count, wins FROM users WHERE id = $1 FOR UPDATE') {
           return { rows: [{ id: String(params?.[0]), deleted_at: null }], rowCount: 1 };
         }
         if (sql.includes('DELETE FROM user_friends')) {
@@ -138,7 +138,7 @@ describe('friend service', () => {
     expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('DELETE FROM user_friends'), ['u_me', 'u_friend']);
     expect(pool.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO relationship_change_outbox'),
-      expect.arrayContaining(['friendship_removed:u_me:u_friend:2026-07-13T00:00:00.000Z']),
+      expect.arrayContaining([expect.stringMatching(/^[a-f0-9]{64}$/)]),
     );
   });
 });

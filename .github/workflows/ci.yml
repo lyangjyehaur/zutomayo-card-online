@@ -20,10 +20,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
 
       - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: '22'
           cache: 'npm'
@@ -38,18 +38,77 @@ jobs:
           PG_MIGRATION_PASSWORD: e2e-test-migration-password
           PG_APP_USER: zutomayo_app
           PG_APP_PASSWORD: e2e-test-app-password
+          PG_API_USER: zutomayo_api
+          PG_API_PASSWORD: e2e-test-api-password
+          PG_GAME_USER: zutomayo_game
+          PG_GAME_PASSWORD: e2e-test-game-password
+          PG_PLATFORM_USER: zutomayo_platform
+          PG_PLATFORM_PASSWORD: e2e-test-platform-password
+          PG_RETENTION_USER: zutomayo_retention
+          PG_RETENTION_PASSWORD: e2e-test-retention-password
+          PG_MONITOR_USER: zutomayo_monitor
+          PG_MONITOR_PASSWORD: e2e-test-monitor-password
+          PG_BACKUP_USER: zutomayo_backup
+          PG_BACKUP_PASSWORD: e2e-test-backup-password
+          PG_WAL_USER: zutomayo_wal
+          PG_WAL_PASSWORD: e2e-test-wal-password
+          PG_WAL_OPERATOR_USER: zutomayo_wal_operator
+          PG_WAL_OPERATOR_PASSWORD: e2e-test-wal-operator-password
+          PG_WAL_OPERATOR_DATABASE: zutomayo
+          PG_WAL_OPERATOR_PGPASS_FILE: /tmp/postgres-operator.pgpass
+          PG_WAL_AGE_IDENTITY_FILE: /tmp/wal-age-identity
+          PG_WAL_S3_CREDENTIALS_FILE: /tmp/wal-s3-credentials
+          PG_WAL_OFFSITE_URI: s3://zutomayo-ci-wal
+          PG_WAL_S3_REGION: us-east-1
+          POSTGRES_OPS_SECRETS_GID: '992'
           PG_HOST: staging-postgres.example.internal
           PG_DATABASE: zutomayo
           PG_CA_FILE: /tmp/zutomayo-service-ca.crt
+          CARD_DATA_DIR: /tmp/zutomayo-card-data
           PG_SSLROOTCERT: /run/secrets/zutomayo-service-ca.crt
           NODE_EXTRA_CA_CERTS: /run/secrets/zutomayo-service-ca.crt
+          PG_CA_SECRET_NAME: zutomayo-staging-postgres-ca
           REDIS_URL: rediss://:e2e-test-redis-password@staging-redis.example.internal:6380
-          JWT_SECRET: e2e-test-jwt-secret-32chars-min
+          JWT_SECRET: e2e-test-jwt-secret-at-least-32-bytes
+          PLATFORM_SEAT_TOKEN_SECRET: e2e-test-seat-token-secret-at-least-32-bytes
+          ADMIN_TOTP_ENCRYPTION_KEY: e2e-test-admin-totp-key-at-least-32-bytes
+          OAUTH_TOKEN_ENCRYPTION_KEY: e2e-test-oauth-token-key-at-least-32-bytes
+          PLATFORM_PUBLIC_ADDRESS: wss://game.example.invalid/_platform/p1
+          ACCOUNT_EXPORT_S3_BUCKET: zutomayo-ci-account-exports
+          ACCOUNT_EXPORT_S3_REGION: us-east-1
+          ACCOUNT_EXPORT_S3_CREDENTIALS_MODE: default
+          ACCOUNT_EXPORT_S3_VERSIONING_MODE: disabled
+          ACCOUNT_EXPORT_S3_LIFECYCLE_CONFIRMED: 'true'
+          ACCOUNT_EXPORT_PSEUDONYM_KEY: e2e-test-export-pseudonym-key-at-least-32-bytes
+          PUBLIC_BASE_URL: https://game.example.invalid
+          OAUTH_PUBLIC_BASE_URL: https://game.example.invalid
           REDIS_PASSWORD: e2e-test-redis-password
           METRICS_TOKEN: e2e-test-metrics-token
           PGSSLMODE: verify-full
+          PG_MONITOR_HOST: postgres
+          PG_MONITOR_DATABASE: zutomayo
+          PG_MONITOR_SSLMODE: verify-full
+          PG_RETENTION_HOST: postgres
+          PG_RETENTION_DATABASE: zutomayo
+          PG_RETENTION_SSLMODE: verify-full
+          SLACK_ALERT_WEBHOOK: https://hooks.example.invalid/services/test
+          GRAFANA_PASSWORD: e2e-test-grafana-password
+          GAME_IMAGE: ghcr.io/example/game@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          API_IMAGE: ghcr.io/example/api@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          PLATFORM_IMAGE: ghcr.io/example/platform@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          MIGRATE_IMAGE: ghcr.io/example/migrate@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          RETENTION_IMAGE: ghcr.io/example/retention@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          GATEWAY_IMAGE: ghcr.io/example/gateway@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          OPS_IMAGE: ghcr.io/example/ops@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          COLYSEUS_REDIS_IMAGE: redis@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          COLYSEUS_REDIS_PASSWORD: ci-colyseus-redis-password
+          FEEDBACK_UPLOADS_VOLUME: zutomayo-ci-feedback-uploads
+          PUBLIC_HOST: game.example.invalid
+          RELEASE_SLOT: blue
+          COMPOSE_PROJECT_NAME: zutomayo-blue
+          RETENTION_METRICS_GID: '991'
           APP_VERSION: '0.2.0'
-          APP_BUILD_ID: '0000000000000000000000000000000000000000'
+          RELEASE_SHA: '0000000000000000000000000000000000000000'
           GAME_RULES_VERSION: '0.2.0'
         run: |
           touch .env
@@ -58,7 +117,17 @@ jobs:
           npm run release:config
           npm run ops:config
           docker compose -f docker-compose.yml -f docker-compose.e2e.yml config --quiet
+          docker compose -f docker-compose.yml -f docker-compose.retention.yml config --quiet
+          docker compose -f docker-compose.staging.yml config --no-env-resolution --quiet
           docker compose -f docker-compose.server4.yml config --no-env-resolution --quiet
+          docker compose -f docker-compose.server4-slot.yml config --no-env-resolution --quiet
+          docker compose -f docker-compose.server4-gateway.yml config --no-env-resolution --quiet
+          docker compose -f docker-compose.postgres-ops.yml --profile postgres-ops config --quiet
+          docker compose -f docker-compose.postgres-role-smoke.yml config --no-interpolate --quiet
+          docker compose -f docker-compose.staging.yml config --no-env-resolution --format json | jq -c -f scripts/project-compose-role-env.jq | node scripts/verify-compose-role-env.mjs --require-pgsslmode=verify-full --require-rediss
+          docker compose -f docker-compose.server4.yml config --no-env-resolution --format json | jq -c -f scripts/project-compose-role-env.jq | node scripts/verify-compose-role-env.mjs --require-pgsslmode=verify-full --require-rediss
+          docker compose -f docker-compose.server4-slot.yml config --no-env-resolution --format json | jq -c -f scripts/project-compose-role-env.jq | node scripts/verify-compose-role-env.mjs --require-pgsslmode=verify-full --require-rediss
+          docker compose -f docker-compose.monitoring.yml config --quiet
 
       - name: Format check
         run: npm run format:check:tracked
@@ -74,6 +143,9 @@ jobs:
 
       - name: Check i18n completeness
         run: npm run i18n:check
+
+      - name: Enforce private card-source data policy
+        run: npm run data:policy
 
       - name: Unit tests
         run: npm test
@@ -98,28 +170,41 @@ jobs:
     needs: lint-and-test
     env:
       PG_PASSWORD: e2e-test-password
-      JWT_SECRET: e2e-test-jwt-secret-32chars-min
+      PG_BOOTSTRAP_USER: zutomayo_e2e_bootstrap
+      PG_BOOTSTRAP_PASSWORD: e2e-test-bootstrap-password
+      JWT_SECRET: e2e-test-jwt-secret-at-least-32-bytes
+      ACCOUNT_EXPORT_S3_BUCKET: zutomayo-e2e-account-exports
+      ACCOUNT_EXPORT_S3_REGION: us-east-1
+      ACCOUNT_EXPORT_S3_CREDENTIALS_MODE: default
+      ACCOUNT_EXPORT_S3_VERSIONING_MODE: disabled
+      ACCOUNT_EXPORT_S3_LIFECYCLE_CONFIRMED: 'true'
+      ACCOUNT_EXPORT_PSEUDONYM_KEY: e2e-test-export-pseudonym-key-at-least-32-bytes
       REDIS_PASSWORD: ''
       METRICS_TOKEN: e2e-test-metrics-token
       PGSSLMODE: disable
+      EXPECTED_SCHEMA_MIGRATION: 000034_card_text_rollback_compat
+      EXPECTED_SCHEMA_CHECKSUM: b2639d75bc6f9c39c74bd038052f4db2df12c77db0f7c45477a41693ebc53274
+      PG_MIGRATION_USER: zutomayo_migrator
+      PG_MIGRATION_PASSWORD: e2e-test-migration-password
+      PG_APP_USER: zutomayo_app
+      PG_APP_PASSWORD: e2e-test-app-password
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
 
-      - name: Build and start service stack
+      - name: Build and run E2E service stack
         run: |
           set -o pipefail
           log_file="$(mktemp)"
           mkdir -p playwright-report test-results
-          export EXPECTED_SCHEMA_MIGRATION="$(find migrations -maxdepth 1 -type f -name '*.js' -printf '%f\n' | sort | tail -n 1 | sed 's/\.js$//')"
-          export EXPECTED_SCHEMA_CHECKSUM="$(sha256sum "migrations/${EXPECTED_SCHEMA_MIGRATION}.js" | awk '{print $1}')"
-          export PG_MIGRATION_USER=zutomayo_migrator PG_MIGRATION_PASSWORD=e2e-test-migration-password
-          export PG_APP_USER=zutomayo_app PG_APP_PASSWORD=e2e-test-app-password
+          test "$EXPECTED_SCHEMA_MIGRATION" = "$(find migrations -maxdepth 1 -type f -name '*.js' -printf '%f\n' | sort | tail -n 1 | sed 's/\.js$//')"
+          test "$EXPECTED_SCHEMA_CHECKSUM" = "$(sha256sum "migrations/${EXPECTED_SCHEMA_MIGRATION}.js" | awk '{print $1}')"
           compose=(docker compose -f docker-compose.yml -f docker-compose.e2e.yml)
-          if "${compose[@]}" up --build --wait --wait-timeout 180 game api platform \
-            2>&1 | tee "$log_file" \
-            && "${compose[@]}" run --build --rm e2e 2>&1 | tee -a "$log_file"; then
+          if "${compose[@]}" build 2>&1 | tee "$log_file" \
+            && "${compose[@]}" up --wait --wait-timeout 180 game api platform \
+              2>&1 | tee -a "$log_file" \
+            && "${compose[@]}" run --rm e2e 2>&1 | tee -a "$log_file"; then
             exit 0
           fi
           service_status="$("${compose[@]}" ps --all --format '{{.Service}}={{.State}}/{{.ExitCode}}' | tr '\n' ' ')"
@@ -137,7 +222,7 @@ jobs:
 
       - name: Upload Playwright report
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: playwright-report
           path: playwright-report/
@@ -145,7 +230,7 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: test-results
           path: test-results/
@@ -158,6 +243,85 @@ jobs:
             -f docker-compose.yml \
             -f docker-compose.e2e.yml \
             down -v || true
+
+  responsive-pwa:
+    name: Responsive & PWA gates
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build production PWA
+        env:
+          APP_BUILD_ID: ${{ github.sha }}
+        run: npm run build
+
+      - name: Run standalone and responsive gates
+        env:
+          APP_BUILD_ID: ${{ github.sha }}
+          BASE_URL: http://127.0.0.1:4173
+          CHROME_PATH: /usr/bin/google-chrome
+        run: |
+          mkdir -p artifacts/responsive-pwa
+          npm run preview -- --host 127.0.0.1 --port 4173 > artifacts/responsive-pwa/preview.log 2>&1 &
+          preview_pid=$!
+          trap 'kill "$preview_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:4173/ >/dev/null; then
+              break
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              cat artifacts/responsive-pwa/preview.log
+              exit 1
+            fi
+            sleep 1
+          done
+          REPORT_PATH="$PWD/artifacts/responsive-pwa/pwa-standalone.json" npm run smoke:pwa-standalone
+          OUT_DIR="$PWD/artifacts/responsive-pwa/ui" REPORT_PATH="$PWD/artifacts/responsive-pwa/ui.json" npm run smoke:ui-responsive
+          OUT_DIR="$PWD/artifacts/responsive-pwa/admin" REPORT_PATH="$PWD/artifacts/responsive-pwa/admin.json" npm run smoke:admin-responsive
+          OUT_DIR="$PWD/artifacts/responsive-pwa/battle" REPORT_PATH="$PWD/artifacts/responsive-pwa/battle.json" npm run smoke:battle-responsive
+          OUT_DIR="$PWD/artifacts/responsive-pwa/online" REPORT_PATH="$PWD/artifacts/responsive-pwa/online.json" npm run smoke:online-lobby-responsive
+          OUT_DIR="$PWD/artifacts/responsive-pwa/tools" REPORT_PATH="$PWD/artifacts/responsive-pwa/tools.json" npm run smoke:tools-responsive
+        timeout-minutes: 15
+
+      - name: Upload responsive and PWA evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: responsive-pwa-evidence
+          path: artifacts/responsive-pwa/
+          retention-days: 14
+
+  postgres-role-smoke:
+    name: Fresh PostgreSQL role matrix smoke
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+
+      - name: Run disposable fresh-cluster smoke
+        run: |
+          set -o pipefail
+          log_file="$(mktemp)"
+          if npm run db:roles:smoke 2>&1 | tee "$log_file"; then
+            exit 0
+          fi
+          details="$(tail -n 40 "$log_file" | tr '\n' ' ' | sed 's/%/%25/g')"
+          echo "::error title=Fresh PostgreSQL role matrix smoke::$details"
+          exit 1
+        timeout-minutes: 20
 
   # Smoke tests 需要真實卡牌數據（422 張），CI 環境無法模擬
   # 本地執行: npm run smoke / smoke:api / smoke:online

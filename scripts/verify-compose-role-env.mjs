@@ -17,6 +17,7 @@ const ROLE_PASSWORDS = Object.freeze([
   'PG_MONITOR_PASSWORD',
   'PG_BACKUP_PASSWORD',
   'PG_WAL_PASSWORD',
+  'PG_WAL_OPERATOR_PASSWORD',
 ]);
 
 function parseArguments(argv) {
@@ -66,8 +67,9 @@ export function validateRenderedRoleEnvironment(composeConfig, { requiredPgSslMo
       throw new Error(`${serviceName} must use an authenticated TLS Redis URL (rediss://)`);
     }
 
-    const namedUser = environment[role.user];
-    if (namedUser !== undefined && namedUser !== '' && namedUser !== canonicalUser) {
+    const namedUser = String(environment[role.user] || '');
+    if (!namedUser) throw new Error(`${serviceName} must have a non-empty ${role.user}`);
+    if (namedUser !== canonicalUser) {
       throw new Error(`${serviceName} PG_USER must match ${role.user}`);
     }
     const namedPassword = environment[role.password];
@@ -77,8 +79,8 @@ export function validateRenderedRoleEnvironment(composeConfig, { requiredPgSslMo
 
     for (const variable of ROLE_PASSWORDS) {
       if (variable === role.password) continue;
-      if (environment[variable] !== '') {
-        throw new Error(`${serviceName} must mask non-own ${variable} from env_file`);
+      if (environment[variable] !== undefined && environment[variable] !== '') {
+        throw new Error(`${serviceName} must not receive non-own ${variable}`);
       }
     }
 

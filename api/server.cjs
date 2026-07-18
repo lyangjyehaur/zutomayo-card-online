@@ -1,8 +1,11 @@
 // OpenTelemetry tracing 必須在所有其他 require 之前載入，讓 auto-instrumentation 能正確 patch 模組。
-require('./tracing.cjs');
+const { shutdownTracing } = require('./tracing.cjs');
 const http = require('http');
 const https = require('https');
 const net = require('net');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const Sentry = require('@sentry/node');
 const crypto = require('crypto');
 const util = require('util');
@@ -22,15 +25,30 @@ const {
 } = require('./accountService.cjs');
 const {
   deleteAccount,
-  exportAccountData,
   requestEmailVerification,
   requestPasswordReset,
   resetPassword,
   verifyRecentPassword,
   verifyEmailToken,
 } = require('./accountLifecycleService.cjs');
+const {
+  accountExportStats,
+  createAccountExportJob,
+  createAccountExportWorker,
+  getAccountExportJob,
+  listAccountExportJobs,
+  recordAccountExportDownloadEvent,
+} = require('./accountExportService.cjs');
+const {
+  cleanupStaleAccountExportArtifacts,
+  createAccountExportArtifact,
+  resolveAccountExportPseudonymKey,
+} = require('./accountExportArtifact.cjs');
+const { stageAccountExportDownload } = require('./accountExportDownload.cjs');
+const { createAccountExportStorageFromEnv } = require('./accountExportStorage.cjs');
 const { deliverAccountAction } = require('./accountNotificationService.cjs');
 const { consumeAccountStepUp, issueAccountStepUp } = require('./accountStepUpService.cjs');
+const { AccountSessionUnavailableError, issueAccountRefreshToken } = require('./authSessionService.cjs');
 const {
   LOGTO_ACCOUNT_DELETION_SCOPE,
   accountDeletionRecoveryEnabled,
@@ -42,7 +60,10 @@ const {
   markProviderDeletionFailure,
   markProviderDeletionStarted,
   prepareLogtoAccountDeletion,
+  withAccountDeletionRecoveryLease,
 } = require('./accountDeletionService.cjs');
+const { resolveBackgroundWorkersEnabled } = require('./backgroundWorkerConfig.cjs');
+const { apiRateLimitConfig } = require('./rateLimitConfig.cjs');
 const { upsertCard, upsertCardI18n, upsertGameConfig } = require('./adminCardService.cjs');
 const { listAdminUsers, resetUserElo, updateLinkedAdminRole } = require('./adminService.cjs');
 const {
@@ -80,6 +101,14 @@ const {
   relationshipOutboxProcessedTotal,
   relationshipOutboxMetricsLastSuccess,
   relationshipOutboxMetricsRefreshSuccess,
+  accountExportJobsPending,
+  accountExportJobsFailed,
+  accountExportOldestAgeSeconds,
+  accountExportProcessedTotal,
+  accountExportPurgePending,
+  accountExportPurgeRetrying,
+  accountExportMetricsRefreshSuccess,
+  accountExportMetricsLastSuccess,
 } = require('./observability.cjs');
 const { validateBody } = require('./validate.cjs');
 const S = require('./schemas.cjs');
@@ -91,6 +120,7 @@ const {
   getCardOfficialErrata,
   getCardTextsI18n,
   getGameConfig,
+  getOfficialCardDataVersion,
   getPresetDecks,
   getPublicCard,
   getPublicCards,
@@ -113,12 +143,8 @@ const {
 const { createUserDeck, deleteUserDeck, listUserDecks, reserveUserDeck, updateUserDeck } = require('./deckService.cjs');
 const {
   applyMatchmakingBlock,
-  getMatchmakingStatus,
-  joinMatchmakingQueue,
-  leaveMatchmakingQueue,
-  listMatchmakingBlockedUserIds,
+  purgeDeletedMatchmakingAccount,
   removeMatchmakingBlock,
-  reportRealMatch,
 } = require('./matchmakingService.cjs');
 const { countOnlinePresence, heartbeatOnlinePresence } = require('./presenceService.cjs');
 const { getAdminMatches, getLeaderboard, getMatchActionLog, getUserMatches } = require('./matchQueries.cjs');
@@ -204,6 +230,7 @@ const GAME_RULES_VERSION = process.env.GAME_RULES_VERSION || APP_VERSION;
 // Ranked writes are fail-closed. Production must explicitly opt in after the
 // seat-identity trust chain has been verified.
 const RANKED_MATCHES_ENABLED = process.env.RANKED_MATCHES_ENABLED === 'true';
+const API_BACKGROUND_WORKERS_ENABLED = resolveBackgroundWorkersEnabled(process.env, 'API_BACKGROUND_WORKERS_ENABLED');
 const IMGPROXY_INTERNAL_BASE_URL = process.env.IMGPROXY_INTERNAL_BASE_URL || process.env.IMGPROXY_BASE_URL || '';
 const IMGPROXY_KEY = process.env.IMGPROXY_KEY || '';
 const IMGPROXY_SALT = process.env.IMGPROXY_SALT || '';
@@ -285,6 +312,40 @@ const ACCOUNT_DELETION_RECOVERY_INTERVAL_MS = Math.max(
   10_000,
   Math.min(Number(process.env.ACCOUNT_DELETION_RECOVERY_INTERVAL_MS) || 60_000, 60 * 60 * 1000),
 );
+const configuredShutdownTimeoutMs = Number(process.env.SHUTDOWN_TIMEOUT_MS);
+const SHUTDOWN_TIMEOUT_MS = Number.isFinite(configuredShutdownTimeoutMs)
+  ? Math.max(1_000, configuredShutdownTimeoutMs)
+  : 30_000;
+const MAX_API_HTTP_DRAIN_TIMEOUT_MS = Math.max(0, SHUTDOWN_TIMEOUT_MS - 1_000);
+const configuredHttpDrainTimeoutMs = Number(process.env.API_HTTP_DRAIN_TIMEOUT_MS);
+const API_HTTP_DRAIN_TIMEOUT_MS = Number.isFinite(configuredHttpDrainTimeoutMs)
+  ? Math.max(0, Math.min(configuredHttpDrainTimeoutMs, MAX_API_HTTP_DRAIN_TIMEOUT_MS))
+  : Math.min(10_000, MAX_API_HTTP_DRAIN_TIMEOUT_MS);
+const ACCOUNT_EXPORT_INTERVAL_MS = Math.max(
+  250,
+  Math.min(Number(process.env.ACCOUNT_EXPORT_INTERVAL_MS) || 1_000, 60_000),
+);
+const ACCOUNT_EXPORT_LEASE_MS = Math.max(
+  30_000,
+  Math.min(Number(process.env.ACCOUNT_EXPORT_LEASE_MS) || 5 * 60 * 1000, 30 * 60 * 1000),
+);
+const ACCOUNT_EXPORT_BATCH_SIZE = Math.max(1, Math.min(Number(process.env.ACCOUNT_EXPORT_BATCH_SIZE) || 2, 20));
+const ACCOUNT_EXPORT_EXPIRY_SECONDS = Math.max(
+  60 * 60,
+  Math.min(Number(process.env.ACCOUNT_EXPORT_EXPIRY_SECONDS) || 7 * 24 * 60 * 60, 30 * 24 * 60 * 60),
+);
+const ACCOUNT_EXPORT_MAX_BYTES = Math.max(
+  1024 * 1024,
+  Math.min(Number(process.env.ACCOUNT_EXPORT_MAX_BYTES) || 100 * 1024 * 1024, 100 * 1024 * 1024),
+);
+const ACCOUNT_EXPORT_DOWNLOAD_MAX_BYTES = Math.min(101 * 1024 * 1024, ACCOUNT_EXPORT_MAX_BYTES + 1024 * 1024);
+const ACCOUNT_EXPORT_DOWNLOAD_CONCURRENCY = Math.max(
+  1,
+  Math.min(Number(process.env.ACCOUNT_EXPORT_DOWNLOAD_CONCURRENCY) || 1, 4),
+);
+const ACCOUNT_EXPORT_TMP_DIR = process.env.ACCOUNT_EXPORT_TMP_DIR || path.join(os.tmpdir(), 'zutomayo-account-exports');
+const ACCOUNT_EXPORT_PSEUDONYM_KEY = resolveAccountExportPseudonymKey(process.env);
+let activeAccountExportDownloads = 0;
 
 // GlitchTip/Sentry error tracking — no-op when SENTRY_DSN is unset.
 if (process.env.SENTRY_DSN) {
@@ -331,6 +392,10 @@ function validateSecurityConfig() {
   }
   if (process.env.NODE_ENV !== 'production' && Buffer.byteLength(JWT_SECRET, 'utf8') < 32) {
     logger.warn('JWT_SECRET should be at least 32 bytes for security');
+  }
+  if (process.env.NODE_ENV === 'production' && ADMIN_TOTP_ENCRYPTION_KEY.length < 32) {
+    logger.fatal('ADMIN_TOTP_ENCRYPTION_KEY must be at least 32 characters in production');
+    process.exit(1);
   }
   if (process.env.ADMIN_PASSWORD) {
     logger.warn(
@@ -399,8 +464,7 @@ const relationshipOutboxWorker = createRelationshipOutboxWorker({
   config: relationshipOutboxConfig(process.env),
   projectEvent: async (event) => {
     if (event.kind === 'account_deleted') {
-      await leaveMatchmakingQueue(redis, event.userIds[0]);
-      await redis.del(`mm:blocked:${event.userIds[0]}`);
+      await purgeDeletedMatchmakingAccount(redis, event.userIds[0]);
       return;
     }
     if (event.kind !== 'block_created' && event.kind !== 'block_removed') return;
@@ -430,6 +494,43 @@ const relationshipOutboxWorker = createRelationshipOutboxWorker({
   },
 });
 
+const accountExportStorage = createAccountExportStorageFromEnv(process.env);
+const accountExportWorker = accountExportStorage.configured
+  ? createAccountExportWorker({
+      pool,
+      storage: accountExportStorage,
+      buildArtifact: (input) =>
+        createAccountExportArtifact({
+          ...input,
+          maxBytes: ACCOUNT_EXPORT_MAX_BYTES,
+          pseudonymKey: ACCOUNT_EXPORT_PSEUDONYM_KEY,
+        }),
+      logger,
+      intervalMs: ACCOUNT_EXPORT_INTERVAL_MS,
+      leaseMs: ACCOUNT_EXPORT_LEASE_MS,
+      batchSize: ACCOUNT_EXPORT_BATCH_SIZE,
+      expirySeconds: ACCOUNT_EXPORT_EXPIRY_SECONDS,
+      baseRetryMs: Number(process.env.ACCOUNT_EXPORT_BASE_RETRY_MS) || 5_000,
+      maxRetryMs: Number(process.env.ACCOUNT_EXPORT_MAX_RETRY_MS) || 5 * 60 * 1000,
+      onResult: (result) => accountExportProcessedTotal.labels(result).inc(),
+      onBatch: async () => {
+        const stats = await accountExportStats(pool);
+        accountExportJobsPending.set(stats.pending);
+        accountExportJobsFailed.set(stats.failed);
+        accountExportOldestAgeSeconds.set(stats.oldestAgeSeconds);
+        accountExportPurgePending.set(stats.purgePending);
+        accountExportPurgeRetrying.set(stats.purgeRetrying);
+        accountExportMetricsRefreshSuccess.set(1);
+        accountExportMetricsLastSuccess.set(Date.now() / 1000);
+      },
+      onError: () => accountExportMetricsRefreshSuccess.set(0),
+    })
+  : {
+      start() {},
+      async stop() {},
+      async tick() {},
+    };
+
 async function initSchema() {
   // 啟動時建立 schema（CREATE TABLE IF NOT EXISTS），移除原本 SQLite PRAGMA migration 邏輯。
   const schemaStatements = [
@@ -445,6 +546,12 @@ async function initSchema() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )`,
     `CREATE INDEX IF NOT EXISTS idx_users_elo ON users (elo DESC)`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_version INTEGER NOT NULL DEFAULT 1`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS identity_anonymized_at TIMESTAMPTZ`,
+    `CREATE INDEX IF NOT EXISTS idx_users_deleted_identity_pending
+      ON users (deleted_at)
+      WHERE deleted_at IS NOT NULL AND identity_anonymized_at IS NULL`,
 
     `CREATE TABLE IF NOT EXISTS user_identities (
       user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -549,6 +656,7 @@ async function initSchema() {
     `CREATE TABLE IF NOT EXISTS cards (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
+      en_name_official TEXT NOT NULL DEFAULT '',
       pack TEXT NOT NULL,
       song TEXT DEFAULT '',
       illustrator TEXT DEFAULT '',
@@ -561,12 +669,20 @@ async function initSchema() {
       power_cost INTEGER DEFAULT 0,
       send_to_power INTEGER DEFAULT 0,
       effect TEXT DEFAULT '',
+      en_effect_official TEXT NOT NULL DEFAULT '',
       image TEXT DEFAULT '',
       errata TEXT DEFAULT '',
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )`,
     `ALTER TABLE cards ADD COLUMN IF NOT EXISTS en_name_official TEXT NOT NULL DEFAULT ''`,
     `ALTER TABLE cards ADD COLUMN IF NOT EXISTS en_effect_official TEXT NOT NULL DEFAULT ''`,
+    `UPDATE cards SET en_name_official = '' WHERE en_name_official IS NULL`,
+    `UPDATE cards SET en_effect_official = '' WHERE en_effect_official IS NULL`,
+    `ALTER TABLE cards
+      ALTER COLUMN en_name_official SET DEFAULT '',
+      ALTER COLUMN en_name_official SET NOT NULL,
+      ALTER COLUMN en_effect_official SET DEFAULT '',
+      ALTER COLUMN en_effect_official SET NOT NULL`,
     `ALTER TABLE cards ADD COLUMN IF NOT EXISTS has_official_errata BOOLEAN NOT NULL DEFAULT FALSE`,
     `ALTER TABLE cards ADD COLUMN IF NOT EXISTS official_errata_id TEXT`,
     `ALTER TABLE cards ADD COLUMN IF NOT EXISTS official_errata_affects_name BOOLEAN NOT NULL DEFAULT FALSE`,
@@ -709,6 +825,7 @@ async function initSchema() {
     )`,
     // 既有資料庫補欄位（CREATE TABLE IF NOT EXISTS 不會對已存在資料表新增欄位）
     `ALTER TABLE admin_audit_log ADD COLUMN IF NOT EXISTS admin_user_id TEXT`,
+    `ALTER TABLE admin_audit_log ADD COLUMN IF NOT EXISTS identity_anonymized_at TIMESTAMPTZ`,
 
     // ===== 反饋功能 schema（參考 Fider）=====
     `CREATE TABLE IF NOT EXISTS feedback_posts (
@@ -973,6 +1090,7 @@ async function initSchema() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       delivered_at TIMESTAMPTZ,
+      identities_redacted_at TIMESTAMPTZ,
       CHECK (
         (kind = 'account_deleted' AND cardinality(user_ids) = 1)
         OR (kind <> 'account_deleted' AND cardinality(user_ids) = 2)
@@ -980,6 +1098,8 @@ async function initSchema() {
       CHECK (actor_user_id IS NULL OR actor_user_id = ANY(user_ids)),
       CHECK (kind NOT IN ('block_created', 'block_removed') OR actor_user_id IS NOT NULL)
     )`,
+    `ALTER TABLE relationship_change_outbox
+      ADD COLUMN IF NOT EXISTS identities_redacted_at TIMESTAMPTZ`,
     `CREATE INDEX IF NOT EXISTS idx_relationship_change_outbox_delivery
       ON relationship_change_outbox(status, next_attempt_at)`,
     `CREATE INDEX IF NOT EXISTS idx_relationship_change_outbox_created
@@ -1019,26 +1139,31 @@ async function runMigrations() {
 
   // node-pg-migrate runner 接受 connection string 或 pg ClientConfig。
   // 專案用 PG_* 分開的環境變數，直接組成 ClientConfig。
-  const databaseUrl = {
-    ...(DATABASE_CONNECTION_URL
-      ? { connectionString: DATABASE_CONNECTION_URL }
-      : {
-          host: PG_HOST,
-          port: PG_PORT,
-          user: PG_USER,
-          password: PG_PASSWORD,
-          database: PG_DATABASE,
-        }),
+  const databaseUrl = process.env.DATABASE_URL || {
+    host: PG_HOST,
+    port: PG_PORT,
+    user: PG_USER,
+    password: PG_PASSWORD,
+    database: PG_DATABASE,
     ssl: postgresSslConfig(process.env),
   };
   const {
+    assertAppliedMigrationOrder,
+    assertOutOfOrderBackfillApplied,
     listAppliedMigrationNames,
-    migrationIgnorePatternForApplied,
+    migrationOrderPolicyForApplied,
+    normalizeAppliedMigrationOrder,
   } = require('../scripts/migration-order-compat.cjs');
   const appliedNames = await listAppliedMigrationNames(pool);
-  const ignorePattern = migrationIgnorePatternForApplied(appliedNames);
-  if (ignorePattern) {
+  const migrationPolicy = migrationOrderPolicyForApplied(appliedNames);
+  if (migrationPolicy.ignorePattern) {
     logger.info('Using canonical append-only card migrations 000028-000030');
+  }
+  if (migrationPolicy.outOfOrderBackfill.length > 0) {
+    logger.warn(
+      { migrations: migrationPolicy.outOfOrderBackfill },
+      'applying reviewed deferred-hardening lineage compatibility',
+    );
   }
 
   await runner({
@@ -1047,11 +1172,20 @@ async function runMigrations() {
     direction: 'up',
     migrationsTable: 'schema_migrations',
     schema: 'public',
-    ignorePattern,
-    checkOrder: true,
+    ignorePattern: migrationPolicy.ignorePattern,
+    checkOrder: migrationPolicy.checkOrder,
     count: Infinity,
     log: (msg) => logger.info({ msg }, 'migration'),
   });
+  if (migrationPolicy.outOfOrderBackfill.length > 0) {
+    const updatedAppliedNames = await listAppliedMigrationNames(pool);
+    assertOutOfOrderBackfillApplied(migrationPolicy.outOfOrderBackfill, updatedAppliedNames);
+  }
+  if (migrationPolicy.normalizeOrder) {
+    await normalizeAppliedMigrationOrder(pool);
+    const normalizedNames = await listAppliedMigrationNames(pool);
+    assertAppliedMigrationOrder(normalizedNames);
+  }
 }
 
 // 匯出 schemaReady 供測試 await，並讓正式啟動在 migration 失敗時 fail closed。
@@ -1211,22 +1345,23 @@ async function getCurrentAuthVersion(userId) {
 }
 
 async function issueRefreshToken(userId, sessionIat, authVersion) {
-  const effectiveAuthVersion = Number.isInteger(authVersion) ? authVersion : await getCurrentAuthVersion(userId);
-  if (!effectiveAuthVersion) throw new Error('Unable to verify account session');
-  const refreshToken = createRefreshToken(userId, sessionIat, effectiveAuthVersion);
-  const payload = decodeJWTPayload(refreshToken);
-  if (payload && payload.jti) {
-    const ttl = Number(payload.exp) - Math.floor(Date.now() / 1000);
-    if (ttl > 0) {
-      try {
-        await redis.set(`refresh:${payload.jti}`, String(userId), 'EX', ttl);
-      } catch (err) {
-        logger.error({ err, userId }, 'failed to persist refresh session');
-        throw new Error('Unable to persist refresh session');
-      }
+  try {
+    return await issueAccountRefreshToken({
+      pool,
+      redis,
+      userId,
+      sessionIat,
+      requestedAuthVersion: authVersion,
+      createRefreshToken,
+      decodeTokenPayload: decodeJWTPayload,
+      redisSetTimeoutMs: Number(process.env.REDIS_COMMAND_TIMEOUT_MS) || 1_500,
+    });
+  } catch (err) {
+    if (!(err instanceof AccountSessionUnavailableError)) {
+      logger.error({ err, userId }, 'failed to persist refresh session');
     }
+    throw err;
   }
-  return refreshToken;
 }
 
 async function createTokenPair(userId, sessionIat, authVersion) {
@@ -1288,7 +1423,7 @@ async function revokeRefreshToken(token) {
   }
 }
 
-async function revokeAllUserSessions(userId, { bumpAuthVersion = true } = {}) {
+async function revokeAllUserSessions(userId, { bumpAuthVersion = true, dbPool = pool } = {}) {
   const revokedBefore = Math.floor(Date.now() / 1000);
   try {
     // Redis is an acceleration/index for revocation, not the authority. A
@@ -1296,7 +1431,7 @@ async function revokeAllUserSessions(userId, { bumpAuthVersion = true } = {}) {
     // Redis restart or key eviction. Callers that already hold the user row
     // lock and increment auth_version in their transaction can opt out.
     if (bumpAuthVersion) {
-      await pool.query(
+      await dbPool.query(
         `UPDATE users
             SET auth_version = COALESCE(auth_version, 1) + 1
           WHERE id = $1 AND deleted_at IS NULL`,
@@ -1319,7 +1454,7 @@ async function revokeAllUserSessions(userId, { bumpAuthVersion = true } = {}) {
   }
 }
 
-async function revokeRequestAccountSessions(req, userId, { bumpAuthVersion = true } = {}) {
+async function revokeRequestAccountSessions(req, userId, { bumpAuthVersion = true, dbPool = pool } = {}) {
   const authorization = String(req.headers.authorization || '');
   const bearerToken = authorization.startsWith('Bearer ') ? authorization.slice('Bearer '.length).trim() : '';
   const cookies = parseCookies(req);
@@ -1327,7 +1462,7 @@ async function revokeRequestAccountSessions(req, userId, { bumpAuthVersion = tru
 
   if (bearerToken) await blacklistToken(bearerToken);
   if (cookieToken && cookieToken !== bearerToken) await blacklistToken(cookieToken);
-  await revokeAllUserSessions(userId, { bumpAuthVersion });
+  await revokeAllUserSessions(userId, { bumpAuthVersion, dbPool });
 }
 
 async function isUserSessionRevoked(userId, issuedAt) {
@@ -2420,51 +2555,70 @@ async function deleteLogtoPrincipalWithManagementApi(providerUserId, { retryUnau
 }
 
 async function recoverAccountDeletionRequest(request) {
-  let currentRequest = request;
-  if (currentRequest.status === 'provider_deleting') {
-    await revokeAllUserSessions(currentRequest.userId);
-    const providerResult = await deleteLogtoPrincipalWithManagementApi(currentRequest.providerUserId);
-    if (!providerResult.ok) return providerResult;
-    const marked = await markProviderDeleted({ pool, requestId: currentRequest.id });
-    if (!marked.ok) return marked;
-    currentRequest = marked.body.request;
-  }
+  const leased = await withAccountDeletionRecoveryLease({
+    pool,
+    requestId: request.id,
+    operation: async (leasedRequest, leaseClient) => {
+      let currentRequest = leasedRequest;
+      if (currentRequest.status === 'provider_deleting') {
+        await revokeAllUserSessions(currentRequest.userId, { dbPool: leaseClient });
+        const providerResult = await deleteLogtoPrincipalWithManagementApi(currentRequest.providerUserId);
+        if (!providerResult.ok) return providerResult;
+        const marked = await markProviderDeleted({ pool: leaseClient, requestId: currentRequest.id });
+        if (!marked.ok) return marked;
+        currentRequest = marked.body.request;
+      }
 
-  if (currentRequest.status !== 'provider_deleted') {
+      if (currentRequest.status !== 'provider_deleted') {
+        return { ok: false, status: 409, error: 'Account deletion request is not recoverable' };
+      }
+      return deleteAccount({
+        pool: leaseClient,
+        userId: currentRequest.userId,
+        deletionRequestId: currentRequest.id,
+        beforeDelete: () =>
+          revokeAllUserSessions(currentRequest.userId, { bumpAuthVersion: false, dbPool: leaseClient }),
+      });
+    },
+  });
+  if (!leased.acquired) {
+    return { ok: false, status: 409, error: 'Account deletion recovery is already in progress' };
+  }
+  if (!leased.request) {
     return { ok: false, status: 409, error: 'Account deletion request is not recoverable' };
   }
-  return deleteAccount({
-    pool,
-    userId: currentRequest.userId,
-    deletionRequestId: currentRequest.id,
-    beforeDelete: () => revokeAllUserSessions(currentRequest.userId, { bumpAuthVersion: false }),
-  });
+  return leased.result;
 }
 
-let accountDeletionRecoveryRunning = false;
 let accountDeletionRecoveryTimer = null;
+let accountDeletionRecoveryPromise = null;
 
-async function recoverAccountDeletions() {
-  if (accountDeletionRecoveryRunning) return;
-  accountDeletionRecoveryRunning = true;
-  try {
-    const requests = await listRecoverableAccountDeletions({ pool, limit: 20 });
-    for (const request of requests) {
-      try {
-        const result = await recoverAccountDeletionRequest(request);
-        if (!result.ok) {
-          logger.warn(
-            { requestId: request.id, userId: request.userId, status: result.status, error: result.error },
-            'account deletion recovery remains pending',
+function recoverAccountDeletions() {
+  if (accountDeletionRecoveryPromise) return accountDeletionRecoveryPromise;
+  accountDeletionRecoveryPromise = (async () => {
+    try {
+      const requests = await listRecoverableAccountDeletions({ pool, limit: 20 });
+      for (const request of requests) {
+        try {
+          const result = await recoverAccountDeletionRequest(request);
+          if (!result.ok) {
+            logger.warn(
+              { requestId: request.id, userId: request.userId, status: result.status, error: result.error },
+              'account deletion recovery remains pending',
+            );
+          }
+        } catch (error) {
+          logger.error(
+            { err: error, requestId: request.id, userId: request.userId },
+            'account deletion recovery failed',
           );
         }
-      } catch (error) {
-        logger.error({ err: error, requestId: request.id, userId: request.userId }, 'account deletion recovery failed');
       }
+    } finally {
+      accountDeletionRecoveryPromise = null;
     }
-  } finally {
-    accountDeletionRecoveryRunning = false;
-  }
+  })();
+  return accountDeletionRecoveryPromise;
 }
 
 function startAccountDeletionRecovery() {
@@ -2478,10 +2632,12 @@ function startAccountDeletionRecovery() {
   accountDeletionRecoveryTimer.unref?.();
 }
 
-function stopAccountDeletionRecovery() {
-  if (!accountDeletionRecoveryTimer) return;
-  clearInterval(accountDeletionRecoveryTimer);
-  accountDeletionRecoveryTimer = null;
+async function stopAccountDeletionRecovery() {
+  if (accountDeletionRecoveryTimer) {
+    clearInterval(accountDeletionRecoveryTimer);
+    accountDeletionRecoveryTimer = null;
+  }
+  await accountDeletionRecoveryPromise;
 }
 
 async function verifyAuthChallenge(body, clientIp) {
@@ -2683,15 +2839,13 @@ function sanitizeActionLog(actionLog) {
 }
 
 // ===== Rate Limiting (P0-4, Redis INCR + TTL) =====
-const RATE_LIMIT_WINDOW_MS = 60 * 1000;
-const RATE_LIMIT_AUTH = 10;
-const RATE_LIMIT_IMGPROXY = Number(process.env.RATE_LIMIT_IMGPROXY) || 600;
-const RATE_LIMIT_DEFAULT = 120;
-const RATE_LIMIT_UPLOAD = 10;
+const API_RATE_LIMITS = apiRateLimitConfig();
+const RATE_LIMIT_WINDOW_MS = API_RATE_LIMITS.windowMs;
+const RATE_LIMIT_AUTH = API_RATE_LIMITS.auth;
+const RATE_LIMIT_IMGPROXY = API_RATE_LIMITS.imgproxy;
+const RATE_LIMIT_DEFAULT = API_RATE_LIMITS.default;
+const RATE_LIMIT_UPLOAD = API_RATE_LIMITS.upload;
 const REDIS_LIMITER_TIMEOUT_MS = Math.max(100, Number(process.env.REDIS_LIMITER_TIMEOUT_MS) || 750);
-const MATCHMAKING_USER_LIMIT = Math.max(1, Number(process.env.MATCHMAKING_USER_LIMIT) || 6);
-const MATCHMAKING_IP_LIMIT = Math.max(1, Number(process.env.MATCHMAKING_IP_LIMIT) || 30);
-const MATCHMAKING_GLOBAL_LIMIT = Math.max(1, Number(process.env.MATCHMAKING_GLOBAL_LIMIT) || 2000);
 
 function boundedRedisCommand(command, timeoutMs = REDIS_LIMITER_TIMEOUT_MS) {
   let timer;
@@ -2716,16 +2870,6 @@ async function checkRateLimit(ip, limit, keyPrefix = 'ratelimit') {
     logger.error({ err, key }, 'rate limiter unavailable');
     return false;
   }
-}
-
-async function checkQuota({ ip, userId, namespace, ipLimit, userLimit, globalLimit }) {
-  const userKey = userId ? crypto.createHash('sha256').update(String(userId)).digest('hex').slice(0, 32) : 'anonymous';
-  const checks = await Promise.all([
-    checkRateLimit(ip || 'unknown', ipLimit, `quota:${namespace}:ip`),
-    checkRateLimit(userKey, userLimit, `quota:${namespace}:user`),
-    checkRateLimit('global', globalLimit, `quota:${namespace}:global`),
-  ]);
-  return checks.every(Boolean);
 }
 
 // 驗證上傳圖片的 magic bytes，防止偽造副檔名上傳惡意檔案。
@@ -2878,87 +3022,7 @@ function getCorsOrigin(reqOrigin) {
   return null;
 }
 
-// ===== Matchmaking (Redis Hash + Sorted Set + Lua 原子配對) =====
-// 結構：
-//   mm:queue      sorted set，score = joinedAt(ms)，member = userId
-//   mm:{userId}   hash，欄位：queueId/joinedAt/deckName/deckIds/status/matchId/opponentId/role/realMatchId
-const MATCHMAKING_TIMEOUT_MS = 60 * 1000;
-const MATCHMAKING_TIMEOUT_GRACE_MS = 10 * 1000;
-// entry TTL = timeout + grace（70 秒）
-const MM_TTL_SECONDS = Math.ceil((MATCHMAKING_TIMEOUT_MS + MATCHMAKING_TIMEOUT_GRACE_MS) / 1000);
 const PRESENCE_TTL_MS = Number(process.env.PRESENCE_TTL_MS) || 90 * 1000;
-
-function generateMatchmakingId() {
-  return 'mm_' + crypto.randomBytes(8).toString('hex');
-}
-
-// Lua：原子配對（多實例下不會把同一人配給兩人）。
-// KEYS[1] = mm:queue
-// ARGV[1] = userId, ARGV[2] = now(ms), ARGV[3] = matchId, ARGV[4] = timeoutMs
-const MATCH_LUA = `
-local userId = ARGV[1]
-local now = tonumber(ARGV[2])
-local matchId = ARGV[3]
-local timeoutMs = tonumber(ARGV[4])
-
--- 清掉過期的 queued 玩家（轉 timeout）
-local expired = redis.call('ZRANGEBYSCORE', KEYS[1], 0, now - timeoutMs)
-for i, uid in ipairs(expired) do
-  redis.call('HSET', 'mm:' .. uid, 'status', 'timeout')
-  redis.call('ZREM', KEYS[1], uid)
-end
-
-local requestBlocked = {}
-for i = 5, #ARGV do
-  requestBlocked[ARGV[i]] = true
-end
-
--- 找最早且雙向都沒有封鎖關係的 waiting 對手。Redis block set
--- 由 block API 即時維護，ARGV 則是本次排隊從 PostgreSQL 讀到的快照。
-local opponentId = nil
-local opponents = redis.call('ZRANGE', KEYS[1], 0, -1)
-for i, candidateId in ipairs(opponents) do
-  if candidateId ~= userId
-     and not requestBlocked[candidateId]
-     and redis.call('SISMEMBER', 'mm:blocked:' .. userId, candidateId) == 0
-     and redis.call('SISMEMBER', 'mm:blocked:' .. candidateId, userId) == 0
-     and redis.call('HGET', 'mm:' .. candidateId, 'status') == 'queued' then
-    opponentId = candidateId
-    break
-  end
-end
-if not opponentId then return '' end
-
--- 原子移除對手
-redis.call('ZREM', KEYS[1], opponentId)
-redis.call('ZREM', KEYS[1], userId)
-
--- userId 字串較小者為 host
-local hostId, guestId
-if userId < opponentId then
-  hostId = userId; guestId = opponentId
-else
-  hostId = opponentId; guestId = userId
-end
-
-redis.call('HSET', 'mm:' .. userId, 'status', 'matched', 'matchId', matchId, 'opponentId', opponentId, 'role', userId == hostId and 'host' or 'guest')
-redis.call('HSET', 'mm:' .. opponentId, 'status', 'matched', 'matchId', matchId, 'opponentId', userId, 'role', opponentId == hostId and 'host' or 'guest')
-
-return opponentId
-`;
-
-// Lua：清理過期 queued 玩家（status endpoint 用）。
-// KEYS[1] = mm:queue, ARGV[1] = now(ms), ARGV[2] = timeoutMs
-const CLEAN_LUA = `
-local now = tonumber(ARGV[1])
-local timeoutMs = tonumber(ARGV[2])
-local expired = redis.call('ZRANGEBYSCORE', KEYS[1], 0, now - timeoutMs)
-for i, uid in ipairs(expired) do
-  redis.call('HSET', 'mm:' .. uid, 'status', 'timeout')
-  redis.call('ZREM', KEYS[1], uid)
-end
-return #expired
-`;
 
 const CANCEL_MATCHMAKING_PAIR_LUA = `
 local function cancelIfMatched(userId, opponentId)
@@ -2993,8 +3057,6 @@ cancelled = cancelled + cancelIfMatched(ARGV[2], ARGV[1])
 return cancelled
 `;
 
-redis.defineCommand('mmTryMatch', { numberOfKeys: 1, lua: MATCH_LUA });
-redis.defineCommand('mmCleanExpired', { numberOfKeys: 1, lua: CLEAN_LUA });
 redis.defineCommand('mmCancelPair', { numberOfKeys: 1, lua: CANCEL_MATCHMAKING_PAIR_LUA });
 redis.defineCommand('mmApplyBlock', { numberOfKeys: 1, lua: APPLY_MATCHMAKING_BLOCK_LUA });
 
@@ -3302,6 +3364,13 @@ function handleRequest(req, res) {
       } catch {
         ready = false;
       }
+      // A drain may begin while either dependency probe is in flight. Re-read
+      // the flag immediately before responding so an overlapping probe can
+      // never advertise this process as ready after SIGTERM/SIGINT.
+      if (shuttingDown) {
+        ready = false;
+        checks.draining = 'down';
+      }
       res.writeHead(ready ? 200 : 503, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
       res.end(JSON.stringify({ ready, checks }));
       return;
@@ -3552,11 +3621,16 @@ function handleRequest(req, res) {
         return json({ error: 'Invalid or expired refresh token' }, 401);
       }
       // Rotate：verifyRefreshToken 已透過 GETDEL 原子消費舊 refresh token，發新 token pair
-      const { accessToken, refreshToken: newRefreshToken } = await createTokenPair(
-        session.userId,
-        session.sessionIat,
-        session.authVersion ?? 1,
-      );
+      let tokenPair;
+      try {
+        tokenPair = await createTokenPair(session.userId, session.sessionIat, session.authVersion ?? 1);
+      } catch (error) {
+        if (!(error instanceof AccountSessionUnavailableError)) throw error;
+        clearRefreshCookie(req, res);
+        clearCsrfCookie(req, res);
+        return json({ error: 'Invalid or expired refresh token' }, 401);
+      }
+      const { accessToken, refreshToken: newRefreshToken } = tokenPair;
       setAuthCookie(req, res, accessToken);
       setRefreshCookie(req, res, newRefreshToken);
       setCsrfCookie(req, res, generateCsrfToken());
@@ -3645,18 +3719,273 @@ function handleRequest(req, res) {
     }
 
     if (pathname === '/api/account/export' && method === 'GET') {
+      res.setHeader('Deprecation', 'true');
+      res.setHeader('Sunset', 'Wed, 14 Oct 2026 00:00:00 GMT');
+      res.setHeader('Link', '</api/account/exports>; rel="successor-version"');
+      json({ error: 'Synchronous account export was removed; create an asynchronous export job instead' }, 410);
+      return;
+    }
+
+    if (pathname === '/api/account/exports' && method === 'POST') {
       const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
-      const result = await exportAccountData({
+      if (!accountExportStorage.configured) return json({ error: 'Account export storage is not configured' }, 503);
+      const result = await createAccountExportJob({
         pool,
         userId,
-        maxBytes: Number(process.env.ACCOUNT_EXPORT_MAX_BYTES) || undefined,
+        maxAttempts: Number(process.env.ACCOUNT_EXPORT_MAX_ATTEMPTS) || undefined,
+        requestId,
       });
       if (!result.ok) return json({ error: result.error }, result.status);
       res.setHeader('Cache-Control', 'no-store, private');
       res.setHeader('Vary', 'Cookie, Authorization');
-      res.setHeader('Content-Disposition', `attachment; filename="zutomayo-account-${userId}.json"`);
+      res.setHeader('Location', `/api/account/exports/${result.body.job.id}`);
+      res.setHeader('Retry-After', result.body.job.status === 'ready' ? '0' : '2');
+      json(result.body, result.body.job.status === 'ready' ? 200 : 202);
+      return;
+    }
+
+    if (pathname === '/api/account/exports' && method === 'GET') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const result = await listAccountExportJobs({ pool, userId });
+      res.setHeader('Cache-Control', 'no-store, private');
+      res.setHeader('Vary', 'Cookie, Authorization');
       json(result.body);
+      return;
+    }
+
+    const accountExportRoute = pathname.match(/^\/api\/account\/exports\/([A-Za-z0-9-]{16,128})(\/download)?$/);
+    if (accountExportRoute && method === 'GET') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const jobId = accountExportRoute[1];
+      const download = accountExportRoute[2] === '/download';
+      if (!download) {
+        const result = await getAccountExportJob({ pool, userId, jobId });
+        if (!result.ok) return json({ error: result.error }, result.status);
+        res.setHeader('Cache-Control', 'no-store, private');
+        res.setHeader('Vary', 'Cookie, Authorization');
+        json(result.body);
+        return;
+      }
+
+      if (!accountExportStorage.configured) return json({ error: 'Account export storage is not configured' }, 503);
+      const lookup = await getAccountExportJob({ pool, userId, jobId, includeObjectKey: true });
+      if (!lookup.ok) return json({ error: lookup.error }, lookup.status);
+      if (lookup.body.job.status !== 'ready' || !lookup.body.objectKey) {
+        return json({ error: 'Account export is not ready' }, lookup.body.job.status === 'expired' ? 410 : 409);
+      }
+      if (activeAccountExportDownloads >= ACCOUNT_EXPORT_DOWNLOAD_CONCURRENCY) {
+        res.setHeader('Retry-After', '5');
+        return json({ error: 'Account export download capacity is busy; retry shortly' }, 503);
+      }
+      activeAccountExportDownloads += 1;
+      let downloadSlotReleased = false;
+      const releaseDownloadSlot = () => {
+        if (downloadSlotReleased) return;
+        downloadSlotReleased = true;
+        activeAccountExportDownloads = Math.max(0, activeAccountExportDownloads - 1);
+      };
+      const fetchAbortController = new AbortController();
+      let preStreamClosed = false;
+      const abortFetch = () => fetchAbortController.abort(new Error('Account export download client disconnected'));
+      const handlePreStreamClose = () => {
+        preStreamClosed = true;
+        abortFetch();
+      };
+      req.once?.('aborted', abortFetch);
+      res.once('close', handlePreStreamClose);
+      const removePreStreamListeners = () => {
+        req.off?.('aborted', abortFetch);
+        res.off?.('close', handlePreStreamClose);
+      };
+      let started;
+      try {
+        started = await recordAccountExportDownloadEvent({
+          pool,
+          userId,
+          jobId,
+          eventType: 'download_started',
+          requestId,
+        });
+      } catch (error) {
+        removePreStreamListeners();
+        releaseDownloadSlot();
+        throw error;
+      }
+      if (!started.ok) {
+        removePreStreamListeners();
+        releaseDownloadSlot();
+        return json({ error: started.error }, started.status);
+      }
+      if (preStreamClosed || req.destroyed || res.destroyed) {
+        removePreStreamListeners();
+        releaseDownloadSlot();
+        await recordAccountExportDownloadEvent({
+          pool,
+          userId,
+          jobId,
+          eventType: 'download_interrupted',
+          requestId,
+          details: { phase: 'before_object_fetch' },
+        }).catch(() => undefined);
+        return;
+      }
+      let object;
+      try {
+        object = await accountExportStorage.getObject({
+          key: lookup.body.objectKey,
+          versionId: lookup.body.objectVersionId,
+          signal: fetchAbortController.signal,
+        });
+      } catch (error) {
+        removePreStreamListeners();
+        releaseDownloadSlot();
+        await recordAccountExportDownloadEvent({
+          pool,
+          userId,
+          jobId,
+          eventType: 'download_interrupted',
+          requestId,
+          details: { phase: 'object_fetch' },
+        }).catch(() => undefined);
+        reqLog.error({ err: error, jobId }, 'account export object fetch failed');
+        if (preStreamClosed || req.destroyed || res.destroyed) return;
+        return json({ error: 'Account export object is temporarily unavailable' }, 502);
+      }
+      const expectedSize = Number(lookup.body.job.sizeBytes);
+      const actualSize = Number(object.contentLength);
+      const expectedSha256 = String(lookup.body.job.contentSha256 || '').toLowerCase();
+      const actualSha256 = String(object.metadata?.sha256 || '').toLowerCase();
+      if (actualSize !== expectedSize || actualSha256 !== expectedSha256) {
+        object.body?.destroy?.();
+        object.cleanup?.();
+        removePreStreamListeners();
+        releaseDownloadSlot();
+        await recordAccountExportDownloadEvent({
+          pool,
+          userId,
+          jobId,
+          eventType: 'integrity_failed',
+          requestId,
+          details: { sizeMatched: actualSize === expectedSize, checksumMatched: actualSha256 === expectedSha256 },
+        });
+        if (preStreamClosed || req.destroyed || res.destroyed) return;
+        return json({ error: 'Account export integrity verification failed' }, 502);
+      }
+      let staged;
+      try {
+        staged = await stageAccountExportDownload({
+          body: object.body,
+          expectedSize,
+          expectedSha256,
+          refreshTimeout: object.refreshTimeout,
+          maxBytes: ACCOUNT_EXPORT_DOWNLOAD_MAX_BYTES,
+          tempRoot: ACCOUNT_EXPORT_TMP_DIR,
+        });
+      } catch (error) {
+        object.body?.destroy?.();
+        object.cleanup?.();
+        removePreStreamListeners();
+        releaseDownloadSlot();
+        const integrityFailure = error?.code === 'ACCOUNT_EXPORT_INTEGRITY';
+        await recordAccountExportDownloadEvent({
+          pool,
+          userId,
+          jobId,
+          eventType: integrityFailure ? 'integrity_failed' : 'download_interrupted',
+          requestId,
+          details: integrityFailure ? error.details : { phase: 'object_stage' },
+        }).catch(() => undefined);
+        reqLog.error({ err: error, jobId }, 'account export object staging failed');
+        if (preStreamClosed || req.destroyed || res.destroyed) return;
+        return json(
+          {
+            error: integrityFailure
+              ? 'Account export integrity verification failed'
+              : 'Account export object is temporarily unavailable',
+          },
+          502,
+        );
+      }
+      object.cleanup?.();
+      removePreStreamListeners();
+      if (preStreamClosed || req.destroyed || res.destroyed) {
+        releaseDownloadSlot();
+        await staged.cleanup().catch(() => undefined);
+        await recordAccountExportDownloadEvent({
+          pool,
+          userId,
+          jobId,
+          eventType: 'download_interrupted',
+          requestId,
+          details: { phase: 'after_object_stage' },
+        }).catch(() => undefined);
+        return;
+      }
+      res.writeHead(200, {
+        'Content-Type': 'application/gzip',
+        'Content-Length': String(expectedSize),
+        'Content-Disposition': `attachment; filename="zutomayo-account-${jobId}.json.gz"`,
+        'Cache-Control': 'no-store, private',
+        Vary: 'Cookie, Authorization',
+        'X-Content-SHA256': expectedSha256,
+      });
+      const stream = fs.createReadStream(staged.filePath);
+      let downloadFinished = false;
+      let terminalAuditRecorded = false;
+      const recordInterrupted = (phase = 'stream') => {
+        if (downloadFinished || terminalAuditRecorded) return;
+        terminalAuditRecorded = true;
+        releaseDownloadSlot();
+        void staged.cleanup().catch(() => undefined);
+        void recordAccountExportDownloadEvent({
+          pool,
+          userId,
+          jobId,
+          eventType: 'download_interrupted',
+          requestId,
+          details: { phase },
+        }).catch((error) => logger.error({ err: error, jobId }, 'failed to audit interrupted account export'));
+      };
+      res.once('finish', () => {
+        downloadFinished = true;
+        if (terminalAuditRecorded) return;
+        terminalAuditRecorded = true;
+        releaseDownloadSlot();
+        void staged.cleanup().catch(() => undefined);
+        void recordAccountExportDownloadEvent({
+          pool,
+          userId,
+          jobId,
+          eventType: 'download_completed',
+          requestId,
+        }).catch((error) => logger.error({ err: error, jobId }, 'failed to audit completed account export'));
+      });
+      res.once('close', () => {
+        stream.destroy?.();
+        recordInterrupted('client_close');
+      });
+      stream.once('error', (error) => {
+        if (terminalAuditRecorded) return;
+        terminalAuditRecorded = true;
+        releaseDownloadSlot();
+        void staged.cleanup().catch(() => undefined);
+        void recordAccountExportDownloadEvent({
+          pool,
+          userId,
+          jobId,
+          eventType: 'download_interrupted',
+          requestId,
+          details: { phase: 'verified_file_stream' },
+        }).catch((auditError) =>
+          logger.error({ err: auditError, jobId }, 'failed to audit failed account export download'),
+        );
+        logger.error({ err: error, jobId }, 'account export download stream failed');
+        res.destroy(error);
+      });
+      stream.pipe(res);
       return;
     }
 
@@ -3717,53 +4046,76 @@ function handleRequest(req, res) {
         });
         if (!consumed.ok) return json({ error: consumed.error }, consumed.status);
 
-        const started = await markProviderDeletionStarted({ pool, requestId: deletionRequest.id });
-        if (!started.ok) return json({ error: started.error }, started.status);
-        deletionRequest = started.body.request;
-
-        // Once provider deletion is durable intent, block all existing local
-        // sessions before issuing the external mutation.
-        await revokeRequestAccountSessions(req, userId);
-        let providerDeletion;
-        try {
-          providerDeletion = await logtoAccountRequest({
-            userId,
-            path: '/api/my-account',
-            method: 'DELETE',
-            verificationId: consumed.verificationId,
-          });
-        } catch (error) {
-          await markProviderDeletionFailure({
-            pool,
-            requestId: deletionRequest.id,
-            error,
-            retryable: true,
-          });
-          throw error;
-        }
-        if (!providerDeletion.ok) {
-          const retryable =
-            providerDeletion.status === 408 || providerDeletion.status === 429 || providerDeletion.status >= 500;
-          await markProviderDeletionFailure({
-            pool,
-            requestId: deletionRequest.id,
-            error: providerDeletion.error,
-            retryable,
-          });
-          return json({ error: providerDeletion.error, deletionPending: retryable }, providerDeletion.status);
-        }
-
-        const marked = await markProviderDeleted({ pool, requestId: deletionRequest.id });
-        if (!marked.ok) return json({ error: marked.error, deletionPending: true }, marked.status);
-        const result = await deleteAccount({
+        const leased = await withAccountDeletionRecoveryLease({
           pool,
-          userId,
-          requireStepUp: true,
-          stepUpVerified: true,
-          deletionRequestId: deletionRequest.id,
-          beforeDelete: () => revokeRequestAccountSessions(req, userId, { bumpAuthVersion: false }),
+          requestId: deletionRequest.id,
+          statuses: ['prepared'],
+          operation: async (leasedRequest, leaseClient) => {
+            const started = await markProviderDeletionStarted({ pool: leaseClient, requestId: leasedRequest.id });
+            if (!started.ok) return started;
+
+            // Once provider deletion is durable intent, block all existing
+            // sessions before issuing the external mutation. The session-level
+            // advisory lease prevents a recovery worker from issuing the same
+            // irreversible provider call concurrently.
+            await revokeRequestAccountSessions(req, userId, { dbPool: leaseClient });
+            let providerDeletion;
+            try {
+              providerDeletion = await logtoAccountRequest({
+                userId,
+                path: '/api/my-account',
+                method: 'DELETE',
+                verificationId: consumed.verificationId,
+              });
+            } catch (error) {
+              await markProviderDeletionFailure({
+                pool: leaseClient,
+                requestId: leasedRequest.id,
+                error,
+                retryable: true,
+              });
+              throw error;
+            }
+            if (!providerDeletion.ok) {
+              const retryable =
+                providerDeletion.status === 408 || providerDeletion.status === 429 || providerDeletion.status >= 500;
+              await markProviderDeletionFailure({
+                pool: leaseClient,
+                requestId: leasedRequest.id,
+                error: providerDeletion.error,
+                retryable,
+              });
+              return {
+                ok: false,
+                status: providerDeletion.status,
+                error: providerDeletion.error,
+                deletionPending: retryable,
+              };
+            }
+
+            const marked = await markProviderDeleted({ pool: leaseClient, requestId: leasedRequest.id });
+            if (!marked.ok) return { ...marked, deletionPending: true };
+            return deleteAccount({
+              pool: leaseClient,
+              userId,
+              requireStepUp: true,
+              stepUpVerified: true,
+              deletionRequestId: leasedRequest.id,
+              beforeDelete: () =>
+                revokeRequestAccountSessions(req, userId, { bumpAuthVersion: false, dbPool: leaseClient }),
+            });
+          },
         });
-        if (!result.ok) return json({ error: result.error, deletionPending: true }, result.status);
+        if (!leased.acquired || !leased.request) {
+          return json({ error: 'Account deletion is already in progress', deletionPending: true }, 409);
+        }
+        const result = leased.result;
+        if (!result.ok) {
+          return json(
+            { error: result.error, deletionPending: result.deletionPending ?? true },
+            result.status === 503 ? 503 : result.status,
+          );
+        }
         clearAuthCookie(req, res);
         clearRefreshCookie(req, res);
         clearCsrfCookie(req, res);
@@ -3991,12 +4343,6 @@ function handleRequest(req, res) {
       if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
       const result = await blockUser({ pool, userId, targetUserId: parsed.data.targetUserId });
       if (!result.ok) return json({ error: result.error }, result.status);
-      await applyMatchmakingBlock(redis, userId, parsed.data.targetUserId).catch((error) =>
-        logger.error(
-          { err: error, userId, targetUserId: parsed.data.targetUserId },
-          'matchmaking block projection failed',
-        ),
-      );
       json(result.body);
       return;
     }
@@ -4007,9 +4353,6 @@ function handleRequest(req, res) {
       if (!userId) return json({ error: 'Unauthorized' }, 401);
       const result = await unblockUser({ pool, userId, targetUserId: decodeURIComponent(blockRoute[1]) });
       if (!result.ok) return json({ error: result.error }, result.status);
-      await removeMatchmakingBlock(redis, userId, decodeURIComponent(blockRoute[1])).catch((error) =>
-        logger.error({ err: error, userId }, 'matchmaking unblock projection failed'),
-      );
       json(result.body);
       return;
     }
@@ -4406,7 +4749,8 @@ function handleRequest(req, res) {
 
     // ===== Admin API (P0-3 + P2-12) =====
 
-    // 已綁定的普通使用者登入後，可直接換取受 RBAC 與撤銷機制保護的管理員 session。
+    // A signed-in user with an explicitly linked role may exchange the normal
+    // account session for the same persisted, revocable admin session format.
     if (pathname === '/api/admin/session' && method === 'POST') {
       const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
@@ -4731,23 +5075,44 @@ function handleRequest(req, res) {
 
     // ===== Card Data Routes =====
 
+    const sendVersionedCardData = async (loadData, validateData = () => true) => {
+      const version = await getOfficialCardDataVersion(pool);
+      if (!version) {
+        json({ error: 'Card data release metadata unavailable' }, 503);
+        return;
+      }
+      const data = await loadData();
+      if (!validateData(data, version)) {
+        json({ error: 'Card data release is incomplete' }, 503);
+        return;
+      }
+      res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+      res.setHeader('X-Card-Dataset-Sha256', version.datasetSha256);
+      res.setHeader('X-Card-Dataset-Release-Sha', version.releaseSha);
+      res.setHeader('X-Card-Dataset-Count', String(version.cardCount));
+      res.setHeader('X-Card-Data-App-Version', APP_VERSION);
+      res.setHeader('X-Card-Data-Build-Id', APP_BUILD_ID);
+      res.setHeader('X-Card-Data-Rules-Version', GAME_RULES_VERSION);
+      json(data);
+    };
+
     // Public: list card definitions from PostgreSQL.
     if (pathname === '/api/cards' && method === 'GET') {
-      res.setHeader('Cache-Control', 'no-store');
-      json(await getPublicCards(pool, url.searchParams));
+      await sendVersionedCardData(
+        () => getPublicCards(pool, url.searchParams),
+        (cards, version) => Array.isArray(cards) && (url.searchParams.size > 0 || cards.length === version.cardCount),
+      );
       return;
     }
 
     // 批次 i18n 端點：回傳所有卡牌的所有語言翻譯。
     if (pathname === '/api/cards/i18n' && method === 'GET') {
-      res.setHeader('Cache-Control', 'no-store');
-      json(await getAllCardI18n(pool));
+      await sendVersionedCardData(() => getAllCardI18n(pool));
       return;
     }
 
     if (pathname === '/api/cards/texts' && method === 'GET') {
-      res.setHeader('Cache-Control', 'no-store');
-      json(await getAllCardTextsI18n(pool));
+      await sendVersionedCardData(() => getAllCardTextsI18n(pool));
       return;
     }
 
@@ -4840,70 +5205,17 @@ function handleRequest(req, res) {
 
     // ===== Matchmaking Routes =====
 
-    // POST /api/matchmaking/queue — 加入配對佇列
-    if (pathname === '/api/matchmaking/queue' && method === 'POST') {
+    const legacyMatchmakingRoute =
+      (pathname === '/api/matchmaking/queue' && (method === 'POST' || method === 'DELETE')) ||
+      (pathname === '/api/matchmaking/status' && method === 'GET') ||
+      (pathname === '/api/matchmaking/match' && method === 'PUT');
+    if (legacyMatchmakingRoute) {
       const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
-      if (
-        !(await checkQuota({
-          ip: clientIp,
-          userId,
-          namespace: 'matchmaking',
-          ipLimit: MATCHMAKING_IP_LIMIT,
-          userLimit: MATCHMAKING_USER_LIMIT,
-          globalLimit: MATCHMAKING_GLOBAL_LIMIT,
-        }))
-      ) {
-        return json({ error: 'Matchmaking capacity is temporarily unavailable' }, 429);
-      }
-      const __body = await readBody();
-      const __parsed = validateBody(S.mmQueueSchema, __body);
-      if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
-      const blockedUserIds = await listMatchmakingBlockedUserIds({ pool, userId });
-      json(
-        await joinMatchmakingQueue({
-          redis,
-          userId,
-          body: __parsed.data,
-          sanitizeText,
-          generateQueueId: () => 'q_' + crypto.randomBytes(8).toString('hex'),
-          generateMatchId: generateMatchmakingId,
-          ttlSeconds: MM_TTL_SECONDS,
-          timeoutMs: MATCHMAKING_TIMEOUT_MS,
-          blockedUserIds,
-        }),
-      );
-      return;
-    }
-
-    // GET /api/matchmaking/status — 查詢配對狀態
-    if (pathname === '/api/matchmaking/status' && method === 'GET') {
-      const userId = await getAuthUserId(req);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
-      const blockedUserIds = await listMatchmakingBlockedUserIds({ pool, userId });
-      json(await getMatchmakingStatus(redis, userId, Date.now(), MATCHMAKING_TIMEOUT_MS, blockedUserIds));
-      return;
-    }
-
-    // DELETE /api/matchmaking/queue — 離開佇列
-    if (pathname === '/api/matchmaking/queue' && method === 'DELETE') {
-      const userId = await getAuthUserId(req);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
-      json(await leaveMatchmakingQueue(redis, userId));
-      return;
-    }
-
-    // PUT /api/matchmaking/match — host 回報真實 boardgame.io matchID
-    if (pathname === '/api/matchmaking/match' && method === 'PUT') {
-      const userId = await getAuthUserId(req);
-      if (!userId) return json({ error: 'Unauthorized' }, 401);
-      const __body = await readBody();
-      const __parsed = validateBody(S.mmMatchSchema, __body);
-      if (!__parsed.ok) return json({ error: 'Validation failed', details: __parsed.errors }, 400);
-      const blockedUserIds = await listMatchmakingBlockedUserIds({ pool, userId });
-      const result = await reportRealMatch(redis, userId, __parsed.data.matchId, blockedUserIds);
-      if (!result.ok) return json({ error: result.error }, result.status);
-      json(result.body);
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('Deprecation', 'true');
+      res.setHeader('Sunset', 'Wed, 15 Jul 2026 00:00:00 GMT');
+      json({ error: 'Legacy REST matchmaking was removed; use the Colyseus quick_match room' }, 410);
       return;
     }
 
@@ -5267,37 +5579,180 @@ function handleRequest(req, res) {
 // ===== Start =====
 const server = http.createServer(handleRequest);
 
-async function closeDatabase() {
-  stopAccountDeletionRecovery();
-  await relationshipOutboxWorker.stop();
-  await pool.end();
-  await redis.quit();
+async function settleShutdownOperations(operations) {
+  const results = await Promise.allSettled(operations.map((operation) => Promise.resolve().then(operation)));
+  const failures = results.filter((result) => result.status === 'rejected').map((result) => result.reason);
+  if (failures.length > 0) throw new AggregateError(failures, 'one or more shutdown operations failed');
 }
 
-// Graceful shutdown
-let shuttingDown = false;
-async function shutdown() {
-  if (shuttingDown) return;
-  shuttingDown = true;
-  try {
-    await closeDatabase();
-    await Sentry.close(2000);
-  } catch {}
-  server.close();
-  process.exit(0);
+async function stopBackgroundWorkers() {
+  await settleShutdownOperations([
+    () => stopAccountDeletionRecovery(),
+    () => accountExportWorker.stop(),
+    () => relationshipOutboxWorker.stop(),
+  ]);
 }
-process.on('SIGTERM', shutdown);
-process.on('SIGINT', shutdown);
+
+async function closeInfrastructure() {
+  await settleShutdownOperations([() => pool.end(), () => redis.quit()]);
+}
+
+async function closeDatabase() {
+  await stopBackgroundWorkers();
+  await closeInfrastructure();
+}
+
+function drainHttpServer(
+  httpServer,
+  { timeoutMs, setTimer = setTimeout, clearTimer = clearTimeout, onTimeout = () => {} },
+) {
+  if (!httpServer?.listening) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let timer;
+    const finish = (error) => {
+      if (settled) return;
+      settled = true;
+      if (timer !== undefined) clearTimer(timer);
+      if (error) reject(error);
+      else resolve();
+    };
+
+    timer = setTimer(() => {
+      onTimeout();
+      httpServer.closeAllConnections?.();
+      finish();
+    }, timeoutMs);
+    timer.unref?.();
+
+    try {
+      httpServer.close((error) => finish(error));
+      httpServer.closeIdleConnections?.();
+    } catch (error) {
+      finish(error);
+    }
+  });
+}
+
+function createGracefulShutdown({
+  httpServer,
+  beginDrain,
+  stopWorkers,
+  closeResources,
+  closeTelemetry = async () => {},
+  httpDrainTimeoutMs = 10_000,
+  shutdownTimeoutMs = 30_000,
+  log = logger,
+  setExitCode = (code) => {
+    process.exitCode = code;
+  },
+  forceExit = (code) => process.exit(code),
+  setTimer = setTimeout,
+  clearTimer = clearTimeout,
+}) {
+  let shutdownPromise;
+
+  return function shutdown(signal = 'SIGTERM') {
+    if (shutdownPromise) return shutdownPromise;
+
+    // This must be synchronous so a concurrent /ready probe fails before any
+    // asynchronous drain work begins.
+    beginDrain();
+    log.info({ signal, httpDrainTimeoutMs, shutdownTimeoutMs }, 'shutdown received, draining API traffic');
+
+    shutdownPromise = new Promise((resolve) => {
+      let completed = false;
+      const watchdog = setTimer(() => {
+        if (completed) return;
+        completed = true;
+        log.error({ timeoutMs: shutdownTimeoutMs }, 'API shutdown deadline exceeded');
+        httpServer?.closeAllConnections?.();
+        forceExit(1);
+        resolve();
+      }, shutdownTimeoutMs);
+
+      void (async () => {
+        let failed = false;
+        const runPhase = async (phase, operation) => {
+          try {
+            await operation();
+          } catch (error) {
+            failed = true;
+            log.error({ err: error, phase }, 'API shutdown phase failed');
+          }
+        };
+
+        await runPhase('http-drain', () =>
+          drainHttpServer(httpServer, {
+            timeoutMs: httpDrainTimeoutMs,
+            setTimer,
+            clearTimer,
+            onTimeout: () => log.warn({ timeoutMs: httpDrainTimeoutMs }, 'API HTTP drain deadline exceeded'),
+          }),
+        );
+        if (completed) return;
+
+        await runPhase('workers', stopWorkers);
+        if (completed) return;
+
+        await runPhase('resources', closeResources);
+        if (completed) return;
+
+        await runPhase('telemetry', closeTelemetry);
+        if (completed) return;
+
+        completed = true;
+        clearTimer(watchdog);
+        if (failed) forceExit(1);
+        else setExitCode(0);
+        resolve();
+      })();
+    });
+
+    return shutdownPromise;
+  };
+}
+
+let shuttingDown = false;
+function markApiDraining() {
+  shuttingDown = true;
+}
+
+const shutdown = createGracefulShutdown({
+  httpServer: server,
+  beginDrain: markApiDraining,
+  stopWorkers: stopBackgroundWorkers,
+  closeResources: closeInfrastructure,
+  closeTelemetry: () => settleShutdownOperations([() => Sentry.close(2_000), () => shutdownTracing()]),
+  httpDrainTimeoutMs: API_HTTP_DRAIN_TIMEOUT_MS,
+  shutdownTimeoutMs: SHUTDOWN_TIMEOUT_MS,
+});
 
 if (require.main === module) {
+  process.on('SIGTERM', () => void shutdown('SIGTERM'));
+  process.on('SIGINT', () => void shutdown('SIGINT'));
   validateSecurityConfig();
   schemaReady
-    .then(() => {
+    .then(async () => {
       if (schemaInitError) throw schemaInitError;
+      if (shuttingDown) return;
+      if (accountExportStorage.configured) {
+        await cleanupStaleAccountExportArtifacts({ tempRoot: ACCOUNT_EXPORT_TMP_DIR });
+      }
+      if (shuttingDown) return;
       server.listen(PORT, () => {
-        relationshipOutboxWorker.start();
-        startAccountDeletionRecovery();
-        logger.info({ port: PORT }, 'Zutomayo API server running');
+        // SIGTERM can arrive after listen() is called but before its callback
+        // runs. Do not resurrect background work once the drain has begun.
+        if (shuttingDown) return;
+        if (API_BACKGROUND_WORKERS_ENABLED) {
+          relationshipOutboxWorker.start();
+          accountExportWorker.start();
+          startAccountDeletionRecovery();
+        }
+        logger.info(
+          { port: PORT, backgroundWorkersEnabled: API_BACKGROUND_WORKERS_ENABLED },
+          'Zutomayo API server running',
+        );
       });
     })
     .catch((err) => {
@@ -5310,6 +5765,9 @@ module.exports = {
   handleRequest,
   server,
   closeDatabase,
+  createGracefulShutdown,
+  drainHttpServer,
+  markApiDraining,
   recoverAccountDeletions,
   schemaReady,
 };

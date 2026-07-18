@@ -71,12 +71,18 @@ describe('schema migrations', () => {
 
   it('links administrator roles to signed-in user accounts', () => {
     const migration = readRepoFile('migrations/000031_user_linked_admins.js');
+    const authContract = readRepoFile('migrations/000033_admin_linked_auth_contract.js');
     const schemaGate = readRepoFile('api/schemaGate.cjs');
     const linkScript = readRepoFile('scripts/link-admin-user.cjs');
 
     expect(migration).toContain("references: 'users(id)'");
     expect(migration).toContain("name: 'uq_admin_users_user_id'");
-    expect(schemaGate).toContain("admin_users: ['id', 'user_id', 'username', 'role', 'disabled_at']");
+    expect(authContract).toContain("'admin_users_auth_mode_check'");
+    expect(authContract).toContain('user_id IS NULL');
+    expect(authContract).toContain('password_hash IS NOT NULL');
+    expect(authContract).toContain('user_id IS NOT NULL');
+    expect(authContract).toContain('password_hash IS NULL');
+    expect(schemaGate).toContain("'user_id'");
     expect(linkScript).toContain('ON CONFLICT (user_id)');
     expect(linkScript).toContain('DELETE FROM admin_users WHERE user_id = $1 RETURNING id');
   });
@@ -95,6 +101,92 @@ describe('schema migrations', () => {
     const consistencyMigration = readRepoFile('migrations/000021_season_result_consistency.js');
     expect(consistencyMigration).toContain('SELECT season_id, user_id, reward_tier, reward_payload, granted_at');
     expect(consistencyMigration).not.toContain('WHERE claimed_at IS NOT NULL');
+  });
+
+  it('adopts schema artifacts created by the historical initSchema fallback', () => {
+    const replayMigration = readRepoFile('migrations/000019_replay_metadata.js');
+    const consistencyMigration = readRepoFile('migrations/000021_season_result_consistency.js');
+
+    expect(replayMigration.match(/\{ ifNotExists: true \}/g)).toHaveLength(2);
+    expect(consistencyMigration).toContain('DROP CONSTRAINT IF EXISTS fk_season_match_results_canonical_match');
+  });
+
+  it('adopts existing official English card fields before the append-only migration tightens nullability', () => {
+    const initSchema = readRepoFile('api/server.cjs');
+    const seedSchema = readRepoFile('scripts/seed-cards-pg.ts');
+    const migration = readRepoFile('migrations/000025_card_official_english.js');
+    for (const field of ['en_name_official', 'en_effect_official']) {
+      expect(migration).toContain(`${field}: { type: 'text', default: '' }`);
+      expect(initSchema).toContain(`${field} TEXT NOT NULL DEFAULT ''`);
+      expect(seedSchema).toContain(`${field} TEXT NOT NULL DEFAULT ''`);
+      expect(initSchema).toContain(`ALTER TABLE cards ADD COLUMN IF NOT EXISTS ${field} TEXT NOT NULL DEFAULT ''`);
+      expect(seedSchema).toContain(`ALTER TABLE cards ADD COLUMN IF NOT EXISTS ${field} TEXT NOT NULL DEFAULT ''`);
+    }
+    expect(migration).toContain('{ ifNotExists: true }');
+    expect(migration).toContain('export const down = false;');
+    expect(migration).not.toContain('dropColumns');
+  });
+
+  it('keeps asynchronous account exports durable, fenced, and physically purgeable', () => {
+    const migration = readRepoFile('migrations/000026_account_export_jobs.js');
+    for (const artifact of [
+      'account_export_jobs',
+      'account_export_audit',
+      'lease_token',
+      'lease_expires_at',
+      'object_version_id',
+      'content_sha256',
+      'purged_at',
+      'idx_account_export_jobs_retention',
+      'idx_account_export_audit_retention',
+      'uq_account_export_audit_request_event',
+      'uq_account_export_audit_request_terminal',
+    ]) {
+      expect(migration).toContain(artifact);
+    }
+    expect(migration).toContain('export const down = false;');
+    expect(migration).toContain("onDelete: 'RESTRICT'");
+    expect(migration).toContain('Compliance audit evidence must not cascade away');
+    expect(migration).not.toMatch(/account_export_audit[\s\S]*user_id:[^\n]*onDelete: 'CASCADE'/);
+  });
+
+  it('makes every retained deletion audit surface explicitly anonymizable', () => {
+    const migration = readRepoFile('migrations/000027_account_deletion_anonymization.js');
+    const initSchema = readRepoFile('api/server.cjs');
+    for (const artifact of [
+      'season_match_results',
+      'account_export_jobs',
+      'account_export_audit',
+      'admin_audit_log',
+      'account_deletion_requests',
+      'relationship_change_outbox',
+      "pgm.addColumns('users'",
+      'identity_anonymized_at',
+      'identities_redacted_at',
+      'idx_users_deleted_identity_pending',
+      'idx_season_match_results_winner_user',
+      'idx_season_match_results_loser_user',
+      'idx_account_deletion_requests_user_all',
+      'idx_relationship_change_outbox_user_ids',
+      'idx_admin_audit_log_target_id',
+      'idx_bjg_matches_updated_at',
+      'idx_bjg_matches_game_name',
+      "onDelete: 'SET NULL'",
+    ]) {
+      expect(migration).toContain(artifact);
+    }
+    expect(migration).toContain('ALTER COLUMN winner_user_id DROP NOT NULL');
+    expect(migration).toContain('ALTER COLUMN loser_user_id DROP NOT NULL');
+    expect(migration.match(/ALTER COLUMN user_id DROP NOT NULL/g)).toHaveLength(2);
+    expect(migration).not.toContain('000027 requires a reviewed legacy tombstone backfill before migration');
+    expect(initSchema).toContain('ALTER TABLE users ADD COLUMN IF NOT EXISTS identity_anonymized_at TIMESTAMPTZ');
+    expect(initSchema).toContain('idx_users_deleted_identity_pending');
+    expect(migration).toContain('account export audit anonymization requires a deleted account');
+    expect(migration).toContain('admin audit anonymization requires a deleted account');
+    expect(migration).toContain('request_id = NULL');
+    expect(migration.match(/details = '\{\}'::jsonb/g)).toHaveLength(2);
+    expect(migration).toContain("COALESCE(p_replacement, '') !~");
+    expect(migration).toContain('export const down = false;');
   });
 
   it('keeps official and localized card text schema aligned with initSchema fallback', () => {
@@ -138,12 +230,11 @@ describe('schema migrations', () => {
     const authority = readRepoFile('migrations/000033_card_text_authority.js');
     const rollbackCompatibility = readRepoFile('migrations/000034_card_text_rollback_compat.js');
 
-    expect(migrationRunner).toContain('migrationIgnorePatternForApplied');
-    expect(developmentRunner).toContain('migrationIgnorePatternForApplied');
-    expect(developmentRunner).toContain('ignorePattern,');
     expect(developmentRunner).toContain('ssl: postgresSslConfig(process.env)');
     for (const runner of [migrationRunner, developmentRunner]) {
-      expect(runner).toContain('checkOrder: true');
+      expect(runner).toContain('migrationOrderPolicyForApplied');
+      expect(runner).toContain('checkOrder: migrationPolicy.checkOrder');
+      expect(runner).toContain('assertOutOfOrderBackfillApplied');
     }
     for (const legacyName of [
       '000007_card_official_texts_i18n',
@@ -168,6 +259,32 @@ describe('schema migrations', () => {
     for (const migration of [cardTexts, errata, errataSource, authority, rollbackCompatibility]) {
       expect(migration).toContain('export const down = false;');
     }
+  });
+
+  it('creates an irreversible signed official-card dataset ledger', () => {
+    const migration = readRepoFile('migrations/000032_official_card_data_releases.js');
+
+    for (const column of [
+      'dataset_sha256',
+      'extraction_sha256',
+      'errata_sha256',
+      'review_provenance_sha256',
+      'release_sha',
+      'card_count',
+      'errata_count',
+      'applied_at',
+    ]) {
+      expect(migration).toContain(column);
+    }
+    expect(migration).toContain("dataset_sha256 ~ '^[a-f0-9]{64}$'");
+    expect(migration).toContain("extraction_sha256 ~ '^[a-f0-9]{64}$'");
+    expect(migration).toContain("errata_sha256 ~ '^[a-f0-9]{64}$'");
+    expect(migration).toContain("review_provenance_sha256 ~ '^[a-f0-9]{64}$'");
+    expect(migration).toContain("release_sha ~ '^[a-f0-9]{40}$'");
+    expect(migration).toContain('card_count > 0');
+    expect(migration).toContain('errata_count >= 0');
+    expect(migration).toContain('errata_count <= card_count');
+    expect(migration).toContain('export const down = false;');
   });
 
   it('keeps reviewed card-source validation in explicit local import workflows', () => {

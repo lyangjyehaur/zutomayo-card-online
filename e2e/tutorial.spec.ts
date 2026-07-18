@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 /**
  * 教學模式 E2E 測試。
@@ -11,33 +11,30 @@ import { test, expect } from '@playwright/test';
  */
 test.describe.configure({ mode: 'serial' });
 
-async function simulateCardApiOutage(page: import('@playwright/test').Page) {
+async function simulateCardDataOutage(page: Page): Promise<void> {
   await page.route('**/api/cards', (route) => route.abort());
   await page.route('**/cards.json', (route) => route.abort());
 }
 
-test.describe('教學頁面載入', () => {
+test.describe('教學卡牌資料故障處理', () => {
   test.beforeEach(async ({ page }) => {
+    await simulateCardDataOutage(page);
     await page.addInitScript(() => {
       localStorage.setItem('zutomayo_deck_intro_seen', 'true');
-      localStorage.setItem('zutomayo_locale', 'zh-TW');
     });
   });
 
   test('教學頁面能載入', async ({ page }) => {
     await page.goto('/tutorial');
 
-    // 完整服務棧會進入遊戲，無後端時則停在 loading/error 狀態。
-    const readyState = page
-      .locator('[data-game-step]')
-      .first()
-      .or(page.getByText(/卡牌資料載入失敗|載入對戰中/));
-    await expect(readyState).toBeVisible({ timeout: 30_000 });
+    // 等待頁面載入（boot loader 結束後，TutorialGamePage 會顯示 loading 或 error）
+    // 卡牌未載入時顯示 "卡牌資料載入失敗" 訊息
+    // 卡牌載入中顯示 "載入對戰中..." 訊息
+    await expect(page.getByText(/卡牌資料載入失敗|載入對戰中/)).toBeVisible({ timeout: 30_000 });
   });
 
-  test('無後端時顯示卡牌載入失敗訊息', async ({ page }) => {
-    // 沒有後端 API 時，卡牌無法載入，應顯示錯誤狀態與重試按鈕
-    await simulateCardApiOutage(page);
+  test('卡牌 API 不可用時顯示載入失敗訊息', async ({ page }) => {
+    // 卡牌 API 與靜態 fallback 都不可用時，應顯示錯誤狀態與重試按鈕
     await page.goto('/tutorial');
 
     // 等待卡牌載入失敗（可能需要等 boot timeout）
@@ -48,7 +45,6 @@ test.describe('教學頁面載入', () => {
   });
 
   test('重試按鈕可點擊', async ({ page }) => {
-    await simulateCardApiOutage(page);
     await page.goto('/tutorial');
     await expect(page.getByText('卡牌資料載入失敗')).toBeVisible({ timeout: 30_000 });
 
@@ -64,7 +60,6 @@ test.describe('教學覆蓋層與互動 @requires-backend', () => {
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => {
       localStorage.setItem('zutomayo_deck_intro_seen', 'true');
-      localStorage.setItem('zutomayo_locale', 'zh-TW');
     });
   });
 

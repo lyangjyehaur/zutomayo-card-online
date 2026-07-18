@@ -1,18 +1,24 @@
 import fs from 'node:fs/promises';
 import http from 'node:http';
 import { spawn } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const chromePath = process.env.CHROME_PATH ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const baseUrl = process.env.BASE_URL ?? 'http://127.0.0.1:3000';
-const outDir = process.env.OUT_DIR ?? '/private/tmp/zutomayo-online-lobby-responsive-screenshots';
-const reportPath = process.env.REPORT_PATH ?? '/private/tmp/zutomayo-online-lobby-responsive-report.json';
+const outDir = process.env.OUT_DIR ?? join(tmpdir(), 'zutomayo-online-lobby-responsive-screenshots');
+const reportPath = process.env.REPORT_PATH ?? join(tmpdir(), 'zutomayo-online-lobby-responsive-report.json');
 const port = Number(process.env.CDP_PORT ?? 9931);
-const profileDir = `/private/tmp/zutomayo-online-lobby-responsive-profile-${process.pid}-${Date.now()}`;
+const profileDir = join(tmpdir(), `zutomayo-online-lobby-responsive-profile-${process.pid}-${Date.now()}`);
 const packageJson = JSON.parse(await fs.readFile(new URL('../package.json', import.meta.url), 'utf8'));
 if (typeof packageJson.version !== 'string' || !packageJson.version) {
   throw new Error('package.json version is required');
 }
 const smokeVersion = packageJson.version;
+const smokeBuildId = process.env.APP_BUILD_ID ?? smokeVersion;
+const smokeRulesVersion = process.env.GAME_RULES_VERSION ?? smokeVersion;
+const smokeReleaseSha = /^[a-f0-9]{40}$/.test(smokeBuildId) ? smokeBuildId : 'b'.repeat(40);
+const smokeDatasetSha256 = 'a'.repeat(64);
 
 const cases = [
   { name: 'online-lobby-360x740', width: 360, height: 740, createRoom: true },
@@ -158,8 +164,8 @@ const setup = `
   };
   const originalFetch = window.fetch.bind(window);
   window.fetch = async (input, init) => {
-    const url = typeof input === 'string' ? input : input.url;
-    const method = init?.method || 'GET';
+    const url = input instanceof Request ? input.url : String(input);
+    const method = init?.method || (input instanceof Request ? input.method : 'GET');
     window.__zutomayoOnlineLobbySmoke.requests.push({
       method,
       url,
@@ -168,7 +174,18 @@ const setup = `
     if (url.includes('/api/cards')) {
       return new Response(JSON.stringify([
         { id: 'qa-card-001', name: 'QA Card', type: 'Character', element: '闇', cost: 1, power: 1000, image: '' }
-      ]), { status: 200, headers: { 'content-type': 'application/json' } });
+      ]), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Card-Dataset-Sha256': ${JSON.stringify(smokeDatasetSha256)},
+          'X-Card-Dataset-Release-Sha': ${JSON.stringify(smokeReleaseSha)},
+          'X-Card-Dataset-Count': '1',
+          'X-Card-Data-App-Version': ${JSON.stringify(smokeVersion)},
+          'X-Card-Data-Build-Id': ${JSON.stringify(smokeBuildId)},
+          'X-Card-Data-Rules-Version': ${JSON.stringify(smokeRulesVersion)}
+        }
+      });
     }
     if (url.includes('/api/config')) {
       return new Response(JSON.stringify({}), { status: 200, headers: { 'content-type': 'application/json' } });
@@ -359,7 +376,7 @@ const metricsExpression = `
     custom: visible('[data-room-panel="custom"]').slice(0, 2),
     status: visible('[data-room-panel="status"]').slice(0, 2),
     platformError: visible('[role="alert"]').slice(0, 3),
-    smallTargets: targets.filter((item) => item.width < 40 || item.height < 40).slice(0, 12),
+    smallTargets: targets.filter((item) => item.width < 44 || item.height < 44).slice(0, 12),
     offscreen: [...document.body.querySelectorAll('*')]
       .filter(isVisible)
       .map(box)
@@ -508,12 +525,14 @@ try {
     screenWidth: 1024,
     screenHeight: 900,
   });
-  await client.send('Page.navigate', { url: `${baseUrl}/online?smokeAccount=1` });
-  await waitFor(client, `Boolean(document.querySelector('[data-chat-surface="unread"]'))`);
+  await client.send('Page.navigate', { url: `${baseUrl}/community?smokeAccount=1` });
+  await waitFor(client, `Boolean(document.querySelector('[data-chat-surface="global"]'))`);
   await waitFor(client, `Boolean(document.querySelector('[data-chat-message="global"]'))`);
   await waitFor(client, `Boolean(document.querySelector('[data-friend-user-id="u_friend"]'))`);
+  const globalEvidence = await evalChecked(client, accountWorkflowExpression);
   await evalChecked(client, `document.querySelector('[data-direct-chat-open="u_friend"]')?.click()`);
   await waitFor(client, `Boolean(document.querySelector('[data-chat-message="direct"]'))`);
+  const directEvidence = await evalChecked(client, accountWorkflowExpression);
   await evalChecked(
     client,
     `document.querySelector('[data-unread-conversation="room"][data-unread-subject="ROOM42"]')?.click()`,
@@ -524,6 +543,13 @@ try {
   );
   await new Promise((resolve) => setTimeout(resolve, 500));
   const workflow = await evalChecked(client, accountWorkflowExpression);
+  workflow.visibleSurfaces = [
+    ...globalEvidence.visibleSurfaces,
+    ...directEvidence.visibleSurfaces,
+    ...workflow.visibleSurfaces,
+  ];
+  workflow.unreadTypes = globalEvidence.unreadTypes;
+  workflow.messages = [...globalEvidence.messages, ...directEvidence.messages, ...workflow.messages];
   const workflowFailures = [];
   for (const [name, ok] of Object.entries(workflow.requestChecks)) {
     if (!ok) workflowFailures.push(`missing request check: ${name}`);

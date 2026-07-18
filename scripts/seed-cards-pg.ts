@@ -2,7 +2,7 @@ import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import { PRESET_DECKS } from '../src/game/cards/presetDecks';
 import type { CardDef } from '../src/game/types';
-import { loadSeedCardI18n, loadSeedCards } from './cardSource';
+import { loadSeedCardDataRelease, loadSeedCardI18n, loadSeedCards } from './cardSource';
 
 const require = createRequire(import.meta.url);
 const { Pool } = require('pg') as typeof import('pg');
@@ -62,7 +62,7 @@ const SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS cards (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
-    en_name_official TEXT DEFAULT '',
+    en_name_official TEXT NOT NULL DEFAULT '',
     pack TEXT NOT NULL,
     song TEXT DEFAULT '',
     illustrator TEXT DEFAULT '',
@@ -75,7 +75,7 @@ const SCHEMA_SQL = `
     power_cost INTEGER DEFAULT 0,
     send_to_power INTEGER DEFAULT 0,
     effect TEXT DEFAULT '',
-    en_effect_official TEXT DEFAULT '',
+    en_effect_official TEXT NOT NULL DEFAULT '',
     image TEXT DEFAULT '',
     errata TEXT DEFAULT '',
     has_official_errata BOOLEAN NOT NULL DEFAULT FALSE,
@@ -87,6 +87,13 @@ const SCHEMA_SQL = `
   );
   ALTER TABLE cards ADD COLUMN IF NOT EXISTS en_name_official TEXT NOT NULL DEFAULT '';
   ALTER TABLE cards ADD COLUMN IF NOT EXISTS en_effect_official TEXT NOT NULL DEFAULT '';
+  UPDATE cards SET en_name_official = '' WHERE en_name_official IS NULL;
+  UPDATE cards SET en_effect_official = '' WHERE en_effect_official IS NULL;
+  ALTER TABLE cards
+    ALTER COLUMN en_name_official SET DEFAULT '',
+    ALTER COLUMN en_name_official SET NOT NULL,
+    ALTER COLUMN en_effect_official SET DEFAULT '',
+    ALTER COLUMN en_effect_official SET NOT NULL;
   ALTER TABLE cards ADD COLUMN IF NOT EXISTS has_official_errata BOOLEAN NOT NULL DEFAULT FALSE;
   ALTER TABLE cards ADD COLUMN IF NOT EXISTS official_errata_id TEXT;
   ALTER TABLE cards ADD COLUMN IF NOT EXISTS official_errata_affects_name BOOLEAN NOT NULL DEFAULT FALSE;
@@ -209,6 +216,11 @@ function cardParams(card: CardDef): unknown[] {
 async function main(): Promise<void> {
   const cards = await loadSeedCards();
   const effectsI18n = await loadSeedCardI18n();
+  const cardDataRelease = await loadSeedCardDataRelease();
+  const releaseBuildId = process.env.APP_BUILD_ID?.trim() || '';
+  if (/^[a-f0-9]{40}$/.test(releaseBuildId) && cardDataRelease?.releaseSha !== releaseBuildId) {
+    throw new Error('Card seed release metadata does not match APP_BUILD_ID');
+  }
   const cardsById = new Map(cards.map((card) => [card.id, card]));
   const expectedErrataCount = allowEmptyOfficialErrata ? 0 : 12;
   if (
@@ -402,6 +414,26 @@ async function main(): Promise<void> {
            description = EXCLUDED.description,
            updated_at = NOW()`,
         [config.key, JSON.stringify(config.value), config.description],
+      );
+    }
+
+    if (cardDataRelease) {
+      await client.query(
+        `INSERT INTO official_card_data_releases (
+           dataset_sha256, extraction_sha256, errata_sha256, review_provenance_sha256,
+           release_sha, card_count, errata_count
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         ON CONFLICT (dataset_sha256) DO UPDATE SET applied_at = NOW()`,
+        [
+          cardDataRelease.datasetSha256,
+          cardDataRelease.extractionSha256,
+          cardDataRelease.errataSha256,
+          cardDataRelease.reviewProvenanceSha256,
+          cardDataRelease.releaseSha,
+          cardDataRelease.cardCount,
+          cardDataRelease.errataCount,
+        ],
       );
     }
 

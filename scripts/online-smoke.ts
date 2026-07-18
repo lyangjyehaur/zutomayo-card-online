@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import { createRequire } from 'node:module';
+import type { State } from 'boardgame.io';
 import { Pool } from 'pg';
 import Redis from 'ioredis';
 import { createAdapter } from '@socket.io/redis-adapter';
@@ -157,6 +159,46 @@ async function fetchStoredState(matchID: string): Promise<StoredState> {
   return rows[0].state;
 }
 
+async function runPostgresReconnectReadFenceScenario(): Promise<void> {
+  const matchID = `reconnect-lock-smoke-${Date.now()}`;
+  const initialState = { _stateID: 0, G: {}, ctx: {} } as State;
+  const nextState = { ...initialState, _stateID: 1 } as State;
+  const metadata = { gameName: 'adapter-lock-smoke', players: {} };
+  const writer = new PostgresAdapter();
+  const reconnectReader = new PostgresAdapter();
+
+  await cleanupPool.query(
+    `INSERT INTO bjg_matches (match_id, state, initial_state, metadata, log)
+     VALUES ($1, $2::jsonb, $2::jsonb, $3::jsonb, '[]'::jsonb)`,
+    [matchID, JSON.stringify(initialState), JSON.stringify(metadata)],
+  );
+
+  try {
+    await Promise.all([writer.connect(), reconnectReader.connect()]);
+    const lockedState = await writer.fetch(matchID, { state: true });
+    assert.equal(lockedState.state?._stateID, 0, 'writer should lock the initial state');
+
+    let reconnectReadSettled = false;
+    const reconnectRead = reconnectReader
+      .fetch(matchID, { state: true, log: true, metadata: true, initialState: true })
+      .finally(() => {
+        reconnectReadSettled = true;
+      });
+
+    await delay(100);
+    const reconnectWaitedForWriter = !reconnectReadSettled;
+    await writer.setState(matchID, nextState);
+    const fetched = await reconnectRead;
+
+    assert.equal(reconnectWaitedForWriter, true, 'reconnect full fetch should wait for the state transaction');
+    assert.equal(fetched.state?._stateID, 1, 'reconnect full fetch should return the newly committed state');
+    assert.equal(fetched.initialState?._stateID, 0, 'shared lock must not alter the initial state');
+  } finally {
+    await Promise.allSettled([writer.close(), reconnectReader.close()]);
+    await cleanupPool.query('DELETE FROM bjg_matches WHERE match_id = $1', [matchID]);
+  }
+}
+
 async function waitForAuthoritativeConsistency(
   label: string,
   matchID: string,
@@ -275,11 +317,26 @@ async function createOnlineMatch(setupData: ZutomayoSetupData): Promise<string> 
 }
 
 async function joinOnlineMatch(matchID: string, playerID: '0' | '1'): Promise<{ playerCredentials: string }> {
-  return postJson<{ playerCredentials: string }>(`/games/zutomayo-card/${matchID}/join`, {
+  // The production game server reserves a durable seat before exposing a
+  // credential. The vanilla boardgame.io lobby join only mutates metadata and
+  // is intentionally rejected by the adapter's identity fence.
+  const playerCredentials = `online-smoke:${crypto.randomUUID()}`;
+  const userId = `guest:online-smoke:${matchID}:${playerID}`;
+  await db.reserveMatchSeat({
+    matchID,
     playerID,
     playerName: `Player ${playerID}`,
-    data: { clientVersion: APP_VERSION_INFO },
+    playerData: {
+      userId,
+      identitySource: 'server',
+      rankedEligible: false,
+      clientVersion: APP_VERSION_INFO,
+    },
+    userId,
+    rankedEligible: false,
+    credentials: playerCredentials,
   });
+  return { playerCredentials };
 }
 
 async function startJoinedClients(setupData: ZutomayoSetupData): Promise<{
@@ -490,6 +547,7 @@ try {
   // 再 TRUNCATE 確保測試隔離（lobby createMatch 會 INSERT 此 table）。
   await db.connect();
   await cleanupPool.query('TRUNCATE TABLE bjg_matches RESTART IDENTITY CASCADE');
+  await runPostgresReconnectReadFenceScenario();
 
   if (smokeMode === 'consistency') {
     await runOnlineConsistencyScenario();

@@ -14,7 +14,7 @@ import {
 import { cn } from '../primitives/utils';
 
 const controlClass =
-  'w-full rounded-sm border border-border-soft bg-surface-canvas px-3 py-2 text-body text-content-primary placeholder:text-content-dim transition disabled:cursor-not-allowed disabled:opacity-40 focus:border-border-strong focus:outline-none focus:ring-[length:var(--focus-ring-width)] focus:ring-[--focus-ring-color]';
+  'min-h-touch w-full rounded-sm border border-border-soft bg-surface-canvas px-3 py-2 text-body text-content-primary placeholder:text-content-dim transition disabled:cursor-not-allowed disabled:opacity-40 focus:border-border-strong focus:outline-none focus:ring-[length:var(--focus-ring-width)] focus:ring-[--focus-ring-color]';
 
 export type InputProps = InputHTMLAttributes<HTMLInputElement>;
 
@@ -44,7 +44,7 @@ export const SearchInput = forwardRef<HTMLInputElement, SearchInputProps>(functi
         ref={ref}
         type={type}
         className={cn(
-          'min-h-0 w-full appearance-none border-0 bg-transparent py-2 text-body text-content-primary shadow-none placeholder:text-content-dim focus:outline-none',
+          'min-h-touch w-full appearance-none border-0 bg-transparent py-2 text-body text-content-primary shadow-none placeholder:text-content-dim focus:outline-none',
           'disabled:cursor-not-allowed disabled:opacity-40',
           className,
         )}

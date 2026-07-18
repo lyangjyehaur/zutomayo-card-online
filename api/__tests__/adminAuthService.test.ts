@@ -13,7 +13,9 @@ const {
 } = require('../adminAuthService.cjs') as Record<string, (...args: unknown[]) => unknown>;
 
 function createPool(handler: (sql: string, params?: unknown[]) => { rows: Record<string, unknown>[] }) {
-  return { query: vi.fn(async (sql: string, params?: unknown[]) => handler(sql, params)) };
+  const query = vi.fn(async (sql: string, params?: unknown[]) => handler(sql, params));
+  const release = vi.fn();
+  return { query, connect: vi.fn(async () => ({ query, release })), release };
 }
 
 describe('admin auth service', () => {
@@ -79,6 +81,8 @@ describe('admin auth service', () => {
       'operator',
       3600,
     ]);
+    expect(pool.query.mock.calls.at(-1)?.[0]).toBe('COMMIT');
+    expect(pool.release).toHaveBeenCalledOnce();
   });
 
   it('rejects an unconfigured MFA account even with a correct password', async () => {
@@ -210,6 +214,50 @@ describe('admin auth service', () => {
         permission: 'seasons:write',
       }),
     ).resolves.toBeNull();
+  });
+
+  it('does not issue a jti when credentials rotate between verification and the locked recheck', async () => {
+    const timestamp = 1_710_000_000_000;
+    const secret = 'JBSWY3DPEHPK3PXP';
+    let adminRead = 0;
+    const pool = createPool((sql) => {
+      if (sql.includes('FROM admin_users')) {
+        adminRead += 1;
+        return {
+          rows: [
+            {
+              id: 'admin_1',
+              username: 'alice',
+              password_hash: adminRead === 1 ? 'correct-hash' : 'rotated-hash',
+              salt: 'salt',
+              role: 'operator',
+              totp_secret_ciphertext: 'encrypted',
+              disabled_at: null,
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+    const now = vi.spyOn(Date, 'now').mockReturnValue(timestamp);
+    await expect(
+      authenticateAdmin({
+        pool,
+        body: { username: 'alice', password: 'password', totpCode: totpCode(secret, timestamp) },
+        hashPassword: async () => 'correct-hash',
+        decryptTotpSecret: async () => secret,
+        createSessionToken: () => 'must-not-be-issued',
+        passwordIterations: 100_000,
+      }),
+    ).resolves.toEqual({ ok: false, status: 401, error: 'Invalid admin credentials' });
+    now.mockRestore();
+
+    expect(pool.query).not.toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO admin_sessions'),
+      expect.anything(),
+    );
+    expect(pool.query.mock.calls.at(-1)?.[0]).toBe('ROLLBACK');
+    expect(pool.release).toHaveBeenCalledOnce();
   });
 
   it('revokes a specific admin session', async () => {

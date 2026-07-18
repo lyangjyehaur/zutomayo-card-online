@@ -13,7 +13,9 @@ Authenticated endpoints prefer the `zutomayo_session` HttpOnly cookie establishe
 Authorization: Bearer <token>
 ```
 
-User tokens are returned by `POST /api/register` and `POST /api/login` for backward compatibility. Linked administrator accounts exchange a valid user session through `POST /api/admin/session`; legacy standalone administrators can use `POST /api/admin/login`. Admin tokens carry an `admin: true` claim and are backed by revocable PostgreSQL sessions.
+User tokens are returned by `POST /api/register` and `POST /api/login` for backward compatibility. Admin tokens are returned by `POST /api/admin/login`; they carry an individual admin identity, role, and persisted jti with a configurable one-hour default lifetime.
+
+A signed-in user whose account is explicitly linked to an admin role may instead exchange the normal user session through `POST /api/admin/session`. Both admin login paths issue the same persisted, revocable admin token and enforce the same role permissions.
 
 Cookie-authenticated `POST`, `PUT`, and `DELETE` requests use double-submit CSRF protection. Fetch `GET /api/csrf-token`, retain the `zutomayo_csrf` cookie, and send the same value in `X-CSRF-Token`. Login, registration, OAuth session exchange, and admin login are intentionally exempt because they establish authentication rather than consume an existing user session.
 
@@ -430,47 +432,25 @@ Response:
 
 ## Admin / 管理後台
 
-All admin endpoints require an admin token in the `Authorization: Bearer <token>` header. The preferred flow links an existing user to `admin_users.user_id`; the signed-in user exchanges the normal account session for an admin token. Role changes, account deletion, administrator disabling, session expiry, and explicit revocation take effect server-side.
+Except for the two session-establishment endpoints, admin endpoints require an admin token in the `Authorization: Bearer <token>` header. Each request checks the persisted jti, account role, expiry, revocation, and disabled state. Credential-based admin accounts are provisioned in PostgreSQL with the transaction-safe `admin:create`, `admin:rotate`, and `admin:recover` commands documented in [DEPLOYMENT.md](./DEPLOYMENT.md#admin-bootstrap-rotation-and-recovery); the legacy shared `ADMIN_PASSWORD` is ignored.
 
-Link an existing account after applying migrations:
-
-```bash
-npm run admin:link -- --email=user@example.com --role=admin
-```
-
-Supported roles are `viewer`, `moderator`, `operator`, and `admin`.
-The CLI is the bootstrap path for the first full administrator. After that, an `admin` can search registered users and manage linked roles from the **使用者** tab in `/admin`; lower roles cannot see or call the role-management controls.
-
-Revoke the linked role and all of its administrator sessions:
-
-```bash
-npm run admin:unlink -- --email=user@example.com
-```
-
-### `POST /api/admin/session`
-
-Exchange the current signed-in user session for an admin token. No request body fields are required. Returns `403` when the user is not linked to an enabled administrator record.
-
-Response:
-
-```json
-{
-  "token": "<admin-token>",
-  "role": "admin",
-  "expiresIn": 3600
-}
-```
+| Role        | Access                                                                                        |
+| ----------- | --------------------------------------------------------------------------------------------- |
+| `viewer`    | Read users, matches, audit records, and seasons.                                              |
+| `moderator` | Viewer access plus chat and feedback moderation.                                              |
+| `operator`  | Moderator access plus ELO, card, configuration, and season writes, and legal-hold reads.      |
+| `admin`     | All admin permissions, including granting, changing, and revoking linked-account admin roles. |
 
 ### `POST /api/admin/login`
 
-Legacy compatibility flow for a standalone administrator account protected by password and TOTP MFA. Subject to the auth rate limit (10/min).
+Verify an individual admin username, password, and six-digit TOTP code, then issue a persisted revocable admin session. The default lifetime is one hour and is bounded to five minutes through eight hours by `ADMIN_SESSION_TTL_SECONDS`. Subject to the auth rate limit (10/min).
 
 Request:
 
 ```json
 {
   "username": "operator",
-  "password": "admin-secret",
+  "password": "individual-admin-password",
   "totpCode": "123456"
 }
 ```
@@ -485,7 +465,27 @@ Response:
 }
 ```
 
-Errors: `401` (invalid credentials or MFA code), `403` (MFA missing), `503` (legacy admin login not configured).
+Errors: `401` (unknown/disabled account, wrong password, invalid MFA, or credentials changed concurrently), `403` (MFA is not configured), `503` (admin TOTP encryption is not configured).
+
+### `POST /api/admin/session`
+
+Exchange the current signed-in user session for a persisted admin session when that user has an active linked admin role. Cookie-authenticated requests must include the normal double-submit CSRF token. No admin password or TOTP is required because the account session has already authenticated the linked user.
+
+Response:
+
+```json
+{
+  "token": "<admin-token>",
+  "role": "moderator",
+  "expiresIn": 3600
+}
+```
+
+Errors: `401` (no valid user session), `403` (the active user has no linked admin role).
+
+### `POST /api/admin/logout`
+
+Revoke the persisted jti for the supplied admin bearer token. Response: `{ "revoked": true }`. Errors: `401`.
 
 ### `GET /api/admin/users`
 
@@ -494,7 +494,7 @@ List registered users, newest first. Requires an admin token.
 Query:
 
 - `limit`: optional, defaults to `100`, maximum `500`.
-- `q`: optional case-insensitive substring search across user ID, email, and nickname.
+- `q`: optional case-insensitive user ID, email, or nickname search, truncated to 200 characters.
 
 Response:
 
@@ -510,20 +510,20 @@ Response:
       "wins": 0,
       "winRate": 0,
       "createdAt": "2026-06-26 00:00:00",
-      "adminRole": "operator",
+      "adminRole": "moderator",
       "isCurrentAdmin": false
     }
   ]
 }
 ```
 
-`adminRole` and `isCurrentAdmin` are populated only for a full `admin`; lower roles with `users:read` receive `null` and `false` respectively.
+Errors: `401`.
 
-Errors: `400` (invalid query), `401`.
+Only an `admin` receives populated `adminRole` and `isCurrentAdmin` metadata. Other roles receive `null` and `false`, respectively.
 
 ### `PUT /api/admin/users/:id/admin-role`
 
-Assign, change, or revoke a linked administrator role. Requires the `admins:manage` permission, which is available only to a full `admin`. The acting administrator cannot change their own role from this endpoint.
+Grant, change, or revoke a normal user's linked admin role. Requires the `admin` role.
 
 Request:
 
@@ -533,15 +533,7 @@ Request:
 }
 ```
 
-Use `null` to revoke access:
-
-```json
-{
-  "role": null
-}
-```
-
-Assigning or changing a role deletes the target administrator's existing sessions. Revoking the role deletes the linked `admin_users` record and cascades session deletion. Every change is written to `admin_audit_log` in the same database transaction.
+Allowed values are `viewer`, `moderator`, `operator`, `admin`, or `null` to revoke access. The role change, active-session revocation, and audit record are committed in one transaction. An admin cannot change their own role through this endpoint.
 
 Response:
 
@@ -552,7 +544,7 @@ Response:
 }
 ```
 
-Errors: `400` (invalid role), `401` (missing permission), `404` (active user not found), `409` (attempt to change the acting administrator's own role).
+Errors: `400` (invalid role), `401` (missing permission), `404` (active user not found), `409` (attempted self-role change).
 
 ### `GET /api/admin/matches`
 
@@ -625,105 +617,21 @@ Errors: `401`.
 
 ## Legacy Matchmaking / 舊版配對佇列
 
-These REST endpoints are kept as a compatibility surface for older clients and service-level tests. The current browser quick-match flow uses the Colyseus `quick_match` room for queueing, cancellation, pairing, and boardgame.io match ID relay; see [MULTIPLAYER_PLATFORM_ARCHITECTURE.md](./MULTIPLAYER_PLATFORM_ARCHITECTURE.md). All endpoints require a user JWT.
+The Redis-backed REST queue was retired on 2026-07-15. The browser and supported clients use the Colyseus `quick_match` room for queueing, cancellation, pairing, and boardgame.io match ID relay; see [MULTIPLAYER_PLATFORM_ARCHITECTURE.md](./MULTIPLAYER_PLATFORM_ARCHITECTURE.md).
 
-The legacy queue is Redis-backed and keyed by user ID. Entries expire after 60 seconds without a match, with a 10-second grace window before deletion.
+The following authenticated routes remain as tombstones so old clients fail explicitly without reading or writing Redis:
 
-### `POST /api/matchmaking/queue`
-
-Join the legacy matchmaking queue (or refresh an existing entry). If a compatible opponent is already queued, both entries are immediately marked `matched` and assigned a shared `matchId`; the user with the lexicographically smaller ID becomes `host`.
-
-Request:
-
-```json
-{
-  "deckName": "Dark Test",
-  "deckIds": ["1st_9", "1st_9", "..."]
-}
-```
-
-- `deckName` and `deckIds` are optional metadata used by the client. `deckIds` is capped at 20 string entries.
-
-Response (queued):
-
-```json
-{
-  "queueId": "q_...",
-  "status": "queued"
-}
-```
-
-Response (matched immediately):
-
-```json
-{
-  "queueId": "q_...",
-  "status": "matched"
-}
-```
-
-Errors: `401`.
-
-### `GET /api/matchmaking/status`
-
-Poll the caller's current legacy queue entry. Expired entries are cleaned up before the lookup.
-
-Response (queued or matched):
-
-```json
-{
-  "status": "matched",
-  "matchId": "mm_...",
-  "opponentId": "u_...",
-  "role": "host",
-  "realMatchId": null
-}
-```
-
-Response (no entry / timed out):
-
-```json
-{
-  "status": "timeout"
-}
-```
-
-`role` is `"host"` or `"guest"`. `realMatchId` is the boardgame.io match ID once the legacy REST host reports it via `PUT /api/matchmaking/match`.
-
-Errors: `401`.
-
-### `DELETE /api/matchmaking/queue`
-
-Leave the queue. If the caller was already matched, the opponent's entry is marked `timeout` so they detect the cancellation on their next poll.
+- `POST /api/matchmaking/queue`
+- `GET /api/matchmaking/status`
+- `DELETE /api/matchmaking/queue`
+- `PUT /api/matchmaking/match`
 
 Response:
 
 ```json
 {
-  "deleted": true
+  "error": "Legacy REST matchmaking was removed; use the Colyseus quick_match room"
 }
 ```
 
-Errors: `401`.
-
-### `PUT /api/matchmaking/match`
-
-Called by the host on the legacy REST flow after creating the boardgame.io match to publish the real match ID so the guest can join. The Colyseus quick-match flow relays this through `boardgameMatchReady` on the `quick_match` room instead.
-
-Request:
-
-```json
-{
-  "matchId": "boardgameio-match-id"
-}
-```
-
-Response:
-
-```json
-{
-  "ok": true
-}
-```
-
-Errors: `400` (missing `matchId` or not in a `matched` state), `401`.
+Errors: `401` without a valid user session; otherwise `410 Gone`. The response includes `Deprecation: true`, `Sunset`, and `Cache-Control: no-store`.

@@ -57,6 +57,7 @@ import {
   normalizeGameOverWinner,
   useOnlineMatchSubmission,
 } from './board/useOnlineMatchSubmission';
+import { handSelectionResetKey } from './board/handSelection';
 
 export type PopoverPlacement = 'right' | 'left' | 'top' | 'bottom';
 
@@ -474,7 +475,7 @@ function LogBreakdown({ breakdown }: { breakdown: HpChangeBreakdown }) {
         const valueDisplay = line.value.startsWith('board.') ? t(line.value as never) : line.value;
         return (
           <div key={idx} className="flex items-baseline gap-1 text-micro text-content-muted">
-            <span className="text-content-muted">{t(line.label as never)}:</span>
+            <span>{t(line.label as never)}:</span>
             {line.cardDefId ? (
               <LogCardChip cardDefId={line.cardDefId} />
             ) : (
@@ -1016,6 +1017,8 @@ function MulliganScreen({
                   state={done ? 'disabled' : selected.includes(index) ? 'selected' : 'idle'}
                   onActivate={done ? undefined : () => activateCard(card, index)}
                   onInspect={() => focusCard(card)}
+                  positionInSet={{ index, total: G.players[me].hand.length }}
+                  ariaPressed={selected.includes(index)}
                 />
               </div>
             ))}
@@ -1540,7 +1543,7 @@ function BattleLogSidebarPanel({ G, compact = false }: { G: GameState; compact?:
   return (
     <div className="battle-log-panel flex min-h-0 flex-1 flex-col rounded-sm bg-surface-base p-4 ring-1 ring-content-primary/10">
       <div className="mb-3 flex items-center justify-between">
-        <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">
+        <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary">
           {t('board.panel.log')}
         </span>
         <span className="size-1.5 animate-pulse rounded-full bg-accent-action" />
@@ -1884,12 +1887,18 @@ function BattleBoard({
   const [detailSheetOpen, setDetailSheetOpen] = useState(false);
   const [zoneSheet, setZoneSheet] = useState<{ kind: 'abyss' | 'power'; owner: PlayerIndex } | null>(null);
   const [damageFlash, setDamageFlash] = useState<{ target: PlayerIndex; amount: number; id: number } | null>(null);
+  const selectionResetKey = handSelectionResetKey({
+    step: G.step,
+    turnNumber: G.turnNumber,
+    ready: G.ready,
+    playerIndex: meIndex,
+    playerID: playerID ?? null,
+  });
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   const phaseTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const previousTurnNumber = useRef(G.turnNumber);
   const awaitingPlayers = getPlayersAwaitingAction(G);
   const awaitingPlayersKey = awaitingPlayers.join(',');
-  const meReady = G.ready[meIndex];
   const hasRequiredTutorialCards =
     !tutorialRequiredSetCardDefIds ||
     tutorialRequiredSetCardDefIds.every((defId) => G.setCardsThisTurn[meIndex].some((card) => card.defId === defId));
@@ -2007,7 +2016,7 @@ function BattleBoard({
   useEffect(() => {
     setSelectedHandIndex(null);
     setInteractionMessage('');
-  }, [G.step, G.turnNumber, meReady, meIndex]);
+  }, [selectionResetKey]);
 
   useEffect(() => {
     if (focusedCard || me.hand.length === 0) return;
@@ -2212,11 +2221,7 @@ function BattleBoard({
               />
               {mobileAbyssButton(opponentIndex, opponent.abyss.length)}
             </div>
-            <div
-              className="bf-opponent-handbacks"
-              role="group"
-              aria-label={`${t('board.hand')} ${opponent.hand.length}`}
-            >
+            <div className="bf-opponent-handbacks" role="img" aria-label={`${t('board.hand')} ${opponent.hand.length}`}>
               {opponent.hand.map((card) => (
                 <img key={card.instanceId} src="/card-back.jpg" alt="" loading="lazy" decoding="async" />
               ))}

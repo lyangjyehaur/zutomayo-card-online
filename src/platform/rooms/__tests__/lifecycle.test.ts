@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import type { AuthContext } from '@colyseus/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createEmptyPlatformBlockStore } from '../../blockStore';
+import { createEmptyPlatformBlockStore, type PlatformBlockStore } from '../../blockStore';
 import { createEmptyPlatformMatchParticipantStore } from '../../matchParticipantStore';
 import { CustomRoom } from '../CustomRoom';
 import { QuickMatchRoom } from '../QuickMatchRoom';
@@ -63,6 +63,37 @@ function profile(client: PlatformClient): PlatformClientProfile {
   };
 }
 
+function delayedCommittedBlockStore(): {
+  store: PlatformBlockStore;
+  fenceEntered: Promise<void>;
+  commitBlock: () => void;
+} {
+  let resolveFenceEntered!: () => void;
+  let resolveCommit!: () => void;
+  let committed = false;
+  const fenceEntered = new Promise<void>((resolve) => {
+    resolveFenceEntered = resolve;
+  });
+  const commit = new Promise<void>((resolve) => {
+    resolveCommit = resolve;
+  });
+  return {
+    store: {
+      areUsersBlocked: async () => false,
+      async withPairTransitionFence(_firstUserId, _secondUserId, transition) {
+        resolveFenceEntered();
+        await commit;
+        return committed ? false : transition();
+      },
+    },
+    fenceEntered,
+    commitBlock() {
+      committed = true;
+      resolveCommit();
+    },
+  };
+}
+
 describe('platform room lifecycle', () => {
   afterEach(() => {
     process.env.JWT_SECRET = originalJwtSecret;
@@ -117,13 +148,24 @@ describe('platform room lifecycle', () => {
       }),
     });
 
+    host.send.mockClear();
+    handlers.get('requestQuickMatchSnapshot')?.(host, {});
+    expect(host.send).toHaveBeenNthCalledWith(1, 'quickMatchMatched', expect.objectContaining({ role: 'host' }));
+    expect(host.send).toHaveBeenNthCalledWith(
+      2,
+      'quickMatchSnapshot',
+      expect.objectContaining({ status: 'matched', hostSessionId: 'session_host' }),
+    );
+
     const relay = handlers.get('boardgameMatchReady');
     expect(relay).toBeDefined();
     relay?.(guest, { boardgameMatchID: 'bgio-match-ignored' });
     expect(broadcast).not.toHaveBeenCalledWith('boardgameMatchReady', expect.anything());
 
     relay?.(host, { boardgameMatchID: ' bgio-match-1 ' });
-    expect(broadcast).toHaveBeenCalledWith('boardgameMatchReady', { boardgameMatchID: 'bgio-match-1' });
+    await vi.waitFor(() =>
+      expect(broadcast).toHaveBeenCalledWith('boardgameMatchReady', { boardgameMatchID: 'bgio-match-1' }),
+    );
     expect(setMatchmaking).toHaveBeenLastCalledWith({
       metadata: expect.objectContaining({
         status: 'finished',
@@ -132,9 +174,119 @@ describe('platform room lifecycle', () => {
     });
   });
 
+  it('rejects the final quick-match relay when a block commits before delayed outbox delivery', async () => {
+    const delayedBlock = delayedCommittedBlockStore();
+    QuickMatchRoom.configureBlockStore(delayedBlock.store);
+    const room = new QuickMatchRoom();
+    const handlers = new Map<string, BoardgameMatchReadyHandler>();
+    const setMatchmaking = vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
+    const broadcast = vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
+    vi.spyOn(room, 'lock').mockImplementation(() => undefined as never);
+    vi.spyOn(room, 'onMessage').mockImplementation(((type: string, handler: BoardgameMatchReadyHandler) => {
+      handlers.set(type, handler);
+      return room;
+    }) as never);
+
+    const host = client('session_host', {
+      userId: 'u_host',
+      displayName: 'Host',
+      role: 'player',
+      authenticated: true,
+    });
+    const guest = client('session_guest', {
+      userId: 'u_guest',
+      displayName: 'Guest',
+      role: 'player',
+      authenticated: true,
+    });
+    await room.onCreate();
+    room.clients.push(host);
+    await room.onJoin(host);
+    room.clients.push(guest);
+    await room.onJoin(guest);
+    room['authenticatedUserIds'].add('u_host');
+    room['deckReservations'].set('u_host', {
+      deckName: '__reserved__',
+      reservationId: 'dr_pending_relay_reservation',
+      expiresAt: Date.now() + 10_000,
+    });
+    broadcast.mockClear();
+    setMatchmaking.mockClear();
+
+    handlers.get('boardgameMatchReady')?.(host, { boardgameMatchID: 'bgio-must-not-start' });
+    await delayedBlock.fenceEntered;
+    expect(broadcast).not.toHaveBeenCalledWith('boardgameMatchReady', expect.anything());
+    expect(room['status']).toBe('matched');
+
+    // No relationship event is delivered. The authoritative DB fence observes
+    // the committed block after the writer releases its transaction lock.
+    delayedBlock.commitBlock();
+    await vi.waitFor(() =>
+      expect(broadcast).toHaveBeenCalledWith('quickMatchCancelled', { reason: 'relationship_changed' }),
+    );
+
+    expect(broadcast).not.toHaveBeenCalledWith('boardgameMatchReady', expect.anything());
+    expect(room['status']).toBe('cancelled');
+    expect(room['boardgameMatchID']).toBeUndefined();
+    expect(room['hostSessionId']).toBeUndefined();
+    expect(room['deckReservations']).toHaveLength(0);
+    expect(setMatchmaking).toHaveBeenLastCalledWith({
+      metadata: expect.objectContaining({ status: 'cancelled', boardgameMatchID: undefined }),
+    });
+  });
+
+  it('fails the final quick-match relay closed when the authoritative block fence is unavailable', async () => {
+    QuickMatchRoom.configureBlockStore({
+      areUsersBlocked: async () => false,
+      withPairTransitionFence: async () => {
+        throw new Error('postgres unavailable');
+      },
+    });
+    const room = new QuickMatchRoom();
+    const handlers = new Map<string, BoardgameMatchReadyHandler>();
+    const broadcast = vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
+    vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
+    vi.spyOn(room, 'lock').mockImplementation(() => undefined as never);
+    vi.spyOn(room, 'onMessage').mockImplementation(((type: string, handler: BoardgameMatchReadyHandler) => {
+      handlers.set(type, handler);
+      return room;
+    }) as never);
+    const host = client('session_host', {
+      userId: 'u_host',
+      displayName: 'Host',
+      role: 'player',
+      authenticated: true,
+    });
+    const guest = client('session_guest', {
+      userId: 'u_guest',
+      displayName: 'Guest',
+      role: 'player',
+      authenticated: true,
+    });
+    await room.onCreate();
+    room.clients.push(host);
+    await room.onJoin(host);
+    room.clients.push(guest);
+    await room.onJoin(guest);
+    broadcast.mockClear();
+
+    handlers.get('boardgameMatchReady')?.(host, { boardgameMatchID: 'bgio-must-not-start' });
+    await vi.waitFor(() =>
+      expect(broadcast).toHaveBeenCalledWith('quickMatchCancelled', {
+        reason: 'relationship_check_unavailable',
+      }),
+    );
+
+    expect(broadcast).not.toHaveBeenCalledWith('boardgameMatchReady', expect.anything());
+    expect(room['status']).toBe('cancelled');
+  });
+
   it('rechecks blocks when the second quick-match player joins', async () => {
     let blocked = false;
-    QuickMatchRoom.configureBlockStore({ areUsersBlocked: async () => blocked });
+    QuickMatchRoom.configureBlockStore({
+      ...createEmptyPlatformBlockStore(),
+      areUsersBlocked: async () => blocked,
+    });
     const room = new QuickMatchRoom();
     vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
     const broadcast = vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
@@ -222,8 +374,9 @@ describe('platform room lifecycle', () => {
     });
 
     handlers.get('boardgameMatchReady')?.(host, { boardgameMatchID: 'bgio-match-2' });
-
-    expect(broadcast).toHaveBeenCalledWith('boardgameMatchReady', { boardgameMatchID: 'bgio-match-2' });
+    await vi.waitFor(() =>
+      expect(broadcast).toHaveBeenCalledWith('boardgameMatchReady', { boardgameMatchID: 'bgio-match-2' }),
+    );
     expect(setMatchmaking).toHaveBeenLastCalledWith({
       metadata: expect.objectContaining({
         status: 'finished',

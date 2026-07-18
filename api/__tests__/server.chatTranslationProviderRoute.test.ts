@@ -241,6 +241,7 @@ describe('chat translation provider route', () => {
           {
             id: 'chat_msg_1',
             conversation_id: 'match:bgio-match-1',
+            author_user_id: 'u_author',
             content: 'こんにちは',
             source_language: 'ja',
             type: 'match',
@@ -251,6 +252,34 @@ describe('chat translation provider route', () => {
       })
       .mockResolvedValueOnce({ rows: [{ role: 'player' }], rowCount: 1 })
       .mockResolvedValueOnce({ rows: [], rowCount: 0 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 })
+      .mockResolvedValueOnce({
+        rows: [{ id: 'u_author', deleted_at: null, elo: 1500, match_count: 0, wins: 0 }],
+        rowCount: 1,
+      })
+      .mockResolvedValueOnce({
+        rows: [{ id: 'u_reader', deleted_at: null, elo: 1500, match_count: 0, wins: 0 }],
+        rowCount: 1,
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'chat_msg_1',
+            conversation_id: 'match:bgio-match-1',
+            author_user_id: 'u_author',
+            content: 'こんにちは',
+            source_language: 'ja',
+            moderation_status: 'visible',
+            deleted_at: null,
+            type: 'match',
+            subject_id: 'bgio-match-1',
+          },
+        ],
+        rowCount: 1,
+      })
+      .mockResolvedValueOnce({ rows: [{ role: 'player' }], rowCount: 1 })
       .mockResolvedValueOnce({
         rows: [
           {
@@ -265,7 +294,8 @@ describe('chat translation provider route', () => {
           },
         ],
         rowCount: 1,
-      });
+      })
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
     const res = await sendRequest(
       'POST',
@@ -307,7 +337,7 @@ describe('chat translation provider route', () => {
         }),
       }),
     );
-    expect(mockQuery).toHaveBeenLastCalledWith(expect.stringContaining('INSERT INTO chat_message_translations'), [
+    expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO chat_message_translations'), [
       'chat_msg_1',
       'en',
       'hello from provider',

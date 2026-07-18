@@ -20,13 +20,13 @@ docker run --rm -i grafana/k6 run - < load-tests/api-load.js
 
 ## 測試腳本
 
-| 腳本                  | 對象                                   | 說明                                                             |
-| --------------------- | -------------------------------------- | ---------------------------------------------------------------- |
-| `api-load.js`         | API server                             | 對公開 API endpoint 施壓，記錄延遲與錯誤率。                     |
-| `websocket-load.js`   | game server                            | 對 socket.io WebSocket 連線進行並發壓力測試。                    |
-| `auth-load.js`        | API server                             | 模擬登入 / token refresh，記錄成功率與延遲。                     |
-| `matchmaking-load.js` | API server                             | 模擬多玩家加入配對佇列，記錄配對成功率與配對時間。               |
-| `operational-soak.js` | 全服務 readiness / representative URLs | 以觀測到的 peak 計算 2x constant-arrival-rate，預設執行 2 小時。 |
+| 腳本                  | 對象                                   | 說明                                                                    |
+| --------------------- | -------------------------------------- | ----------------------------------------------------------------------- |
+| `api-load.js`         | API server                             | 對公開 API endpoint 施壓，記錄延遲與錯誤率。                            |
+| `websocket-load.js`   | game server                            | 對 socket.io WebSocket 連線進行並發壓力測試。                           |
+| `auth-load.js`        | API server                             | 模擬登入 / token refresh，記錄成功率與延遲。                            |
+| `matchmaking-load.js` | API server                             | 驗證已退役的 REST 配對端點在並發下持續回 410；主配對壓測另走 Colyseus。 |
+| `operational-soak.js` | 全服務 readiness / representative URLs | 以觀測到的 peak 計算 2x constant-arrival-rate，預設執行 2 小時。        |
 
 ## 執行方式
 
@@ -45,7 +45,7 @@ k6 run load-tests/websocket-load.js
 BASE_URL=http://localhost:3001 LOGIN_EMAIL=test@example.com LOGIN_PASSWORD=secret \
   k6 run load-tests/auth-load.js
 
-# 配對負載測試
+# Legacy REST 配對退役契約負載測試
 BASE_URL=http://localhost:3001 k6 run load-tests/matchmaking-load.js
 ```
 
@@ -55,7 +55,8 @@ BASE_URL=http://localhost:3001 k6 run load-tests/matchmaking-load.js
 npm run load:api
 npm run load:ws
 npm run load:auth
-npm run load:matchmaking
+npm run load:matchmaking # operator compatibility alias
+npm run load:matchmaking-retirement
 npm run load:operational-soak
 ```
 

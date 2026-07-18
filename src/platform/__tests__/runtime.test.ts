@@ -1,38 +1,41 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { matchMaker } from '@colyseus/core';
 import { createRequire } from 'node:module';
-import { assertPlatformRuntimeSchema, createPlatformRuntime } from '../runtime';
+import type { WebSocketTransport } from '@colyseus/ws-transport';
+import { assertPlatformRuntimeSchema, createPlatformRuntime, platformPendingInviteRedisOptions } from '../runtime';
 import { CustomRoom, InviteRoom, LobbyRoom, MatchShellRoom, QuickMatchRoom } from '../rooms';
+import { PLATFORM_PENDING_INVITE_DISCOVERY_PATH } from '../../platformInviteDiscovery';
 
 const require = createRequire(import.meta.url);
 const {
-  REQUIRED_RUNTIME_TABLES,
-  REQUIRED_RUNTIME_COLUMNS,
-  REQUIRED_RUNTIME_COLUMN_CONTRACTS,
-  REQUIRED_RUNTIME_CONSTRAINTS,
-  REQUIRED_RUNTIME_INDEXES,
+  REQUIRED_PLATFORM_RUNTIME_TABLES,
+  REQUIRED_PLATFORM_RUNTIME_COLUMNS,
+  REQUIRED_PLATFORM_RUNTIME_COLUMN_CONTRACTS,
+  REQUIRED_PLATFORM_RUNTIME_CONSTRAINTS,
+  REQUIRED_PLATFORM_RUNTIME_INDEXES,
 } = require('../../../api/schemaGate.cjs') as {
-  REQUIRED_RUNTIME_TABLES: string[];
-  REQUIRED_RUNTIME_COLUMNS: Record<string, string[]>;
-  REQUIRED_RUNTIME_COLUMN_CONTRACTS: Array<{
+  REQUIRED_PLATFORM_RUNTIME_TABLES: string[];
+  REQUIRED_PLATFORM_RUNTIME_COLUMNS: Record<string, string[]>;
+  REQUIRED_PLATFORM_RUNTIME_COLUMN_CONTRACTS: Array<{
     tableName: string;
     columnName: string;
     udtName: string;
     nullable: boolean;
     defaultToken: string | null;
   }>;
-  REQUIRED_RUNTIME_CONSTRAINTS: Array<{
+  REQUIRED_PLATFORM_RUNTIME_CONSTRAINTS: Array<{
     tableName: string;
     constraintName?: string;
     constraintType: string;
     fragments: string[];
   }>;
-  REQUIRED_RUNTIME_INDEXES: Array<{ tableName: string; indexName: string; fragments: string[] }>;
+  REQUIRED_PLATFORM_RUNTIME_INDEXES: Array<{ tableName: string; indexName: string; fragments: string[] }>;
 };
 
 const PLATFORM_ENV_KEYS = [
   'NODE_ENV',
   'PLATFORM_PORT',
+  'PLATFORM_PUBLIC_ADDRESS',
   'PLATFORM_REDIS_MODE',
   'PLATFORM_FRIEND_STORE',
   'PLATFORM_BLOCK_STORE',
@@ -45,6 +48,8 @@ const PLATFORM_ENV_KEYS = [
   'RUNTIME_SCHEMA_DDL',
   'EXPECTED_SCHEMA_MIGRATION',
   'EXPECTED_SCHEMA_CHECKSUM',
+  'PLATFORM_INVITE_DISCOVERY_QUERY_TIMEOUT_MS',
+  'PLATFORM_MATCHMAKER_REDIS_COMMAND_TIMEOUT_MS',
 ] as const;
 
 const originalEnv = new Map<string, string | undefined>(
@@ -54,6 +59,7 @@ const originalEnv = new Map<string, string | undefined>(
 function setLocalPlatformEnv() {
   process.env.NODE_ENV = 'test';
   delete process.env.PLATFORM_PORT;
+  delete process.env.PLATFORM_PUBLIC_ADDRESS;
   process.env.PLATFORM_REDIS_MODE = 'memory';
   process.env.PLATFORM_FRIEND_STORE = 'none';
   process.env.PLATFORM_BLOCK_STORE = 'none';
@@ -83,6 +89,31 @@ afterEach(() => {
 });
 
 describe('platform runtime', () => {
+  it('builds the dedicated pending invite Redis client options with a command timeout', () => {
+    expect(platformPendingInviteRedisOptions(1_234, { rejectUnauthorized: true })).toEqual({
+      maxRetriesPerRequest: 1,
+      enableReadyCheck: true,
+      commandTimeout: 1_234,
+      tls: { rejectUnauthorized: true },
+    });
+  });
+
+  it.each([
+    ['PLATFORM_INVITE_DISCOVERY_QUERY_TIMEOUT_MS', 'abc'],
+    ['PLATFORM_INVITE_DISCOVERY_QUERY_TIMEOUT_MS', '99'],
+    ['PLATFORM_INVITE_DISCOVERY_QUERY_TIMEOUT_MS', '5001'],
+    ['PLATFORM_MATCHMAKER_REDIS_COMMAND_TIMEOUT_MS', 'abc'],
+    ['PLATFORM_MATCHMAKER_REDIS_COMMAND_TIMEOUT_MS', '99'],
+    ['PLATFORM_MATCHMAKER_REDIS_COMMAND_TIMEOUT_MS', '5001'],
+  ] as const)('rejects invalid runtime timeout %s=%s before constructing services', (key, value) => {
+    setLocalPlatformEnv();
+    process.env[key] = value;
+
+    expect(() => createPlatformRuntime({ gracefullyShutdown: false })).toThrow(
+      `${key} must be an integer between 100 and 5000`,
+    );
+  });
+
   it('constructs the documented Colyseus platform shell in local memory mode', async () => {
     setLocalPlatformEnv();
 
@@ -124,6 +155,45 @@ describe('platform runtime', () => {
     await platform.closeStores();
   });
 
+  it('advertises the process-specific Colyseus address from an absolute WebSocket URL', async () => {
+    setLocalPlatformEnv();
+    process.env.PLATFORM_PUBLIC_ADDRESS = 'wss://platform-blue.example.test/colyseus/blue/';
+
+    const platform = createPlatformRuntime({ gracefullyShutdown: false });
+
+    expect(platform.publicAddress).toBe('wss://platform-blue.example.test/colyseus/blue');
+    expect(platform.gameServer.options.publicAddress).toBe('platform-blue.example.test/colyseus/blue');
+    await expect(platform.schemaReady).resolves.toBeUndefined();
+    await platform.closeStores();
+  });
+
+  it('registers authenticated pending invite discovery on the platform HTTP runtime', async () => {
+    setLocalPlatformEnv();
+    const verifyUserId = vi.fn(async () => 'u_runtime');
+    const queryRooms = vi.fn(async () => [
+      {
+        name: 'invite',
+        roomId: 'runtime_invite_room',
+        locked: false,
+        metadata: { kind: 'invite', status: 'pending', targetUserId: 'u_runtime' },
+      },
+    ]);
+    const platform = createPlatformRuntime({
+      gracefullyShutdown: false,
+      pendingInviteDiscovery: { verifyUserId, queryRooms },
+    });
+    await expect(platform.schemaReady).resolves.toBeUndefined();
+    const expressApp = (platform.gameServer.transport as WebSocketTransport).getExpressApp();
+    const router = expressApp as unknown as {
+      router: { stack: Array<{ route?: { path?: string; methods?: Record<string, boolean> } }> };
+    };
+    const route = router.router.stack.find(
+      (layer) => layer.route?.path === PLATFORM_PENDING_INVITE_DISCOVERY_PATH,
+    )?.route;
+    expect(route?.methods?.get).toBe(true);
+    await platform.closeStores();
+  });
+
   it('uses the shared migration and checksum gate before production readiness', async () => {
     const checksum = 'a'.repeat(64);
     const query = vi
@@ -131,15 +201,15 @@ describe('platform runtime', () => {
       .mockResolvedValueOnce({ rows: [{ '?column?': 1 }] })
       .mockResolvedValueOnce({ rows: [{ sha256: checksum }] })
       .mockResolvedValueOnce({
-        rows: REQUIRED_RUNTIME_TABLES.map((table_name) => ({ table_name, present: true })),
+        rows: REQUIRED_PLATFORM_RUNTIME_TABLES.map((table_name) => ({ table_name, present: true })),
       })
       .mockResolvedValueOnce({
-        rows: Object.entries(REQUIRED_RUNTIME_COLUMNS).flatMap(([table_name, columns]) =>
+        rows: Object.entries(REQUIRED_PLATFORM_RUNTIME_COLUMNS).flatMap(([table_name, columns]) =>
           columns.map((column_name) => ({ table_name, column_name, present: true })),
         ),
       })
       .mockResolvedValueOnce({
-        rows: REQUIRED_RUNTIME_COLUMN_CONTRACTS.map((contract) => ({
+        rows: REQUIRED_PLATFORM_RUNTIME_COLUMN_CONTRACTS.map((contract) => ({
           table_name: contract.tableName,
           column_name: contract.columnName,
           udt_name: contract.udtName,
@@ -149,7 +219,7 @@ describe('platform runtime', () => {
         })),
       })
       .mockResolvedValueOnce({
-        rows: REQUIRED_RUNTIME_CONSTRAINTS.map((contract) => ({
+        rows: REQUIRED_PLATFORM_RUNTIME_CONSTRAINTS.map((contract) => ({
           table_name: contract.tableName,
           constraint_name: contract.constraintName || `${contract.tableName}_${contract.constraintType}`,
           constraint_type: contract.constraintType,
@@ -157,12 +227,13 @@ describe('platform runtime', () => {
         })),
       })
       .mockResolvedValueOnce({
-        rows: REQUIRED_RUNTIME_INDEXES.map((contract) => ({
+        rows: REQUIRED_PLATFORM_RUNTIME_INDEXES.map((contract) => ({
           table_name: contract.tableName,
           index_name: contract.indexName,
           index_definition: contract.fragments.join(' '),
         })),
-      });
+      })
+      .mockResolvedValueOnce({ rows: [{ pending_count: '0' }] });
 
     await expect(
       assertPlatformRuntimeSchema({ query } as never, {

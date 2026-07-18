@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 type QueryResult = { rows: Array<Record<string, unknown>>; rowCount?: number };
 type PoolLike = {
   query: ReturnType<typeof vi.fn<(sql: string, params?: unknown[]) => Promise<QueryResult>>>;
+  connect?: ReturnType<typeof vi.fn>;
 };
 
 const require = createRequire(import.meta.url);
@@ -145,8 +146,42 @@ const sanitizeText = (value: unknown, maxLen = 60) =>
 
 function poolWithResults(results: QueryResult[]): PoolLike {
   const queue = [...results];
+  let lastMessageResult: QueryResult | null = null;
+  const query = vi.fn(async (sql: string, params?: unknown[]) => {
+    void params;
+    const result = queue.shift() ?? { rows: [] };
+    if (sql.includes('FROM chat_messages m') && result.rows[0]?.id) lastMessageResult = result;
+    return result;
+  });
+  const client = {
+    query: async (sql: string, params?: unknown[]) => {
+      if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(sql) || sql.includes('pg_advisory_xact_lock')) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (sql === 'SELECT id, deleted_at, elo, match_count, wins FROM users WHERE id = $1 FOR UPDATE') {
+        return { rows: [{ id: params?.[0], deleted_at: null }], rowCount: 1 };
+      }
+      if (sql.includes('FOR SHARE OF m, c') && lastMessageResult) return lastMessageResult;
+      return query(sql, params);
+    },
+    release: vi.fn(),
+  };
+  return { query, connect: vi.fn(async () => client) };
+}
+
+function transactionPool(
+  poolHandler: (sql: string, params?: unknown[]) => Promise<QueryResult>,
+  clientHandler: (sql: string, params?: unknown[]) => Promise<QueryResult>,
+) {
+  const poolQuery = vi.fn(poolHandler);
+  const clientQuery = vi.fn(clientHandler);
+  const release = vi.fn();
+  const connect = vi.fn(async () => ({ query: clientQuery, release }));
   return {
-    query: vi.fn(async () => queue.shift() ?? { rows: [] }),
+    pool: { query: poolQuery, connect } as PoolLike,
+    poolQuery,
+    clientQuery,
+    release,
   };
 }
 
@@ -1243,6 +1278,11 @@ describe('chat service', () => {
       }),
     ).resolves.toEqual({ ok: true, body: { ok: true } });
     expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO chat_read_states'), [
+      'match:bgio-match-1',
+      'u_1',
+      'chat_msg_1',
+    ]);
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('FROM chat_conversations'), [
       'match:bgio-match-1',
       'u_1',
       'chat_msg_1',
@@ -2357,5 +2397,223 @@ describe('chat service', () => {
       'deleted',
       'manual_deleted',
     ]);
+  });
+
+  it('fences direct message policy and writes on one account-locked client', async () => {
+    const directConversation = {
+      ...conversationRow,
+      id: 'direct:v1:u_author:u_peer',
+      type: 'direct',
+      subject_id: 'v1:u_author:u_peer',
+    };
+    const directMessage = {
+      ...messageRow,
+      id: 'chat_msg_fenced',
+      conversation_id: directConversation.id,
+      author_user_id: 'u_author',
+    };
+    const tx = transactionPool(
+      async () => ({ rows: [] }),
+      async (sql, params) => {
+        if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(sql) || sql.includes('pg_advisory_xact_lock')) {
+          return { rows: [] };
+        }
+        if (sql === 'SELECT id, deleted_at, elo, match_count, wins FROM users WHERE id = $1 FOR UPDATE') {
+          return { rows: [{ id: params?.[0], deleted_at: null }] };
+        }
+        if (sql.includes('FROM user_friends')) return { rows: [{ '?column?': 1 }] };
+        if (sql.includes('FROM chat_user_sanctions')) return { rows: [] };
+        if (sql.includes('INSERT INTO chat_conversations')) return { rows: [directConversation] };
+        if (sql.includes('INSERT INTO chat_messages')) return { rows: [directMessage] };
+        return { rows: [] };
+      },
+    );
+
+    await expect(
+      sendChatMessage({
+        pool: tx.pool,
+        authorUserId: 'u_author',
+        body: {
+          conversationType: 'direct',
+          subjectId: 'v1:u_author:u_peer',
+          content: 'fenced message',
+          authorRole: 'player',
+        },
+        sanitizeText,
+        generateMessageId: () => 'chat_msg_fenced',
+        enforceDirectFriendship: true,
+      }),
+    ).resolves.toMatchObject({ ok: true });
+
+    expect(tx.poolQuery).not.toHaveBeenCalled();
+    expect(tx.clientQuery).toHaveBeenCalledWith('SELECT pg_advisory_xact_lock(hashtext($1))', [
+      'legal-hold:account:u_author',
+    ]);
+    expect(tx.clientQuery).toHaveBeenCalledWith('SELECT pg_advisory_xact_lock(hashtext($1))', [
+      'legal-hold:account:u_peer',
+    ]);
+    expect(tx.clientQuery).toHaveBeenCalledWith(expect.stringContaining('FROM user_friends'), ['u_author', 'u_peer']);
+    expect(tx.clientQuery).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO chat_messages'),
+      expect.any(Array),
+    );
+    expect(tx.clientQuery).toHaveBeenLastCalledWith('COMMIT');
+    expect(tx.release).toHaveBeenCalledTimes(1);
+  });
+
+  it('maps a deleted reader account fence to 409 before policy or read-state writes', async () => {
+    const tx = transactionPool(
+      async () => ({ rows: [] }),
+      async (sql) => {
+        if (sql === 'SELECT id, deleted_at, elo, match_count, wins FROM users WHERE id = $1 FOR UPDATE') {
+          return { rows: [{ id: 'u_reader', deleted_at: '2026-07-15T00:00:00.000Z' }] };
+        }
+        return { rows: [] };
+      },
+    );
+
+    await expect(
+      markConversationRead({
+        pool: tx.pool,
+        userId: 'u_reader',
+        body: { conversationType: 'match', subjectId: 'match_1', lastReadMessageId: 'chat_msg_1' },
+      }),
+    ).resolves.toEqual({ ok: false, status: 409, error: 'Account is deleted or unavailable' });
+
+    expect(tx.clientQuery.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO chat_read_states'))).toBe(false);
+    expect(tx.clientQuery).toHaveBeenLastCalledWith('ROLLBACK');
+  });
+
+  it('locks reporter and author before re-reading report evidence', async () => {
+    const initialEvidence = {
+      ...messageRow,
+      author_user_id: 'u_author',
+      conversation_type: 'match',
+      conversation_subject_id: 'bgio-match-1',
+    };
+    const lockedEvidence = { ...initialEvidence, content: 'locked evidence' };
+    const tx = transactionPool(
+      async (sql) => (sql.includes('JOIN chat_conversations') ? { rows: [initialEvidence] } : { rows: [] }),
+      async (sql, params) => {
+        if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(sql) || sql.includes('pg_advisory_xact_lock')) {
+          return { rows: [] };
+        }
+        if (sql === 'SELECT id, deleted_at, elo, match_count, wins FROM users WHERE id = $1 FOR UPDATE') {
+          return { rows: [{ id: params?.[0], deleted_at: null }] };
+        }
+        if (sql.includes('FOR SHARE OF m, c')) return { rows: [lockedEvidence] };
+        if (sql.includes('INSERT INTO chat_reports')) {
+          return { rows: [{ id: 'report_fenced', message_id: 'chat_msg_1', reason: 'abuse' }] };
+        }
+        return { rows: [] };
+      },
+    );
+
+    await expect(
+      reportChatMessage({
+        pool: tx.pool,
+        reporterUserId: 'u_reporter',
+        messageId: 'chat_msg_1',
+        body: { reason: 'abuse' },
+        sanitizeText,
+        generateReportId: () => 'report_fenced',
+      }),
+    ).resolves.toMatchObject({ ok: true });
+
+    const sqlCalls = tx.clientQuery.mock.calls.map(([sql]) => String(sql));
+    const evidenceIndex = sqlCalls.findIndex((sql) => sql.includes('FOR SHARE OF m, c'));
+    const authorLockIndex = tx.clientQuery.mock.calls.findIndex(
+      ([sql, params]) => String(sql).includes('pg_advisory_xact_lock') && params?.[0] === 'legal-hold:account:u_author',
+    );
+    const reporterLockIndex = tx.clientQuery.mock.calls.findIndex(
+      ([sql, params]) =>
+        String(sql).includes('pg_advisory_xact_lock') && params?.[0] === 'legal-hold:account:u_reporter',
+    );
+    expect(authorLockIndex).toBeGreaterThan(-1);
+    expect(reporterLockIndex).toBeGreaterThan(-1);
+    expect(evidenceIndex).toBeGreaterThan(authorLockIndex);
+    expect(evidenceIndex).toBeGreaterThan(reporterLockIndex);
+    expect(tx.clientQuery).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO chat_reports'),
+      expect.arrayContaining(['locked evidence', 'u_author']),
+    );
+  });
+
+  it('does not persist a delayed provider result after the message author is deleted', async () => {
+    const events: string[] = [];
+    const translationMessage = {
+      ...messageRow,
+      author_user_id: 'u_author',
+      type: 'match',
+      subject_id: 'bgio-match-1',
+    };
+    const tx = transactionPool(
+      async (sql) => {
+        if (sql.includes('FROM chat_messages m')) return { rows: [translationMessage] };
+        if (sql.includes('FROM chat_message_translations')) return { rows: [] };
+        return { rows: [] };
+      },
+      async (sql, params) => {
+        if (sql === 'BEGIN') events.push('begin');
+        if (sql === 'SELECT id, deleted_at, elo, match_count, wins FROM users WHERE id = $1 FOR UPDATE') {
+          return {
+            rows: [
+              {
+                id: params?.[0],
+                deleted_at: params?.[0] === 'u_author' ? '2026-07-15T00:00:00.000Z' : null,
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    );
+    const translateText = vi.fn(async () => {
+      events.push('provider');
+      return { translatedContent: 'delayed result', provider: 'test', model: 'test' };
+    });
+
+    await expect(
+      requestChatTranslation({
+        pool: tx.pool,
+        userId: 'u_reader',
+        messageId: 'chat_msg_1',
+        body: { targetLanguage: 'en' },
+        sanitizeText,
+        translateText,
+      }),
+    ).resolves.toEqual({ ok: false, status: 409, error: 'Account is deleted or unavailable' });
+
+    expect(events).toEqual(['provider', 'begin']);
+    expect(
+      tx.clientQuery.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO chat_message_translations')),
+    ).toBe(false);
+    expect(tx.clientQuery).toHaveBeenLastCalledWith('ROLLBACK');
+  });
+
+  it('does not create an admin sanction for a deleted target account', async () => {
+    const tx = transactionPool(
+      async () => ({ rows: [] }),
+      async (sql) => {
+        if (sql === 'SELECT id, deleted_at, elo, match_count, wins FROM users WHERE id = $1 FOR UPDATE') {
+          return { rows: [{ id: 'u_target', deleted_at: '2026-07-15T00:00:00.000Z' }] };
+        }
+        return { rows: [] };
+      },
+    );
+
+    await expect(
+      createChatUserSanction({
+        pool: tx.pool,
+        targetUserId: 'u_target',
+        body: { type: 'chat_mute', reason: 'abuse' },
+        reviewerUserId: 'admin',
+        sanitizeText,
+        generateSanctionId: () => 'sanction_deleted',
+      }),
+    ).resolves.toEqual({ ok: false, status: 409, error: 'Account is deleted or unavailable' });
+
+    expect(tx.clientQuery.mock.calls.some(([sql]) => String(sql).includes('chat_user_sanctions'))).toBe(false);
+    expect(tx.clientQuery).toHaveBeenLastCalledWith('ROLLBACK');
   });
 });

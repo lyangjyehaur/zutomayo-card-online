@@ -1,5 +1,6 @@
 import type { CardDef, CardInstance } from '../types';
 import { Sentry } from '../../sentry';
+import { acceptCardDataResponse } from './dataContract';
 
 const cardMap = new Map<string, CardDef>();
 let currentCards: CardDef[] = [];
@@ -45,7 +46,11 @@ async function fetchJson<T>(
   try {
     const response = await fetch(path, { cache, signal: controller?.signal });
     if (!response.ok) return null;
-    return (await response.json()) as T;
+    const contract = path.startsWith('/api/cards') ? acceptCardDataResponse(response) : null;
+    if (path.startsWith('/api/cards') && !contract) return null;
+    const data = (await response.json()) as T;
+    if (path === '/api/cards' && Array.isArray(data) && contract && data.length !== contract.cardCount) return null;
+    return data;
   } catch (err) {
     // 卡牌載入失敗會導致空牌組崩潰，記錄 breadcrumb 以利追蹤載入問題。
     Sentry.addBreadcrumb({

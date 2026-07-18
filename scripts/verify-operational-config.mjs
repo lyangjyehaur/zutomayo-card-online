@@ -17,38 +17,104 @@ function requireFragments(relativePath, fragments) {
   }
 }
 
+function rejectFragments(relativePath, fragments) {
+  const contents = read(relativePath);
+  for (const fragment of fragments) {
+    if (contents.includes(fragment))
+      throw new Error(`${relativePath} contains forbidden operational content: ${fragment}`);
+  }
+}
+
 function assertExecutable(relativePath) {
   const mode = statSync(path.join(ROOT, relativePath)).mode;
   if ((mode & 0o111) === 0) throw new Error(`${relativePath} must be executable`);
 }
 
 export function validateOperationalConfig() {
+  requireFragments('package.json', [
+    'npm run dependency:patches',
+    'patch-package --error-on-fail',
+    '"postinstall": "patch-package"',
+  ]);
+  requireFragments('patches/boardgame.io+0.50.2.patch', [
+    'await Promise.all(writes)',
+    '+        this.subscribeCallback({',
+    '+            this.transportAPI.sendAll({',
+    'this.transportAPI.sendAll',
+  ]);
+  requireFragments('Dockerfile', [
+    'COPY patches ./patches',
+    'node_modules/boardgame.io/dist/cjs/master-9bf9c1d4.js',
+    'node_modules/boardgame.io/dist/cjs/server.js',
+    'node_modules/boardgame.io/dist/esm/master-17425f07.js',
+  ]);
   const backupScripts = [
     'scripts/pg-backup.sh',
     'scripts/pg-base-backup.sh',
     'scripts/pg-wal-archive.sh',
     'scripts/pg-wal-restore.sh',
+    'scripts/pg-wal-operational-smoke.sh',
     'scripts/pg-restore-drill.sh',
+    'scripts/run-pg-restore-drill-scheduled.sh',
+    'scripts/pg-pitr-drill.sh',
   ];
   for (const relativePath of backupScripts) assertExecutable(relativePath);
   requireFragments('scripts/pg-backup.sh', [
     'PG_BACKUP_OFFSITE_URI',
     'PG_BACKUP_AGE_RECIPIENT',
     'pg_restore --list',
+    'recovery-point-at=',
+    'pg_backup_last_run_success',
     'pg_backup_last_success_unixtime_seconds',
+    'PG_BACKUP_RECEIPT_DIR',
+    's3api put-object',
+    '.VersionId',
+    'zutomayo-encrypted-logical-backup-receipt',
+    'latest-offsite-backup-receipt.json',
   ]);
   requireFragments('scripts/pg-base-backup.sh', [
     'PG_BASE_BACKUP_OFFSITE_URI',
     'pg_basebackup',
+    'pg_base_backup_last_run_success',
     'pg_base_backup_last_success_unixtime_seconds',
   ]);
   requireFragments('scripts/pg-wal-archive.sh', ['PG_WAL_OFFSITE_URI', 'pg_wal_archive_last_success_unixtime_seconds']);
   requireFragments('scripts/pg-wal-restore.sh', ['sha256', 'age --decrypt']);
+  requireFragments('scripts/pg-wal-operational-smoke.sh', [
+    'zutomayo_ops.switch_wal',
+    'FROM pg_stat_archiver',
+    'FROM pg_stat_ssl',
+    'verify-full',
+    'PG_WAL_RESTORE_COMMAND',
+    'pg_waldump',
+    'zutomayo-pg-wal-operational-smoke',
+  ]);
   requireFragments('scripts/pg-backup.sh', ['PG_BACKUP_USER', 'PG_BACKUP_PASSWORD']);
   requireFragments('scripts/pg-base-backup.sh', ['PG_WAL_USER', 'PG_WAL_PASSWORD']);
   requireFragments('scripts/pg-restore-drill.sh', [
     'PG_RESTORE_DRILL_IMAGE',
     '@sha256:',
+    'RELEASE_SHA',
+    'EXPECTED_SCHEMA_MIGRATION',
+    'EXPECTED_SCHEMA_CHECKSUM',
+    'PG_RESTORE_DRILL_OBJECT_VERSION_ID',
+    'PG_RESTORE_DRILL_CHECKSUM_VERSION_ID',
+    'PG_RESTORE_DRILL_EXPECTED_SHA256',
+    'MIGRATE_IMAGE',
+    's3api get-object',
+    '.VersionId == $versionId',
+    'recovery-point-at',
+    'objectLastModifiedAt',
+    'zutomayo-encrypted-offsite-restore-raw',
+    'coreDataInvariantPassed',
+    'observations:',
+    'schemaMigrations:',
+    'expectedSchemaBinding:',
+    'users:',
+    'cards:',
+    'matches:',
+    'relationshipChangeOutbox:',
+    'legalHolds:',
     'pg_restore',
     'pg_restore_drill_success',
     'unvalidated_constraints',
@@ -56,10 +122,51 @@ export function validateOperationalConfig() {
     'deletion_hold_violations',
     'deleted_social_violations',
   ]);
+  requireFragments('scripts/run-pg-restore-drill-scheduled.sh', [
+    'PG_RESTORE_DRILL_RECEIPT_FILE',
+    'PG_RESTORE_DRILL_MAX_RECEIPT_AGE_SECONDS',
+    'latest-offsite-backup-receipt.json',
+    'zutomayo-encrypted-logical-backup-receipt',
+    'must not be group- or world-writable',
+    'PG_RESTORE_DRILL_OBJECT_VERSION_ID',
+    'PG_RESTORE_DRILL_CHECKSUM_VERSION_ID',
+    'PG_RESTORE_DRILL_EXPECTED_SHA256',
+    'pg_restore_drill_success 0',
+  ]);
+  requireFragments('scripts/pg-pitr-drill.sh', [
+    'PG_PITR_DRILL_MIGRATE_IMAGE',
+    'pull --quiet migrate',
+    'PITR artifact directory already exists',
+    'mkdir -m 0700',
+    'checks?.migrateImage === process.env.PG_PITR_DRILL_MIGRATE_IMAGE',
+  ]);
+  requireFragments('docker-compose.pitr-drill.yml', [
+    'artifact-init:',
+    'chmod 0770 /artifacts',
+    'PG_PITR_ARTIFACT_GID',
+    'PG_PITR_DRILL_MIGRATE_IMAGE',
+    'user: postgres',
+  ]);
+  if (/\bchmod\s+0?777\b/.test(read('docker-compose.pitr-drill.yml'))) {
+    throw new Error('PITR artifact directory must not be world-writable');
+  }
 
-  for (const timer of ['ops/systemd/zutomayo-pg-backup.timer', 'ops/systemd/zutomayo-pg-base-backup.timer']) {
+  for (const timer of [
+    'ops/systemd/zutomayo-pg-backup.timer',
+    'ops/systemd/zutomayo-pg-base-backup.timer',
+    'ops/systemd/zutomayo-pg-restore-drill.timer',
+  ]) {
     requireFragments(timer, ['Persistent=true', 'OnCalendar=', 'Unit=']);
   }
+  requireFragments('ops/systemd/zutomayo-pg-restore-drill.service', [
+    'User=zutomayo-restore',
+    'SupplementaryGroups=zutomayo-backup',
+    'EnvironmentFile=/etc/zutomayo/restore-drill.env',
+    'ExecStart=/opt/zutomayo/scripts/run-pg-restore-drill-scheduled.sh',
+    'TimeoutStartSec=30min',
+    'ReadOnlyPaths=/var/backups/zutomayo/receipts',
+    'ReadWritePaths=/var/log/zutomayo/restore-drills /var/lib/zutomayo/restore-artifacts /var/lib/node_exporter/textfile_collector',
+  ]);
 
   assertExecutable('scripts/synthetic-probe.mjs');
   requireFragments('scripts/synthetic-probe.mjs', [
@@ -132,7 +239,9 @@ export function validateOperationalConfig() {
   for (const privilegedScript of [
     'scripts/create-admin.cjs',
     'scripts/seed-cards-pg.ts',
+    'scripts/import-card-official-texts-pg.ts',
     'scripts/migrate-sqlite-to-pg.ts',
+    'scripts/card-data-gate.cjs',
   ]) {
     requireFragments(privilegedScript, [
       "assertPostgresExpectedRole(process.env, 'PG_MIGRATION_USER')",
@@ -140,6 +249,78 @@ export function validateOperationalConfig() {
       'postgresSslConfig(process.env)',
     ]);
   }
+  requireFragments('scripts/release-card-data.cjs', [
+    'REQUIRE_OFFICIAL_CARD_DATA=true is mandatory for production migration releases',
+    'scripts/audit-card-official-texts.ts',
+    'scripts/import-card-official-texts-pg.ts',
+    'scripts/card-data-gate.cjs',
+  ]);
+  for (const composeFile of [
+    'docker-compose.server4.yml',
+    'docker-compose.server4-slot.yml',
+    'docker-compose.staging.yml',
+  ]) {
+    requireFragments(composeFile, [
+      'REQUIRE_OFFICIAL_CARD_DATA',
+      'RELEASE_SHA',
+      'CARD_DATA_DIR',
+      'CARD_EXTRACTION_SOURCE',
+      'CARD_HUMAN_REVIEWS_SOURCE',
+      'CARD_ERRATA_SOURCE',
+      'CARD_OCR_OVERRIDES_SOURCE',
+      '/run/card-data',
+      'LEGACY_TOMBSTONE_BACKFILL_APPROVED',
+      'LEGACY_TOMBSTONE_BACKFILL_EXPECTED_COUNT',
+    ]);
+  }
+  requireFragments('Dockerfile.migrate', [
+    'api/accountLifecycleService.cjs',
+    'api/accountExportService.cjs',
+    'api/legalHoldService.cjs',
+    'scripts/release-card-data.cjs',
+    'scripts/card-data-gate.cjs',
+    'scripts/migration-lineage-pg-smoke.cjs',
+    'scripts/backfill-legacy-deleted-accounts-pg.cjs',
+    'scripts/platform-schema-gate-pg-smoke.cjs',
+  ]);
+  requireFragments('scripts/backfill-legacy-deleted-accounts-pg.cjs', [
+    "assertPostgresExpectedRole(process.env, 'PG_MIGRATION_USER')",
+    'LEGACY_TOMBSTONE_BACKFILL_APPROVED',
+    'LEGACY_TOMBSTONE_BACKFILL_EXPECTED_COUNT',
+    'identity_anonymized_at IS NULL',
+    'auditRef(userId)',
+  ]);
+  requireFragments('scripts/postgres-role-smoke.sh', [
+    'db:migration-lineage:smoke',
+    'db:platform-schema:smoke',
+    'platform-relationship-race-pg-smoke',
+    'lineage_database',
+    'REQUIRE_APP_ROLE_GATE=false',
+  ]);
+  requireFragments('docker-compose.postgres-concurrency-smoke.yml', [
+    'platform-relationship-race-pg-smoke:',
+    "command: ['npm', 'run', 'platform:relationship-race:pg-smoke']",
+    'PG_API_USER:',
+    'PG_PLATFORM_USER:',
+  ]);
+  requireFragments('scripts/platform-relationship-race-pg-smoke.ts', [
+    'createPostgresPlatformBlockStore',
+    'createPostgresPlatformFriendStore',
+    'blockUser',
+    'removeFriend',
+    'finishBoardgameMatch',
+    'Platform relay/relationship writer PostgreSQL concurrency smoke passed',
+  ]);
+  requireFragments('scripts/platform-schema-gate-pg-smoke.cjs', [
+    "assertPostgresExpectedRole(process.env, 'PG_PLATFORM_USER')",
+    'assertPlatformRuntimeSchema',
+  ]);
+  rejectFragments('Dockerfile.migrate', ['COPY data/card-', 'COPY scripts/card-english-ocr-overrides.json']);
+  requireFragments('package.json', [
+    'npm run data:policy',
+    'platform:relationship-race:pg-smoke',
+    'scripts/db-migrate.cjs up && node scripts/backfill-legacy-deleted-accounts-pg.cjs && node scripts/release-card-data.cjs',
+  ]);
   requireFragments('docker-compose.pgbouncer.yml', [
     'pgbouncer-role-mode-gate:',
     'REQUIRE_DISTINCT_DB_ROLES',
@@ -155,11 +336,13 @@ export function validateOperationalConfig() {
     'bearer_token_file: /etc/prometheus/metrics_token',
   ]);
   requireFragments('observability/grafana/alerting/alerts.yml', [
+    'PostgresBackupRunFailed',
     'PostgresBackupMissingOrStale',
     'PostgresWalArchiveMissingOrStale',
     'PostgresRestoreDrillFailed',
     'PostgresRestoreDrillMissingOrStale',
     'PostgresBaseBackupMissingOrStale',
+    'PostgresBaseBackupRunFailed',
     'RetentionJobMissingOrStale',
     'ReadinessProbeFailed',
     'SyntheticPlayerJourneyFailed',
@@ -168,6 +351,31 @@ export function validateOperationalConfig() {
     'RelationshipChangeOutboxOldestRow',
     'RelationshipChangeOutboxDeadLetter',
     'RelationshipChangeOutboxMetricsStale',
+    'AccountExportOldestJob',
+    'AccountExportJobFailed',
+    'AccountExportPurgeDelayed',
+    'AccountExportPurgeRetrying',
+    'AccountExportOrphanCleanupFailed',
+    'AccountExportMetricsStale',
+  ]);
+  requireFragments('docs/DEPLOYMENT.md', [
+    'ACCOUNT_EXPORT_STORAGE_MODE',
+    'ACCOUNT_EXPORT_S3_VERSIONING_MODE',
+    'ACCOUNT_EXPORT_S3_LIFECYCLE_CONFIRMED',
+    'Public Access Block',
+    's3:DeleteObjectVersion',
+    '000032_announcements',
+    '000034_card_text_rollback_compat',
+    'LEGACY_TOMBSTONE_BACKFILL_APPROVED',
+    'identity_anonymized_at IS NULL',
+    '256 MiB',
+  ]);
+  requireFragments('docs/DATA_RETENTION.md', [
+    'account_export_jobs',
+    'account_export_audit',
+    'object_version_id',
+    '365 天',
+    'orphan',
   ]);
   requireFragments('observability/prometheus/alertmanager.yml', ['api_url_file: /etc/alertmanager/slack_webhook']);
   if (read('docker-compose.monitoring.yml').includes("content: '${SLACK_ALERT_WEBHOOK:-")) {
@@ -180,6 +388,23 @@ export function validateOperationalConfig() {
     'refuses to run against production',
     'npm run chaos:probe',
   ]);
+  requireFragments('scripts/e2e-game-process-restart-smoke.sh', [
+    'RESTART_SMOKE_CONFIRM',
+    'docker compose',
+    '-e E2E_PROCESS_RESTART_CONTROLLER=1',
+    'restart game platform',
+    'StartedAt',
+    'game-process-restart.restarted.json',
+  ]);
+  requireFragments('e2e/game-process-restart.spec.ts', [
+    "process.env.E2E_PROCESS_RESTART_CONTROLLER !== '1'",
+    'data-game-step="turnSet"',
+    'waitForBoardgameReconnect',
+    'getAuthenticatedMatchHistory',
+    'hostCount: 1',
+    'guestCount: 1',
+    'sameHistory: true',
+  ]);
   requireFragments('load-tests/operational-soak.js', [
     'OBSERVED_PEAK_RPS must be the measured',
     'PEAK_MULTIPLIER || 2',
@@ -187,7 +412,8 @@ export function validateOperationalConfig() {
     'dropped_iterations',
   ]);
   requireFragments('load-tests/websocket-load.js', ['WS_TARGET_CONNECTIONS', 'ws_connecting', 'ws_connect_success']);
-  requireFragments('load-tests/matchmaking-load.js', ['mm_matched']);
+  requireFragments('load-tests/matchmaking-load.js', ['mm_legacy_retired', 'legacy matchmaking returns 410']);
+  requireFragments('package.json', ['"load:matchmaking": "npm run load:matchmaking-retirement"']);
   requireFragments('load-tests/auth-load.js', ['auth_refresh_success']);
   requireFragments('.github/workflows/ci.yml', ['npm run ops:config']);
   requireFragments('.github/workflows/cd.yml', [

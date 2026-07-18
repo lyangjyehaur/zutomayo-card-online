@@ -75,10 +75,7 @@ test.describe('首頁煙霧測試', () => {
     await expect(page.getByText('Channels', { exact: true })).toBeVisible({ timeout: 30_000 });
 
     // 點擊 Hero 區的教學按鈕
-    await page
-      .getByRole('button', { name: /新手教學/ })
-      .first()
-      .click();
+    await page.getByRole('button', { name: '新手教學', exact: true }).click();
     await expect(page).toHaveURL(/\/tutorial/);
   });
 

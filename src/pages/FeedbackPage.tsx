@@ -42,6 +42,7 @@ import {
   Badge,
   Button,
   Checkbox,
+  Dialog,
   EmptyState,
   FilterToolbar,
   IconButton,
@@ -286,7 +287,7 @@ export function FeedbackPage() {
       <AppHeader title={t('feedback.title')} subtitle={t('feedback.subtitle')} backTo="/" />
 
       {!isLoggedIn() && (
-        <p className="feedback-anon-notice text-caption text-content-muted">{t('feedback.anonymousNotice')}</p>
+        <p className="feedback-anon-notice text-caption text-content-primary/55">{t('feedback.anonymousNotice')}</p>
       )}
 
       {stats && (
@@ -341,7 +342,7 @@ export function FeedbackPage() {
               className="status-filter min-h-11 w-full text-body-sm md:w-44"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as FeedbackStatus | '')}
-              aria-label={t('feedback.filterAll')}
+              aria-label={t('feedback.statusLabel')}
             >
               <option value="">{t('feedback.filterAll')}</option>
               {STATUS_OPTIONS.map((s) => (
@@ -355,7 +356,7 @@ export function FeedbackPage() {
                 className="status-filter min-h-11 w-full text-body-sm md:w-44"
                 value={tagFilter}
                 onChange={(e) => setTagFilter(e.target.value)}
-                aria-label={t('feedback.filterAllTags')}
+                aria-label={t('feedback.tagLabel')}
               >
                 <option value="">{t('feedback.filterAllTags')}</option>
                 {tags.map((tg) => (
@@ -507,7 +508,7 @@ export function FeedbackPage() {
                   </p>
                 )}
                 <div className="post-footer mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="post-meta flex flex-wrap items-center gap-1 text-caption text-content-primary/45">
+                  <div className="post-meta flex flex-wrap items-center gap-1 text-caption text-content-primary/50">
                     <span>{authorLabel(post)}</span>
                     <span>·</span>
                     <span>{relativeTime(post.createdAt, locale)}</span>
@@ -1096,16 +1097,19 @@ function PostDetailModal({
   const comments = post?.comments ?? [];
 
   return (
-    <div className="feedback-modal-overlay" role="dialog" aria-modal="true" onClick={onClose}>
-      <div className="feedback-modal" onClick={(e) => e.stopPropagation()}>
-        <header className="modal-header">
-          <IconButton
-            className="modal-close"
-            label={t('feedback.detailBack')}
-            icon={<X className="size-4" aria-hidden="true" />}
-            onClick={onClose}
-          />
-        </header>
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      aria-label={post?.title ?? t('feedback.openDetail')}
+      closeLabel={t('feedback.detailBack')}
+      size="lg"
+      mobilePresentation="modal"
+      className="feedback-modal"
+      overlayClassName="feedback-modal-overlay"
+    >
+      <>
         {loading && <LoadingState className="feedback-empty" label={t('feedback.loading')} />}
         {error && (
           <Alert className="feedback-error" tone="danger">
@@ -1207,6 +1211,7 @@ function PostDetailModal({
                     className="text-xs"
                     value={post.status}
                     onChange={(e) => void handleStatus(e.target.value as FeedbackStatus)}
+                    aria-label={t('feedback.statusLabel')}
                   >
                     {STATUS_OPTIONS.map((s) => (
                       <option key={s} value={s}>
@@ -1433,7 +1438,7 @@ function PostDetailModal({
             </section>
           </div>
         )}
-      </div>
-    </div>
+      </>
+    </Dialog>
   );
 }

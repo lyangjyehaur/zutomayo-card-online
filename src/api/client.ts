@@ -145,25 +145,25 @@ export interface LegalHold {
   metadata: Record<string, unknown>;
 }
 
-export interface AccountExport {
-  exportedAt: string;
-  account: Record<string, unknown>;
-  identities: unknown[];
-  decks: unknown[];
-  matches: unknown[];
-  friends: unknown[];
-  friendRequests: unknown[];
-  blocks: unknown[];
-  chatMessages: unknown[];
-  chatReports: unknown[];
-  feedbackPosts: unknown[];
-  feedbackComments: unknown[];
-  feedbackVotes: unknown[];
-  feedbackReactions: unknown[];
-  sanctions: unknown[];
-  seasonRatings: unknown[];
-  seasonRewards: unknown[];
-  seasonRewardEntitlements: unknown[];
+export type AccountExportStatus = 'queued' | 'processing' | 'ready' | 'failed' | 'expired';
+
+export interface AccountExportJob {
+  id: string;
+  status: AccountExportStatus;
+  formatVersion: number;
+  sizeBytes: number | null;
+  uncompressedSizeBytes: number | null;
+  contentSha256: string | null;
+  attemptCount: number;
+  maxAttempts: number;
+  requestedAt: string;
+  snapshotAt: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  expiresAt: string | null;
+  downloadedAt: string | null;
+  downloadCount: number;
+  errorCode: string;
 }
 
 export type OAuthProviderId = 'logto' | 'google' | 'github' | 'discord';
@@ -849,8 +849,23 @@ export async function confirmPasswordReset(token: string, newPassword: string): 
   return result;
 }
 
-export async function exportAccountData(): Promise<AccountExport> {
-  return request<AccountExport>('/account/export');
+export async function createAccountExport(): Promise<AccountExportJob> {
+  const data = await request<{ job: AccountExportJob }>('/account/exports', { method: 'POST' });
+  return data.job;
+}
+
+export async function listAccountExports(): Promise<AccountExportJob[]> {
+  const data = await request<{ jobs: AccountExportJob[] }>('/account/exports');
+  return data.jobs;
+}
+
+export async function getAccountExport(jobId: string): Promise<AccountExportJob> {
+  const data = await request<{ job: AccountExportJob }>(`/account/exports/${encodeURIComponent(jobId)}`);
+  return data.job;
+}
+
+export function getAccountExportDownloadUrl(jobId: string): string {
+  return `${API_BASE}/account/exports/${encodeURIComponent(jobId)}/download`;
 }
 
 export async function deleteAccount(stepUp: {
@@ -1788,41 +1803,5 @@ export async function adminReloadGameCards(): Promise<void> {
   await request<{ ok: boolean }>('/admin/cards/reload', {
     method: 'POST',
     headers: adminAuthHeaders(),
-  });
-}
-
-// ===== Matchmaking =====
-export interface MatchmakingQueueResponse {
-  queueId: string;
-  status: 'queued' | 'matched';
-}
-
-export interface MatchmakingStatusResponse {
-  status: 'queued' | 'matched' | 'timeout';
-  matchId?: string;
-  opponentId?: string;
-  role?: 'host' | 'guest';
-  realMatchId?: string;
-}
-
-export async function matchmakingQueue(deckName?: string, deckIds?: string[]): Promise<MatchmakingQueueResponse> {
-  return request<MatchmakingQueueResponse>('/matchmaking/queue', {
-    method: 'POST',
-    body: JSON.stringify({ deckName, deckIds }),
-  });
-}
-
-export async function matchmakingStatus(): Promise<MatchmakingStatusResponse> {
-  return request<MatchmakingStatusResponse>('/matchmaking/status');
-}
-
-export async function matchmakingLeave(): Promise<void> {
-  await request<{ deleted: boolean }>('/matchmaking/queue', { method: 'DELETE' });
-}
-
-export async function matchmakingReportMatch(realMatchId: string): Promise<void> {
-  await request<{ ok: boolean }>('/matchmaking/match', {
-    method: 'PUT',
-    body: JSON.stringify({ matchId: realMatchId }),
   });
 }
