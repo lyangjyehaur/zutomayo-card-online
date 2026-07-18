@@ -56,6 +56,8 @@ const APPLICATION_TABLES = Object.freeze([
 ]);
 
 const ALL_TABLES = Object.freeze([...PROTECTED_SCHEMA_TABLES, ...APPLICATION_TABLES]);
+const COMPATIBILITY_VIEWS = Object.freeze(['card_effects_i18n']);
+const ALL_RELATIONS = Object.freeze([...ALL_TABLES, ...COMPATIBILITY_VIEWS]);
 const ROLE_TYPES = Object.freeze(['api', 'game', 'platform', 'retention', 'monitor', 'backup', 'wal']);
 const APP_ALIAS_TYPES = Object.freeze(new Set(['api', 'game', 'platform']));
 const TABLE_PRIVILEGES = Object.freeze(['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER']);
@@ -239,8 +241,10 @@ function tableRulesFor(roleUsers, requiredRoleTypes) {
   // DDL, privilege-management, or writes to migration history.
   grant('api', APPLICATION_TABLES, ['SELECT', 'INSERT', 'UPDATE', 'DELETE']);
   grant('api', PROTECTED_SCHEMA_TABLES, ['SELECT']);
+  grant('api', COMPATIBILITY_VIEWS, ['SELECT']);
 
   grant('game', GAME_READ_TABLES, ['SELECT']);
+  grant('game', COMPATIBILITY_VIEWS, ['SELECT']);
   grantTableRules('game', GAME_TABLE_PRIVILEGES);
   grantColumns('game', 'users', {
     SELECT: ['id', 'elo', 'match_count', 'wins', 'auth_version', 'deleted_at'],
@@ -256,6 +260,7 @@ function tableRulesFor(roleUsers, requiredRoleTypes) {
 
   // Logical backup is intentionally read-only, including migration history.
   grant('backup', ALL_TABLES, ['SELECT']);
+  grant('backup', COMPATIBILITY_VIEWS, ['SELECT']);
 
   for (const type of requiredRoleTypes) {
     if (!roleUsers[type]) continue;
@@ -276,7 +281,7 @@ function tableRulesFor(roleUsers, requiredRoleTypes) {
 function expectedTableChecks(rules) {
   const checks = [];
   for (const [roleName, rule] of rules) {
-    for (const tableName of ALL_TABLES) {
+    for (const tableName of ALL_RELATIONS) {
       for (const privilege of TABLE_PRIVILEGES) {
         checks.push({
           role_name: roleName,
@@ -387,7 +392,7 @@ async function enforceRuntimeRolePrivileges(pool, options = {}) {
     `SELECT required.table_name,
             to_regclass('public.' || required.table_name) IS NOT NULL AS present
        FROM unnest($1::text[]) AS required(table_name)`,
-    [ALL_TABLES],
+    [ALL_RELATIONS],
   );
   const missingTables = (requiredTables.rows || []).filter((row) => row.present !== true).map((row) => row.table_name);
   if (missingTables.length > 0) throw new Error(`Role matrix tables are missing: ${missingTables.join(', ')}`);
@@ -567,8 +572,10 @@ async function enforceRuntimeRolePrivileges(pool, options = {}) {
 }
 
 module.exports = {
+  ALL_RELATIONS,
   ALL_TABLES,
   APPLICATION_TABLES,
+  COMPATIBILITY_VIEWS,
   PROTECTED_SCHEMA_TABLES,
   ROLE_TYPES,
   enforceRuntimeRolePrivileges,

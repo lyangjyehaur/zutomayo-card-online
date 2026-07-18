@@ -4,26 +4,34 @@ import { createRequire } from 'node:module';
 import { describe, expect, it, vi } from 'vitest';
 
 const require = createRequire(import.meta.url);
-const { ALL_TABLES, APPLICATION_TABLES, enforceRuntimeRolePrivileges, quoteIdentifier } =
-  require('../postgres-role-gate.cjs') as {
-    ALL_TABLES: string[];
-    APPLICATION_TABLES: string[];
-    quoteIdentifier: (value: unknown) => string;
-    enforceRuntimeRolePrivileges: (
-      pool: { query: ReturnType<typeof vi.fn>; connect?: ReturnType<typeof vi.fn> },
-      options: {
-        appUser?: string;
-        roleUsers?: Record<string, string>;
-        requireComplete?: boolean;
-        requireDistinct?: boolean;
-      },
-    ) => Promise<{
+const {
+  ALL_RELATIONS,
+  ALL_TABLES,
+  APPLICATION_TABLES,
+  COMPATIBILITY_VIEWS,
+  enforceRuntimeRolePrivileges,
+  quoteIdentifier,
+} = require('../postgres-role-gate.cjs') as {
+  ALL_RELATIONS: string[];
+  ALL_TABLES: string[];
+  APPLICATION_TABLES: string[];
+  COMPATIBILITY_VIEWS: string[];
+  quoteIdentifier: (value: unknown) => string;
+  enforceRuntimeRolePrivileges: (
+    pool: { query: ReturnType<typeof vi.fn>; connect?: ReturnType<typeof vi.fn> },
+    options: {
       appUser?: string;
-      roles: Record<string, string>;
-      protectedTables: string[];
-      requiredRoleTypes: string[];
-    }>;
-  };
+      roleUsers?: Record<string, string>;
+      requireComplete?: boolean;
+      requireDistinct?: boolean;
+    },
+  ) => Promise<{
+    appUser?: string;
+    roles: Record<string, string>;
+    protectedTables: string[];
+    requiredRoleTypes: string[];
+  }>;
+};
 const { REQUIRED_RUNTIME_TABLES } = require('../../api/schemaGate.cjs') as { REQUIRED_RUNTIME_TABLES: string[] };
 
 const roleUsers = Object.freeze({
@@ -62,7 +70,7 @@ function successfulQuery(users: Record<string, string> = roleUsers, override?: Q
     }
     if (sql.includes("rolname = 'pg_monitor'")) return { rows: [{ rolcanlogin: false }] };
     if (sql.includes("to_regclass('public.'")) {
-      return { rows: ALL_TABLES.map((table_name) => ({ table_name, present: true })) };
+      return { rows: ALL_RELATIONS.map((table_name) => ({ table_name, present: true })) };
     }
     if (sql.includes('FROM information_schema.tables')) {
       return { rows: ALL_TABLES.map((table_name) => ({ table_name })) };
@@ -115,6 +123,7 @@ describe('PostgreSQL runtime role gate', () => {
     expect(statements).toContain('GRANT SELECT ON TABLE public."users" TO "z_backup"');
     expect(statements).toContain('GRANT SELECT ON TABLE public."card_texts_i18n" TO "z_game"');
     expect(statements).toContain('GRANT SELECT ON TABLE public."card_official_errata" TO "z_game"');
+    expect(statements).toContain('GRANT SELECT ON TABLE public."card_effects_i18n" TO "z_game"');
     expect(statements).toContain('GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO "z_backup"');
     expect(statements).not.toContain('GRANT USAGE ON SCHEMA public TO "z_monitor"');
     expect(statements).not.toContain('GRANT CONNECT ON DATABASE "zutomayo" TO "z_wal"');
@@ -253,11 +262,15 @@ describe('PostgreSQL runtime role gate', () => {
 
 describe('PostgreSQL role provisioning contract', () => {
   it('keeps the ACL allowlist aligned with the runtime schema list', () => {
-    expect(new Set(ALL_TABLES.filter((table) => table !== 'schema_migrations'))).toEqual(
+    expect(new Set(ALL_RELATIONS.filter((table) => table !== 'schema_migrations'))).toEqual(
       new Set(REQUIRED_RUNTIME_TABLES),
     );
     expect(new Set(APPLICATION_TABLES)).toEqual(
-      new Set(REQUIRED_RUNTIME_TABLES.filter((table) => table !== 'schema_migration_checksums')),
+      new Set(
+        REQUIRED_RUNTIME_TABLES.filter(
+          (table) => table !== 'schema_migration_checksums' && !COMPATIBILITY_VIEWS.includes(table),
+        ),
+      ),
     );
   });
 
