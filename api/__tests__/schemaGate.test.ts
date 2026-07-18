@@ -346,6 +346,7 @@ describe('production schema gate', () => {
   });
 
   it('requires official and localized card text schema', () => {
+    expect(REQUIRED_RUNTIME_TABLES).not.toContain('card_effects_i18n');
     expect(REQUIRED_RUNTIME_TABLES).toContain('card_texts_i18n');
     expect(REQUIRED_RUNTIME_TABLES).toContain('card_official_errata');
     expect(REQUIRED_RUNTIME_COLUMNS.cards).toContain('en_name_official');
@@ -363,6 +364,8 @@ describe('production schema gate', () => {
         'updated_at',
       ]),
     );
+    expect(REQUIRED_RUNTIME_COLUMNS.card_official_errata).not.toContain('corrected_japanese_text');
+    expect(REQUIRED_RUNTIME_COLUMNS.card_official_errata).not.toContain('corrected_english_text');
     expect(
       REQUIRED_RUNTIME_COLUMN_CONTRACTS.filter(({ tableName }) => tableName === 'card_texts_i18n')
         .map(({ columnName }) => columnName)
@@ -393,6 +396,11 @@ describe('production schema gate', () => {
     );
     expect(REQUIRED_RUNTIME_CONSTRAINTS).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({
+          tableName: 'card_texts_i18n',
+          constraintName: 'card_texts_i18n_derived_lang_check',
+          constraintType: 'c',
+        }),
         expect.objectContaining({
           tableName: 'card_texts_i18n',
           constraintType: 'p',
@@ -489,7 +497,7 @@ describe('production schema gate', () => {
     await expect(
       assertRuntimeSchema({
         pool: { query },
-        expectedMigration: '000033_admin_linked_auth_contract',
+        expectedMigration: '000033_card_text_authority',
         expectedChecksum: CHECKSUM,
       }),
     ).rejects.toThrow('2 legacy deleted accounts pending identity anonymization');
@@ -581,7 +589,7 @@ describe('production schema gate', () => {
     await expect(
       assertRuntimeSchema({
         pool: { query },
-        expectedMigration: '000033_admin_linked_auth_contract',
+        expectedMigration: '000033_card_text_authority',
         expectedChecksum: CHECKSUM,
       }),
     ).rejects.toThrow('card_official_errata_english_source_check');
@@ -625,7 +633,7 @@ describe('production schema gate', () => {
 });
 
 describe('boardgame runtime schema gate', () => {
-  const expectedMigration = '000033_admin_linked_auth_contract';
+  const expectedMigration = '000033_card_text_authority';
   const allTablesPresent = () => REQUIRED_BOARDGAME_RUNTIME_TABLES.map((table_name) => ({ table_name, present: true }));
   const allColumnsPresent = () =>
     Object.entries(REQUIRED_BOARDGAME_RUNTIME_COLUMNS).flatMap(([table_name, columns]) =>

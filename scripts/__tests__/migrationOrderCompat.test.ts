@@ -3,8 +3,10 @@ import { describe, expect, it, vi } from 'vitest';
 
 const require_ = createRequire(import.meta.url);
 const {
+  ADMIN_LINKED_AUTH_MIGRATION,
   ANNOUNCEMENTS_MIGRATION,
   CANONICAL_CARD_MIGRATIONS,
+  CARD_TEXT_AUTHORITY_MIGRATION,
   DEFAULT_MIGRATION_IGNORE_PATTERN,
   DEFERRED_HARDENING_MIGRATIONS,
   LEGACY_CARD_MIGRATIONS,
@@ -19,8 +21,10 @@ const {
   migrationOrderPolicyForApplied,
   normalizeAppliedMigrationOrder,
 } = require_('../migration-order-compat.cjs') as {
+  ADMIN_LINKED_AUTH_MIGRATION: string;
   ANNOUNCEMENTS_MIGRATION: string;
   CANONICAL_CARD_MIGRATIONS: string[];
+  CARD_TEXT_AUTHORITY_MIGRATION: string;
   DEFAULT_MIGRATION_IGNORE_PATTERN: string;
   DEFERRED_HARDENING_MIGRATIONS: string[];
   LEGACY_CARD_MIGRATIONS: string[];
@@ -104,7 +108,7 @@ describe('migration order compatibility', () => {
       ...CANONICAL_CARD_MIGRATIONS,
       ...DEFERRED_HARDENING_MIGRATIONS,
       '000032_official_card_data_releases',
-      '000033_admin_linked_auth_contract',
+      ADMIN_LINKED_AUTH_MIGRATION,
     ];
     const policy = migrationOrderPolicyForApplied(cardFirstHistory);
     expect(policy).toMatchObject({ checkOrder: false, outOfOrderBackfill: [], normalizeOrder: true });
@@ -136,6 +140,22 @@ describe('migration order compatibility', () => {
     });
   });
 
+  it('backfills the deferred admin contract behind an authority-first master history', () => {
+    const policy = migrationOrderPolicyForApplied([
+      ...PRE_CARD_HARDENING_BASELINE,
+      ...CANONICAL_CARD_MIGRATIONS,
+      ANNOUNCEMENTS_MIGRATION,
+      CARD_TEXT_AUTHORITY_MIGRATION,
+    ]);
+
+    expect(policy).toEqual({
+      ignorePattern: DEFAULT_MIGRATION_IGNORE_PATTERN,
+      checkOrder: false,
+      outOfOrderBackfill: DEFERRED_HARDENING_MIGRATIONS,
+      normalizeOrder: true,
+    });
+  });
+
   it('backfills announcements once into an existing completed P0-P5 history', () => {
     const policy = migrationOrderPolicyForApplied([
       ...PRE_CARD_HARDENING_BASELINE,
@@ -143,7 +163,7 @@ describe('migration order compatibility', () => {
       ...CANONICAL_CARD_MIGRATIONS,
       '000031_user_linked_admins',
       '000032_official_card_data_releases',
-      '000033_admin_linked_auth_contract',
+      ADMIN_LINKED_AUTH_MIGRATION,
     ]);
 
     expect(policy).toMatchObject({ checkOrder: false, outOfOrderBackfill: [], normalizeOrder: true });

@@ -11,7 +11,7 @@ const sourceInitPath = resolve(root, 'scripts/pg-pitr-source-init.sh');
 const composePath = resolve(root, 'docker-compose.pitr-drill.yml');
 const pinnedImage = `postgres:16-alpine@sha256:${'a'.repeat(64)}`;
 const pinnedMigrateImage = `ghcr.io/example/migrate@sha256:${'d'.repeat(64)}`;
-const expectedMigration = '000033_admin_linked_auth_contract';
+const expectedMigration = '000033_card_text_authority';
 const expectedChecksum = 'b'.repeat(64);
 const releaseSha = 'c'.repeat(40);
 

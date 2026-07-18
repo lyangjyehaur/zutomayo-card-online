@@ -209,8 +209,6 @@ describe('schema migrations', () => {
       'official_errata_affects_effect',
       'official_errata_url',
       'card_official_errata',
-      'corrected_japanese_text',
-      'corrected_english_text',
       'corrected_english_status',
       'corrected_english_source',
       'idx_cards_has_official_errata',
@@ -229,6 +227,7 @@ describe('schema migrations', () => {
     const cardTexts = readRepoFile('migrations/000028_card_official_texts_i18n.js');
     const errata = readRepoFile('migrations/000029_card_official_errata.js');
     const errataSource = readRepoFile('migrations/000030_card_official_errata_english_source.js');
+    const authority = readRepoFile('migrations/000033_card_text_authority.js');
 
     expect(developmentRunner).toContain('ssl: postgresSslConfig(process.env)');
     for (const runner of [migrationRunner, developmentRunner]) {
@@ -249,7 +248,11 @@ describe('schema migrations', () => {
     expect(cardTexts).not.toMatch(/ON CONFLICT \(card_id, lang\) DO UPDATE/);
     expect(errata).toContain('card_official_errata');
     expect(errataSource).toContain('card_official_errata_english_source_check');
-    for (const migration of [cardTexts, errata, errataSource]) {
+    expect(authority).toContain("DELETE FROM card_texts_i18n WHERE lang IN ('ja', 'en')");
+    expect(authority).toContain('DROP TABLE IF EXISTS card_effects_i18n');
+    expect(authority).toContain('DROP COLUMN IF EXISTS corrected_japanese_text');
+    expect(authority).toContain("CHECK (lang NOT IN ('ja', 'en'))");
+    for (const migration of [cardTexts, errata, errataSource, authority]) {
       expect(migration).toContain('export const down = false;');
     }
   });
@@ -282,9 +285,13 @@ describe('schema migrations', () => {
 
   it('keeps reviewed card-source validation in explicit local import workflows', () => {
     const officialImport = readRepoFile('scripts/import-card-official-texts-pg.ts');
+    const derivedImport = readRepoFile('scripts/import-card-derived-effects-pg.ts');
+    const derivedAudit = readRepoFile('scripts/cardDerivedEffects.ts');
 
     expect(officialImport).toContain('every printed English name/effect must be human-reviewed');
     expect(officialImport).toContain('official errata source must contain 12 unique cards');
     expect(officialImport).toContain('corrected Japanese does not match official card data');
+    expect(derivedImport).toContain('PostgreSQL English effect differs from the effective official text');
+    expect(derivedAudit).toContain('legacy en is forbidden');
   });
 });

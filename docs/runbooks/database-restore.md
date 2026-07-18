@@ -109,8 +109,8 @@ export PG_BACKUP_METRICS_DIR=/var/lib/node_exporter/textfile_collector
 export PG_RESTORE_DRILL_REPORT_DIR=/var/log/zutomayo/restore-drills
 export PG_RESTORE_DRILL_ARTIFACT_DIR=artifacts/encrypted-offsite-restore
 export RELEASE_SHA='<full-40-character-release-sha>'
-export EXPECTED_SCHEMA_MIGRATION=000033_admin_linked_auth_contract
-export EXPECTED_SCHEMA_CHECKSUM=3e1140398d4b9de39cf3e95dfac626fc50ac587127c5c556e9e9ad3b63489c45
+export EXPECTED_SCHEMA_MIGRATION=000033_card_text_authority
+export EXPECTED_SCHEMA_CHECKSUM=55a2c2ab106410d8ca2588ed7fd9ad919ea0d13ddb8848623d0044931c0f74de
 export MIGRATE_IMAGE='ghcr.io/.../zutomayo-card-online-migrate@sha256:<release-manifest-digest>'
 export PG_RESTORE_DRILL_OBJECT_VERSION_ID='<backup-object-version-from-upload-receipt>'
 export PG_RESTORE_DRILL_CHECKSUM_VERSION_ID='<checksum-object-version-from-upload-receipt>'
@@ -153,8 +153,8 @@ grep -E 'pg_(backup_last_run|restore_drill)' /var/lib/node_exporter/textfile_col
 
 ```bash
 export RELEASE_SHA="$(git rev-parse HEAD)"
-export EXPECTED_SCHEMA_MIGRATION=000033_admin_linked_auth_contract
-export EXPECTED_SCHEMA_CHECKSUM=3e1140398d4b9de39cf3e95dfac626fc50ac587127c5c556e9e9ad3b63489c45
+export EXPECTED_SCHEMA_MIGRATION=000033_card_text_authority
+export EXPECTED_SCHEMA_CHECKSUM=55a2c2ab106410d8ca2588ed7fd9ad919ea0d13ddb8848623d0044931c0f74de
 export PG_PITR_DRILL_MIGRATE_IMAGE='ghcr.io/.../zutomayo-card-online-migrate@sha256:<release-manifest-digest>'
 export PG_PITR_RUN_ID="release-${RELEASE_SHA:0:12}"
 export PG_PITR_DRILL_ARTIFACT_DIR="artifacts/pg-pitr-drill/$PG_PITR_RUN_ID"

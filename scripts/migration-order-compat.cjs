@@ -48,6 +48,8 @@ const CANONICAL_CARD_MIGRATIONS = Object.freeze([
   '000030_card_official_errata_english_source',
 ]);
 const ANNOUNCEMENTS_MIGRATION = '000032_announcements';
+const ADMIN_LINKED_AUTH_MIGRATION = '000033_admin_linked_auth_contract';
+const CARD_TEXT_AUTHORITY_MIGRATION = '000033_card_text_authority';
 
 const KNOWN_OUT_OF_ORDER_HISTORY = new Set([
   ...PRE_CARD_HARDENING_BASELINE,
@@ -58,7 +60,8 @@ const KNOWN_OUT_OF_ORDER_HISTORY = new Set([
   '000031_user_linked_admins',
   ANNOUNCEMENTS_MIGRATION,
   '000032_official_card_data_releases',
-  '000033_admin_linked_auth_contract',
+  ADMIN_LINKED_AUTH_MIGRATION,
+  CARD_TEXT_AUTHORITY_MIGRATION,
 ]);
 
 function migrationIgnorePatternForApplied(appliedNames) {
@@ -81,8 +84,11 @@ function migrationIgnorePatternForApplied(appliedNames) {
  * the missing hardening migrations once, even though their numbers precede
  * an already-applied card migration. Master later shipped announcements as
  * `000032_announcements`; existing P0-P5 histories may likewise need to apply
- * that file after `000032_official_card_data_releases`/`000033`. These two
- * reviewed lineages are normalized once; every other lineage fails closed.
+ * that file after `000032_official_card_data_releases`/`000033`. Master then
+ * shipped card-text authority under the same numeric prefix as the deferred
+ * admin auth contract; the full names remain unique, so authority-first
+ * databases may backfill the admin contract once. These reviewed lineages are
+ * normalized once; every other lineage fails closed.
  */
 function migrationOrderPolicyForApplied(appliedNames) {
   const names = Array.isArray(appliedNames) ? appliedNames.map(String) : [];
@@ -93,8 +99,11 @@ function migrationOrderPolicyForApplied(appliedNames) {
   const firstCanonicalIndex = names.findIndex((name) => CANONICAL_CARD_MIGRATIONS.includes(name));
   const requiresAnnouncementBackfill =
     !applied.has(ANNOUNCEMENTS_MIGRATION) && names.some((name) => name.localeCompare(ANNOUNCEMENTS_MIGRATION) > 0);
+  const requiresAdminAuthBackfill =
+    applied.has(CARD_TEXT_AUTHORITY_MIGRATION) && !applied.has(ADMIN_LINKED_AUTH_MIGRATION);
   const requiresOrderNormalization =
     requiresAnnouncementBackfill ||
+    requiresAdminAuthBackfill ||
     (firstCanonicalIndex >= 0 &&
       names.some((name, index) => index > firstCanonicalIndex && DEFERRED_HARDENING_MIGRATIONS.includes(name)));
 
@@ -184,7 +193,9 @@ async function listAppliedMigrationNames(pool) {
 }
 
 module.exports = {
+  ADMIN_LINKED_AUTH_MIGRATION,
   ANNOUNCEMENTS_MIGRATION,
+  CARD_TEXT_AUTHORITY_MIGRATION,
   CANONICAL_CARD_MIGRATIONS,
   DEFAULT_MIGRATION_IGNORE_PATTERN,
   DEFERRED_HARDENING_MIGRATIONS,

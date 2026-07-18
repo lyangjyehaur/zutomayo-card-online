@@ -431,6 +431,57 @@ describe('server routes', () => {
     mockRedisMget.mockResolvedValue([]);
   });
 
+  describe('admin card errata', () => {
+    it('returns the structured official errata comparison to authorized card maintainers', async () => {
+      mockQuery.mockImplementation(async (sql: string, params?: unknown[]) => {
+        if (sql.includes('FROM admin_sessions')) {
+          return { rows: [{ admin_user_id: 'admin_test', role: 'admin' }], rowCount: 1 };
+        }
+        if (sql.includes('FROM card_official_errata')) {
+          expect(params).toEqual(['1st_6']);
+          return {
+            rows: [
+              {
+                errata_id: '001',
+                card_id: '1st_6',
+                published_at: '2026-02-17',
+                affects_name: false,
+                affects_effect: true,
+                incorrect_text: 'old text',
+                corrected_japanese_text: 'corrected Japanese',
+                corrected_english_text: 'corrected English',
+                corrected_english_status: 'verified',
+                corrected_english_source: 'official_japanese_errata_translation',
+                source_url: 'https://zutomayocard.net/errata/001/',
+              },
+            ],
+            rowCount: 1,
+          };
+        }
+        return { rows: [], rowCount: 0 };
+      });
+
+      const res = await sendRequest('GET', '/api/admin/cards/1st_6/errata', null, adminHeaders());
+      expect(res.statusCode).toBe(200);
+      expect(parseBody(res)).toMatchObject({
+        errata: {
+          errataId: '001',
+          cardId: '1st_6',
+          affectsEffect: true,
+          incorrectText: 'old text',
+          correctedJapaneseText: 'corrected Japanese',
+          correctedEnglishText: 'corrected English',
+        },
+      });
+      expect(res.headers['cache-control']).toBe('no-store');
+    });
+
+    it('rejects unauthenticated errata detail requests', async () => {
+      const res = await sendRequest('GET', '/api/admin/cards/1st_6/errata');
+      expect(res.statusCode).toBe(401);
+    });
+  });
+
   describe('security headers', () => {
     it('sets X-Content-Type-Options: nosniff', async () => {
       const res = await sendRequest('GET', '/api/app-version');

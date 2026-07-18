@@ -172,7 +172,7 @@ Server({
 啟動流程（`bootstrap()`）：
 
 1. `validateSecurityConfig()` — 強制 `JWT_SECRET` 存在。
-2. `loadCardsFromPG()` — 從 PG `cards` / `card_effects_i18n` 載入卡牌定義（boardgame.io setup 需要卡牌才能初始化牌組），失敗重試 5 次。
+2. `loadCardsFromPG()` — 從 PG `cards` / `card_texts_i18n` 載入卡牌定義（boardgame.io setup 需要卡牌才能初始化牌組），失敗重試 5 次。
 3. `server.run(PORT)` — 啟動 Koa + Socket.IO。
 4. 附加 Socket.IO per-IP connection limiter（`MAX_CONN_PER_IP`，預設 10）。
 5. 啟動 stale match 清理排程（預設每 5 分鐘清除 30 分鐘以上未更新的對戰）。

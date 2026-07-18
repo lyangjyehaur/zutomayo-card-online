@@ -15,7 +15,6 @@ const APPLICATION_TABLES = Object.freeze([
   'deck_reservations',
   'matches',
   'cards',
-  'card_effects_i18n',
   'card_texts_i18n',
   'card_official_errata',
   'game_config',
@@ -78,7 +77,6 @@ const ACCOUNT_ANONYMIZATION_FUNCTIONS = Object.freeze([
 ]);
 const GAME_READ_TABLES = Object.freeze([
   'cards',
-  'card_effects_i18n',
   'card_texts_i18n',
   'card_official_errata',
   'seasons',

@@ -117,6 +117,7 @@ const {
   getAllCardI18n,
   getAllCardTextsI18n,
   getCardI18n,
+  getCardOfficialErrata,
   getCardTextsI18n,
   getGameConfig,
   getOfficialCardDataVersion,
@@ -696,8 +697,6 @@ async function initSchema() {
       affects_name BOOLEAN NOT NULL DEFAULT FALSE,
       affects_effect BOOLEAN NOT NULL DEFAULT FALSE,
       incorrect_text TEXT NOT NULL DEFAULT '',
-      corrected_japanese_text TEXT NOT NULL,
-      corrected_english_text TEXT NOT NULL DEFAULT '',
       corrected_english_status TEXT NOT NULL DEFAULT 'pending_review'
         CHECK (corrected_english_status IN ('official', 'verified', 'pending_review')),
       corrected_english_source TEXT NOT NULL,
@@ -708,13 +707,6 @@ async function initSchema() {
     `ALTER TABLE card_official_errata
       ADD COLUMN IF NOT EXISTS corrected_english_source TEXT NOT NULL
       DEFAULT 'official_japanese_errata_translation'`,
-
-    `CREATE TABLE IF NOT EXISTS card_effects_i18n (
-      card_id TEXT NOT NULL,
-      lang TEXT NOT NULL,
-      effect_text TEXT NOT NULL DEFAULT '',
-      PRIMARY KEY (card_id, lang)
-    )`,
 
     `CREATE TABLE IF NOT EXISTS card_texts_i18n (
       card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
@@ -731,15 +723,53 @@ async function initSchema() {
     )`,
     `CREATE INDEX IF NOT EXISTS idx_card_texts_i18n_lang_review
       ON card_texts_i18n(lang, review_status)`,
-    `INSERT INTO card_texts_i18n (
-       card_id, lang, effect_text, effect_source, review_status
-     )
-     SELECT legacy.card_id, legacy.lang, legacy.effect_text,
-            'legacy_card_effects_i18n', 'pending_review'
-     FROM card_effects_i18n legacy
-     JOIN cards ON cards.id = legacy.card_id
-     WHERE legacy.lang NOT IN ('ja', 'en')
-     ON CONFLICT (card_id, lang) DO NOTHING`,
+    `DO $$
+     BEGIN
+       IF EXISTS (
+         SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'card_official_errata'
+            AND column_name = 'corrected_japanese_text'
+       ) THEN
+         UPDATE cards AS card
+            SET name = CASE
+                         WHEN errata.affects_name THEN errata.corrected_japanese_text
+                         ELSE card.name
+                       END,
+                effect = CASE
+                           WHEN errata.affects_effect THEN errata.corrected_japanese_text
+                           ELSE card.effect
+                         END,
+                en_name_official = CASE
+                                     WHEN errata.affects_name THEN errata.corrected_english_text
+                                     ELSE card.en_name_official
+                                   END,
+                en_effect_official = CASE
+                                       WHEN errata.affects_effect THEN errata.corrected_english_text
+                                       ELSE card.en_effect_official
+                                     END,
+                updated_at = NOW()
+           FROM card_official_errata AS errata
+          WHERE errata.card_id = card.id;
+       END IF;
+     END $$`,
+    `DELETE FROM card_texts_i18n WHERE lang IN ('ja', 'en')`,
+    `DO $$
+     BEGIN
+       IF NOT EXISTS (
+         SELECT 1 FROM pg_constraint
+          WHERE conname = 'card_texts_i18n_derived_lang_check'
+            AND conrelid = 'public.card_texts_i18n'::regclass
+       ) THEN
+         ALTER TABLE card_texts_i18n
+           ADD CONSTRAINT card_texts_i18n_derived_lang_check
+           CHECK (lang NOT IN ('ja', 'en'));
+       END IF;
+     END $$`,
+    `DROP TABLE IF EXISTS card_effects_i18n`,
+    `ALTER TABLE card_official_errata
+       DROP COLUMN IF EXISTS corrected_japanese_text,
+       DROP COLUMN IF EXISTS corrected_english_text`,
 
     `CREATE TABLE IF NOT EXISTS game_config (
       key TEXT PRIMARY KEY,
@@ -5099,6 +5129,15 @@ function handleRequest(req, res) {
     if (pathname === '/api/admin/cards/reload' && method === 'POST') {
       if (!(await authorizeAdmin(req, 'cards:write'))) return json({ error: 'Unauthorized' }, 401);
       json({ ok: true });
+      return;
+    }
+
+    const adminCardErrataRoute = pathname.match(/^\/api\/admin\/cards\/([^/]+)\/errata$/);
+    if (adminCardErrataRoute && method === 'GET') {
+      if (!(await authorizeAdmin(req, 'cards:write'))) return json({ error: 'Unauthorized' }, 401);
+      const cardId = decodeURIComponent(adminCardErrataRoute[1]);
+      res.setHeader('Cache-Control', 'no-store');
+      json({ errata: await getCardOfficialErrata(pool, cardId) });
       return;
     }
 

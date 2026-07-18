@@ -11,6 +11,7 @@ const {
   getAllCardI18n,
   getAllCardTextsI18n,
   getCardI18n,
+  getCardOfficialErrata,
   getCardTextsI18n,
   getGameConfig,
   getOfficialCardDataVersion,
@@ -18,11 +19,13 @@ const {
   getPublicCard,
   getPublicCards,
   normalizeI18nLang,
+  officialErrataRowToDef,
 } = require('../cardDataService.cjs') as {
   cardRowToDef: (row: Record<string, unknown>) => Record<string, unknown>;
   getAllCardI18n: (pool: Queryable) => Promise<Record<string, unknown>>;
   getAllCardTextsI18n: (pool: Queryable) => Promise<Record<string, unknown>>;
   getCardI18n: (pool: Queryable, cardId: string) => Promise<Record<string, string>>;
+  getCardOfficialErrata: (pool: Queryable, cardId: string) => Promise<Record<string, unknown> | null>;
   getCardTextsI18n: (pool: Queryable, cardId: string) => Promise<Record<string, unknown>>;
   getGameConfig: (pool: Queryable) => Promise<Record<string, unknown>>;
   getOfficialCardDataVersion: (pool: Queryable) => Promise<Record<string, unknown> | null>;
@@ -33,6 +36,7 @@ const {
   ) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
   getPublicCards: (pool: Queryable, searchParams: URLSearchParams) => Promise<Array<Record<string, unknown>>>;
   normalizeI18nLang: (lang: unknown) => string | null;
+  officialErrataRowToDef: (row: Record<string, unknown> | undefined) => Record<string, unknown> | null;
 };
 
 const dbCard = {
@@ -137,9 +141,12 @@ describe('card data service', () => {
     expect(normalizeI18nLang('zhTW')).toBe('zh-TW');
     expect(normalizeI18nLang('xx')).toBeNull();
 
-    await expect(getAllCardI18n(poolWithRows([{ card_id: 'c_1', lang: 'ja', effect_text: 'JP' }]))).resolves.toEqual({
+    const pool = poolWithRows([{ card_id: 'c_1', lang: 'ja', effect_text: 'JP' }]);
+    await expect(getAllCardI18n(pool)).resolves.toEqual({
       c_1: { ja: 'JP' },
     });
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('FROM cards'));
+    expect(pool.query).not.toHaveBeenCalledWith(expect.stringContaining('card_effects_i18n'));
     await expect(getCardI18n(poolWithRows([{ lang: 'zhTW', effect_text: 'TW' }]), 'c_1')).resolves.toMatchObject({
       en: '',
       'zh-TW': 'TW',
@@ -173,6 +180,73 @@ describe('card data service', () => {
       en: { reviewStatus: 'pending_review' },
       'zh-TW': expected,
     });
+  });
+
+  it('projects effective Japanese and English card text from cards', async () => {
+    const rows = [
+      {
+        card_id: '4th_76',
+        lang: 'ja',
+        name_text: 'グレくまくん (形)',
+        effect_text: '',
+        name_source: 'official_errata_notice',
+        effect_source: 'official_card_print',
+        review_status: 'official',
+        review_note: 'Official errata 011',
+      },
+      {
+        card_id: '4th_76',
+        lang: 'en',
+        name_text: 'GUREKUMA-KUN (Pain Give Form)',
+        effect_text: '',
+        name_source: 'official_errata_notice',
+        effect_source: 'official_card_print',
+        review_status: 'official',
+        review_note: 'Official errata 011',
+      },
+    ];
+    const pool = poolWithRows(rows);
+
+    await expect(getCardTextsI18n(pool, '4th_76')).resolves.toMatchObject({
+      ja: { name: 'グレくまくん (形)' },
+      en: { name: 'GUREKUMA-KUN (Pain Give Form)' },
+    });
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining("SELECT id, 'en', en_name_official"), ['4th_76']);
+  });
+
+  it('returns the complete official errata comparison for card maintenance', async () => {
+    const row = {
+      errata_id: '001',
+      card_id: 'c_1',
+      published_at: new Date('2026-02-17T00:00:00.000Z'),
+      affects_name: false,
+      affects_effect: true,
+      incorrect_text: 'old text',
+      corrected_japanese_text: 'corrected Japanese',
+      corrected_english_text: 'corrected English',
+      corrected_english_status: 'verified',
+      corrected_english_source: 'official_japanese_errata_translation',
+      source_url: 'https://zutomayocard.net/errata/001/',
+    };
+    const expected = {
+      errataId: '001',
+      cardId: 'c_1',
+      publishedAt: '2026-02-17',
+      affectsName: false,
+      affectsEffect: true,
+      incorrectText: 'old text',
+      correctedJapaneseText: 'corrected Japanese',
+      correctedEnglishText: 'corrected English',
+      correctedEnglishStatus: 'verified',
+      correctedEnglishSource: 'official_japanese_errata_translation',
+      sourceUrl: 'https://zutomayocard.net/errata/001/',
+    };
+
+    expect(officialErrataRowToDef(row)).toEqual(expected);
+    const pool = poolWithRows([row]);
+    await expect(getCardOfficialErrata(pool, 'c_1')).resolves.toEqual(expected);
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('JOIN cards AS card'), ['c_1']);
+    await expect(getCardOfficialErrata(poolWithRows([]), 'missing')).resolves.toBeNull();
   });
 
   it('gets a single card from PG and returns 404 when missing', async () => {

@@ -186,7 +186,7 @@ function restoreEvidence(directory: string) {
         schemaGatePassed: true,
         fixtureRoundTripPassed: true,
         legalHoldInvariantPassed: true,
-        expectedMigration: '000033_admin_linked_auth_contract',
+        expectedMigration: '000033_card_text_authority',
         expectedSchemaChecksum: '9'.repeat(64),
         migrateImage: 'ghcr.io/example/migrate@sha256:' + '0'.repeat(64),
         expectedMigrationCount: 1,
@@ -230,7 +230,7 @@ function restoreEvidence(directory: string) {
         isolated: true,
         completed: true,
         schema: {
-          expectedMigration: '000033_admin_linked_auth_contract',
+          expectedMigration: '000033_card_text_authority',
           expectedChecksum: '9'.repeat(64),
           migrateImage: 'ghcr.io/example/migrate@sha256:' + '0'.repeat(64),
         },
@@ -404,7 +404,7 @@ function inspectOperationalEvidence(directory: string, evidence: OperationalEvid
   const check = inspectStagingGates(directory, {
     releaseSha: evidence.releaseSha,
     imageDigests: evidence.imageDigests,
-    expectedSchemaMigration: '000033_admin_linked_auth_contract',
+    expectedSchemaMigration: '000033_card_text_authority',
     expectedSchemaChecksum: '9'.repeat(64),
     evidenceRunId: '123',
     nowMs: Date.parse('2026-07-13T04:00:00.000Z'),

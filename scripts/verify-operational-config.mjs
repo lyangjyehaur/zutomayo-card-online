@@ -365,7 +365,7 @@ export function validateOperationalConfig() {
     'Public Access Block',
     's3:DeleteObjectVersion',
     '000032_announcements',
-    '000033_admin_linked_auth_contract',
+    '000033_card_text_authority',
     'LEGACY_TOMBSTONE_BACKFILL_APPROVED',
     'identity_anonymized_at IS NULL',
     '256 MiB',

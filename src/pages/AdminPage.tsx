@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   BookOpenText,
   Database,
+  ExternalLink,
   Info,
   Languages,
   Library,
@@ -39,6 +40,7 @@ import {
   adminCreateChatUserSanction,
   adminGetChatConversationMessages,
   adminGetChatReports,
+  adminGetCardOfficialErrata,
   adminGetMatches,
   adminGetUsers,
   adminLogin,
@@ -65,6 +67,7 @@ import type {
   AdminMatch,
   AdminRole,
   AdminUser,
+  CardOfficialErrata,
   ChatConversation,
   ChatMessage,
   ChatReport,
@@ -379,6 +382,108 @@ function EffectInspector({ meta }: { meta: ParsedCardMeta }) {
 }
 
 // ===== Card Edit Form =====
+const ERRATA_ENGLISH_SOURCE_LABELS: Record<string, string> = {
+  official_errata_notice: '官方勘誤公告',
+  official_card_print_unaffected: '卡面英文未受影響',
+  official_card_print_corrected: '卡面英文最小修正',
+  official_japanese_errata_translation: '依修正後日文翻譯',
+};
+
+function OfficialErrataPanel({ card, legacyNote }: { card: CardDef; legacyNote: string }) {
+  const [errata, setErrata] = useState<CardOfficialErrata | null>(null);
+  const [loading, setLoading] = useState(card.hasOfficialErrata);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    setErrata(null);
+    setError('');
+    if (!card.hasOfficialErrata) {
+      setLoading(false);
+      return () => {
+        active = false;
+      };
+    }
+    setLoading(true);
+    adminGetCardOfficialErrata(card.id)
+      .then((value) => {
+        if (active) setErrata(value);
+      })
+      .catch((reason: unknown) => {
+        if (active) setError(reason instanceof Error ? reason.message : '載入官方勘誤失敗');
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [card.hasOfficialErrata, card.id]);
+
+  if (loading) return <LoadingState label="載入官方勘誤中…" />;
+  if (error) {
+    return (
+      <Alert tone="danger" role="alert">
+        {error}
+      </Alert>
+    );
+  }
+  if (!errata) {
+    return legacyNote ? (
+      <div className="admin-errata-legacy">
+        <span>舊卡牌備註</span>
+        <p>{legacyNote}</p>
+      </div>
+    ) : (
+      <p className="admin-errata-empty">此卡沒有官方勘誤</p>
+    );
+  }
+
+  const sourceLabel = ERRATA_ENGLISH_SOURCE_LABELS[errata.correctedEnglishSource] || errata.correctedEnglishSource;
+  const englishStatus =
+    errata.correctedEnglishStatus === 'official'
+      ? '官方'
+      : errata.correctedEnglishStatus === 'verified'
+        ? '已複核'
+        : '待複核';
+
+  return (
+    <div className="admin-errata-detail">
+      <div className="admin-errata-meta">
+        <div>
+          {errata.affectsName && <Badge tone="gold">影響名稱</Badge>}
+          {errata.affectsEffect && <Badge tone="gold">影響效果</Badge>}
+          {errata.publishedAt && <Badge>{errata.publishedAt}</Badge>}
+        </div>
+        <a
+          href={errata.sourceUrl || card.officialErrataUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="admin-errata-source-link"
+        >
+          <ExternalLink className="size-4" aria-hidden="true" />
+          官方來源
+        </a>
+      </div>
+      <div className="admin-errata-text-grid">
+        <div className="admin-reference-block">
+          <span>勘誤前</span>
+          <p>{errata.incorrectText || '—'}</p>
+        </div>
+        <div className="admin-reference-block">
+          <span>修正後日文</span>
+          <p>{errata.correctedJapaneseText || '—'}</p>
+        </div>
+        <div className="admin-reference-block">
+          <span>修正後英文 · {englishStatus}</span>
+          <p>{errata.correctedEnglishText || '—'}</p>
+          {sourceLabel && <small>{sourceLabel}</small>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CardEditForm({
   card,
   section,
@@ -538,7 +643,7 @@ function CardEditForm({
                 <h3>官方勘誤</h3>
                 {card.hasOfficialErrata && <Badge tone="gold">#{card.officialErrataId}</Badge>}
               </div>
-              <Textarea value={draft.errata} onChange={(e) => set('errata', e.target.value)} rows={4} />
+              <OfficialErrataPanel card={card} legacyNote={draft.errata} />
             </section>
           </div>
         ) : (
@@ -546,7 +651,7 @@ function CardEditForm({
             <section className="admin-editor-section">
               <div className="admin-editor-section-heading">
                 <h3>日本語</h3>
-                <Badge>官方原文</Badge>
+                <Badge>官方有效文本</Badge>
               </div>
               <label className="grid gap-1">
                 <span className="text-xs text-content-primary/50">卡牌名稱</span>
@@ -560,7 +665,7 @@ function CardEditForm({
             <section className="admin-editor-section">
               <div className="admin-editor-section-heading">
                 <h3>English</h3>
-                <Badge>卡面官方文本</Badge>
+                <Badge>官方有效文本</Badge>
               </div>
               <label className="grid gap-1">
                 <span className="text-xs text-content-primary/50">Card name</span>
@@ -648,7 +753,7 @@ function I18nEditor({ card, onDirtyChange }: { card: CardDef; onDirtyChange?: (d
         setSavedDraft(init);
       })
       .finally(() => setLoading(false));
-  }, [cardId]);
+  }, [card.effect, card.enEffectOfficial, card.enNameOfficial, card.name, cardId]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -684,6 +789,44 @@ function I18nEditor({ card, onDirtyChange }: { card: CardDef; onDirtyChange?: (d
 
   return (
     <div className="admin-card-form">
+      <section className="admin-i18n-reference" aria-label="官方日文與英文對照">
+        <div className="admin-editor-section-heading">
+          <h3>官方日英對照</h3>
+          {card.hasOfficialErrata && <Badge tone="gold">含官方勘誤</Badge>}
+        </div>
+        <div className="admin-i18n-reference-grid">
+          <div className="admin-i18n-reference-language">
+            <div className="admin-i18n-reference-heading">
+              <strong>日本語</strong>
+              <span>{card.hasOfficialErrata ? '勘誤後有效日文' : '官方有效日文'}</span>
+            </div>
+            <label className="grid gap-1">
+              <span className="text-xs text-content-primary/50">卡牌名稱</span>
+              <Input readOnly value={card.name} />
+            </label>
+            <label className="grid gap-1">
+              <span className="text-xs text-content-primary/50">卡牌效果</span>
+              <Textarea readOnly value={card.effect} rows={5} />
+            </label>
+          </div>
+          <div className="admin-i18n-reference-language">
+            <div className="admin-i18n-reference-heading">
+              <strong>English</strong>
+              <span>
+                {card.officialErrataAffectsName || card.officialErrataAffectsEffect ? '勘誤後有效英文' : '官方有效英文'}
+              </span>
+            </div>
+            <label className="grid gap-1">
+              <span className="text-xs text-content-primary/50">Card name</span>
+              <Input readOnly value={card.enNameOfficial || ''} />
+            </label>
+            <label className="grid gap-1">
+              <span className="text-xs text-content-primary/50">Card effect</span>
+              <Textarea readOnly value={card.enEffectOfficial || ''} rows={5} />
+            </label>
+          </div>
+        </div>
+      </section>
       <div className="admin-editor-section-grid">
         {DERIVED_I18N_LANGS.map((lang) => {
           const entry = draft[lang.code] ?? { name: '', effect: '', reviewStatus: 'pending_review', reviewNote: '' };

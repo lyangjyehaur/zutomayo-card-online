@@ -12,6 +12,37 @@ const CARD_SELECT = `SELECT id, name, en_name_official, pack, song, illustrator,
                     en_effect_official, image, errata, has_official_errata, official_errata_id,
                     official_errata_affects_name, official_errata_affects_effect, official_errata_url`;
 
+const CARD_TEXTS_SELECT = `SELECT card_id, lang, name_text, effect_text, name_source, effect_source,
+                                 review_status, review_note
+                          FROM (
+                            SELECT card_id, lang, name_text, effect_text, name_source, effect_source,
+                                   review_status, review_note
+                            FROM card_texts_i18n
+                            WHERE lang NOT IN ('ja', 'en')
+                            UNION ALL
+                            SELECT id, 'ja', name, effect,
+                                   CASE WHEN official_errata_affects_name
+                                     THEN 'official_errata_notice' ELSE 'official_card_print' END,
+                                   CASE WHEN official_errata_affects_effect
+                                     THEN 'official_errata_notice' ELSE 'official_card_print' END,
+                                   'official',
+                                   CASE WHEN has_official_errata
+                                     THEN CONCAT('Official errata ', official_errata_id, ': ', official_errata_url)
+                                     ELSE '' END
+                            FROM cards
+                            UNION ALL
+                            SELECT id, 'en', en_name_official, en_effect_official,
+                                   CASE WHEN official_errata_affects_name
+                                     THEN 'official_errata_notice' ELSE 'official_card_print' END,
+                                   CASE WHEN official_errata_affects_effect
+                                     THEN 'official_errata_notice' ELSE 'official_card_print' END,
+                                   'official',
+                                   CASE WHEN has_official_errata
+                                     THEN CONCAT('Official errata ', official_errata_id, ': ', official_errata_url)
+                                     ELSE '' END
+                            FROM cards
+                          ) AS effective_card_texts`;
+
 function cardRowToDef(row) {
   const def = {
     id: row.id,
@@ -60,6 +91,27 @@ function cardTextRowToDef(row) {
     effectSource: typeof row.effect_source === 'string' ? row.effect_source : '',
     reviewStatus: typeof row.review_status === 'string' ? row.review_status : 'pending_review',
     reviewNote: typeof row.review_note === 'string' ? row.review_note : '',
+  };
+}
+
+function officialErrataRowToDef(row) {
+  if (!row) return null;
+  return {
+    errataId: typeof row.errata_id === 'string' ? row.errata_id : '',
+    cardId: typeof row.card_id === 'string' ? row.card_id : '',
+    publishedAt:
+      row.published_at instanceof Date
+        ? row.published_at.toISOString().slice(0, 10)
+        : String(row.published_at || '').slice(0, 10),
+    affectsName: Boolean(row.affects_name),
+    affectsEffect: Boolean(row.affects_effect),
+    incorrectText: typeof row.incorrect_text === 'string' ? row.incorrect_text : '',
+    correctedJapaneseText: typeof row.corrected_japanese_text === 'string' ? row.corrected_japanese_text : '',
+    correctedEnglishText: typeof row.corrected_english_text === 'string' ? row.corrected_english_text : '',
+    correctedEnglishStatus:
+      typeof row.corrected_english_status === 'string' ? row.corrected_english_status : 'pending_review',
+    correctedEnglishSource: typeof row.corrected_english_source === 'string' ? row.corrected_english_source : '',
+    sourceUrl: typeof row.source_url === 'string' ? row.source_url : '',
   };
 }
 
@@ -114,8 +166,7 @@ async function getOfficialCardDataVersion(pool) {
 
 async function getAllCardI18n(pool) {
   try {
-    const rows = (await pool.query('SELECT card_id, lang, effect_text FROM card_effects_i18n ORDER BY card_id, lang'))
-      .rows;
+    const rows = (await pool.query(`${CARD_TEXTS_SELECT} ORDER BY card_id, lang`)).rows;
     const grouped = {};
     for (const row of rows) {
       if (!grouped[row.card_id]) grouped[row.card_id] = {};
@@ -130,8 +181,7 @@ async function getAllCardI18n(pool) {
 async function getCardI18n(pool, cardId) {
   const translations = Object.fromEntries(I18N_LANGS.map((lang) => [lang, '']));
   try {
-    const rows = (await pool.query('SELECT lang, effect_text FROM card_effects_i18n WHERE card_id = $1', [cardId]))
-      .rows;
+    const rows = (await pool.query(`${CARD_TEXTS_SELECT} WHERE card_id = $1 ORDER BY lang`, [cardId])).rows;
     for (const row of rows) {
       const lang = normalizeI18nLang(row.lang);
       if (lang) translations[lang] = typeof row.effect_text === 'string' ? row.effect_text : '';
@@ -144,14 +194,7 @@ async function getCardI18n(pool, cardId) {
 
 async function getAllCardTextsI18n(pool) {
   try {
-    const rows = (
-      await pool.query(
-        `SELECT card_id, lang, name_text, effect_text, name_source, effect_source,
-                review_status, review_note
-         FROM card_texts_i18n
-         ORDER BY card_id, lang`,
-      )
-    ).rows;
+    const rows = (await pool.query(`${CARD_TEXTS_SELECT} ORDER BY card_id, lang`)).rows;
     const grouped = {};
     for (const row of rows) {
       const lang = normalizeI18nLang(row.lang);
@@ -180,15 +223,7 @@ async function getCardTextsI18n(pool, cardId) {
     ]),
   );
   try {
-    const rows = (
-      await pool.query(
-        `SELECT lang, name_text, effect_text, name_source, effect_source,
-                review_status, review_note
-         FROM card_texts_i18n
-         WHERE card_id = $1`,
-        [cardId],
-      )
-    ).rows;
+    const rows = (await pool.query(`${CARD_TEXTS_SELECT} WHERE card_id = $1 ORDER BY lang`, [cardId])).rows;
     for (const row of rows) {
       const lang = normalizeI18nLang(row.lang);
       if (lang) translations[lang] = cardTextRowToDef(row);
@@ -197,6 +232,25 @@ async function getCardTextsI18n(pool, cardId) {
     // Return the empty language shape when PG is unavailable.
   }
   return translations;
+}
+
+async function getCardOfficialErrata(pool, cardId) {
+  const row = (
+    await pool.query(
+      `SELECT errata.errata_id, errata.card_id, errata.published_at,
+              errata.affects_name, errata.affects_effect, errata.incorrect_text,
+              CASE WHEN errata.affects_name THEN card.name ELSE card.effect END
+                AS corrected_japanese_text,
+              CASE WHEN errata.affects_name THEN card.en_name_official ELSE card.en_effect_official END
+                AS corrected_english_text,
+              errata.corrected_english_status, errata.corrected_english_source, errata.source_url
+       FROM card_official_errata AS errata
+       JOIN cards AS card ON card.id = errata.card_id
+       WHERE errata.card_id = $1`,
+      [cardId],
+    )
+  ).rows[0];
+  return officialErrataRowToDef(row);
 }
 
 async function getPublicCard(pool, cardId) {
@@ -230,6 +284,7 @@ module.exports = {
   getAllCardI18n,
   getAllCardTextsI18n,
   getCardI18n,
+  getCardOfficialErrata,
   getCardTextsI18n,
   getGameConfig,
   getOfficialCardDataVersion,
@@ -237,4 +292,5 @@ module.exports = {
   getPublicCard,
   getPublicCards,
   normalizeI18nLang,
+  officialErrataRowToDef,
 };
