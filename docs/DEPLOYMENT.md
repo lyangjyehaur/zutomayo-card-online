@@ -742,16 +742,24 @@ Continuous Deployment pipeline: [.github/workflows/cd.yml](../.github/workflows/
 
 ### 觸發條件
 
-| 事件                | 動作                                                                                |
-| ------------------- | ----------------------------------------------------------------------------------- |
-| push to `master`    | 同一 preflight、verify、Trivy、build、Cosign、provenance、digest gate               |
-| push tag `v*`       | 上述 gate 後建立 semver alias 與 GitHub Release                                     |
-| `workflow_dispatch` | 輸入 `release_ref`；staging 部署完整 stack，production 只 stage 指定 candidate slot |
+| 事件                | 動作                                                                                              |
+| ------------------- | ------------------------------------------------------------------------------------------------- |
+| push to `master`    | 同一 preflight、verify、Trivy、build、Cosign、provenance、digest gate                             |
+| push tag `v*`       | 上述 gate 後建立 semver alias 與 GitHub Release                                                   |
+| `workflow_dispatch` | 輸入 `release_ref`；staging 先 build/verify 七映像再部署，production 只 stage 指定 candidate slot |
 
 Tag push 與 production dispatch 都會將 `v<semver>` 精確解析為
 `refs/tags/<tag>`，不接受同名 branch；release commit 必須在
 `origin/master` ancestry 內，tag version 也必須和 `package.json` 一致。
 Master push 則始終使用 event 的完整 40 字元 commit SHA。
+
+Staging dispatch 接受完整 40 字元 SHA 或 `v<semver>` tag。若完整 SHA 尚未進入
+`origin/master`，它必須精確等於同倉庫 open PR 的 head SHA，且該 PR 的 base
+必須是 `master`；同一 SHA 還必須已有成功的 `ci.yml` run。Fork PR、closed PR、
+非 `master` PR、branch name 與 PR 內較舊的 commit 都會 fail closed。通過 preflight
+後，manual staging 會 build、scan、簽署並 attestation 七個 SHA-tagged image，全部
+成功後才解析 verified manifest 與部署。Staging tag 仍必須位於 `origin/master`
+ancestry 內；production 不適用 PR 例外，也不會在 dispatch 時重建 image。
 
 Production dispatch 還必須選擇 `production_slot=blue|green`。CD 僅在
 `/opt/zutomayo-card-runtime` 執行 `deploy-server4-canary.sh stage-slot`，
@@ -814,7 +822,9 @@ Staging compose file: [docker-compose.staging.yml](../docker-compose.staging.yml
    secret `PG_CA_SECRET_NAME` 指向的 CA。不要以 bundled plaintext 服務替代。
 2. 在外部 PostgreSQL 以 bootstrap administrator 執行
    `scripts/postgres-init-roles.sh`，再執行 migration role 的 migration/schema gate。
-3. CD pipeline 在 push 或手動 `workflow_dispatch` 時完成相同 preflight。
+3. CD pipeline 在 push 或手動 `workflow_dispatch` 時完成相同 preflight。未合併的
+   staging SHA 必須是同倉庫、base `master` 的 open PR 精確 head，且該 SHA 的 CI
+   已成功；workflow 會在部署前建立並驗證全部七個 image。
 4. 從 verified release artifact 取得 `.release.env`，其內容包含七個 digest、
    `APP_VERSION`、`GAME_RULES_VERSION`、`EXPECTED_SCHEMA_MIGRATION` 與 migration file checksum：
 

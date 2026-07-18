@@ -137,7 +137,7 @@ docker compose ps
 
 Compose 包含六個單元：`postgres`、`redis`、一次性的 `migrate`、`game`、`api` 與 `platform`。
 
-另提供 `docker-compose.e2e.yml`、`docker-compose.load-test.yml` 與隔離 port／資料庫的 `docker-compose.staging.yml`。CD workflow 會在 master 更新時建置 GHCR staging images，版本 tag 建置 production images；SSH 部署由 `workflow_dispatch` 控制。
+另提供 `docker-compose.e2e.yml`、`docker-compose.load-test.yml` 與隔離 port／資料庫的 `docker-compose.staging.yml`。CD workflow 會在 master 更新或手動 staging dispatch 時建置並驗證七個 immutable GHCR images，版本 tag 建置 production images；未合併的 staging SHA 只接受同倉庫、base `master` 的 open PR 精確 head，SSH 部署由 `workflow_dispatch` 控制。
 
 | Port   | 服務     | 說明                                            |
 | ------ | -------- | ----------------------------------------------- |

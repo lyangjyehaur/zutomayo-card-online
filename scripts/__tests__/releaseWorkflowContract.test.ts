@@ -16,7 +16,7 @@ const workflow = readFileSync(resolve(root, '.github/workflows/cd.yml'), 'utf8')
 const ciWorkflow = readFileSync(resolve(root, '.github/workflows/ci.yml'), 'utf8');
 
 describe('CD release workflow contract', () => {
-  it('uses exact release tags, master ancestry, and a production-only candidate slot stage', () => {
+  it('uses exact release tags, protected staging PR heads, and a production-only candidate slot stage', () => {
     expect(validateCdDeploymentWorkflowContract(workflow)).toBe(true);
   });
 
@@ -29,6 +29,34 @@ describe('CD release workflow contract', () => {
       'echo "master ancestry skipped"',
     );
     expect(() => validateCdDeploymentWorkflowContract(noMasterAncestry)).toThrow('production release contract');
+  });
+
+  it('rejects missing or weakened staging PR-head validation', () => {
+    const noExactHead = workflow.replace('.head.sha == $sha', '.head.sha != $sha');
+    expect(() => validateCdDeploymentWorkflowContract(noExactHead)).toThrow('staging PR-head contract');
+
+    const crossRepository = workflow.replace(
+      '.head.repo.full_name == $repository',
+      '.head.repo.full_name != $repository',
+    );
+    expect(() => validateCdDeploymentWorkflowContract(crossRepository)).toThrow('staging PR-head contract');
+
+    const nonMasterBase = workflow.replace('.base.ref == "master"', '.base.ref == "develop"');
+    expect(() => validateCdDeploymentWorkflowContract(nonMasterBase)).toThrow('staging PR-head contract');
+  });
+
+  it('requires manual staging to build images before resolving its manifest', () => {
+    const noManualStagingBuild = workflow.replace(
+      "if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'staging')",
+      "if: github.event_name == 'push'",
+    );
+    expect(() => validateCdDeploymentWorkflowContract(noManualStagingBuild)).toThrow('manual staging');
+
+    const noBuildDependency = workflow.replace(
+      "      (inputs.environment == 'production' || needs.build-and-push.result == 'success')\n    needs: [preflight, build-and-push]",
+      "      (inputs.environment == 'production' || needs.build-and-push.result == 'success')\n    needs: preflight",
+    );
+    expect(() => validateCdDeploymentWorkflowContract(noBuildDependency)).toThrow('manual staging');
   });
 
   it('rejects the legacy production Compose deployment path', () => {

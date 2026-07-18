@@ -2,8 +2,8 @@
 
 ## 發布
 
-1. `workflow_dispatch` 的 `release_ref` 只能是完整 SHA 或 `v<semver>` tag；production 必須是已存在的 exact tag。Workflow 以 `refs/tags/<tag>` 解析，禁止同名 branch，並要求 release SHA 在 `origin/master` ancestry 內。
-2. preflight 必須找到該 SHA 的成功 CI；game、API、platform、migration、retention、gateway、ops 七個 image 必須通過 Trivy、SBOM、Cosign signature 與 GitHub provenance attestation。
+1. `workflow_dispatch` 的 `release_ref` 只能是完整 SHA 或 `v<semver>` tag；production 必須是已存在的 exact tag。Workflow 以 `refs/tags/<tag>` 解析，禁止同名 branch，並要求 production release SHA 在 `origin/master` ancestry 內。Staging 只有完整 SHA 可例外：未進 `master` 時必須精確等於同倉庫、base `master` 的 open PR head；fork、closed、非 `master` PR 與 PR 內較舊 commit 都會被拒絕。
+2. preflight 必須找到該 SHA 的成功 CI。Manual staging 會在 preflight 後建立 game、API、platform、migration、retention、gateway、ops 七個 image；全部必須通過 Trivy、SBOM、Cosign signature 與 GitHub provenance attestation，才可解析 manifest。Production dispatch 只解析 tag push 已建立的 image，不重建。
 3. 從 verified artifact 取得 `.release.env`，確認七個 image 值都是 `ghcr.io/...@sha256:...`，並記錄 `EXPECTED_SCHEMA_MIGRATION` 與 `EXPECTED_SCHEMA_CHECKSUM`。
 4. 建立並驗證 PostgreSQL backup。migration 以 `PG_MIGRATION_USER` 執行；API、GAME、PLATFORM、retention、monitor、logical backup、WAL 使用各自角色；role/schema gate 失敗時不啟動新 app。
 5. 先以 staging smoke（health、ready、三服務 build ID、登入/建房/對局）驗證，再進 production。正式流量必須依序使用 10% → 50% → 100% canary 放量；缺少下列可驗證 evidence 時 release gate 會維持 `blocked`。

@@ -749,6 +749,62 @@ export function validateCdDeploymentWorkflowContract(workflow) {
     throw new Error('cd.yml must not invoke the legacy docker-compose.server4.yml path');
   }
 
+  const releaseStepMarker = '- name: Resolve and validate release ref';
+  const releaseStepStart = workflow.indexOf(releaseStepMarker);
+  if (releaseStepStart < 0) throw new Error('cd.yml is missing the release ref validation step');
+  const releaseStepEnd = workflow.indexOf('\n      - name:', releaseStepStart + releaseStepMarker.length);
+  const releaseStep = workflow.slice(releaseStepStart, releaseStepEnd < 0 ? undefined : releaseStepEnd);
+  for (const fragment of [
+    'GH_TOKEN: ${{ github.token }}',
+    'elif [[ "$TARGET_ENVIRONMENT" == staging && "$REF" =~ ^[0-9a-fA-F]{40}$ ]]',
+    '"repos/${GITHUB_REPOSITORY}/commits/${SHA}/pulls"',
+    '.state == "open"',
+    '.base.ref == "master"',
+    '.base.repo.full_name == $repository',
+    '.head.repo.full_name == $repository',
+    '.head.sha == $sha',
+  ]) {
+    if (!releaseStep.includes(fragment)) {
+      throw new Error(`cd.yml is missing the staging PR-head contract: ${fragment}`);
+    }
+  }
+  if (!workflow.includes('pull-requests: read')) {
+    throw new Error('cd.yml must grant read-only pull request access for staging PR-head validation');
+  }
+
+  const buildMarker = '\n  build-and-push:\n';
+  const buildStart = workflow.indexOf(buildMarker);
+  if (buildStart < 0) throw new Error('cd.yml is missing the build-and-push job');
+  const verifyImagesMarker = '\n  verify-images:\n';
+  const verifyImagesStart = workflow.indexOf(verifyImagesMarker, buildStart + buildMarker.length);
+  const buildJob = workflow.slice(buildStart, verifyImagesStart < 0 ? undefined : verifyImagesStart);
+  for (const fragment of [
+    "github.event_name == 'push'",
+    "github.event_name == 'workflow_dispatch'",
+    "inputs.environment == 'staging'",
+  ]) {
+    if (!buildJob.includes(fragment)) {
+      throw new Error(`cd.yml must build immutable images for manual staging: ${fragment}`);
+    }
+  }
+
+  const manualReleaseMarker = '\n  manual-release:\n';
+  const manualReleaseStart = workflow.indexOf(manualReleaseMarker);
+  if (manualReleaseStart < 0) throw new Error('cd.yml is missing the manual-release job');
+  const releaseGateMarker = '\n  release-gate:\n';
+  const releaseGateStart = workflow.indexOf(releaseGateMarker, manualReleaseStart + manualReleaseMarker.length);
+  const manualReleaseJob = workflow.slice(manualReleaseStart, releaseGateStart < 0 ? undefined : releaseGateStart);
+  for (const fragment of [
+    'needs: [preflight, build-and-push]',
+    'always()',
+    "inputs.environment == 'production'",
+    "needs.build-and-push.result == 'success'",
+  ]) {
+    if (!manualReleaseJob.includes(fragment)) {
+      throw new Error(`cd.yml manual staging must wait for successful image builds: ${fragment}`);
+    }
+  }
+
   const deployMarker = '\n  deploy:\n';
   const deployStart = workflow.indexOf(deployMarker);
   if (deployStart < 0) throw new Error('cd.yml is missing the deploy job');

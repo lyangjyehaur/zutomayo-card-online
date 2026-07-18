@@ -665,7 +665,7 @@ checkout → setup-node → npm ci
 
 平行的 `e2e` job 以 `docker-compose.e2e.yml` 啟動隔離服務棧並執行 Playwright，失敗時上傳 report 與 test results。任一步驟失敗皆阻擋合併。`smoke:*` 與 k6 `load:*` 仍需依目標環境另行執行；本機以 `npm run verify` 對齊靜態檢查、單測與 build。
 
-`.github/workflows/cd.yml` 在 master 更新時建置 game/api/platform GHCR staging images，在 `v*` tag 建置 production images；`workflow_dispatch` 可選 staging／production SSH 部署。`docker-compose.staging.yml` 使用隔離 ports，但連接外部 PostgreSQL（`verify-full` + CA secret）與 Redis（`rediss://` + ACL/password）；bundled plaintext DB 只保留於 development Compose，正式 rollback 由 `scripts/deploy-server4.sh` 管理。
+`.github/workflows/cd.yml` 在 master 更新或手動 staging dispatch 時建置並驗證七個 immutable GHCR images，在 `v*` tag 建置 production images；未合併的 staging SHA 只接受同倉庫、base `master` 的 open PR 精確 head，且必須已有該 SHA 的成功 CI。Production dispatch 只接受位於 master ancestry 的 exact `v<semver>` tag 並解析既有 images。`docker-compose.staging.yml` 使用隔離 ports，但連接外部 PostgreSQL（`verify-full` + CA secret）與 Redis（`rediss://` + ACL/password）；bundled plaintext DB 只保留於 development Compose，正式 rollback 由 `scripts/deploy-server4.sh` 管理。
 
 ---
 
