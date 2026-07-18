@@ -108,24 +108,6 @@ async function main(): Promise<void> {
          WHERE id = $1`,
         [card.id, card.enNameOfficial, card.enEffectOfficial],
       );
-      await client.query(
-        `INSERT INTO card_texts_i18n (
-           card_id, lang, name_text, effect_text, name_source, effect_source,
-           review_status, review_note
-         )
-         VALUES
-           ($1, 'ja', $2, $3, 'official_card_print', 'official_card_print', 'official', ''),
-           ($1, 'en', $4, $5, 'official_card_print', 'official_card_print', 'official', '')
-         ON CONFLICT (card_id, lang) DO UPDATE SET
-           name_text = EXCLUDED.name_text,
-           effect_text = EXCLUDED.effect_text,
-           name_source = EXCLUDED.name_source,
-           effect_source = EXCLUDED.effect_source,
-           review_status = EXCLUDED.review_status,
-           review_note = EXCLUDED.review_note,
-           updated_at = NOW()`,
-        [card.id, card.japaneseName, card.japaneseEffect, card.enNameOfficial, card.enEffectOfficial],
-      );
     }
 
     await client.query(`
@@ -151,22 +133,33 @@ async function main(): Promise<void> {
           : entry.correctedEnglishText;
       await client.query(
         `UPDATE cards
-         SET has_official_errata = TRUE,
+         SET name = CASE WHEN $3 THEN $6 ELSE name END,
+             effect = CASE WHEN $4 THEN $6 ELSE effect END,
+             en_name_official = CASE WHEN $3 THEN $7 ELSE en_name_official END,
+             en_effect_official = CASE WHEN $4 THEN $7 ELSE en_effect_official END,
+             has_official_errata = TRUE,
              official_errata_id = $2,
              official_errata_affects_name = $3,
              official_errata_affects_effect = $4,
              official_errata_url = $5,
              updated_at = NOW()
          WHERE id = $1`,
-        [entry.cardId, entry.errataId, affectsName, affectsEffect, entry.sourceUrl],
+        [
+          entry.cardId,
+          entry.errataId,
+          affectsName,
+          affectsEffect,
+          entry.sourceUrl,
+          entry.correctedJapaneseText,
+          correctedEnglish,
+        ],
       );
       await client.query(
         `INSERT INTO card_official_errata (
            errata_id, card_id, published_at, affects_name, affects_effect,
-           incorrect_text, corrected_japanese_text, corrected_english_text,
-           corrected_english_status, corrected_english_source, source_url
+           incorrect_text, corrected_english_status, corrected_english_source, source_url
          )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
         [
           entry.errataId,
           entry.cardId,
@@ -174,48 +167,16 @@ async function main(): Promise<void> {
           affectsName,
           affectsEffect,
           entry.incorrectText,
-          entry.correctedJapaneseText,
-          correctedEnglish,
           entry.correctedEnglishStatus,
           entry.correctedEnglishSource,
           entry.sourceUrl,
-        ],
-      );
-      await client.query(
-        `INSERT INTO card_texts_i18n (
-           card_id, lang, name_text, effect_text, name_source, effect_source,
-           review_status, review_note
-         )
-         VALUES
-           ($1, 'ja', $2, $3, $4, $5, 'official', $6),
-           ($1, 'en', $7, $8, $9, $10, $11, $6)
-         ON CONFLICT (card_id, lang) DO UPDATE SET
-           name_text = EXCLUDED.name_text,
-           effect_text = EXCLUDED.effect_text,
-           name_source = EXCLUDED.name_source,
-           effect_source = EXCLUDED.effect_source,
-           review_status = EXCLUDED.review_status,
-           review_note = EXCLUDED.review_note,
-           updated_at = NOW()`,
-        [
-          entry.cardId,
-          card.japaneseName,
-          card.japaneseEffect,
-          affectsName ? 'official_errata_notice' : 'official_card_print',
-          affectsEffect ? 'official_errata_notice' : 'official_card_print',
-          `Official errata ${entry.errataId}: ${entry.sourceUrl}`,
-          affectsName ? correctedEnglish : card.enNameOfficial,
-          affectsEffect ? correctedEnglish : card.enEffectOfficial,
-          affectsName ? entry.correctedEnglishSource : 'official_card_print',
-          affectsEffect ? entry.correctedEnglishSource : 'official_card_print',
-          entry.correctedEnglishStatus,
         ],
       );
     }
 
     await client.query('COMMIT');
     console.log(
-      `Imported official Japanese/printed English text for ${cards.length} cards and ${officialErrata.length} errata.`,
+      `Imported canonical official Japanese/English text for ${cards.length} cards and ${officialErrata.length} errata.`,
     );
   } catch (error) {
     await client.query('ROLLBACK');

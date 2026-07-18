@@ -1,5 +1,5 @@
-// 卡牌效果 i18n 共享模組。
-// 資料來源：PG-backed API（伺服器於啟動時從 PostgreSQL 載入並提供）。
+// 卡牌文本 i18n 共享模組。
+// 日英有效官方文本來自 PG cards，其餘語言來自 card_texts_i18n。
 
 import type { CardDef } from '../types';
 import { getGameConfig } from './loader';
@@ -91,30 +91,19 @@ function correctedTranslation(cardId: string, locale: string, field: 'name' | 'e
 /**
  * Card-name display policy:
  * - Japanese uses the corrected official source text.
- * - English normally uses official print text; errata fields require a
- *   reviewed correction derived from the official errata.
+ * - English uses the effective official text stored on the card, including errata.
  * - Other locales use only reviewed derived translations.
- * - Errata fields never fall back to superseded printed English.
  */
 export function getLocalizedCardName(card: CardDef, locale: string): string {
   if (locale === 'ja') return card.name;
+  if (locale === 'en') return canonicalizeSongTitleInCardName(card.enNameOfficial || card.name, card, locale);
   if (card.officialErrataAffectsName) {
-    if (locale === 'en') {
-      return canonicalizeSongTitleInCardName(
-        correctedTranslation(card.id, 'en', 'name')?.name || card.name,
-        card,
-        locale,
-      );
-    }
     return canonicalizeSongTitleInCardName(
-      correctedTranslation(card.id, locale, 'name')?.name ||
-        correctedTranslation(card.id, 'en', 'name')?.name ||
-        card.name,
+      correctedTranslation(card.id, locale, 'name')?.name || card.enNameOfficial || card.name,
       card,
       locale,
     );
   }
-  if (locale === 'en') return canonicalizeSongTitleInCardName(card.enNameOfficial || card.name, card, locale);
   return canonicalizeSongTitleInCardName(
     reviewedTranslation(card.id, locale)?.name || card.enNameOfficial || card.name,
     card,
@@ -125,23 +114,14 @@ export function getLocalizedCardName(card: CardDef, locale: string): string {
 /** Same provenance policy as getLocalizedCardName, applied to effects. */
 export function getLocalizedCardEffect(card: CardDef, locale: string): string {
   if (locale === 'ja') return card.effect;
+  if (locale === 'en') return canonicalizeSongTitleInCardEffect(card.enEffectOfficial || card.effect, card, locale);
   if (card.officialErrataAffectsEffect) {
-    if (locale === 'en') {
-      return canonicalizeSongTitleInCardEffect(
-        correctedTranslation(card.id, 'en', 'effect')?.effect || card.effect,
-        card,
-        locale,
-      );
-    }
     return canonicalizeSongTitleInCardEffect(
-      correctedTranslation(card.id, locale, 'effect')?.effect ||
-        correctedTranslation(card.id, 'en', 'effect')?.effect ||
-        card.effect,
+      correctedTranslation(card.id, locale, 'effect')?.effect || card.enEffectOfficial || card.effect,
       card,
       locale,
     );
   }
-  if (locale === 'en') return canonicalizeSongTitleInCardEffect(card.enEffectOfficial || card.effect, card, locale);
   return canonicalizeSongTitleInCardEffect(
     reviewedTranslation(card.id, locale)?.effect || card.enEffectOfficial || card.effect,
     card,

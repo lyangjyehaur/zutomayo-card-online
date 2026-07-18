@@ -41,6 +41,9 @@ async function main(): Promise<void> {
   const client = await pool.connect();
   const effectCards = input.extraction.cards.filter((card) => card.japaneseEffect.trim());
   const effectCardIds = effectCards.map((card) => card.id);
+  const effectErrataCardIds = new Set(
+    input.errata.errata.filter((entry) => entry.fields.includes('effect')).map((entry) => entry.cardId),
+  );
   const rows = buildDerivedEffectRows(input);
   try {
     await client.query('BEGIN');
@@ -68,8 +71,8 @@ async function main(): Promise<void> {
       if (dbCard.effect !== card.japaneseEffect) {
         mismatches.push(`${card.id}: PostgreSQL Japanese effect differs from the corrected official source`);
       }
-      if (dbCard.enEffectOfficial !== card.enEffectOfficial) {
-        mismatches.push(`${card.id}: PostgreSQL English effect differs from the human-verified official print`);
+      if (!effectErrataCardIds.has(card.id) && dbCard.enEffectOfficial !== card.enEffectOfficial) {
+        mismatches.push(`${card.id}: PostgreSQL English effect differs from the effective official text`);
       }
     }
     if (existingById.size !== effectCards.length) {
@@ -98,17 +101,10 @@ async function main(): Promise<void> {
       );
     }
 
-    const deletedEnglish = await client.query("DELETE FROM card_effects_i18n WHERE lang = 'en'");
     const reviewNote =
       'Effect reviewed from corrected official Japanese and human-verified official printed English; ' +
       `source SHA-256 ${input.review.sourceSha256}`;
     for (const row of rows) {
-      await client.query(
-        `INSERT INTO card_effects_i18n (card_id, lang, effect_text)
-         VALUES ($1, $2, $3)
-         ON CONFLICT (card_id, lang) DO UPDATE SET effect_text = EXCLUDED.effect_text`,
-        [row.cardId, row.lang, row.effectText],
-      );
       await client.query(
         `INSERT INTO card_texts_i18n (
            card_id, lang, effect_text, effect_source, review_status, review_note
@@ -124,18 +120,11 @@ async function main(): Promise<void> {
       );
     }
 
-    const oldEnglishCount = await client.query(
-      "SELECT COUNT(*)::integer AS count FROM card_effects_i18n WHERE lang = 'en'",
-    );
-    if (Number(oldEnglishCount.rows[0]?.count) !== 0) {
-      throw new Error('Legacy English effect rows remain after cleanup');
-    }
-
     await client.query(
       `INSERT INTO admin_audit_log (
          admin_user_id, action, target_type, target_id, details
        )
-       VALUES ($1, 'import_card_derived_effects', 'card_effects_i18n', $2, $3::jsonb)`,
+       VALUES ($1, 'import_card_derived_effects', 'card_texts_i18n', $2, $3::jsonb)`,
       [
         process.env.CARD_I18N_IMPORT_ADMIN_USER_ID || null,
         input.review.sourceSha256,
@@ -145,16 +134,12 @@ async function main(): Promise<void> {
           cards: effectCards.length,
           translations: rows.length,
           languages: DERIVED_EFFECT_LANGS,
-          removedLegacyEnglishRows: deletedEnglish.rowCount ?? 0,
         }),
       ],
     );
 
     await client.query('COMMIT');
-    console.log(
-      `Imported ${rows.length} verified derived effects for ${effectCards.length} cards; ` +
-        `removed ${deletedEnglish.rowCount ?? 0} legacy English rows.`,
-    );
+    console.log(`Imported ${rows.length} verified derived effects for ${effectCards.length} cards.`);
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;

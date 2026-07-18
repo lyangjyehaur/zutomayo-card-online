@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-require-imports */
 /* global module, require */
 
 const { CARD_SELECT, cardRowToDef, normalizeI18nLang } = require('./cardDataService.cjs');
@@ -138,15 +137,6 @@ async function upsertCardI18n(pool, cardId, body, adminUserId) {
       hasEffect,
     ],
   );
-  if (hasEffect) {
-    await pool.query(
-      `INSERT INTO card_effects_i18n (card_id, lang, effect_text)
-       VALUES ($1, $2, $3)
-       ON CONFLICT (card_id, lang) DO UPDATE SET
-         effect_text = EXCLUDED.effect_text`,
-      [cardId, lang, body.effectText],
-    );
-  }
   await writeAuditLog(pool, {
     adminUserId: adminUserId ?? null,
     action: 'upsert_card_i18n',
@@ -205,38 +195,6 @@ async function upsertCard(pool, cardId, body, adminUserId) {
        official_errata_url = EXCLUDED.official_errata_url,
        updated_at = NOW()`,
     cardDefToDbParams(card),
-  );
-  await pool.query(
-    `INSERT INTO card_texts_i18n (
-       card_id, lang, name_text, effect_text, name_source, effect_source,
-       review_status, review_note
-     )
-     VALUES
-       ($1, 'ja', $2, $3, 'official_card_print', 'official_card_print', 'official', ''),
-       ($1, 'en', $4, $5, 'official_card_print', 'official_card_print', 'official', '')
-     ON CONFLICT (card_id, lang) DO UPDATE SET
-       name_text = CASE WHEN EXCLUDED.lang = 'en' AND $6 THEN card_texts_i18n.name_text ELSE EXCLUDED.name_text END,
-       effect_text = CASE WHEN EXCLUDED.lang = 'en' AND $7 THEN card_texts_i18n.effect_text ELSE EXCLUDED.effect_text END,
-       name_source = CASE WHEN EXCLUDED.lang = 'en' AND $6 THEN card_texts_i18n.name_source ELSE EXCLUDED.name_source END,
-       effect_source = CASE WHEN EXCLUDED.lang = 'en' AND $7 THEN card_texts_i18n.effect_source ELSE EXCLUDED.effect_source END,
-       review_status = CASE
-         WHEN EXCLUDED.lang = 'en' AND ($6 OR $7) THEN card_texts_i18n.review_status
-         ELSE EXCLUDED.review_status
-       END,
-       review_note = CASE
-         WHEN EXCLUDED.lang = 'en' AND ($6 OR $7) THEN card_texts_i18n.review_note
-         ELSE EXCLUDED.review_note
-       END,
-       updated_at = NOW()`,
-    [
-      card.id,
-      card.name,
-      card.effect,
-      card.enNameOfficial || '',
-      card.enEffectOfficial || '',
-      Boolean(card.officialErrataAffectsName),
-      Boolean(card.officialErrataAffectsEffect),
-    ],
   );
   await writeAuditLog(pool, {
     adminUserId: adminUserId ?? null,

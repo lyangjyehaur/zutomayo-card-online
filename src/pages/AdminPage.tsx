@@ -68,7 +68,6 @@ import type {
   AdminRole,
   AdminUser,
   CardOfficialErrata,
-  CardTextI18nEntry,
   ChatConversation,
   ChatMessage,
   ChatReport,
@@ -652,7 +651,7 @@ function CardEditForm({
             <section className="admin-editor-section">
               <div className="admin-editor-section-heading">
                 <h3>日本語</h3>
-                <Badge>官方原文</Badge>
+                <Badge>官方有效文本</Badge>
               </div>
               <label className="grid gap-1">
                 <span className="text-xs text-content-primary/50">卡牌名稱</span>
@@ -666,7 +665,7 @@ function CardEditForm({
             <section className="admin-editor-section">
               <div className="admin-editor-section-heading">
                 <h3>English</h3>
-                <Badge>卡面官方文本</Badge>
+                <Badge>官方有效文本</Badge>
               </div>
               <label className="grid gap-1">
                 <span className="text-xs text-content-primary/50">Card name</span>
@@ -722,7 +721,6 @@ function I18nEditor({ card, onDirtyChange }: { card: CardDef; onDirtyChange?: (d
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
-  const [officialTexts, setOfficialTexts] = useState<Partial<Record<'ja' | 'en', CardTextI18nEntry>>>({});
   const dirty = JSON.stringify(draft) !== JSON.stringify(savedDraft);
 
   useEffect(() => {
@@ -733,7 +731,6 @@ function I18nEditor({ card, onDirtyChange }: { card: CardDef; onDirtyChange?: (d
     setLoading(true);
     fetchCardTextsI18n(cardId)
       .then((data) => {
-        setOfficialTexts({ ja: data.ja, en: data.en });
         const init: Record<string, CardTextDraft> = {};
         for (const lang of DERIVED_I18N_LANGS) {
           const entry = data[lang.code];
@@ -748,7 +745,6 @@ function I18nEditor({ card, onDirtyChange }: { card: CardDef; onDirtyChange?: (d
         setSavedDraft(init);
       })
       .catch(() => {
-        setOfficialTexts({});
         const init: Record<string, CardTextDraft> = {};
         for (const lang of DERIVED_I18N_LANGS) {
           init[lang.code] = { name: '', effect: '', reviewStatus: 'pending_review', reviewNote: '' };
@@ -802,31 +798,31 @@ function I18nEditor({ card, onDirtyChange }: { card: CardDef; onDirtyChange?: (d
           <div className="admin-i18n-reference-language">
             <div className="admin-i18n-reference-heading">
               <strong>日本語</strong>
-              <span>{card.hasOfficialErrata ? '勘誤後官方日文' : '官方日文'}</span>
+              <span>{card.hasOfficialErrata ? '勘誤後有效日文' : '官方有效日文'}</span>
             </div>
             <label className="grid gap-1">
               <span className="text-xs text-content-primary/50">卡牌名稱</span>
-              <Input readOnly value={officialTexts.ja?.name || card.name} />
+              <Input readOnly value={card.name} />
             </label>
             <label className="grid gap-1">
               <span className="text-xs text-content-primary/50">卡牌效果</span>
-              <Textarea readOnly value={officialTexts.ja?.effect || card.effect} rows={5} />
+              <Textarea readOnly value={card.effect} rows={5} />
             </label>
           </div>
           <div className="admin-i18n-reference-language">
             <div className="admin-i18n-reference-heading">
               <strong>English</strong>
               <span>
-                {card.officialErrataAffectsName || card.officialErrataAffectsEffect ? '勘誤後英文對照' : '卡面官方英文'}
+                {card.officialErrataAffectsName || card.officialErrataAffectsEffect ? '勘誤後有效英文' : '官方有效英文'}
               </span>
             </div>
             <label className="grid gap-1">
               <span className="text-xs text-content-primary/50">Card name</span>
-              <Input readOnly value={officialTexts.en?.name || card.enNameOfficial || ''} />
+              <Input readOnly value={card.enNameOfficial || ''} />
             </label>
             <label className="grid gap-1">
               <span className="text-xs text-content-primary/50">Card effect</span>
-              <Textarea readOnly value={officialTexts.en?.effect || card.enEffectOfficial || ''} rows={5} />
+              <Textarea readOnly value={card.enEffectOfficial || ''} rows={5} />
             </label>
           </div>
         </div>

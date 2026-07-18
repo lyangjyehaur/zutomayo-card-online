@@ -34,7 +34,7 @@ GHCR_OWNER="${GHCR_OWNER:-lyangjyehaur}"
 GAME_IMAGE="ghcr.io/${GHCR_OWNER}/zutomayo-card-online-game"
 API_IMAGE="ghcr.io/${GHCR_OWNER}/zutomayo-card-online-api"
 PLATFORM_IMAGE="ghcr.io/${GHCR_OWNER}/zutomayo-card-online-platform"
-EXPECTED_SCHEMA_MIGRATION="000032_announcements"
+EXPECTED_SCHEMA_MIGRATION="000033_card_text_authority"
 
 CONFIRM=false
 DRY_RUN=false

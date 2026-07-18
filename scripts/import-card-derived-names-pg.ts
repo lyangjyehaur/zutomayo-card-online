@@ -65,6 +65,9 @@ async function readEffectSnapshot(client: import('pg').PoolClient): Promise<Effe
 async function main(): Promise<void> {
   const client = await pool.connect();
   const rows = buildDerivedNameRows(input);
+  const nameErrataCardIds = new Set(
+    input.errata.errata.filter((entry) => entry.fields.includes('name')).map((entry) => entry.cardId),
+  );
   try {
     await client.query('BEGIN');
     await client.query("SELECT pg_advisory_xact_lock(hashtext('card-derived-names-import'))");
@@ -81,8 +84,8 @@ async function main(): Promise<void> {
       if (String(dbCard.name || '') !== card.japaneseName) {
         mismatches.push(`${card.id}: PostgreSQL Japanese name differs from the corrected official source`);
       }
-      if (String(dbCard.en_name_official || '') !== card.enNameOfficial) {
-        mismatches.push(`${card.id}: PostgreSQL English name differs from the human-verified official print`);
+      if (!nameErrataCardIds.has(card.id) && String(dbCard.en_name_official || '') !== card.enNameOfficial) {
+        mismatches.push(`${card.id}: PostgreSQL English name differs from the effective official text`);
       }
     }
     if (existingById.size !== input.extraction.cards.length) {
