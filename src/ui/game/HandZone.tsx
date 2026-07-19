@@ -60,7 +60,7 @@ export function HandZone({
             <CardView
               card={card}
               size={variant === 'fan' ? 'lg' : 'md'}
-              imageContext="hand"
+              imageContext={variant === 'fan' ? 'hand' : 'thumbnail'}
               state={state}
               onActivate={onCardTap ? () => onCardTap(index) : undefined}
               tutId={card.defId}
