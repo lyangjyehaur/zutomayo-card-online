@@ -96,10 +96,22 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+        globIgnores: ['fonts/uoq-mun-then-khung-regular.woff2', 'fonts/jiangcheng-jiexing-v1.3.woff2'],
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
         navigateFallback: 'index.html',
         navigateFallbackDenylist: [/^\/api/],
         runtimeCaching: [
+          {
+            urlPattern: /\/fonts\/(?:uoq-mun-then-khung-regular|jiangcheng-jiexing-v1\.3)\.woff2$/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'display-fonts-complete',
+              expiration: {
+                maxEntries: 2,
+                maxAgeSeconds: 365 * 24 * 60 * 60,
+              },
+            },
+          },
           {
             urlPattern: /^https:\/\/r2\.dan\.tw\/.*/i,
             handler: 'CacheFirst',

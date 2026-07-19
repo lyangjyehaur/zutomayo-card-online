@@ -4,15 +4,30 @@
  * 等寬字保留給數值/meta，缺字時 fallback 到目前語系的 Noto Sans。
  */
 @font-face {
+  font-family: 'Jiangcheng Jiexing UI';
+  src: url('/fonts/jiangcheng-jiexing-ui-v1.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Uoq Mun Then Khung UI';
+  src: url('/fonts/uoq-mun-then-khung-ui-v1.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Complete faces remain in the fallback chain so user-generated and uncommon
+ * glyphs keep the same art direction instead of falling back to a system font.
+ * Normal UI copy is served by the compact faces above. */
+@font-face {
   font-family: 'Jiangcheng Jiexing';
   src: url('/fonts/jiangcheng-jiexing-v1.3.woff2') format('woff2');
   font-weight: 400;
   font-style: normal;
-  /* This full CJK display face is ~2 MB. On a cold mobile connection, a late
-   * swap turns the heading into a second LCP candidate long after the app is
-   * interactive. Keep the branded face when it is cached, but do not delay a
-   * first visit waiting for it. */
-  font-display: optional;
+  font-display: swap;
 }
 
 @font-face {
@@ -20,7 +35,7 @@
   src: url('/fonts/uoq-mun-then-khung-regular.woff2') format('woff2');
   font-weight: 400;
   font-style: normal;
-  font-display: optional;
+  font-display: swap;
 }
 
 :root {
@@ -86,19 +101,19 @@ html[lang='ko'] {
 }
 
 html[lang='zh-CN'] {
-  --font-display: 'Jiangcheng Jiexing', 'Noto Sans SC', 'Songti SC', 'STSong', serif;
+  --font-display: 'Jiangcheng Jiexing UI', 'Jiangcheng Jiexing', 'Noto Sans SC', 'Songti SC', 'STSong', serif;
   --font-sans: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   --font-mono: 'JetBrains Mono', 'Noto Sans SC', ui-monospace, monospace;
 }
 
 html[lang='zh-TW'] {
-  --font-display: 'Uoq Mun Then Khung', 'Noto Sans TC', 'PingFang TC', 'Songti TC', serif;
+  --font-display: 'Uoq Mun Then Khung UI', 'Uoq Mun Then Khung', 'Noto Sans TC', 'PingFang TC', 'Songti TC', serif;
   --font-sans: 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif;
   --font-mono: 'JetBrains Mono', 'Noto Sans TC', ui-monospace, monospace;
 }
 
 html[lang='zh-HK'] {
-  --font-display: 'Uoq Mun Then Khung', 'Noto Sans HK', 'PingFang HK', 'Songti TC', serif;
+  --font-display: 'Uoq Mun Then Khung UI', 'Uoq Mun Then Khung', 'Noto Sans HK', 'PingFang HK', 'Songti TC', serif;
   --font-sans: 'Noto Sans HK', 'PingFang HK', 'Microsoft JhengHei', sans-serif;
   --font-mono: 'JetBrains Mono', 'Noto Sans HK', ui-monospace, monospace;
 }
