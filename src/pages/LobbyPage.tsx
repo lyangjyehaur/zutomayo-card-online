@@ -513,7 +513,7 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
           </ul>
 
           {/* footer 資訊行 */}
-          <div className="mt-6 grid gap-3 border-t border-border-soft pt-4 text-caption text-content-primary/35 sm:grid-cols-2 sm:items-center lg:grid-cols-[minmax(0,1fr)_minmax(16rem,1.25fr)_minmax(0,1fr)]">
+          <div className="lobby-home-footer mt-6 grid gap-3 border-t border-border-soft pt-4 text-caption text-content-primary/35 sm:grid-cols-2 sm:items-center lg:grid-cols-[minmax(0,1fr)_minmax(16rem,1.25fr)_minmax(0,1fr)]">
             <div className="flex min-w-0 justify-center sm:justify-start">
               <VersionUpdateTrigger />
             </div>
@@ -539,6 +539,9 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
               >
                 {t('lobby.projectAboutAction')}
               </Button>
+              <span className="text-content-primary/20" aria-hidden="true">
+                /
+              </span>
               <Button
                 type="button"
                 className="min-h-10 min-w-0 px-2 text-center font-sans leading-relaxed text-content-primary/35 normal-case tracking-normal hover:text-accent-primary"
@@ -548,6 +551,9 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
               >
                 {t('legal.privacy')}
               </Button>
+              <span className="text-content-primary/20" aria-hidden="true">
+                /
+              </span>
               <Button
                 type="button"
                 className="min-h-10 min-w-0 px-2 text-center font-sans leading-relaxed text-content-primary/35 normal-case tracking-normal hover:text-accent-primary"
@@ -557,6 +563,9 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
               >
                 {t('legal.terms')}
               </Button>
+              <span className="text-content-primary/20" aria-hidden="true">
+                /
+              </span>
               <Button
                 type="button"
                 className="min-h-10 min-w-0 px-2 text-center font-sans leading-relaxed text-content-primary/35 normal-case tracking-normal hover:text-accent-primary"

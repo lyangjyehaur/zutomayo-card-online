@@ -59,6 +59,14 @@ test.describe('首頁煙霧測試', () => {
     await expect(page.getByRole('button', { name: '新手教學', exact: true })).toBeVisible();
   });
 
+  test('頁尾連結使用斜線完整分隔', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.getByText('Channels', { exact: true })).toBeVisible({ timeout: 30_000 });
+
+    const separators = page.locator('.lobby-home-footer span[aria-hidden="true"]').filter({ hasText: /^\/$/ });
+    await expect(separators).toHaveCount(4);
+  });
+
   test('能導覽到牌組編輯器頁面', async ({ page }) => {
     await page.goto('/');
     await expect(page.getByText('Channels', { exact: true })).toBeVisible({ timeout: 30_000 });
@@ -89,6 +97,19 @@ test.describe('首頁煙霧測試', () => {
         timeout: 30_000,
       });
       await expect(page.getByRole('link', { name: /contact@mail\.zutomayocard\.online/ })).toBeVisible();
+    }
+  });
+
+  test('政策、條款與聯絡頁面可垂直滾動', async ({ page }) => {
+    for (const route of ['/legal/privacy', '/legal/terms', '/legal/contact']) {
+      await page.goto(route);
+      const shell = page.locator('[data-page-shell="scroll"]');
+      await expect(shell).toBeVisible({ timeout: 30_000 });
+      await expect.poll(() => shell.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+      await shell.evaluate((element) => {
+        element.scrollTop = 120;
+      });
+      await expect.poll(() => shell.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
     }
   });
 

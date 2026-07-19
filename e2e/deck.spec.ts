@@ -83,6 +83,20 @@ test.describe('牌組編輯 — 卡牌操作 @requires-backend', () => {
     await expect(cardPool).toBeVisible();
   });
 
+  test('桌面右側牌組詳細可獨立滾動', async ({ page }) => {
+    await page.goto('/deck-builder');
+    await expect(page.getByRole('button', { name: '新牌組' })).toBeVisible({ timeout: 30_000 });
+
+    const panel = page.locator('aside[aria-label="目前牌組"]:visible');
+    const list = panel.getByRole('list', { name: '目前牌組' });
+    await expect(panel).toBeVisible();
+    await expect.poll(() => list.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+    await list.evaluate((element) => {
+      element.scrollTop = 120;
+    });
+    await expect.poll(() => list.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  });
+
   test('能選擇卡牌加入牌組', async ({ page }) => {
     // 此測試需要完整的卡牌資料
     await page.goto('/deck-builder');

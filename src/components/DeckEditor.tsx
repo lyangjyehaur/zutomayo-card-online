@@ -578,7 +578,12 @@ export function DeckEditor({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto" role="list" aria-label={t('deckEditor.currentDeck')}>
+      <div
+        className="min-h-0 flex-1 space-y-1.5 overflow-y-auto"
+        role="list"
+        aria-label={t('deckEditor.currentDeck')}
+        tabIndex={0}
+      >
         {deckEntries.map(({ card, count, firstIndex }) => (
           <div
             key={`${card.id}-${firstIndex}`}

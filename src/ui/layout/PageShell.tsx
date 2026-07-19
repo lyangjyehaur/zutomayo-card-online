@@ -60,7 +60,7 @@ function renderGlow(glow: PageShellProps['glow']) {
 
 const shellVariantClass: Record<NonNullable<PageShellProps['variant']>, string> = {
   screen: 'h-dvh min-h-dvh overflow-hidden',
-  scroll: 'min-h-dvh overflow-y-auto overflow-x-hidden',
+  scroll: 'h-full min-h-0 overflow-y-auto overflow-x-hidden',
   workspace: 'h-dvh min-h-dvh overflow-hidden',
   status: 'min-h-dvh overflow-y-auto overflow-x-hidden',
 };
