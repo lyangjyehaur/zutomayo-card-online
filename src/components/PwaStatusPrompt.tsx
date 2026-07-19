@@ -119,7 +119,7 @@ export function PwaStatusPrompt() {
           </div>
           <div>
             <dt>{t('pwa.latestVersion')}</dt>
-            <dd>{versionText(latestVersion)}</dd>
+            <dd>{latestVersion ? versionText(latestVersion) : t('pwa.checkingTitle')}</dd>
           </div>
         </dl>
       </AppDrawer>

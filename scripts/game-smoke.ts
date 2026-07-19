@@ -48,6 +48,14 @@ const { Local } = require('boardgame.io/multiplayer') as typeof import('boardgam
 
 type ResolvePendingEffectMove = (context: { G: GameState; playerID: string | null }, index: number) => unknown;
 
+function configuredResolvePendingEffectMove(): ResolvePendingEffectMove {
+  const configured = ZutomayoCard.moves?.resolvePendingEffect;
+  if (typeof configured === 'function') return configured as ResolvePendingEffectMove;
+  const move = configured && typeof configured === 'object' && 'move' in configured ? configured.move : undefined;
+  assert.equal(typeof move, 'function', 'resolvePendingEffect move must be configured');
+  return move as ResolvePendingEffectMove;
+}
+
 const noEffects = new Map<string, ParsedEffect[]>();
 const boost: ParsedEffect = {
   trigger: 'onUse',
@@ -434,7 +442,7 @@ function fivePowerCards() {
   assert.equal(G.pendingEffects[0].length, 2);
   assert.equal(G.pendingEffects[1].length, 1);
 
-  const resolvePendingEffect = ZutomayoCard.moves!.resolvePendingEffect as ResolvePendingEffectMove;
+  const resolvePendingEffect = configuredResolvePendingEffectMove();
   assert.equal(resolvePendingEffect({ G, playerID: '0' }, 1), 'INVALID_MOVE');
   assert.equal(G.players[1].hp, 100);
 
@@ -504,7 +512,7 @@ function fivePowerCards() {
   assert.equal(setTurnCard(G, 1, 0, 'A'), true);
   resolveTurn(G, new Map([['1st_9', [lethalPendingDamage]]]));
   assert.equal(G.step, 'effectOrder');
-  const resolvePendingEffect = ZutomayoCard.moves!.resolvePendingEffect as ResolvePendingEffectMove;
+  const resolvePendingEffect = configuredResolvePendingEffectMove();
   assert.equal(resolvePendingEffect({ G, playerID: '0' }, 0), undefined);
   assert.equal(G.players[1].hp, 0);
   assert.equal(G.step, 'gameOver');
@@ -571,9 +579,9 @@ function fivePowerCards() {
   G.players[0].hand = [createInstance('2nd_5', true)]; // Area Enchant
   G.players[1].hand = [createInstance('1st_1', true)];
   assert.equal(setTurnCard(G, 0, 0, 'A'), true);
-  assert.equal(G.players[0].setZoneA, null);
-  assert.equal(G.players[0].setZoneC?.defId, '2nd_5');
-  assert.equal(G.players[0].setZoneC?.faceUp, false);
+  assert.equal(G.players[0].setZoneA?.defId, '2nd_5');
+  assert.equal(G.players[0].setZoneA?.faceUp, false);
+  assert.equal(G.players[0].setZoneC, null);
   assert.equal(
     G.actionLog.some((entry) => entry.action === 'setTurnCard' && entry.player === 0),
     false,
@@ -585,8 +593,9 @@ function fivePowerCards() {
   );
   assert.equal(setTurnCard(G, 1, 0, 'A'), true);
   assert.equal(confirmReady(G, 1, noEffects), true);
-  assert.equal(G.players[0].setZoneC?.defId, '2nd_5');
-  assert.equal(G.players[0].setZoneC?.faceUp, true);
+  const revealedArea = G.players[0].setZoneC as CardInstance | null;
+  assert.equal(revealedArea?.defId, '2nd_5');
+  assert.equal(revealedArea?.faceUp, true);
 }
 
 {
@@ -983,7 +992,8 @@ function fivePowerCards() {
   rewindByOpponentClockState.chronos.position = 8;
   rewindByOpponentClockState.players[1].battleZone = createInstance('1st_1', true);
   assert.equal(executeEffect(rewindByOpponentClock!, rewindByOpponentClockState, 0).success, true);
-  assert.equal(rewindByOpponentClockState.chronos.position, 10);
+  const opponentClock = getAllCardDefs().find((card) => card.id === '1st_1')?.clock ?? 0;
+  assert.equal(rewindByOpponentClockState.chronos.position, normalizeChronosPosition(3 - opponentClock));
 
   const nullifyOpponentClock = parseEffect(
     '相手のキャラクターカードの時計を無効にする。昼と夜が入れ替わったターンの終了時にアビスに置く',
@@ -2529,7 +2539,7 @@ function fivePowerCards() {
   const G = preparedState();
   G.step = 'turnSet';
   G.turnNumber = 2;
-  G.chronos.position = 2;
+  G.chronos.position = normalizeChronosPosition(CHRONOS_MAPPING.dayPositions[0] - 2);
   G.players[0].setZoneC = createInstance('2nd_86', true);
   G.players[0].powerCharger = [createInstance('1st_9', true)];
   G.players[0].hand = [createInstance('1st_9', true)];
@@ -2786,11 +2796,12 @@ function fivePowerCards() {
 
 {
   const G = preparedState();
+  G.chronos.position = 2;
+  assert.equal(executeEffect(parsedCardEffect('3rd_1'), G, 0).success, false);
   const effect = parsedCardEffect('3rd_26');
   assert.equal(executeEffect(effect, G, 0).success, true);
-  G.chronos.position = 11;
   assert.equal(G.midnightRange, 2);
-  assert.equal(getChronosTime(G), 'night');
+  assert.equal(executeEffect(parsedCardEffect('3rd_1'), G, 0).success, true);
 }
 
 {

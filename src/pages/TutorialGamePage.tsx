@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AIGame } from '../components/AIGame';
 import { GameTutorialOverlay } from '../components/GameTutorialOverlay';
@@ -8,6 +8,7 @@ import { TUTORIAL_STEPS } from '../data/tutorialSteps';
 import { TUTORIAL_DECK0_IDS, TUTORIAL_DECK1_IDS, TUTORIAL_AI_SCRIPT } from '../data/tutorialScenario';
 import type { GameState } from '../game/types';
 import { t } from '../i18n';
+import { trackFunnelEvent } from '../funnelAnalytics';
 import '../components/GameTutorialOverlay.css';
 
 interface TutorialGamePageProps {
@@ -20,14 +21,58 @@ export function TutorialGamePage({ cardsReady, cardsLoadError, onRetryCards }: T
   const navigate = useNavigate();
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [skipPromptOpen, setSkipPromptOpen] = useState(false);
+  const tutorialStartedAtRef = useRef(Date.now());
+  const tutorialOutcomeRef = useRef<'active' | 'complete' | 'exit'>('active');
+  const firstActionTrackedRef = useRef(false);
+
+  const completeTutorial = useCallback(() => {
+    if (tutorialOutcomeRef.current !== 'complete') {
+      tutorialOutcomeRef.current = 'complete';
+      trackFunnelEvent('F_Tutorial_Complete', {
+        elapsed_s: Math.round((Date.now() - tutorialStartedAtRef.current) / 1_000),
+        total_steps: TUTORIAL_STEPS.length,
+      });
+    }
+    navigate('/');
+  }, [navigate]);
 
   const { currentStep, goNext } = useTutorialState({
     steps: TUTORIAL_STEPS,
     gameState,
-    onComplete: () => {
-      navigate('/');
-    },
+    onComplete: completeTutorial,
   });
+
+  useEffect(() => {
+    const startedAt = tutorialStartedAtRef.current;
+    trackFunnelEvent('F_Tutorial_Start', { total_steps: TUTORIAL_STEPS.length });
+    return () => {
+      if (tutorialOutcomeRef.current !== 'active') return;
+      tutorialOutcomeRef.current = 'exit';
+      trackFunnelEvent('F_Tutorial_Exit', {
+        reason: 'route_exit',
+        elapsed_s: Math.round((Date.now() - startedAt) / 1_000),
+      });
+    };
+  }, []);
+
+  useEffect(() => {
+    const step = TUTORIAL_STEPS[currentStep];
+    if (!step) return;
+    trackFunnelEvent('F_Tutorial_Step', {
+      step: currentStep + 1,
+      total_steps: TUTORIAL_STEPS.length,
+      phase: step.phase,
+    });
+    const firstActionStep = TUTORIAL_STEPS.findIndex((item) => Boolean(item.completeWhen));
+    if (!firstActionTrackedRef.current && firstActionStep >= 0 && currentStep > firstActionStep) {
+      firstActionTrackedRef.current = true;
+      trackFunnelEvent('F_Tutorial_First_Action', {
+        step: firstActionStep + 1,
+        phase: TUTORIAL_STEPS[firstActionStep].phase,
+        elapsed_s: Math.round((Date.now() - tutorialStartedAtRef.current) / 1_000),
+      });
+    }
+  }, [currentStep]);
 
   // 教學進度在 janken 之前（場地導覽階段）時隱藏 janken/mulligan 浮層，
   // 等教學進度到了才顯示，避免猜拳面板一開始就彈出。
@@ -58,7 +103,14 @@ export function TutorialGamePage({ cardsReady, cardsLoadError, onRetryCards }: T
     setSkipPromptOpen(true);
   };
 
-  const handleComplete = () => {
+  const exitTutorial = (reason: 'route_exit' | 'back' | 'skip') => {
+    if (tutorialOutcomeRef.current === 'active') {
+      tutorialOutcomeRef.current = 'exit';
+      trackFunnelEvent('F_Tutorial_Exit', {
+        reason,
+        elapsed_s: Math.round((Date.now() - tutorialStartedAtRef.current) / 1_000),
+      });
+    }
     navigate('/');
   };
 
@@ -95,7 +147,7 @@ export function TutorialGamePage({ cardsReady, cardsLoadError, onRetryCards }: T
         deck1Ids={TUTORIAL_DECK1_IDS}
         skipShuffle
         aiScript={TUTORIAL_AI_SCRIPT}
-        onBack={() => navigate('/')}
+        onBack={() => exitTutorial('back')}
         onGameStateChange={setGameState}
         tutorialMode
         hideSetupOverlay={hideSetupOverlay}
@@ -112,7 +164,7 @@ export function TutorialGamePage({ cardsReady, cardsLoadError, onRetryCards }: T
         currentStep={currentStep}
         gameState={gameState}
         onNext={goNext}
-        onComplete={handleComplete}
+        onComplete={completeTutorial}
         onSkip={handleSkip}
         suspendFocusManagement={skipPromptOpen}
       />
@@ -127,7 +179,7 @@ export function TutorialGamePage({ cardsReady, cardsLoadError, onRetryCards }: T
             <Button variant="secondary" onClick={() => setSkipPromptOpen(false)}>
               {t('common.cancel')}
             </Button>
-            <Button variant="primary" onClick={() => navigate('/')}>
+            <Button variant="primary" onClick={() => exitTutorial('skip')}>
               {t('common.confirm')}
             </Button>
           </>

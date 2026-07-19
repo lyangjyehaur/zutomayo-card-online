@@ -33,7 +33,18 @@ test.describe('核心頁面無障礙 @a11y', () => {
     });
   });
 
-  for (const route of ['/', '/online', '/deck-builder', '/feedback', '/profile', '/leaderboard']) {
+  for (const route of [
+    '/',
+    '/online',
+    '/deck-builder',
+    '/feedback',
+    '/profile',
+    '/leaderboard',
+    '/legal',
+    '/legal/privacy',
+    '/legal/terms',
+    '/legal/contact',
+  ]) {
     test(`沒有 serious/critical axe violations: ${route}`, async ({ page }) => {
       await page.goto(route, { waitUntil: 'domcontentloaded' });
       await page.waitForLoadState('networkidle').catch(() => undefined);

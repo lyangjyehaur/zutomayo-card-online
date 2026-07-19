@@ -1,3 +1,5 @@
+import { flushFunnelEvents } from './funnelAnalytics';
+
 type UmamiEventData = Record<string, string | number | boolean | null | undefined>;
 type UmamiPageviewPayload = (props: { url: string; title?: string }) => { url: string; title?: string };
 type UmamiTrackPayload = string | UmamiPageviewPayload;
@@ -80,6 +82,7 @@ function installUmamiScripts(): void {
   analyticsScript.defer = true;
   analyticsScript.setAttribute('data-website-id', WEBSITE_ID);
   if (HOST_URL) analyticsScript.setAttribute('data-host-url', HOST_URL);
+  analyticsScript.addEventListener('load', flushFunnelEvents, { once: true });
   document.head.appendChild(analyticsScript);
 
   if (!TELEMETRY_SCRIPT_URL) return;
@@ -175,6 +178,7 @@ export function initAnalytics(): void {
   }
 
   installManualEventBridge();
+  flushFunnelEvents();
 }
 
 export function trackPageView(path: string, title = document.title): void {

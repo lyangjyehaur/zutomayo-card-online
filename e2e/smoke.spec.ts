@@ -82,6 +82,16 @@ test.describe('首頁煙霧測試', () => {
     await expect(page).toHaveURL(/\/tutorial/);
   });
 
+  test('未登入也能查看政策、條款與聯絡方式', async ({ page }) => {
+    for (const route of ['/legal', '/legal/privacy', '/legal/terms', '/legal/contact']) {
+      await page.goto(route);
+      await expect(page.getByText('ZUTOMAYO CARD ONLINE Community', { exact: true }).first()).toBeVisible({
+        timeout: 30_000,
+      });
+      await expect(page.getByRole('link', { name: /contact@mail\.zutomayocard\.online/ })).toBeVisible();
+    }
+  });
+
   test('未知路由顯示 404 頁面', async ({ page }) => {
     await page.goto('/this-route-does-not-exist');
 

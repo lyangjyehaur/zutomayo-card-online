@@ -873,7 +873,7 @@ input:focus {
 
 .version-update-trigger {
   display: inline-flex;
-  min-height: 2.5rem;
+  min-height: var(--touch-target-min);
   min-width: 10.5rem;
   align-items: center;
   border: 0;

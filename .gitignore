@@ -10,6 +10,9 @@ dist-server/
 # Test coverage
 coverage/
 
+# Generated release-gate evidence (archive through CI artifacts, not Git)
+.release-evidence/
+
 # Generated responsive/visual QA artifacts
 docs/battle-responsive-smoke-data.json
 docs/battle-responsive-smoke-screenshots/

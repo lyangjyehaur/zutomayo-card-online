@@ -143,7 +143,10 @@ const setup = `
   const smokeVersion = ${JSON.stringify(smokeVersion)};
   const smokeAccount = new URL(location.href).searchParams.get('smokeAccount') === '1';
   const directSubjectId = 'v1:u_friend:u_smoke';
-  window.__zutomayoOnlineLobbySmoke = { requests: [] };
+  window.__zutomayoOnlineLobbySmoke = {
+    requests: [],
+    captured: { visibleSurfaces: [], unreadTypes: [], messages: [] },
+  };
   localStorage.removeItem('zutomayo_token');
   if (smokeAccount) localStorage.setItem('zutomayo_session', 'smoke-session');
   else localStorage.removeItem('zutomayo_session');
@@ -356,7 +359,7 @@ const metricsExpression = `
     custom: visible('[data-room-panel="custom"]').slice(0, 2),
     status: visible('[data-room-panel="status"]').slice(0, 2),
     platformError: visible('[role="alert"]').slice(0, 3),
-    smallTargets: targets.filter((item) => item.width < 40 || item.height < 40).slice(0, 12),
+    smallTargets: targets.filter((item) => item.width < 44 || item.height < 44).slice(0, 12),
     offscreen: [...document.body.querySelectorAll('*')]
       .filter(isVisible)
       .map(box)
@@ -369,26 +372,33 @@ const metricsExpression = `
 const accountWorkflowExpression = `
 (() => {
   const requests = window.__zutomayoOnlineLobbySmoke?.requests ?? [];
+  const captured = window.__zutomayoOnlineLobbySmoke?.captured ?? {
+    visibleSurfaces: [],
+    unreadTypes: [],
+    messages: [],
+  };
   const hasRequest = (matcher) => requests.some((request) => matcher(request));
   return {
-    visibleSurfaces: [...document.querySelectorAll('[data-chat-surface]')].map((element) => ({
-      surface: element.getAttribute('data-chat-surface'),
-      text: element.textContent.trim().replace(/\\s+/g, ' ').slice(0, 160),
-    })),
-    unreadTypes: [...document.querySelectorAll('[data-unread-conversation]')].map((element) => ({
-      type: element.getAttribute('data-unread-conversation'),
-      subject: element.getAttribute('data-unread-subject'),
-      text: element.textContent.trim().replace(/\\s+/g, ' ').slice(0, 120),
-    })),
+    visibleSurfaces: [
+      ...captured.visibleSurfaces,
+      ...[...document.querySelectorAll('[data-chat-surface]')].map((element) => ({
+        surface: element.getAttribute('data-chat-surface'),
+        text: element.textContent.trim().replace(/\\s+/g, ' ').slice(0, 160),
+      })),
+    ],
+    unreadTypes: captured.unreadTypes,
     friendInviteControls: [...document.querySelectorAll('[data-friend-invite-action]')].map((element) => ({
       action: element.getAttribute('data-friend-invite-action'),
       friend: element.getAttribute('data-friend-user-id'),
       disabled: element.disabled,
     })),
-    messages: [...document.querySelectorAll('[data-chat-message]')].map((element) => ({
-      type: element.getAttribute('data-chat-message'),
-      text: element.textContent.trim().replace(/\\s+/g, ' ').slice(0, 120),
-    })),
+    messages: [
+      ...captured.messages,
+      ...[...document.querySelectorAll('[data-chat-message]')].map((element) => ({
+        type: element.getAttribute('data-chat-message'),
+        text: element.textContent.trim().replace(/\\s+/g, ' ').slice(0, 120),
+      })),
+    ],
     requestChecks: {
       profile: hasRequest((request) => request.url.includes('/api/profile')),
       friends: hasRequest((request) => request.url.includes('/api/friends')),
@@ -504,12 +514,40 @@ try {
     screenWidth: 1024,
     screenHeight: 900,
   });
-  await client.send('Page.navigate', { url: `${baseUrl}/online?smokeAccount=1` });
+  await client.send('Page.navigate', { url: `${baseUrl}/community?smokeAccount=1` });
   await waitFor(client, `Boolean(document.querySelector('[data-chat-surface="unread"]'))`);
   await waitFor(client, `Boolean(document.querySelector('[data-chat-message="global"]'))`);
   await waitFor(client, `Boolean(document.querySelector('[data-friend-user-id="u_friend"]'))`);
+  await evalChecked(
+    client,
+    `(() => {
+      const target = window.__zutomayoOnlineLobbySmoke.captured;
+      target.visibleSurfaces = [...document.querySelectorAll('[data-chat-surface]')].map((element) => ({
+        surface: element.getAttribute('data-chat-surface'),
+        text: element.textContent.trim().replace(/\\s+/g, ' ').slice(0, 160),
+      }));
+      target.unreadTypes = [...document.querySelectorAll('[data-unread-conversation]')].map((element) => ({
+        type: element.getAttribute('data-unread-conversation'),
+        subject: element.getAttribute('data-unread-subject'),
+        text: element.textContent.trim().replace(/\\s+/g, ' ').slice(0, 120),
+      }));
+      target.messages = [...document.querySelectorAll('[data-chat-message="global"]')].map((element) => ({
+        type: element.getAttribute('data-chat-message'),
+        text: element.textContent.trim().replace(/\\s+/g, ' ').slice(0, 120),
+      }));
+    })()`,
+  );
   await evalChecked(client, `document.querySelector('[data-direct-chat-open="u_friend"]')?.click()`);
   await waitFor(client, `Boolean(document.querySelector('[data-chat-message="direct"]'))`);
+  await evalChecked(
+    client,
+    `window.__zutomayoOnlineLobbySmoke.captured.messages.push(
+      ...[...document.querySelectorAll('[data-chat-message="direct"]')].map((element) => ({
+        type: element.getAttribute('data-chat-message'),
+        text: element.textContent.trim().replace(/\\s+/g, ' ').slice(0, 120),
+      })),
+    )`,
+  );
   await evalChecked(
     client,
     `document.querySelector('[data-unread-conversation="room"][data-unread-subject="ROOM42"]')?.click()`,

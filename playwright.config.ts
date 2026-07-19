@@ -13,6 +13,8 @@ import { defineConfig, devices } from '@playwright/test';
  */
 const isCI = !!process.env.CI;
 const fullBrowserMatrix = process.env.E2E_BROWSER_MATRIX === 'full';
+const jsonReportPath = process.env.E2E_JSON_REPORT_PATH?.trim();
+const outputDir = process.env.E2E_OUTPUT_DIR?.trim() || 'test-results';
 
 const projects = [
   {
@@ -51,8 +53,12 @@ export default defineConfig({
   timeout: 60_000,
   expect: { timeout: 10_000 },
   reportSlowTests: { max: 5, threshold: 10_000 },
-  reporter: isCI ? [['github'], ['html', { open: 'never' }]] : 'list',
-  outputDir: 'test-results',
+  reporter: jsonReportPath
+    ? [['json', { outputFile: jsonReportPath }]]
+    : isCI
+      ? [['github'], ['html', { open: 'never' }]]
+      : 'list',
+  outputDir,
   use: {
     baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:3000',
     locale: 'zh-TW',

@@ -56,7 +56,7 @@ docker compose down
 
 Variables are passed through `docker-compose.yml` from the host environment (e.g. via a `.env` file or shell export).
 
-**REQUIRED:** production/staging require `PG_MIGRATION_USER`/`PG_MIGRATION_PASSWORD`; distinct API, GAME, PLATFORM, RETENTION, MONITOR, BACKUP, and WAL `PG_*_USER`/`PG_*_PASSWORD` pairs; `EXPECTED_SCHEMA_MIGRATION`; the four immutable `*_IMAGE` references; and `JWT_SECRET`. `PG_APP_USER` remains a local-development compatibility alias only. Compose exits early if a production role is missing or aliased. Set a non-empty `REDIS_PASSWORD` for every production deployment.
+**REQUIRED:** the immutable staging/production-hardening path requires `PG_MIGRATION_USER`/`PG_MIGRATION_PASSWORD`; distinct API, GAME, PLATFORM, RETENTION, MONITOR, BACKUP, and WAL `PG_*_USER`/`PG_*_PASSWORD` pairs; `EXPECTED_SCHEMA_MIGRATION`; the four immutable `*_IMAGE` references; and `JWT_SECRET`. The current source-built Server4 Beta path is the documented exception and uses `PG_MIGRATION_*` plus shared `PG_APP_*`; full role isolation is deferred until the hardened deployment path is adopted. Set a non-empty `REDIS_PASSWORD` for every production deployment.
 
 Create a `.env` file from the template:
 
@@ -112,6 +112,7 @@ Frontend build-time variables (baked into the bundle at `vite build`):
 | `VITE_APP_VERSION`                | `APP_VERSION`        | Usually set automatically from `APP_VERSION` by the Docker build.                                                                                         |
 | `VITE_APP_BUILD_ID`               | `APP_BUILD_ID`       | Must match the `game` runtime `APP_BUILD_ID`, otherwise clients are asked to reload before online play.                                                   |
 | `VITE_GAME_RULES_VERSION`         | `GAME_RULES_VERSION` | Must match the `game` runtime `GAME_RULES_VERSION`.                                                                                                       |
+| `VITE_CARD_DATASET_SHA256`        | empty                | Exact release dataset hash emitted by `release:card-dataset`; included in aggregate funnel events.                                                        |
 | `VITE_UMAMI_WEBSITE_ID`           | empty                | Umami website ID. Set from deployment secrets; falls back to `VITE_UMAMI_SECONDARY_WEBSITE_ID` for gallery config compatibility.                          |
 | `VITE_UMAMI_SCRIPT_URL`           | empty                | Umami analytics script URL. Set from deployment secrets. Analytics is disabled when this or the website ID is empty.                                      |
 | `VITE_UMAMI_HOST_URL`             | empty                | Optional Umami host URL override. Usually unnecessary when loading the standard Umami script directly.                                                    |
@@ -626,6 +627,87 @@ To mirror CI locally before pushing:
 
 ```bash
 npm run verify
+```
+
+### Exact release card dataset gate
+
+Before the go/no-go review, run the card gate against the read-only release database from a clean checkout of the exact release commit. The gate refuses the 90-card synthetic E2E seed by default, verifies the expected migration checksum, hashes cards/translations/presets/game config, requires complete verified translations and legal 20-card presets, runs the rule audit and game smoke, and writes evidence for the main release gate.
+
+Before freezing the candidate, the public API can be checked without database credentials. This catches count, translation, Unicode integrity, deck/config, rule parser, and game-smoke regressions but deliberately sets `releaseEvidence: false` and cannot replace the database-bound gate:
+
+```bash
+npm run preflight:card-dataset -- --base-url https://battle.zutomayocard.online/api/
+```
+
+```bash
+export RELEASE_SHA="$(git rev-parse HEAD)"
+export RELEASE_ENVIRONMENT=staging
+export EXPECTED_CARD_COUNT=422
+export EXPECTED_SCHEMA_MIGRATION="$(find migrations -maxdepth 1 -type f -name '*.js' | sort | tail -n 1 | xargs basename | sed 's/\.js$//')"
+export EXPECTED_SCHEMA_CHECKSUM="$(shasum -a 256 "migrations/${EXPECTED_SCHEMA_MIGRATION}.js" | awk '{print $1}')"
+# Set PG_*, the five immutable *_IMAGE references, and GitHub provenance variables for the target release.
+npm run release:card-dataset -- --output .release-evidence/staging/card-dataset.json
+```
+
+The generated `datasetSha256` is the identity of the player-visible card dataset. Set `EXPECTED_CARD_DATASET_SHA256` when rerunning the same candidate to reject database drift. `npm run release:gate -- --staging-evidence-dir .release-evidence ...` remains blocked when this evidence is missing, stale, unsigned, tied to another release/image, or contains any failed result.
+
+### Authenticated multiplayer staging gate
+
+Run the RR-05 gate only against the public staging gateway after deploying the exact release manifest. The runner refuses HTTP, localhost, IP-only, private-network, and split-host browser topology. API and Colyseus must be exposed through the same HTTPS origin (`/api` plus a `wss://` route), so the browser exercises the production Secure/HttpOnly cookie and WebSocket-upgrade path instead of the local Docker shortcut.
+
+```bash
+set -a
+source .release.env
+set +a
+export RELEASE_ENVIRONMENT=staging
+export E2E_BASE_URL=https://staging.example.com/
+export E2E_API_URL=https://staging.example.com/api
+export E2E_PLATFORM_URL=wss://staging.example.com/colyseus
+# Outside GitHub Actions, identify the accountable evidence signer with HTTPS.
+export E2E_EVIDENCE_SIGNER_URL=https://ops.example.com/release-approvers/your-name
+npm run e2e:authenticated-staging -- --output .release-evidence/staging/authenticated-e2e.json
+```
+
+The Beta command performs one complete Chromium run with retries disabled. It must contain both RR-05 critical tests and zero skipped, unexpected, or flaky tests. The journeys create two independent accounts, clear the registration cookies, log in again, select decks, verify Secure/HttpOnly cookies, Quick Match, same-origin WSS, chat, disconnect/reconnect, spectator hidden information and read-only controls, surrender/result delivery, both server histories, and authenticated friend invite. It writes the raw Playwright JSON report and log, hashes every artifact, and binds the evidence to the full commit SHA and five immutable image digests. A local conditional skip can never become passing staging evidence.
+
+Five consecutive retry-free runs are production-hardening evidence, not a Public Beta prerequisite:
+
+```bash
+npm run e2e:authenticated-staging:hardening -- --output .release-evidence/staging/authenticated-e2e.json
+npm run release:gate:hardening -- --staging-evidence-dir .release-evidence
+```
+
+The hardening runner waits 65 seconds between successful runs because each run makes eight legitimate auth requests and the production limiter allows ten per IP per minute.
+
+The CD staging deployment runs this command after deployment when the staging environment variables `STAGING_E2E_BASE_URL`, `STAGING_E2E_API_URL`, and `STAGING_E2E_PLATFORM_URL` are configured. Its uploaded artifact is named `authenticated-staging-evidence-<release SHA>`. This is only the RR-05 artifact; production remains blocked until it is combined with the other current staging evidence required by `release:gate`.
+
+### RR-07 operational recovery evidence
+
+Use the release-mode restore drill, the staging-only [source recovery drill](./runbooks/deployment-recovery.md), and the [alert delivery drill](./runbooks/alert-delivery.md) against one release SHA. After all three raw reports exist, generate the signed release evidence bundle:
+
+```bash
+set -a
+source .release.env
+set +a
+export RELEASE_ENVIRONMENT=staging
+export OPERATIONAL_EVIDENCE_SIGNER_URL=https://ops.example.com/release-approvers/your-name
+npm run release:operational-evidence -- \
+  --restore-report artifacts/recovery/restore-drill.json \
+  --output-dir .release-evidence/staging
+```
+
+The Beta profile requires RPO <= 15 minutes, restore RTO <= 30 minutes, and verified account/deck/history/leaderboard round-trip data. Source deployment recovery <= 30 minutes and firing/resolved delivery for all six alert scenarios remain available through `npm run release:gate:hardening`; they do not block the current Public Beta. The evidence generator still retains and hashes the complete raw reports so the same artifacts can later satisfy hardening without weakening provenance.
+
+`npm run release:gate` defaults to the `beta` profile. Use `npm run release:gate:hardening` only when validating chaos recovery, 2x load/soak, canary rollback, complete alert delivery, provider lifecycle, five-run multiplayer stability, and deployment recovery.
+
+To generate the optional recovery and alert artifacts for that profile:
+
+```bash
+npm run release:operational-evidence:hardening -- \
+  --restore-report artifacts/recovery/restore-drill.json \
+  --deployment-report artifacts/recovery/server4-recovery-<timestamp>.json \
+  --alert-receipt artifacts/recovery/alert-delivery-receipt.json \
+  --output-dir .release-evidence/staging
 ```
 
 ## CD / 持續部署

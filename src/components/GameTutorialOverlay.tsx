@@ -335,7 +335,12 @@ export function GameTutorialOverlay({
   };
 
   return (
-    <div className="tutorial-game-overlay fixed inset-0 z-[var(--z-tour)]">
+    <div
+      className="tutorial-game-overlay fixed inset-0 z-[var(--z-tour)]"
+      data-tutorial-phase={current.phase}
+      data-tutorial-step={currentStep + 1}
+      data-tutorial-total={steps.length}
+    >
       {/* 視覺遮罩：SVG mask 挖洞，pointer-events: none 不攔截點擊 */}
       <svg
         className="absolute inset-0 h-full w-full"

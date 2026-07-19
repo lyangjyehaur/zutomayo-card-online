@@ -55,6 +55,7 @@ export function DeckSelector({
                     fullWidth
                     type="button"
                     disabled={option.disabled}
+                    aria-pressed={selected}
                     onClick={() => onChange(option.id)}
                   >
                     <span

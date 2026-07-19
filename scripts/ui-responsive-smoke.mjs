@@ -36,8 +36,7 @@ const pages = [
   { pageId: 'deck-builder', path: '/deck-builder', waitForText: '牌組' },
   { pageId: 'battle-turn-set', path: '/qa/battle?state=turn-set&controls=0', waitFor: '.bf-root' },
   { pageId: 'feedback', path: '/feedback', waitFor: '.feedback-toolbar' },
-  { pageId: 'admin-cards', path: '/admin', waitFor: '.admin-page' },
-  { pageId: 'i18n-manager', path: '/admin/i18n', waitFor: '.i18n-responsive-table' },
+  { pageId: 'legal-privacy', path: '/legal/privacy', waitForText: '隱私政策' },
 ];
 
 const cases = pages.flatMap((page) =>
@@ -58,6 +57,9 @@ const chrome = spawn(
     '--disable-gpu',
     '--no-first-run',
     '--disable-dev-shm-usage',
+    '--disable-background-networking',
+    '--disable-sync',
+    '--disable-extensions',
     `--remote-debugging-port=${port}`,
     `--user-data-dir=${profileDir}`,
     'about:blank',
@@ -161,6 +163,31 @@ async function evalChecked(client, expression) {
     );
   }
   return result.result.value;
+}
+
+function isTransientNavigationError(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.includes('Inspected target navigated or closed') ||
+    message.includes('Execution context was destroyed') ||
+    message.includes('Cannot find context with specified id')
+  );
+}
+
+async function navigateTo(client, url) {
+  try {
+    await client.send('Page.navigate', { url });
+  } catch (error) {
+    if (!isTransientNavigationError(error)) throw error;
+  }
+}
+
+async function reloadPage(client) {
+  try {
+    await client.send('Page.reload', { ignoreCache: true });
+  } catch (error) {
+    if (!isTransientNavigationError(error)) throw error;
+  }
 }
 
 const setup = `
@@ -299,7 +326,11 @@ async function waitForPage(client, testCase, timeoutMs = 16000) {
   const expression = `location.pathname + location.search === ${JSON.stringify(expectedPath)} && (${contentExpression})`;
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
-    if (await evalChecked(client, expression)) return;
+    try {
+      if (await evalChecked(client, expression)) return;
+    } catch (error) {
+      if (!isTransientNavigationError(error)) throw error;
+    }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
   const debug = await evalChecked(
@@ -354,7 +385,7 @@ const metricsExpression = `
     checkedSurface: visible(
       'nav[aria-label] button, .bf-main, .feedback-toolbar, .admin-page, .i18n-responsive-table, .deck-editor, .card-browser, [data-room-panel], [aria-label="Card Pool"], article',
     ).slice(0, 8),
-    smallTargets: targets.filter((item) => item.width < 40 || item.height < 40).slice(0, 12),
+    smallTargets: targets.filter((item) => item.width < 44 || item.height < 44).slice(0, 12),
     offscreen: [...document.body.querySelectorAll('*')]
       .filter(isVisible)
       .map(box)
@@ -409,16 +440,21 @@ try {
       screenWidth: testCase.width,
       screenHeight: testCase.height,
     });
-    await client.send('Page.navigate', { url: `${baseUrl}${testCase.path}` });
+    await navigateTo(client, `${baseUrl}${testCase.path}`);
     await waitForPage(client, testCase);
     await evalChecked(client, setup);
-    await client.send('Page.reload', { ignoreCache: true });
+    await reloadPage(client);
     await waitForPage(client, testCase);
     await new Promise((resolve) => setTimeout(resolve, 300));
     let metrics = await evalChecked(client, metricsExpression);
     let failures = failuresFor(testCase, metrics);
-    for (let attempt = 0; attempt < 2 && !metrics.shell.length && !metrics.checkedSurface.length; attempt += 1) {
-      await client.send('Page.reload', { ignoreCache: true });
+    const requiresCheckedSurface = testCase.pageId !== 'ai-lobby' && testCase.pageId !== 'online-lobby';
+    for (
+      let attempt = 0;
+      attempt < 2 && (!metrics.shell.length || (requiresCheckedSurface && !metrics.checkedSurface.length));
+      attempt += 1
+    ) {
+      await reloadPage(client);
       await waitForPage(client, testCase);
       await new Promise((resolve) => setTimeout(resolve, 500));
       metrics = await evalChecked(client, metricsExpression);

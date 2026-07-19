@@ -129,7 +129,7 @@
 
 ## 單一 Release Gate
 
-使用 `npm run release:gate -- --evidence-dir artifacts/release` 執行集中式發布檢查。Gate 會逐項執行完整 `verify`、release/operational config、Compose render/role environment，以及 Docker runtime image contract；結果會寫入 `release-gate.json` 與 `release-gate.md`。
+使用 `npm run release:gate -- --evidence-dir artifacts/release` 執行 Public Beta 集中式發布檢查。Beta profile 只把正式卡牌資料、一次完整認證雙玩家旅程與備份還原列為外部 blocker；完整 chaos、load/soak、canary、告警、provider lifecycle、五次連續對戰與部署復原改由 `npm run release:gate:hardening` 驗證。兩種 profile 都會執行完整 `verify`、release/operational config、Compose render，以及 Docker runtime image contract，結果寫入 `release-gate.json` 與 `release-gate.md`。
 
 Gate 狀態嚴格區分：`passed` 代表所有必要檢查通過，`failed` 代表本機或設定檢查失敗，`blocked` 代表本機檢查沒有失敗但仍缺 staging-only 證據。缺證據永遠不會被當成通過；沒有 `--staging-evidence-dir` 時 staging gate 必然是 `blocked`。若有 staging 證據，放在該目錄的 `staging/` 下，且每份 JSON 必須包含 `schemaVersion: 1`、對應的 `evidenceType`、`status: "passed"`、`environment: "staging"`、與目前（或 `--release-sha` 指定）release 相同的 40 字元 `releaseSha`、五個完整 `game/api/platform/migrate/retention` `@sha256` image digest，以及 `startedAt`、`finishedAt`、正確相等於兩者差值的 `durationMs` 與過去 168 小時內且不得為未來時間的 `checkedAt`。每種 evidence 還必須提供該 gate 要求的數值 `metrics`、數值 `thresholds` 與全數為 true 的 `results`；Gate 會實際比較 metric/threshold。
 

@@ -57,6 +57,7 @@ import {
   normalizeGameOverWinner,
   useOnlineMatchSubmission,
 } from './board/useOnlineMatchSubmission';
+import { getChoiceInstruction, getPhaseInstruction } from './board/phaseInstruction';
 
 export type PopoverPlacement = 'right' | 'left' | 'top' | 'bottom';
 
@@ -1072,7 +1073,11 @@ function MulliganScreen({
                   className={focusedSelected ? secondaryActionClass('w-full') : primaryActionClass('w-full')}
                   type="button"
                   variant={focusedSelected ? 'secondary' : 'primary'}
-                  onClick={() => toggle(focusedIndex)}
+                  data-tut="mulligan-toggle-redraw"
+                  onClick={() => {
+                    toggle(focusedIndex);
+                    setDetailSheetOpen(false);
+                  }}
                 >
                   {focusedSelected
                     ? `${t('common.cancel')} ${t('board.redraw')}`
@@ -1314,78 +1319,6 @@ function translatedChoicePrompt(G: GameState, locale: string): string | null {
   return (def ? getLocalizedCardEffect(def, locale) : null) || choice.prompt;
 }
 
-function choiceInstruction(type: string): string {
-  if (type === 'handToDeckBottomThenDraw') return t('board.choiceHintDeckBottomDraw');
-  if (type === 'reorderOpponentDeckTop') return t('board.choiceHintReorder');
-  if (type === 'opponentPowerCharacterSwap') return t('board.choiceHintSwap');
-  if (type === 'abyssToDeckBottomOrLose') return t('board.choiceHintAbyss');
-  if (type === 'handAbyssSwap') return t('board.choiceHintHandAbyssSwap');
-  if (type.includes('Hand') || type.includes('hand')) return t('board.choiceHintHand');
-  return t('board.choiceHintDefault');
-}
-
-function phaseInstruction(
-  G: GameState,
-  meIndex: PlayerIndex,
-  required: number,
-  minimum: number,
-): { title: string; body: string; meta: { text: string; done: boolean }[] } {
-  const me = G.players[meIndex];
-  if (G.pendingChoice) {
-    const mine = G.pendingChoice.player === meIndex;
-    return {
-      title: mine ? t('board.phaseChoiceTitle') : t('board.phaseChoiceWaitingTitle'),
-      body: mine
-        ? choiceInstruction(G.pendingChoice.type)
-        : `${playerName(G.pendingChoice.player)} ${t('board.phaseChoosing')}`,
-      meta: [
-        {
-          text: `${t('board.choiceRequired')} ${G.pendingChoice.min}–${G.pendingChoice.max}`,
-          done: false,
-        },
-      ],
-    };
-  }
-  if (G.step === 'effectOrder') {
-    const player = G.pendingEffectPlayer;
-    const pendingCount = player === null ? 0 : G.pendingEffects[player].length;
-    return {
-      title: player === meIndex ? t('board.phaseEffectTitle') : t('board.phaseEffectWaitingTitle'),
-      body:
-        player === meIndex
-          ? t('board.phaseEffectBody')
-          : player === null
-            ? t('board.phaseEffectResolving')
-            : `${playerName(player)} ${t('board.phaseResolvingEffects')}`,
-      meta: [{ text: `${t('board.phasePendingEffects')} ${pendingCount}`, done: false }],
-    };
-  }
-  if (G.step === 'initialSet') {
-    return {
-      title: t('board.phaseInitialSetTitle'),
-      body: G.ready[meIndex] ? t('board.phaseWaitingOpponentReady') : t('board.phaseInitialSetBody'),
-      meta: [{ text: `${t('board.phaseSetCount')} ${me.cardsSetThisTurn}/1`, done: me.cardsSetThisTurn >= 1 }],
-    };
-  }
-  if (G.step === 'turnSet') {
-    return {
-      title: G.ready[meIndex] ? t('board.phaseWaitingTitle') : t('board.phaseTurnSetTitle'),
-      body: G.ready[meIndex] ? t('board.phaseWaitingOpponentReady') : t('board.phaseTurnSetBody'),
-      meta: [
-        {
-          text: `${t('board.phaseSetCount')} ${me.cardsSetThisTurn} ${t('board.cardsUnit')}`,
-          done: me.cardsSetThisTurn >= minimum,
-        },
-        { text: `${t('board.phaseMinimum')} ${minimum}`, done: me.cardsSetThisTurn >= minimum },
-        ...(required > minimum
-          ? [{ text: `${t('board.phaseMaximum')} ${required}`, done: me.cardsSetThisTurn <= required }]
-          : []),
-      ],
-    };
-  }
-  return { title: t('board.gameOver'), body: t('online.gameOverHelper'), meta: [] };
-}
-
 function EffectOrderPanel({
   G,
   moves,
@@ -1461,7 +1394,7 @@ function PendingChoicePanel({
   const selectionError = pendingChoiceSelectionError(choice, selected);
   const canSubmit = selectionError === null;
   const semanticError = selectionError === 'handAbyssPair' ? t('board.choiceInvalidHandAbyssPair') : '';
-  const prompt = translatedChoicePrompt(G, locale) ?? choiceInstruction(choice.type);
+  const prompt = translatedChoicePrompt(G, locale) ?? getChoiceInstruction(choice.type);
   const toggle = (optionId: string) => {
     setSelected((current) => {
       if (current.includes(optionId)) return current.filter((item) => item !== optionId);
@@ -2028,7 +1961,7 @@ function BattleBoard({
   }, [G.lastBattleResult, G.turnNumber]);
 
   const time = getChronosTime(G);
-  const currentInstruction = phaseInstruction(G, meIndex, required, minimum);
+  const currentInstruction = getPhaseInstruction(G, meIndex, required, minimum, playerName);
   const canAct =
     !spectator &&
     tutorialSetInteractionEnabled &&
@@ -2396,9 +2329,9 @@ function BattleBoard({
                 selectedIndex={selectedHandIndex}
                 canAct={canAct}
                 allowedCardDefIds={playableCardDefIds}
-                onCardTap={handleHandTap}
+                onCardTap={spectator ? undefined : handleHandTap}
                 onCardHover={
-                  touchLike
+                  touchLike || spectator
                     ? undefined
                     : (index) => {
                         if (index === null) return;

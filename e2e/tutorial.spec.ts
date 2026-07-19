@@ -16,6 +16,12 @@ async function simulateCardApiOutage(page: import('@playwright/test').Page) {
   await page.route('**/cards.json', (route) => route.abort());
 }
 
+async function expectTutorialPhase(page: import('@playwright/test').Page, phase: string) {
+  const overlay = page.locator('.tutorial-game-overlay');
+  await expect(overlay).toHaveAttribute('data-tutorial-phase', phase, { timeout: 15_000 });
+  return overlay;
+}
+
 test.describe('教學頁面載入', () => {
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => {
@@ -75,6 +81,8 @@ test.describe('教學覆蓋層與互動 @requires-backend', () => {
     // 卡牌載入成功後，教學覆蓋層（dialog）應該出現
     const overlay = page.locator('.tutorial-game-overlay, [role="dialog"]').first();
     await expect(overlay).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText('遊戲結束', { exact: true })).toHaveCount(0);
+    await expect(page.getByText(/線上對戰已結束/)).toHaveCount(0);
   });
 
   test('能點擊下一步推進教學', async ({ page }) => {
@@ -83,15 +91,13 @@ test.describe('教學覆蓋層與互動 @requires-backend', () => {
     const overlay = page.locator('.tutorial-game-overlay, [role="dialog"]').first();
     await expect(overlay).toBeVisible({ timeout: 30_000 });
 
-    // 教學 tooltip 中的 "下一頁" 按鈕
-    // 並非所有步驟都有下一步按鈕（action step 顯示 "繼續" 提示），
-    // 但第一步通常是導覽，會有下一頁按鈕。
-    const nextButton = page.getByRole('button', { name: '下一頁' });
-    if (await nextButton.isVisible({ timeout: 3_000 }).catch(() => false)) {
-      await nextButton.click();
-      // 點擊後教學仍在進行中（覆蓋層仍在）
-      await expect(overlay).toBeVisible();
-    }
+    await expect(overlay).toHaveAttribute('data-tutorial-phase', 'intro');
+    await expect(overlay).toHaveAttribute('data-tutorial-total', '15');
+
+    await page.getByRole('button', { name: '下一頁' }).click();
+
+    await expect(overlay).toHaveAttribute('data-tutorial-phase', 'janken');
+    await expect(page.locator('[data-tut="janken-rock"]').first()).toBeVisible();
   });
 
   test('能關閉教學並返回首頁', async ({ page }) => {
@@ -113,6 +119,64 @@ test.describe('教學覆蓋層與互動 @requires-backend', () => {
     await confirmDialog.getByRole('button', { name: '確認' }).click();
 
     // 應返回首頁
+    await expect(page).toHaveURL(/\/$/);
+  });
+
+  test('能從歡迎畫面完成整個固定劇本', async ({ page }) => {
+    await page.goto('/tutorial');
+
+    await expectTutorialPhase(page, 'intro');
+    await page.getByRole('button', { name: '下一頁' }).click();
+
+    await expectTutorialPhase(page, 'janken');
+    await page.locator('[data-tut="janken-rock"]').first().click();
+
+    await expectTutorialPhase(page, 'janken-result');
+    await page.locator('[data-tut="setup-feedback"]').first().getByRole('button').click();
+
+    await expectTutorialPhase(page, 'mulligan');
+    await page.locator('[data-tut-mulligan-card="1st_2"]').first().getByRole('button').click();
+    const mobileRedrawAction = page.getByRole('button', { name: '選擇 重抽', exact: true });
+    if (await mobileRedrawAction.isVisible().catch(() => false)) {
+      await mobileRedrawAction.click();
+    }
+    await page.locator('[data-tut="mulligan-redraw"]').first().click();
+
+    await expectTutorialPhase(page, 'initialSet');
+    await page.locator('[data-tut-card="1st_70"]').first().click();
+    await page.locator('[data-tut="set-selected-card"]').first().click();
+    await page.locator('[data-tut="confirm-set"]').first().click();
+
+    await expectTutorialPhase(page, 'clock-advance');
+    await page.locator('[data-tut="game-notice-panel"]').first().getByRole('button', { name: '確認' }).click();
+
+    await expectTutorialPhase(page, 'hp-calc');
+    await page.locator('[data-tut="game-notice-panel"]').first().getByRole('button', { name: '確認' }).click();
+
+    await expectTutorialPhase(page, 'turnSet');
+    for (const cardDefId of ['1st_34', '2nd_86']) {
+      await page.locator(`[data-tut-card="${cardDefId}"]`).first().click();
+      await page.locator('[data-tut="set-selected-card"]').first().click();
+    }
+    await page.locator('[data-tut="confirm-set"]').first().click();
+
+    await expectTutorialPhase(page, 'clock-advance');
+    await page.locator('[data-tut="game-notice-panel"]').first().getByRole('button', { name: '確認' }).click();
+
+    await expectTutorialPhase(page, 'area-enchant');
+    await page.getByRole('button', { name: '下一頁' }).click();
+
+    await expectTutorialPhase(page, 'effectOrder-action');
+    await page.locator('.effect-order-panel:visible .effect-order-item').first().click();
+
+    await expectTutorialPhase(page, 'hp-calc');
+    await page.locator('[data-tut="game-notice-panel"]').first().getByRole('button', { name: '確認' }).click();
+
+    await expectTutorialPhase(page, 'battle-result');
+    await page.getByRole('button', { name: '下一頁' }).click();
+
+    const completeOverlay = await expectTutorialPhase(page, 'complete');
+    await completeOverlay.getByRole('button', { name: '確認', exact: true }).click();
     await expect(page).toHaveURL(/\/$/);
   });
 });

@@ -15,6 +15,7 @@ const scripts = [
   'postgres-role-smoke.sh',
   'compose-chaos-drill.sh',
   'deploy-server4.sh',
+  'server4-recovery-drill.sh',
 ];
 
 describe('operational shell scripts', () => {
@@ -43,6 +44,20 @@ describe('operational shell scripts', () => {
     });
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('explicitly pinned @sha256 image reference');
+  });
+
+  it('requires attributable fixtures before a release restore drill can start Docker', () => {
+    const result = spawnSync('bash', [resolve('scripts/pg-restore-drill.sh'), '/tmp/example.dump.age'], {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        PG_RESTORE_DRILL_IMAGE: `postgres@sha256:${'a'.repeat(64)}`,
+        PG_RESTORE_RELEASE_EVIDENCE: 'true',
+      },
+      timeout: 5_000,
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('evidence_output is required');
   });
 
   it('routes logical and physical backups through separate PostgreSQL roles', () => {
@@ -94,6 +109,17 @@ describe('operational shell scripts', () => {
     expect(deploy).not.toContain('--manifest');
     expect(deploy).not.toContain('cosign');
     expect(deploy).not.toContain('attestation');
+  });
+
+  it('keeps source recovery staging-only and reuses the normal deploy path', () => {
+    const recovery = readFileSync(resolve('scripts/server4-recovery-drill.sh'), 'utf8');
+    expect(recovery).toContain('DEPLOY_ENVIRONMENT=staging');
+    expect(recovery).toContain('RECOVERY_CONFIRM=source-redeploy-staging');
+    expect(recovery).toContain("!= '149.104.6.238'");
+    expect(recovery).toContain('stop game api platform');
+    expect(recovery).toContain('deploy-server4.sh');
+    expect(recovery).toContain('sourceCheckoutVerified');
+    expect(recovery).toContain('smokePassed');
   });
 
   it('rejects an unknown migration subcommand instead of defaulting to up', () => {
