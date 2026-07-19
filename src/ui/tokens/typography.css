@@ -8,7 +8,11 @@
   src: url('/fonts/jiangcheng-jiexing-v1.3.woff2') format('woff2');
   font-weight: 400;
   font-style: normal;
-  font-display: swap;
+  /* This full CJK display face is ~2 MB. On a cold mobile connection, a late
+   * swap turns the heading into a second LCP candidate long after the app is
+   * interactive. Keep the branded face when it is cached, but do not delay a
+   * first visit waiting for it. */
+  font-display: optional;
 }
 
 @font-face {
@@ -16,7 +20,7 @@
   src: url('/fonts/uoq-mun-then-khung-regular.woff2') format('woff2');
   font-weight: 400;
   font-style: normal;
-  font-display: swap;
+  font-display: optional;
 }
 
 :root {
