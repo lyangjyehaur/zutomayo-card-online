@@ -18,7 +18,7 @@ export interface HandZoneProps {
   canAct: boolean;
   /** 教學劇本可操作的卡牌定義；未提供時所有合法手牌皆可操作。 */
   allowedCardDefIds?: string[];
-  onCardTap: (index: number) => void;
+  onCardTap?: (index: number) => void;
   onCardHover?: (index: number | null) => void;
 }
 
@@ -62,7 +62,7 @@ export function HandZone({
               size={variant === 'fan' ? 'lg' : 'md'}
               imageContext="hand"
               state={state}
-              onActivate={() => onCardTap(index)}
+              onActivate={onCardTap ? () => onCardTap(index) : undefined}
               tutId={card.defId}
             />
           </div>

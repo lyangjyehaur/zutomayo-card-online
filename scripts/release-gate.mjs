@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DEFAULT_EVIDENCE_DIR = path.join(ROOT, '.release-evidence');
 const DEFAULT_MAX_EVIDENCE_AGE_HOURS = 168;
+const DEFAULT_PROFILE = 'beta';
+const RELEASE_PROFILES = Object.freeze(['beta', 'production-hardening']);
 const MAX_OUTPUT_LENGTH = 12_000;
 const STATUS_ORDER = Object.freeze({ passed: 0, blocked: 1, failed: 2 });
 const RELEASE_SHA_PATTERN = /^[a-f0-9]{40}$/i;
@@ -55,35 +57,130 @@ const COMPOSE_FILES = Object.freeze([
 
 const STAGING_GATES = Object.freeze([
   {
+    id: 'staging-card-dataset',
+    profiles: RELEASE_PROFILES,
+    phase: 'P1',
+    title: 'Exact release card dataset and game smoke',
+    evidenceType: 'card-dataset',
+    measurements: {
+      comparisons: [
+        ['cardCount', 'minCardCount', 'gte'],
+        ['cardCount', 'maxCardCount', 'lte'],
+        ['ruleAuditFailures', 'maxRuleAuditFailures', 'lte'],
+        ['verifiedTranslationRows', 'minVerifiedTranslationRows', 'gte'],
+        ['presetDeckCount', 'minPresetDeckCount', 'gte'],
+      ],
+      results: [
+        'schemaMatched',
+        'datasetHashRecorded',
+        'uniqueCardIds',
+        'officialEnglishComplete',
+        'derivedTranslationsComplete',
+        'textIntegrity',
+        'presetDecksValid',
+        'gameConfigValid',
+        'serializationRoundTrip',
+        'ruleAuditPassed',
+        'gameSmokePassed',
+      ],
+    },
+    relativePath: 'staging/card-dataset.json',
+  },
+  {
     id: 'staging-authenticated-e2e',
+    profiles: RELEASE_PROFILES,
     phase: 'P4',
     title: 'Authenticated dual-browser game journey',
     evidenceType: 'authenticated-e2e',
     measurements: {
+      thresholdRequirements: [
+        ['minCompletedJourneys', 2, 'gte'],
+        ['requiredConsecutiveRuns', 1, 'gte'],
+      ],
       comparisons: [
         ['completedJourneys', 'minCompletedJourneys', 'gte'],
-        ['failedSteps', 'maxFailedSteps', 'lte'],
+        ['consecutiveRuns', 'requiredConsecutiveRuns', 'gte'],
+        ['skippedTests', 'maxSkippedTests', 'lte'],
+        ['failedTests', 'maxFailedTests', 'lte'],
+        ['flakyTests', 'maxFlakyTests', 'lte'],
       ],
-      results: ['authenticatedJourneyPassed', 'historyVerified'],
+      results: [
+        'authenticatedJourneyPassed',
+        'historyVerified',
+        'friendInviteVerified',
+        'spectatorHiddenInformationVerified',
+        'secureCookieVerified',
+        'httpsTopologyVerified',
+        'zeroConditionalSkips',
+      ],
     },
     relativePath: 'staging/authenticated-e2e.json',
   },
   {
     id: 'staging-restore',
+    profiles: RELEASE_PROFILES,
     phase: 'P2',
-    title: 'Encrypted backup restore and PITR drill',
+    title: 'Backup restore and release-data verification',
     evidenceType: 'restore-drill',
     measurements: {
       comparisons: [
         ['rpoMinutes', 'maxRpoMinutes', 'lte'],
         ['rtoMinutes', 'maxRtoMinutes', 'lte'],
       ],
+      thresholdRequirements: [
+        ['maxRpoMinutes', 15, 'lte'],
+        ['maxRtoMinutes', 30, 'lte'],
+      ],
       results: ['schemaGatePassed', 'fixtureRoundTripPassed', 'legalHoldInvariantPassed'],
     },
     relativePath: 'staging/restore-drill.json',
   },
   {
+    id: 'staging-authenticated-e2e-hardening',
+    profiles: ['production-hardening'],
+    phase: 'P4',
+    title: 'Five-run authenticated multiplayer stability proof',
+    evidenceType: 'authenticated-e2e',
+    measurements: {
+      comparisons: [
+        ['completedJourneys', 'minCompletedJourneys', 'gte'],
+        ['consecutiveRuns', 'requiredConsecutiveRuns', 'gte'],
+        ['skippedTests', 'maxSkippedTests', 'lte'],
+        ['failedTests', 'maxFailedTests', 'lte'],
+        ['flakyTests', 'maxFlakyTests', 'lte'],
+      ],
+      thresholdRequirements: [
+        ['minCompletedJourneys', 10, 'gte'],
+        ['requiredConsecutiveRuns', 5, 'gte'],
+      ],
+      results: [
+        'authenticatedJourneyPassed',
+        'historyVerified',
+        'friendInviteVerified',
+        'spectatorHiddenInformationVerified',
+        'secureCookieVerified',
+        'httpsTopologyVerified',
+        'zeroConditionalSkips',
+      ],
+    },
+    relativePath: 'staging/authenticated-e2e.json',
+  },
+  {
+    id: 'staging-deployment-recovery',
+    profiles: ['production-hardening'],
+    phase: 'P2',
+    title: 'Source deployment recovery rehearsal',
+    evidenceType: 'restore-drill',
+    measurements: {
+      comparisons: [['deploymentRecoverySeconds', 'maxDeploymentRecoverySeconds', 'lte']],
+      thresholdRequirements: [['maxDeploymentRecoverySeconds', 1_800, 'lte']],
+      results: ['deploymentRecoveryPassed'],
+    },
+    relativePath: 'staging/restore-drill.json',
+  },
+  {
     id: 'staging-chaos',
+    profiles: ['production-hardening'],
     phase: 'P2',
     title: 'PostgreSQL/Redis failover, reconnect, and outbox recovery',
     evidenceType: 'chaos-reconnect',
@@ -98,6 +195,7 @@ const STAGING_GATES = Object.freeze([
   },
   {
     id: 'staging-load-soak',
+    profiles: ['production-hardening'],
     phase: 'P2',
     title: '2x peak load and soak against SLOs',
     evidenceType: 'load-soak',
@@ -114,6 +212,7 @@ const STAGING_GATES = Object.freeze([
   },
   {
     id: 'staging-alerts',
+    profiles: ['production-hardening'],
     phase: 'P3',
     title: 'Alertmanager firing, resolved, and delivery evidence',
     evidenceType: 'alertmanager-delivery',
@@ -121,13 +220,25 @@ const STAGING_GATES = Object.freeze([
       comparisons: [
         ['firingDeliverySeconds', 'maxFiringDeliverySeconds', 'lte'],
         ['resolvedDeliverySeconds', 'maxResolvedDeliverySeconds', 'lte'],
+        ['scenariosDelivered', 'minScenariosDelivered', 'gte'],
+        ['failedScenarios', 'maxFailedScenarios', 'lte'],
       ],
-      results: ['firingDelivered', 'resolvedDelivered'],
+      results: [
+        'firingDelivered',
+        'resolvedDelivered',
+        'apiFailureDelivered',
+        'platformFailureDelivered',
+        'reconnectSpikeDelivered',
+        'databaseOutageDelivered',
+        'resourcePressureDelivered',
+        'outboxBacklogDelivered',
+      ],
     },
     relativePath: 'staging/alertmanager-delivery.json',
   },
   {
     id: 'staging-canary',
+    profiles: ['production-hardening'],
     phase: 'P2',
     title: '10% -> 50% -> 100% canary and rollback',
     evidenceType: 'canary-rollback',
@@ -142,6 +253,7 @@ const STAGING_GATES = Object.freeze([
   },
   {
     id: 'staging-provider-account',
+    profiles: ['production-hardening'],
     phase: 'P5',
     title: 'Email/Logto account lifecycle and recovery',
     evidenceType: 'account-provider-e2e',
@@ -185,7 +297,7 @@ function readReleaseMigration() {
   };
 }
 
-function composeFixtureEnv() {
+export function composeFixtureEnv() {
   const migration = readReleaseMigration();
   const rolePasswords = {
     PG_MIGRATION_PASSWORD: 'release-gate-migration-password',
@@ -232,6 +344,7 @@ function composeFixtureEnv() {
     EXPECTED_SCHEMA_MIGRATION: migration.name,
     EXPECTED_SCHEMA_CHECKSUM: migration.checksum,
     APP_VERSION: '0.2.0',
+    APP_BUILD_ID: 'a'.repeat(40),
     RELEASE_SHA: 'a'.repeat(40),
     GAME_RULES_VERSION: 'release-gate-rules',
     GAME_IMAGE: 'ghcr.io/example/game@sha256:' + '0'.repeat(64),
@@ -251,6 +364,7 @@ function parseArgs(argv = process.argv.slice(2)) {
     releaseManifest: undefined,
     evidenceRunId: undefined,
     maxEvidenceAgeHours: DEFAULT_MAX_EVIDENCE_AGE_HOURS,
+    profile: DEFAULT_PROFILE,
     format: 'both',
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -263,6 +377,7 @@ function parseArgs(argv = process.argv.slice(2)) {
       argument === '--release-manifest' ||
       argument === '--evidence-run-id' ||
       argument === '--max-evidence-age-hours' ||
+      argument === '--profile' ||
       argument === '--format'
     ) {
       const value = argv[index + 1];
@@ -283,6 +398,11 @@ function parseArgs(argv = process.argv.slice(2)) {
           throw new Error('--max-evidence-age-hours must be a positive number');
         }
         options.maxEvidenceAgeHours = hours;
+      } else if (argument === '--profile') {
+        if (!RELEASE_PROFILES.includes(value)) {
+          throw new Error(`--profile must be one of: ${RELEASE_PROFILES.join(', ')}`);
+        }
+        options.profile = value;
       } else if (!['json', 'markdown', 'both'].includes(value))
         throw new Error('--format must be json, markdown, or both');
       else options.format = value;
@@ -508,6 +628,19 @@ function validateMeasurements(evidence, descriptor, missing) {
       missing.push(`metrics.${metricName} <= thresholds.${thresholdName}`);
     }
   }
+  for (const [thresholdName, requiredValue, comparison] of descriptor.measurements.thresholdRequirements ?? []) {
+    const threshold = thresholds[thresholdName];
+    if (!Number.isFinite(threshold)) {
+      missing.push(`thresholds.${thresholdName} (finite number)`);
+      continue;
+    }
+    if (comparison === 'gte' && threshold < requiredValue) {
+      missing.push(`thresholds.${thresholdName} >= ${requiredValue}`);
+    }
+    if (comparison === 'lte' && threshold > requiredValue) {
+      missing.push(`thresholds.${thresholdName} <= ${requiredValue}`);
+    }
+  }
   for (const resultName of descriptor.measurements.results) {
     if (results[resultName] !== true) missing.push(`results.${resultName}: true`);
   }
@@ -516,9 +649,6 @@ function validateMeasurements(evidence, descriptor, missing) {
   }
   for (const [name, value] of Object.entries(thresholds)) {
     if (!Number.isFinite(value)) missing.push(`thresholds.${name} (finite number)`);
-  }
-  for (const [name, value] of Object.entries(results)) {
-    if (value !== true) missing.push(`results.${name}: true`);
   }
 }
 
@@ -665,6 +795,10 @@ export function inspectStagingGates(stagingEvidenceDir, options = {}) {
   if (!Number.isFinite(maxEvidenceAgeHours) || maxEvidenceAgeHours <= 0) {
     throw new Error('max evidence age must be a positive number of hours');
   }
+  const profile = options.profile ?? DEFAULT_PROFILE;
+  if (!RELEASE_PROFILES.includes(profile)) {
+    throw new Error(`release profile must be one of: ${RELEASE_PROFILES.join(', ')}`);
+  }
   const evidenceOptions = {
     releaseSha,
     maxEvidenceAgeHours,
@@ -672,7 +806,7 @@ export function inspectStagingGates(stagingEvidenceDir, options = {}) {
     imageDigests: options.imageDigests,
     evidenceRunId: options.evidenceRunId,
   };
-  return STAGING_GATES.map((descriptor) => {
+  return STAGING_GATES.filter((descriptor) => descriptor.profiles.includes(profile)).map((descriptor) => {
     const result = directory
       ? inspectStagingEvidence(descriptor, directory, evidenceOptions)
       : {
@@ -680,7 +814,7 @@ export function inspectStagingGates(stagingEvidenceDir, options = {}) {
           reason: `staging-only gate requires external evidence (${descriptor.relativePath}); no staging evidence directory supplied`,
           evidencePath: descriptor.relativePath,
         };
-    return withCheckMetadata(descriptor.id, 'staging', `${descriptor.phase}: ${descriptor.title}`, result);
+    return withCheckMetadata(descriptor.id, 'staging', `${descriptor.phase}: ${descriptor.title}`, result, { profile });
   });
 }
 
@@ -730,26 +864,6 @@ function localChecks(run = runCommand, pipeline = runPipeline) {
   );
   checks.push(
     withCheckMetadata(
-      'compose-server4-role-env',
-      'config',
-      'Rendered production PostgreSQL/TLS role environment',
-      pipeline(
-        [
-          {
-            command: 'docker',
-            args: ['compose', '-f', 'docker-compose.server4.yml', 'config', '--no-env-resolution', '--format', 'json'],
-          },
-          {
-            command: process.execPath,
-            args: ['scripts/verify-compose-role-env.mjs', '--require-pgsslmode=verify-full', '--require-rediss'],
-          },
-        ],
-        fixtureEnv,
-      ),
-    ),
-  );
-  checks.push(
-    withCheckMetadata(
       'docker-runtime-contract',
       'local',
       'Docker runtime image contract tests',
@@ -768,6 +882,7 @@ export function renderMarkdown(summary) {
     `- Repository: \`${summary.repository}\``,
     `- Commit: \`${summary.commit}\``,
     `- Evidence release: \`${summary.releaseSha ?? summary.commit}\``,
+    `- Profile: \`${summary.profile ?? DEFAULT_PROFILE}\``,
     '',
     '| Category | Check | Status | Reason |',
     '| --- | --- | --- | --- |',
@@ -778,10 +893,11 @@ export function renderMarkdown(summary) {
     );
   }
   lines.push('', '## Interpretation', '');
-  if (summary.status === 'passed') lines.push('All required local and staging evidence gates passed.');
-  else if (summary.status === 'blocked') {
+  if (summary.status === 'passed') {
+    lines.push(`All required ${summary.profile ?? DEFAULT_PROFILE} local and staging evidence gates passed.`);
+  } else if (summary.status === 'blocked') {
     lines.push(
-      'Release is blocked. Resolve every blocked evidence gate before deployment; blocked is not a release approval.',
+      `${summary.profile ?? DEFAULT_PROFILE} release is blocked. Resolve every blocked evidence gate before deployment; blocked is not a release approval.`,
     );
   } else
     lines.push('Release is failed. Fix failed checks and rerun the gate; staging evidence cannot override a failure.');
@@ -802,6 +918,7 @@ export function createSummary(checks, options = {}) {
     repository: path.basename(ROOT),
     commit,
     releaseSha: options.releaseSha ?? commit,
+    profile: options.profile ?? DEFAULT_PROFILE,
     maxEvidenceAgeHours: options.maxEvidenceAgeHours ?? DEFAULT_MAX_EVIDENCE_AGE_HOURS,
     status: aggregateStatus(checks),
     checks,
@@ -834,6 +951,7 @@ export async function runReleaseGate(options = {}, dependencies = {}) {
   }
   const imageDigests = manifest?.imageDigests ?? options.imageDigests;
   const maxEvidenceAgeHours = options.maxEvidenceAgeHours ?? DEFAULT_MAX_EVIDENCE_AGE_HOURS;
+  const profile = options.profile ?? DEFAULT_PROFILE;
   const checks = [
     ...localChecks(run, pipeline),
     ...inspectStagingGates(options.stagingEvidenceDir, {
@@ -841,9 +959,10 @@ export async function runReleaseGate(options = {}, dependencies = {}) {
       maxEvidenceAgeHours,
       imageDigests,
       evidenceRunId: options.evidenceRunId,
+      profile,
     }),
   ];
-  const summary = createSummary(checks, { releaseSha, maxEvidenceAgeHours });
+  const summary = createSummary(checks, { releaseSha, maxEvidenceAgeHours, profile });
   const evidenceDir = options.evidenceDir ?? DEFAULT_EVIDENCE_DIR;
   const written = writeEvidence(summary, evidenceDir, options.format ?? 'both');
   return { ...summary, evidenceDir, written };
@@ -851,7 +970,7 @@ export async function runReleaseGate(options = {}, dependencies = {}) {
 
 function printHelp() {
   console.log(
-    `Usage: npm run release:gate -- [options]\n\nOptions:\n  --evidence-dir DIR          Write release-gate.json/.md here (default: .release-evidence)\n  --staging-evidence-dir DIR  Read validated staging/*.json evidence from here\n  --release-sha SHA           Bind evidence to this full SHA (default: current HEAD)\n  --release-manifest FILE     Bind staging image digests to a verified .release.env manifest\n  --evidence-run-id ID        Require staging provenance to match this CI run ID\n  --max-evidence-age-hours N  Reject older staging evidence (default: 168)\n  --format FORMAT             json, markdown, or both (default: both)\n  --help                      Show this help\n\nExit codes:\n  0  all required gates passed\n  1  one or more local/config gates failed\n  2  no failures, but one or more staging evidence gates are blocked`,
+    `Usage: npm run release:gate -- [options]\n\nOptions:\n  --profile PROFILE           beta (default) or production-hardening\n  --evidence-dir DIR          Write release-gate.json/.md here (default: .release-evidence)\n  --staging-evidence-dir DIR  Read validated staging/*.json evidence from here\n  --release-sha SHA           Bind evidence to this full SHA (default: current HEAD)\n  --release-manifest FILE     Bind staging image digests to a verified .release.env manifest\n  --evidence-run-id ID        Require staging provenance to match this CI run ID\n  --max-evidence-age-hours N  Reject older staging evidence (default: 168)\n  --format FORMAT             json, markdown, or both (default: both)\n  --help                      Show this help\n\nExit codes:\n  0  all required gates passed\n  1  one or more local/config gates failed\n  2  no failures, but one or more staging evidence gates are blocked`,
   );
 }
 

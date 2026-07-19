@@ -271,6 +271,7 @@ jobs:
             APP_VERSION=${{ steps.pkg.outputs.version }}
             APP_BUILD_ID=${{ needs.preflight.outputs.release_sha }}
             GAME_RULES_VERSION=${{ steps.pkg.outputs.version }}
+            VITE_CARD_DATASET_SHA256=${{ vars.VITE_CARD_DATASET_SHA256 }}
             SENTRY_URL=${{ secrets.SENTRY_URL }}
             SENTRY_ORG=${{ secrets.SENTRY_ORG }}
             SENTRY_PROJECT=${{ secrets.SENTRY_PROJECT }}
@@ -496,6 +497,7 @@ jobs:
           set +e
           touch .env
           args=(
+            --profile beta
             --release-sha "$RELEASE_SHA"
             --release-manifest .release.env
             --evidence-dir artifacts/release-gate
@@ -582,3 +584,58 @@ jobs:
           export SERVER_PORT
           chmod +x scripts/deploy-server4.sh
           ./scripts/deploy-server4.sh --manifest .release.env
+
+  authenticated-staging-evidence:
+    name: Authenticated staging evidence
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && inputs.environment == 'staging'
+    needs: [preflight, manual-release, deploy]
+    permissions:
+      contents: read
+    environment:
+      name: staging
+    timeout-minutes: 35
+    steps:
+      - name: Checkout exact release candidate
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ needs.preflight.outputs.release_sha }}
+          fetch-depth: 0
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies and Chromium
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Download verified release manifest
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: manual-release-manifest-${{ needs.preflight.outputs.release_sha }}
+          path: .
+      - name: Run five consecutive authenticated journeys
+        env:
+          E2E_BASE_URL: ${{ vars.STAGING_E2E_BASE_URL }}
+          E2E_API_URL: ${{ vars.STAGING_E2E_API_URL }}
+          E2E_PLATFORM_URL: ${{ vars.STAGING_E2E_PLATFORM_URL }}
+          E2E_AUTH_PASSWORD: ${{ secrets.STAGING_E2E_AUTH_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$E2E_BASE_URL" || { echo 'STAGING_E2E_BASE_URL is required' >&2; exit 1; }
+          test -n "$E2E_API_URL" || { echo 'STAGING_E2E_API_URL is required' >&2; exit 1; }
+          test -n "$E2E_PLATFORM_URL" || { echo 'STAGING_E2E_PLATFORM_URL is required' >&2; exit 1; }
+          set -a
+          source .release.env
+          set +a
+          export RELEASE_ENVIRONMENT=staging
+          npm run e2e:authenticated-staging -- --output .release-evidence/staging/authenticated-e2e.json
+      - name: Upload hashed authenticated evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: authenticated-staging-evidence-${{ needs.preflight.outputs.release_sha }}
+          path: .release-evidence/
+          if-no-files-found: error
+          retention-days: 30

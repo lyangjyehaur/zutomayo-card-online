@@ -12,7 +12,23 @@ describe('synthetic E2E card seed', () => {
       expect(fixture.cards.filter((card) => card.element === element && card.type === 'Character')).toHaveLength(20);
     }
     expect(fixture.cards.every((card) => card.name.startsWith('E2E CARD '))).toBe(true);
-    expect(fixture.cards.every((card) => card.effect === '' && card.enEffectOfficial === '')).toBe(true);
     expect(fixture.cards.map((card) => card.id)).toEqual(expect.arrayContaining(['1st_2', '1st_98', '2nd_86']));
+  });
+
+  it('preserves the minimum mechanics required by the deterministic tutorial', () => {
+    const cards = new Map(createE2ECardSeed().cards.map((card) => [card.id, card]));
+
+    expect(cards.get('1st_70')).toMatchObject({ clock: 2, attack: { night: 30, day: 30 }, sendToPower: 2 });
+    expect(cards.get('1st_67')).toMatchObject({ clock: 1, attack: { night: 50, day: 50 } });
+    expect(cards.get('1st_34')).toMatchObject({ attack: { night: 70, day: 70 }, powerCost: 1 });
+    expect(cards.get('1st_98')).toMatchObject({ clock: 4, effect: '攻撃力+30' });
+    expect(cards.get('2nd_86')).toMatchObject({ clock: 2, effect: '攻撃力+20' });
+
+    const scenarioIds = new Set(['1st_2', '1st_34', '1st_67', '1st_70', '1st_98', '2nd_86']);
+    expect(
+      createE2ECardSeed()
+        .cards.filter((card) => !scenarioIds.has(card.id))
+        .every((card) => card.effect === '' && card.enEffectOfficial === ''),
+    ).toBe(true);
   });
 });

@@ -23,6 +23,10 @@ const QUICK_MATCH_AUTH_RESERVATION_TTL_MS = Math.min(
   30_000,
   Math.max(2_000, Number(process.env.QUICK_MATCH_AUTH_RESERVATION_TTL_MS) || 10_000),
 );
+export const QUICK_MATCH_WAIT_TIMEOUT_MS = Math.min(
+  600_000,
+  Math.max(30_000, Number(process.env.QUICK_MATCH_WAIT_TIMEOUT_MS) || 120_000),
+);
 const QUICK_MATCH_DECK_NAMES = new Set(
   (process.env.QUICK_MATCH_DECK_NAMES || '__random__,dark,flame,electric,wind')
     .split(',')
@@ -68,6 +72,7 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
   private joinedSessionIds = new Set<string>();
   private failedTransitionSessionIds = new Set<string>();
   private authAdmissionTail: Promise<void> = Promise.resolve();
+  private waitingTimeout?: { clear: () => void };
 
   async onCreate(): Promise<void> {
     this.autoDispose = true;
@@ -91,10 +96,14 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
     });
 
     await this.refreshMetadata();
+    this.waitingTimeout = this.clock.setTimeout(() => {
+      if (this.status === 'waiting') void this.cancel('timeout');
+    }, QUICK_MATCH_WAIT_TIMEOUT_MS);
     QuickMatchRoom.activeRooms.add(this);
   }
 
   onDispose(): void {
+    this.clearWaitingTimeout();
     QuickMatchRoom.activeRooms.delete(this);
   }
 
@@ -201,6 +210,7 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
         await this.refreshMetadata();
         this.sendMatchedMessages();
         this.broadcastSnapshot();
+        this.clearWaitingTimeout();
       } catch (error) {
         this.failedTransitionSessionIds.add(client.sessionId);
         this.status = 'waiting';
@@ -310,10 +320,16 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
 
   private async cancel(reason: string, ignoredSessionId?: string): Promise<void> {
     if (this.status === 'cancelled' || this.status === 'finished') return;
+    this.clearWaitingTimeout();
     this.status = 'cancelled';
     await this.refreshMetadata(ignoredSessionId);
     this.broadcast('quickMatchCancelled', { reason });
     this.broadcastSnapshot(ignoredSessionId);
+  }
+
+  private clearWaitingTimeout(): void {
+    this.waitingTimeout?.clear();
+    this.waitingTimeout = undefined;
   }
 
   private roomUserIds(): Set<string> {

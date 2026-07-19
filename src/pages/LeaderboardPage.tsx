@@ -105,7 +105,6 @@ export function LeaderboardPage() {
           <Panel className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <SegmentedControl
               behavior="tabs"
-              size="sm"
               ariaLabel={t('leaderboard.title')}
               options={[
                 { value: 'global', label: t('leaderboard.global') },

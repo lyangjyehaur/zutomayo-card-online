@@ -23,6 +23,17 @@ const TUTORIAL_IDS: Array<{ id: string; type: CardType }> = [
   { id: '2nd_92', type: 'Character' },
 ];
 
+// Preserve only the mechanics required by the deterministic tutorial. The rest of the
+// E2E fixture remains synthetic and must not be mistaken for production card data.
+const TUTORIAL_OVERRIDES: Record<string, Partial<CardDef>> = {
+  '1st_2': { clock: 1, attack: { night: 60, day: 60 }, powerCost: 7, sendToPower: 1 },
+  '1st_34': { clock: 1, attack: { night: 70, day: 70 }, powerCost: 1, sendToPower: 1 },
+  '1st_67': { clock: 1, attack: { night: 50, day: 50 }, powerCost: 0, sendToPower: 1 },
+  '1st_70': { clock: 2, attack: { night: 30, day: 30 }, powerCost: 0, sendToPower: 2 },
+  '1st_98': { clock: 4, sendToPower: 0, effect: '攻撃力+30', enEffectOfficial: 'Attack +30' },
+  '2nd_86': { clock: 2, sendToPower: 0, effect: '攻撃力+20', enEffectOfficial: 'Attack +20' },
+};
+
 function syntheticCard(id: string, element: Element, type: CardType, index: number): CardDef {
   return {
     id,
@@ -42,6 +53,7 @@ function syntheticCard(id: string, element: Element, type: CardType, index: numb
     enEffectOfficial: '',
     image: '/card-back.jpg',
     errata: '',
+    ...TUTORIAL_OVERRIDES[id],
   };
 }
 

@@ -37,6 +37,7 @@ import { AppHeader, Button, Dialog, IconButton, PageShell, Panel } from '../ui';
 import { ChronosDial } from '../ui/game';
 import { t, useLocale, type TranslationKey } from '../i18n';
 import type { CardDef } from '../game/types';
+import { isActionableCommunityUrl } from '../communityLinks';
 
 // 向後相容：App.tsx 從此檔案匯入這些工具函式/常數，實際定義已移至 components/lobby/shared.ts。
 export {
@@ -215,11 +216,13 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
     navigate('/deck-builder');
   };
 
-  const communityLinks = [
-    { labelKey: 'lobby.projectQQ', href: aboutConfig.community.qqUrl, Icon: Users },
-    { labelKey: 'lobby.projectTelegram', href: aboutConfig.community.telegramUrl, Icon: Send },
-    { labelKey: 'lobby.projectDiscord', href: aboutConfig.community.discordUrl, Icon: MessageCircle },
-  ] satisfies Array<{ labelKey: TranslationKey; href: string; Icon: typeof Users }>;
+  const communityLinks = (
+    [
+      { labelKey: 'lobby.projectQQ', href: aboutConfig.community.qqUrl, Icon: Users },
+      { labelKey: 'lobby.projectTelegram', href: aboutConfig.community.telegramUrl, Icon: Send },
+      { labelKey: 'lobby.projectDiscord', href: aboutConfig.community.discordUrl, Icon: MessageCircle },
+    ] satisfies Array<{ labelKey: TranslationKey; href: string; Icon: typeof Users }>
+  ).filter(({ href }) => isActionableCommunityUrl(href));
 
   return (
     <PageShell>
@@ -341,30 +344,32 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
             <AboutFeatureLink link={aboutConfig.otherProjects} Icon={Code2} />
           </section>
 
-          <section>
-            <h3 className="font-mono text-caption uppercase tracking-[var(--tracking-meta)] text-content-dim">
-              {t('lobby.projectCommunity')}
-            </h3>
-            <p className="mt-2 text-body leading-relaxed text-content-muted">{aboutConfig.community.description}</p>
-            <ul className="mt-3 grid gap-2 sm:grid-cols-3">
-              {communityLinks.map(({ labelKey, href, Icon }) => (
-                <li key={labelKey}>
-                  <a
-                    className="flex min-h-11 items-center justify-between gap-3 rounded-sm border border-border-soft bg-surface-base/50 px-3 text-control text-content-muted transition hover:border-accent-primary/50 hover:text-accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--focus-ring-color]"
-                    href={href}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    <span className="flex min-w-0 items-center gap-2">
-                      <Icon className="size-4 shrink-0" strokeWidth={1.5} aria-hidden="true" />
-                      <span className="truncate">{t(labelKey)}</span>
-                    </span>
-                    <ExternalLink className="size-3 shrink-0 text-content-dim" strokeWidth={1.5} aria-hidden="true" />
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </section>
+          {communityLinks.length > 0 && (
+            <section>
+              <h3 className="font-mono text-caption uppercase tracking-[var(--tracking-meta)] text-content-dim">
+                {t('lobby.projectCommunity')}
+              </h3>
+              <p className="mt-2 text-body leading-relaxed text-content-muted">{aboutConfig.community.description}</p>
+              <ul className="mt-3 grid gap-2 sm:grid-cols-3">
+                {communityLinks.map(({ labelKey, href, Icon }) => (
+                  <li key={labelKey}>
+                    <a
+                      className="flex min-h-11 items-center justify-between gap-3 rounded-sm border border-border-soft bg-surface-base/50 px-3 text-control text-content-muted transition hover:border-accent-primary/50 hover:text-accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--focus-ring-color]"
+                      href={href}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <span className="flex min-w-0 items-center gap-2">
+                        <Icon className="size-4 shrink-0" strokeWidth={1.5} aria-hidden="true" />
+                        <span className="truncate">{t(labelKey)}</span>
+                      </span>
+                      <ExternalLink className="size-3 shrink-0 text-content-dim" strokeWidth={1.5} aria-hidden="true" />
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
         </div>
       </Dialog>
 
@@ -534,11 +539,38 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
               >
                 {t('lobby.projectAboutAction')}
               </Button>
+              <Button
+                type="button"
+                className="min-h-10 min-w-0 px-2 text-center font-sans leading-relaxed text-content-primary/35 normal-case tracking-normal hover:text-accent-primary"
+                variant="ghost"
+                size="sm"
+                onClick={() => navigate('/legal/privacy')}
+              >
+                {t('legal.privacy')}
+              </Button>
+              <Button
+                type="button"
+                className="min-h-10 min-w-0 px-2 text-center font-sans leading-relaxed text-content-primary/35 normal-case tracking-normal hover:text-accent-primary"
+                variant="ghost"
+                size="sm"
+                onClick={() => navigate('/legal/terms')}
+              >
+                {t('legal.terms')}
+              </Button>
+              <Button
+                type="button"
+                className="min-h-10 min-w-0 px-2 text-center font-sans leading-relaxed text-content-primary/35 normal-case tracking-normal hover:text-accent-primary"
+                variant="ghost"
+                size="sm"
+                onClick={() => navigate('/legal/contact')}
+              >
+                {t('legal.contact')}
+              </Button>
             </div>
             <span className="min-w-0 text-center font-sans leading-relaxed normal-case tracking-normal text-content-primary/35 sm:col-span-2 lg:col-span-1 lg:text-right">
               {t('app.footerCopyright')}
               <a
-                className="inline text-content-primary/45 underline-offset-4 transition-colors hover:text-accent-primary hover:underline focus-visible:text-accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary/60"
+                className="inline-flex min-h-touch items-center text-content-primary/45 underline-offset-4 transition-colors hover:text-accent-primary hover:underline focus-visible:text-accent-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary/60"
                 href="https://zutomayocard.net"
                 target="_blank"
                 rel="noreferrer"

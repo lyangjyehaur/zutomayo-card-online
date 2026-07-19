@@ -21,6 +21,13 @@ const cases = [
   { name: '844x390__turn-set', width: 844, height: 390, state: 'turn-set' },
   { name: '430x932__turn-set', width: 430, height: 932, state: 'turn-set' },
   { name: '390x844__turn-set', width: 390, height: 844, state: 'turn-set' },
+  {
+    name: '390x844__turn-set__reduced-motion',
+    width: 390,
+    height: 844,
+    state: 'turn-set',
+    reducedMotion: true,
+  },
   { name: '360x740__turn-set', width: 360, height: 740, state: 'turn-set' },
   { name: '360x740__mulligan', width: 360, height: 740, state: 'mulligan' },
   { name: '360x740__effect-order', width: 360, height: 740, state: 'effect-order' },
@@ -171,8 +178,10 @@ const expression = `
   };
   const box = (el) => {
     const rect = el.getBoundingClientRect();
+    const computed = getComputedStyle(el);
     return {
       text: (el.textContent || el.getAttribute('aria-label') || '').trim().replace(/\\s+/g, ' ').slice(0, 80),
+      className: typeof el.className === 'string' ? el.className : '',
       x: Math.round(rect.x),
       y: Math.round(rect.y),
       width: Math.round(rect.width),
@@ -187,7 +196,12 @@ const expression = `
       overflowY: el.scrollHeight > el.clientHeight + 1,
       offscreenX: rect.left < -1 || rect.right > innerWidth + 1,
       offscreenY: rect.top < -1 || rect.bottom > innerHeight + 1,
-      display: getComputedStyle(el).display,
+      display: computed.display,
+      computedWidth: computed.width,
+      computedMinWidth: computed.minWidth,
+      computedMaxWidth: computed.maxWidth,
+      computedFlex: computed.flex,
+      touchTargetToken: computed.getPropertyValue('--touch-target-min'),
     };
   };
   const boxes = Object.fromEntries(
@@ -208,6 +222,19 @@ const expression = `
     },
     boxes,
     touchTargets: touchTargets.slice(0, 20),
+    reducedMotionMatches: matchMedia('(prefers-reduced-motion: reduce)').matches,
+    motion: {
+      animationTargets: [...document.querySelectorAll('.cardview[data-state="playable"], .bf-hud-timer[data-urgent="true"]')].map(
+        (el) => {
+          const style = getComputedStyle(el);
+          return { className: el.className, animationName: style.animationName, animationDuration: style.animationDuration };
+        },
+      ),
+      transitionTargets: [...document.querySelectorAll('.cardview, .cardslot, .playerstatus-bar-fill')].map((el) => {
+        const style = getComputedStyle(el);
+        return { className: el.className, transitionDuration: style.transitionDuration };
+      }),
+    },
   };
 })()
 `;
@@ -226,12 +253,26 @@ function failuresFor(testCase, metrics) {
       if (item.offscreenY && key !== 'content') failures.push(`${key} offscreenY`);
     }
   }
-  if (testCase.width <= 767) {
-    const badTargets = metrics.touchTargets.filter((item) => item.height < 44 || item.width < 36);
+  if (testCase.width <= 820) {
+    const badTargets = metrics.touchTargets.filter((item) => item.height < 44 || item.width < 44);
     if (badTargets.length) {
       failures.push(
         `small touch targets: ${badTargets.map((item) => item.text || `${item.width}x${item.height}`).join(', ')}`,
       );
+    }
+  }
+  if (testCase.reducedMotion) {
+    if (!metrics.reducedMotionMatches) failures.push('reduced-motion media query not active');
+    if (!metrics.motion.animationTargets.length) failures.push('missing reduced-motion animation target');
+    if (metrics.motion.animationTargets.some((item) => item.animationName !== 'none')) {
+      failures.push('animation remains active under reduced motion');
+    }
+    if (
+      metrics.motion.transitionTargets.some((item) =>
+        item.transitionDuration.split(',').some((duration) => Number.parseFloat(duration) > 0.001),
+      )
+    ) {
+      failures.push('transition remains active under reduced motion');
     }
   }
   return [...new Set(failures)];
@@ -256,6 +297,14 @@ try {
       mobile: testCase.width <= 768,
       screenWidth: testCase.width,
       screenHeight: testCase.height,
+    });
+    await client.send('Emulation.setEmulatedMedia', {
+      features: [
+        {
+          name: 'prefers-reduced-motion',
+          value: testCase.reducedMotion ? 'reduce' : 'no-preference',
+        },
+      ],
     });
     const sideParam = testCase.side ? `&side=${encodeURIComponent(testCase.side)}` : '';
     await client.send('Page.navigate', { url: `${baseUrl}/qa/battle?state=${testCase.state}${sideParam}&controls=0` });

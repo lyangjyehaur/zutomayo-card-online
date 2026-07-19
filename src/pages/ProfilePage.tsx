@@ -8,6 +8,7 @@ import {
   KeyRound,
   Link2,
   Mail,
+  Scale,
   Save,
   ShieldCheck,
   Trash2,
@@ -999,6 +1000,25 @@ export function ProfilePage() {
                   </Button>
                 </FormActions>
               </div>
+            </Panel>
+
+            <Panel size="lg">
+              <div className="mb-3 flex items-center gap-2">
+                <Scale className="size-5 text-accent-primary" aria-hidden="true" />
+                <h2 className="font-display text-title-sm font-bold">{t('legal.accountTitle')}</h2>
+              </div>
+              <p className="text-body-sm leading-relaxed text-content-muted">{t('legal.accountBody')}</p>
+              <FormActions className="mt-4">
+                <Button variant="secondary" type="button" onClick={() => navigate('/legal/privacy')}>
+                  {t('legal.privacy')}
+                </Button>
+                <Button variant="secondary" type="button" onClick={() => navigate('/legal/terms')}>
+                  {t('legal.terms')}
+                </Button>
+                <Button variant="secondary" type="button" onClick={() => navigate('/legal/contact')}>
+                  {t('legal.contact')}
+                </Button>
+              </FormActions>
             </Panel>
           </div>
         </div>

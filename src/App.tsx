@@ -60,6 +60,7 @@ const LeaderboardPage = lazy(() =>
 );
 const FeedbackPage = lazy(() => import('./pages/FeedbackPage').then((module) => ({ default: module.FeedbackPage })));
 const ProfilePage = lazy(() => import('./pages/ProfilePage').then((module) => ({ default: module.ProfilePage })));
+const LegalPage = lazy(() => import('./pages/LegalPage').then((module) => ({ default: module.LegalPage })));
 const VerifyEmailPage = lazy(() =>
   import('./pages/AccountActionPage').then((module) => ({ default: module.VerifyEmailPage })),
 );
@@ -95,6 +96,7 @@ function isFullscreenRoute(pathname: string): boolean {
     pathname === '/history' ||
     pathname === '/leaderboard' ||
     pathname === '/profile' ||
+    pathname.startsWith('/legal') ||
     pathname === '/verify-email' ||
     pathname === '/forgot-password' ||
     pathname === '/reset-password'
@@ -722,6 +724,10 @@ function RouterShell() {
             <Route path="/leaderboard" element={<LeaderboardPage />} />
             <Route path="/feedback" element={<FeedbackPage />} />
             <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/legal" element={<LegalPage documentId="overview" />} />
+            <Route path="/legal/privacy" element={<LegalPage documentId="privacy" />} />
+            <Route path="/legal/terms" element={<LegalPage documentId="terms" />} />
+            <Route path="/legal/contact" element={<LegalPage documentId="contact" />} />
             <Route path="/verify-email" element={<VerifyEmailPage />} />
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />

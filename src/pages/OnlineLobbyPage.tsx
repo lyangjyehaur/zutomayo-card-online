@@ -58,6 +58,8 @@ import { Sentry } from '../sentry';
 import { t, translate, useLocale } from '../i18n';
 import type { OnlineSession } from '../onlineSession';
 import { isOnlineRoomErrorKey } from '../onlineRoomStatus';
+import { formatQuickMatchWait, quickMatchWaitSeconds, shouldOfferQuickMatchFallback } from '../matchmakingWait';
+import { trackFunnelEvent } from '../funnelAnalytics';
 
 interface OnlineLobbyPageProps {
   deck0Name: string;
@@ -332,10 +334,14 @@ export function OnlineLobbyPage({
   const [error, setError] = useState('');
   const [matchmakingActive, setMatchmakingActive] = useState(false);
   const [matchmakingCancellable, setMatchmakingCancellable] = useState(false);
+  const [matchmakingElapsedSeconds, setMatchmakingElapsedSeconds] = useState(0);
+  const [longWaitDismissed, setLongWaitDismissed] = useState(false);
   const [copied, setCopied] = useState(false);
   const platformQuickMatchRoomRef = useRef<PlatformQuickMatchRoom | null>(null);
   const phaseRef = useRef<MatchmakingPhase>('idle');
   const cancelRef = useRef(false);
+  const matchmakingStartedAtRef = useRef<number | null>(null);
+  const matchmakingCheckpointTrackedRef = useRef(false);
   const pendingQuickMatchSessionRef = useRef<OnlineSession | null>(null);
 
   useEffect(() => {
@@ -351,11 +357,34 @@ export function OnlineLobbyPage({
 
   const resetMatchmaking = useCallback(() => {
     phaseRef.current = 'idle';
-    cancelRef.current = false;
+    matchmakingStartedAtRef.current = null;
     pendingQuickMatchSessionRef.current = null;
     setMatchmakingActive(false);
     setMatchmakingCancellable(false);
+    setMatchmakingElapsedSeconds(0);
+    setLongWaitDismissed(false);
+    matchmakingCheckpointTrackedRef.current = false;
   }, []);
+
+  useEffect(() => {
+    if (!matchmakingActive || !matchmakingCancellable || matchmakingStartedAtRef.current === null) return;
+    const updateElapsed = () => {
+      if (matchmakingStartedAtRef.current === null) return;
+      setMatchmakingElapsedSeconds(quickMatchWaitSeconds(matchmakingStartedAtRef.current, Date.now()));
+    };
+    updateElapsed();
+    const interval = window.setInterval(updateElapsed, 1_000);
+    return () => window.clearInterval(interval);
+  }, [matchmakingActive, matchmakingCancellable]);
+
+  useEffect(() => {
+    if (!matchmakingActive || matchmakingCheckpointTrackedRef.current || matchmakingElapsedSeconds < 45) return;
+    matchmakingCheckpointTrackedRef.current = true;
+    trackFunnelEvent('F_Queue_Checkpoint', {
+      match_mode: 'quick_match',
+      queue_duration_s: matchmakingElapsedSeconds,
+    });
+  }, [matchmakingActive, matchmakingElapsedSeconds]);
 
   useEffect(
     () => () => {
@@ -504,8 +533,13 @@ export function OnlineLobbyPage({
     setError('');
     setMatchmakingActive(true);
     setMatchmakingCancellable(true);
+    matchmakingStartedAtRef.current = Date.now();
+    matchmakingCheckpointTrackedRef.current = false;
+    setMatchmakingElapsedSeconds(0);
+    setLongWaitDismissed(false);
     cancelRef.current = false;
     phaseRef.current = 'platform-waiting';
+    trackFunnelEvent('F_Queue_Start', { match_mode: 'quick_match' });
 
     try {
       const serverDeckId = serverDeckIdFromOption(deck0Name);
@@ -557,6 +591,12 @@ export function OnlineLobbyPage({
               if (!session || !isPlatformBoardgameRelayAcknowledged(session.matchID, message)) return;
               pendingQuickMatchSessionRef.current = null;
               phaseRef.current = 'done';
+              trackFunnelEvent('F_Queue_Match', {
+                match_mode: 'quick_match',
+                queue_duration_s: matchmakingStartedAtRef.current
+                  ? quickMatchWaitSeconds(matchmakingStartedAtRef.current, Date.now())
+                  : 0,
+              });
               void platformQuickMatchRoomRef.current?.leave(true).catch(() => undefined);
               platformQuickMatchRoomRef.current = null;
               navigateToOnlineSession(session);
@@ -570,6 +610,12 @@ export function OnlineLobbyPage({
             })
               .then((session) => {
                 phaseRef.current = 'done';
+                trackFunnelEvent('F_Queue_Match', {
+                  match_mode: 'quick_match',
+                  queue_duration_s: matchmakingStartedAtRef.current
+                    ? quickMatchWaitSeconds(matchmakingStartedAtRef.current, Date.now())
+                    : 0,
+                });
                 navigateToOnlineSession(session);
               })
               .catch((err) => {
@@ -640,8 +686,15 @@ export function OnlineLobbyPage({
     }
   };
 
-  const handleCancelMatchmaking = () => {
+  const cancelMatchmaking = (reason: 'player' | 'fallback_custom_room' | 'fallback_friend_invite') => {
     if (phaseRef.current !== 'platform-waiting') return;
+    trackFunnelEvent('F_Queue_Cancel', {
+      match_mode: 'quick_match',
+      reason,
+      queue_duration_s: matchmakingStartedAtRef.current
+        ? quickMatchWaitSeconds(matchmakingStartedAtRef.current, Date.now())
+        : 0,
+    });
     cancelRef.current = true;
     pendingQuickMatchSessionRef.current = null;
     setMatchmakingCancellable(false);
@@ -649,6 +702,24 @@ export function OnlineLobbyPage({
     void platformQuickMatchRoomRef.current?.leave(true).catch(() => {});
     platformQuickMatchRoomRef.current = null;
     resetMatchmaking();
+  };
+
+  const handleCancelMatchmaking = () => cancelMatchmaking('player');
+
+  const handleContinueWaiting = () => {
+    setLongWaitDismissed(true);
+  };
+
+  const handleUseCustomRoom = () => {
+    cancelMatchmaking('fallback_custom_room');
+    window.requestAnimationFrame(() => void runOnline());
+  };
+
+  const handleUseFriendInvite = () => {
+    cancelMatchmaking('fallback_friend_invite');
+    window.requestAnimationFrame(() => {
+      document.querySelector('[data-friend-invites]')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
   };
 
   const handleCopyShareLink = async () => {
@@ -1264,22 +1335,55 @@ export function OnlineLobbyPage({
             </div>
 
             {matchmakingActive && (
-              <div className="flex items-center justify-between gap-3">
-                <span className="flex items-center gap-2 text-caption text-accent-primary/70">
-                  <span className="size-1.5 animate-pulse rounded-full bg-accent-action" />
-                  {t('lobby.matchmakingSearching')}
-                </span>
-                {matchmakingCancellable && (
-                  <Button
-                    className="min-h-11"
-                    variant="ghost"
-                    size="sm"
-                    type="button"
-                    onClick={handleCancelMatchmaking}
-                  >
-                    {t('lobby.matchmakingCancel')}
-                  </Button>
-                )}
+              <div className="grid gap-3" aria-live="polite">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="flex items-center gap-2 text-caption text-accent-primary/70">
+                    <span className="size-1.5 animate-pulse rounded-full bg-accent-action" />
+                    {t('lobby.matchmakingSearching')} {formatQuickMatchWait(matchmakingElapsedSeconds)}
+                  </span>
+                  {matchmakingCancellable && (
+                    <Button
+                      className="min-h-11"
+                      variant="ghost"
+                      size="sm"
+                      type="button"
+                      onClick={handleCancelMatchmaking}
+                    >
+                      {t('lobby.matchmakingCancel')}
+                    </Button>
+                  )}
+                </div>
+
+                {matchmakingCancellable &&
+                  !longWaitDismissed &&
+                  shouldOfferQuickMatchFallback(matchmakingElapsedSeconds) && (
+                    <Alert tone="info" role="status">
+                      <div className="grid gap-3">
+                        <div>
+                          <strong className="block text-sm">{t('lobby.matchmakingLongWaitTitle')}</strong>
+                          <p className="mt-1 text-caption leading-relaxed">{t('lobby.matchmakingLongWaitBody')}</p>
+                        </div>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <Button variant="secondary" type="button" onClick={handleContinueWaiting}>
+                            {t('lobby.matchmakingKeepWaiting')}
+                          </Button>
+                          <Button variant="primary" type="button" onClick={handleUseCustomRoom}>
+                            {t('lobby.matchmakingUseCustomRoom')}
+                          </Button>
+                          {profile && friends.length > 0 && (
+                            <Button
+                              className="sm:col-span-2"
+                              variant="ghost"
+                              type="button"
+                              onClick={handleUseFriendInvite}
+                            >
+                              {t('lobby.matchmakingUseFriendInvite')}
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </Alert>
+                  )}
               </div>
             )}
           </RoomPanel>
@@ -1586,6 +1690,7 @@ export function OnlineLobbyPage({
                   {friends.map((friend) => (
                     <div
                       key={friend.userId}
+                      data-friend-user-id={friend.userId}
                       className="grid min-h-14 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 rounded-sm border border-border-soft bg-surface-canvas/30 px-3 py-2"
                     >
                       <div className="min-w-0">
@@ -1593,9 +1698,11 @@ export function OnlineLobbyPage({
                         <span className="block truncate text-minutia text-content-dim">{friend.userId}</span>
                       </div>
                       <Button
-                        className="size-10 p-0"
+                        className="size-touch p-0"
                         variant="ghost"
                         type="button"
+                        data-friend-invite-action="send"
+                        data-friend-user-id={friend.userId}
                         onClick={() => void handleInviteFriend(friend)}
                         disabled={
                           friendInviteActionId !== null || friendInvitePeerId !== null || matchmakingActive || !canStart
@@ -1605,9 +1712,11 @@ export function OnlineLobbyPage({
                         <Send className="size-3.5" strokeWidth={1.25} />
                       </Button>
                       <Button
-                        className="size-10 p-0"
+                        className="size-touch p-0"
                         variant="ghost"
                         type="button"
+                        data-friend-invite-action="accept"
+                        data-friend-user-id={friend.userId}
                         onClick={() => void handleAcceptFriendInvite(friend)}
                         disabled={
                           friendInviteActionId !== null ||

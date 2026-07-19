@@ -44,7 +44,7 @@ export const SearchInput = forwardRef<HTMLInputElement, SearchInputProps>(functi
         ref={ref}
         type={type}
         className={cn(
-          'min-h-0 w-full appearance-none border-0 bg-transparent py-2 text-body text-content-primary shadow-none placeholder:text-content-dim focus:outline-none',
+          'min-h-touch w-full appearance-none border-0 bg-transparent py-0 text-body text-content-primary shadow-none placeholder:text-content-dim focus:outline-none',
           'disabled:cursor-not-allowed disabled:opacity-40',
           className,
         )}

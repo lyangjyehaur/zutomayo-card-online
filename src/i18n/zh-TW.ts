@@ -225,6 +225,11 @@ export const zhTW = {
   'lobby.matchmakingCancel': '取消配對',
   'lobby.matchmakingTimeout': '配對逾時，請再試一次',
   'lobby.matchmakingFailed': '配對失敗，請再試一次',
+  'lobby.matchmakingLongWaitTitle': '目前較少玩家正在配對',
+  'lobby.matchmakingLongWaitBody': '你可以繼續等待，或改用自訂房間與好友邀請立即約戰。',
+  'lobby.matchmakingKeepWaiting': '繼續等待',
+  'lobby.matchmakingUseCustomRoom': '建立自訂房間',
+  'lobby.matchmakingUseFriendInvite': '改用好友邀請',
   'lobby.onlineLobbySubtitle': '線上大廳',
   'lobby.currentDeck': '當前牌組',
   'lobby.rank': '段位',
@@ -1038,6 +1043,12 @@ export const zhTW = {
   'feedback.officialResponse': '官方回應',
   'feedback.markdownHint': '支援 Markdown 格式（粗體、連結、列表等）',
   'nav.feedback': '反饋',
+  'legal.overview': '非官方聲明',
+  'legal.privacy': '隱私政策',
+  'legal.terms': '服務條款',
+  'legal.contact': '聯絡',
+  'legal.accountTitle': '政策與支援',
+  'legal.accountBody': '查看隱私、條款與聯絡方式，或處理資料與帳號相關問題。',
 } as const;
 
 export type TranslationKey = keyof typeof zhTW;

@@ -13,6 +13,17 @@ report_dir="${PG_RESTORE_DRILL_REPORT_DIR:-/var/log/zutomayo/restore-drills}"
 database="${PG_RESTORE_DRILL_DATABASE:-zutomayo_restore_drill}"
 password="${PG_RESTORE_DRILL_PASSWORD:-restore-drill-only}"
 allow_unencrypted="${PG_BACKUP_ALLOW_UNENCRYPTED:-false}"
+release_evidence="${PG_RESTORE_RELEASE_EVIDENCE:-false}"
+evidence_output="${PG_RESTORE_EVIDENCE_OUTPUT:-}"
+release_sha="${RELEASE_SHA:-}"
+backup_completed_at="${PG_RESTORE_BACKUP_COMPLETED_AT:-}"
+incident_at="${PG_RESTORE_INCIDENT_AT:-}"
+expected_account_id="${PG_RESTORE_EXPECT_ACCOUNT_ID:-}"
+expected_deck_id="${PG_RESTORE_EXPECT_DECK_ID:-}"
+expected_match_id="${PG_RESTORE_EXPECT_MATCH_ID:-}"
+expected_leaderboard_user_id="${PG_RESTORE_EXPECT_LEADERBOARD_USER_ID:-}"
+expected_schema_migration="${EXPECTED_SCHEMA_MIGRATION:-}"
+expected_schema_checksum="${EXPECTED_SCHEMA_CHECKSUM:-}"
 
 write_metrics() {
   local success="$1"
@@ -48,9 +59,21 @@ fail() {
 for command_name in docker awk; do
   command -v "$command_name" >/dev/null 2>&1 || fail "required command not found: $command_name"
 done
+if [[ "$release_evidence" == 'true' ]]; then
+  command -v node >/dev/null 2>&1 || fail 'node is required for release evidence output'
+  for required_value in evidence_output release_sha backup_completed_at incident_at expected_account_id expected_deck_id expected_match_id expected_leaderboard_user_id expected_schema_migration expected_schema_checksum; do
+    [[ -n "${!required_value}" ]] || fail "$required_value is required when PG_RESTORE_RELEASE_EVIDENCE=true"
+  done
+  [[ "$release_sha" =~ ^[a-f0-9]{40}$ ]] || fail 'RELEASE_SHA must be a full lowercase commit SHA'
+  [[ "$expected_schema_checksum" =~ ^[a-f0-9]{64}$ ]] || fail 'EXPECTED_SCHEMA_CHECKSUM must be a SHA-256 digest'
+  for fixture_id in "$expected_account_id" "$expected_deck_id" "$expected_match_id" "$expected_leaderboard_user_id" "$expected_schema_migration"; do
+    [[ "$fixture_id" =~ ^[A-Za-z0-9._:-]+$ ]] || fail "release fixture identifier contains unsupported characters: $fixture_id"
+  done
+fi
 
 mkdir -p "$metrics_dir" "$report_dir"
 work_dir="$(mktemp -d "${TMPDIR:-/tmp}/pg-restore-drill.XXXXXX")"
+started_at="$(date -u +%s)"
 container_started=false
 success=false
 cleanup() {
@@ -97,7 +120,6 @@ else
   fail 'unencrypted restore artifacts require PG_BACKUP_ALLOW_UNENCRYPTED=true'
 fi
 
-started_at="$(date -u +%s)"
 docker run --detach --rm \
   --name "$container_name" \
   --env "POSTGRES_PASSWORD=$password" \
@@ -165,6 +187,31 @@ for invariant in unvalidated_constraints invalid_outbox_status deletion_hold_vio
   printf '%s\n' "$counts" | grep -q "^${invariant}=0$" || fail "restored invariant failed: ${invariant}"
 done
 
+fixture_counts=''
+if [[ "$release_evidence" == 'true' ]]; then
+  fixture_counts="$(docker exec "$container_name" psql \
+    --username postgres \
+    --dbname "$database" \
+    --set ON_ERROR_STOP=1 \
+    --tuples-only \
+    --no-align \
+    --command "
+      SELECT 'fixture_account=' || COUNT(*) FROM users WHERE id = '$expected_account_id' AND deleted_at IS NULL
+      UNION ALL SELECT 'fixture_deck=' || COUNT(*) FROM decks WHERE id = '$expected_deck_id' AND user_id = '$expected_account_id'
+      UNION ALL SELECT 'fixture_match_history=' || COUNT(*) FROM matches WHERE id = '$expected_match_id' AND (player0_id = '$expected_account_id' OR player1_id = '$expected_account_id')
+      UNION ALL SELECT 'fixture_leaderboard=' || COUNT(*) FROM users WHERE id = '$expected_leaderboard_user_id' AND deleted_at IS NULL AND match_count > 0
+      UNION ALL SELECT 'schema_gate=' || COUNT(*)
+        FROM schema_migrations migrations
+        JOIN schema_migration_checksums checksums ON checksums.name = migrations.name
+       WHERE migrations.name = '$expected_schema_migration'
+         AND checksums.sha256 = '$expected_schema_checksum'
+      ORDER BY 1
+    ")"
+  for fixture in fixture_account fixture_deck fixture_match_history fixture_leaderboard schema_gate; do
+    printf '%s\n' "$fixture_counts" | grep -q "^${fixture}=1$" || fail "restored release fixture failed: $fixture"
+  done
+fi
+
 completed_at="$(date -u +%s)"
 report="$report_dir/restore-drill-$(date -u +%Y%m%dT%H%M%SZ).txt"
 {
@@ -175,7 +222,50 @@ report="$report_dir/restore-drill-$(date -u +%Y%m%dT%H%M%SZ).txt"
   echo "completed_at=$completed_at"
   echo "duration_seconds=$((completed_at - started_at))"
   printf '%s\n' "$counts"
+  [[ -z "$fixture_counts" ]] || printf '%s\n' "$fixture_counts"
 } >"$report"
+if [[ "$release_evidence" == 'true' ]]; then
+  mkdir -p "$(dirname "$evidence_output")"
+  RESTORE_EVIDENCE_OUTPUT="$evidence_output" \
+  RESTORE_RELEASE_SHA="$release_sha" \
+  RESTORE_ARTIFACT="$source_artifact" \
+  RESTORE_SHA256="$actual_checksum" \
+  RESTORE_BACKUP_COMPLETED_AT="$backup_completed_at" \
+  RESTORE_INCIDENT_AT="$incident_at" \
+  RESTORE_STARTED_AT="$(node -p "new Date($started_at * 1000).toISOString()")" \
+  RESTORE_FINISHED_AT="$(node -p "new Date($completed_at * 1000).toISOString()")" \
+  RESTORE_IMAGE_DIGEST="$container_image" \
+  node - <<'NODE'
+const fs = require('node:fs');
+for (const name of ['RESTORE_BACKUP_COMPLETED_AT', 'RESTORE_INCIDENT_AT']) {
+  const value = process.env[name];
+  const parsed = Date.parse(value || '');
+  if (!value || Number.isNaN(parsed) || new Date(parsed).toISOString() !== value) {
+    throw new Error(`${name} must be an exact ISO timestamp`);
+  }
+}
+const report = {
+  schemaVersion: 1,
+  status: 'passed',
+  environment: 'staging',
+  releaseSha: process.env.RESTORE_RELEASE_SHA,
+  backup: {
+    artifact: process.env.RESTORE_ARTIFACT,
+    sha256: process.env.RESTORE_SHA256,
+    completedAt: process.env.RESTORE_BACKUP_COMPLETED_AT,
+  },
+  incidentAt: process.env.RESTORE_INCIDENT_AT,
+  restore: {
+    startedAt: process.env.RESTORE_STARTED_AT,
+    finishedAt: process.env.RESTORE_FINISHED_AT,
+    imageDigest: process.env.RESTORE_IMAGE_DIGEST,
+  },
+  fixtures: { account: true, deck: true, matchHistory: true, leaderboard: true },
+  checks: { schemaGatePassed: true, legalHoldInvariantPassed: true },
+};
+fs.writeFileSync(process.env.RESTORE_EVIDENCE_OUTPUT, `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 });
+NODE
+fi
 write_metrics 1 "$completed_at"
 success=true
 echo "restore drill passed: $report"

@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createEmptyPlatformBlockStore } from '../../blockStore';
 import { createEmptyPlatformMatchParticipantStore } from '../../matchParticipantStore';
 import { CustomRoom } from '../CustomRoom';
-import { QuickMatchRoom } from '../QuickMatchRoom';
+import { QUICK_MATCH_WAIT_TIMEOUT_MS, QuickMatchRoom } from '../QuickMatchRoom';
 import type { BoardgameMatchReadyMessage, PlatformAuth, PlatformClient, PlatformClientProfile } from '../types';
 
 type BoardgameMatchReadyHandler = (client: PlatformClient, message: BoardgameMatchReadyMessage) => void;
@@ -130,6 +130,30 @@ describe('platform room lifecycle', () => {
         boardgameMatchID: 'bgio-match-1',
       }),
     });
+  });
+
+  it('cancels a waiting quick-match room at the server deadline', async () => {
+    const room = new QuickMatchRoom();
+    let timeoutHandler: (() => void) | undefined;
+    const clear = vi.fn();
+    vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
+    const broadcast = vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
+    vi.spyOn(room, 'onMessage').mockImplementation((() => room) as never);
+    vi.spyOn(room.clock, 'setTimeout').mockImplementation(((handler: () => void, timeout?: number) => {
+      if (timeout === QUICK_MATCH_WAIT_TIMEOUT_MS) timeoutHandler = handler;
+      return { clear };
+    }) as never);
+
+    await room.onCreate();
+    expect(timeoutHandler).toBeDefined();
+
+    timeoutHandler?.();
+
+    await vi.waitFor(() => {
+      expect(broadcast).toHaveBeenCalledWith('quickMatchCancelled', { reason: 'timeout' });
+    });
+    expect(room['status']).toBe('cancelled');
+    expect(clear).toHaveBeenCalledOnce();
   });
 
   it('rechecks blocks when the second quick-match player joins', async () => {

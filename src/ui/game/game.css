@@ -1133,6 +1133,7 @@
 
 .mobile-zone-button {
   display: inline-flex;
+  min-width: var(--touch-target-min);
   min-height: var(--touch-target-min);
   align-items: center;
   justify-content: center;
@@ -2215,14 +2216,23 @@ button.cardstack:focus-visible {
   }
 }
 
-/* ---- Mobile（<768px）：更緊湊 ---- */
-@media (max-width: 47.9375rem) {
-  /* HUD 膠囊內的面板按鈕維持觸控目標下限 */
+/* ---- Touch viewport（<=820px）：維持觸控目標下限 ---- */
+@media (max-width: 51.25rem) {
   .bf-hud .battle-side-panel-actions button {
     min-width: var(--touch-target-min);
     min-height: var(--touch-target-min);
   }
 
+  .board-pause-button {
+    width: var(--touch-target-min) !important;
+    height: var(--touch-target-min) !important;
+    min-width: var(--touch-target-min) !important;
+    min-height: var(--touch-target-min) !important;
+  }
+}
+
+/* ---- Mobile（<768px）：更緊湊 ---- */
+@media (max-width: 47.9375rem) {
   .bf-hud .battle-side-panel-actions button {
     position: relative;
     isolation: isolate;
@@ -2263,10 +2273,6 @@ button.cardstack:focus-visible {
   .board-pause-button {
     top: var(--space-3) !important;
     right: var(--space-2) !important;
-    width: var(--touch-target-min) !important;
-    height: var(--touch-target-min) !important;
-    min-width: var(--touch-target-min) !important;
-    min-height: var(--touch-target-min) !important;
   }
 
   .bf-hud .battle-side-panel-actions .board-pause-button-inline {

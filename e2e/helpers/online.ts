@@ -31,6 +31,8 @@ export interface AuthenticatedOnlineAccount {
   elo: number;
 }
 
+const AUTH_PASSWORD = process.env.E2E_AUTH_PASSWORD || 'E2e-service-secret-123!';
+
 export interface AuthenticatedMatchHistoryEntry {
   id: string;
   winnerId?: string | null;
@@ -93,7 +95,7 @@ export async function registerAuthenticatedOnlineAccount(
   const response = await context.request.post('/api/register', {
     data: {
       email,
-      password: process.env.E2E_AUTH_PASSWORD || 'E2e-service-secret-123!',
+      password: AUTH_PASSWORD,
       nickname,
     },
   });
@@ -112,6 +114,19 @@ export async function registerAuthenticatedOnlineAccount(
     throw new Error('Registration did not return a complete authenticated account');
   }
 
+  // Registration proves account creation, but RR-05 explicitly requires the
+  // returning-player login path. Clear the newly issued cookies and establish
+  // the session again through /api/login before opening the lobby.
+  await context.clearCookies();
+  const loginResponse = await context.request.post('/api/login', {
+    data: { email, password: AUTH_PASSWORD },
+  });
+  if (!loginResponse.ok()) throw await responseError(loginResponse);
+  const loginBody = (await loginResponse.json()) as { user?: Partial<AuthenticatedOnlineAccount> };
+  if (loginBody.user?.id !== body.user.id) {
+    throw new Error('Login did not restore the account created for authenticated E2E');
+  }
+
   await context.addInitScript(() => {
     localStorage.setItem('zutomayo_session', '1');
     localStorage.setItem('zutomayo_locale', 'zh-TW');
@@ -124,6 +139,37 @@ export async function registerAuthenticatedOnlineAccount(
     nickname: body.user.nickname,
     elo: body.user.elo,
   };
+}
+
+export async function assertSecureAuthenticatedCookies(context: BrowserContext, baseURL: string): Promise<void> {
+  const cookies = await context.cookies();
+  const expectedHost = new URL(baseURL).hostname;
+  const matchesExpectedHost = (domain: string) => {
+    const normalized = domain.replace(/^\./, '');
+    return expectedHost === normalized || expectedHost.endsWith(`.${normalized}`);
+  };
+  const session = cookies.find((cookie) => cookie.name === 'zutomayo_session');
+  const refresh = cookies.find((cookie) => cookie.name === 'zutomayo_refresh');
+  const csrf = cookies.find((cookie) => cookie.name === 'zutomayo_csrf');
+  const failures: string[] = [];
+  if (!session) failures.push('zutomayo_session is missing');
+  else {
+    if (!matchesExpectedHost(session.domain)) failures.push('zutomayo_session domain is invalid');
+    if (!session.httpOnly) failures.push('zutomayo_session is not HttpOnly');
+    if (!session.secure) failures.push('zutomayo_session is not Secure');
+  }
+  if (!refresh) failures.push('zutomayo_refresh is missing');
+  else {
+    if (!matchesExpectedHost(refresh.domain)) failures.push('zutomayo_refresh domain is invalid');
+    if (!refresh.httpOnly) failures.push('zutomayo_refresh is not HttpOnly');
+    if (!refresh.secure) failures.push('zutomayo_refresh is not Secure');
+  }
+  if (!csrf) failures.push('zutomayo_csrf is missing');
+  else {
+    if (!matchesExpectedHost(csrf.domain)) failures.push('zutomayo_csrf domain is invalid');
+    if (!csrf.secure) failures.push('zutomayo_csrf is not Secure');
+  }
+  if (failures.length > 0) throw new Error(`Authenticated cookie gate failed: ${failures.join('; ')}`);
 }
 
 export async function establishAuthenticatedFriendship(

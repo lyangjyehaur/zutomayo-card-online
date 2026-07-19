@@ -276,11 +276,13 @@ export function CommunityPage({ onAuthChanged }: { onAuthChanged: () => void | P
             {friends.map((friend) => (
               <div
                 key={friend.userId}
+                data-friend-user-id={friend.userId}
                 className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-sm border px-3 py-2 ${selectedFriend?.userId === friend.userId ? 'border-accent-primary bg-accent-primary/10' : 'border-border-soft'}`}
               >
                 <button
                   type="button"
-                  className="min-w-0 text-left"
+                  className="min-h-touch min-w-0 text-left"
+                  data-direct-chat-open={friend.userId}
                   onClick={() => {
                     setSelectedFriend(friend);
                     setView('direct');
@@ -298,7 +300,7 @@ export function CommunityPage({ onAuthChanged }: { onAuthChanged: () => void | P
             ))}
           </div>
           {unreadChats.length > 0 && (
-            <div className="mt-5 border-t border-border-soft pt-3">
+            <div className="mt-5 border-t border-border-soft pt-3" data-chat-surface="unread">
               <h3 className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-dim">
                 {t('chat.unreadTitle')}
               </h3>
@@ -307,7 +309,9 @@ export function CommunityPage({ onAuthChanged }: { onAuthChanged: () => void | P
                   <button
                     key={conversation.id}
                     type="button"
-                    className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-sm border border-border-soft px-3 py-2 text-left"
+                    className="grid min-h-touch grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-sm border border-border-soft px-3 py-2 text-left"
+                    data-unread-conversation={conversation.type}
+                    data-unread-subject={conversation.subjectId}
                     onClick={() => openUnreadConversation(conversation)}
                   >
                     <span className="truncate text-caption">{conversation.title || conversation.subjectId}</span>
@@ -319,7 +323,11 @@ export function CommunityPage({ onAuthChanged }: { onAuthChanged: () => void | P
           )}
         </aside>
 
-        <section className="grid min-h-[65vh] min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] border border-border-soft bg-surface-base/45">
+        <section
+          className="grid min-h-[65vh] min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] border border-border-soft bg-surface-base/45"
+          data-chat-surface={conversationType}
+          data-chat-subject={subjectId}
+        >
           <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border-soft p-3">
             <SegmentedControl
               ariaLabel={t('community.title')}
@@ -351,7 +359,11 @@ export function CommunityPage({ onAuthChanged }: { onAuthChanged: () => void | P
             {messages.map((message) => {
               const self = message.authorUserId === profile?.id;
               return (
-                <article key={message.id} className={`max-w-[85%] ${self ? 'self-end text-right' : 'self-start'}`}>
+                <article
+                  key={message.id}
+                  data-chat-message={conversationType}
+                  className={`max-w-[85%] ${self ? 'self-end text-right' : 'self-start'}`}
+                >
                   <div className="mb-1 flex items-center gap-1 text-minutia text-content-dim">
                     <span>{message.authorDisplayName || t('auth.guest')}</span>
                     <IconButton

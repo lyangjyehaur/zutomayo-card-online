@@ -16,9 +16,9 @@ const cases = [
   { name: 'admin-768x1024', width: 768, height: 1024, surface: 'cards' },
   { name: 'admin-1024x768', width: 1024, height: 768, surface: 'cards' },
   { name: 'admin-users-360x740', width: 360, height: 740, surface: 'table', tab: '使用者' },
-  { name: 'admin-matches-360x740', width: 360, height: 740, surface: 'table', tab: '對戰' },
+  { name: 'admin-matches-360x740', width: 360, height: 740, surface: 'table', tab: '對戰紀錄' },
   { name: 'admin-users-390x844', width: 390, height: 844, surface: 'table', tab: '使用者' },
-  { name: 'admin-matches-768x1024', width: 768, height: 1024, surface: 'table', tab: '對戰' },
+  { name: 'admin-matches-768x1024', width: 768, height: 1024, surface: 'table', tab: '對戰紀錄' },
   { name: 'admin-users-1024x768', width: 1024, height: 768, surface: 'table', tab: '使用者' },
 ];
 
@@ -147,6 +147,33 @@ const setupAuth = `
   const originalFetch = window.fetch.bind(window);
   window.fetch = async (input, init) => {
     const url = typeof input === 'string' ? input : input.url;
+    if (url.includes('/api/cards/texts')) {
+      return new Response(JSON.stringify({}), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
+    if (url.includes('/api/cards')) {
+      return new Response(JSON.stringify([
+        {
+          id: 'qa-admin-card-001',
+          name: 'Responsive QA Card',
+          pack: 'QA',
+          song: 'QA Song',
+          illustrator: 'QA Illustrator',
+          rarity: 'N',
+          element: '闇',
+          type: 'Character',
+          clock: 1,
+          attack: { night: 100, day: 100 },
+          powerCost: 0,
+          sendToPower: 1,
+          effect: '',
+          image: '',
+          errata: '',
+        },
+      ]), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
+    if (url.includes('/api/config')) {
+      return new Response(JSON.stringify({}), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
     if (url.includes('/api/admin/users')) {
       return new Response(JSON.stringify({
         users: [
@@ -233,7 +260,7 @@ const pageMetrics = `
     summary: visible('.admin-mobile-filter-summary'),
     advanced: visible('.admin-filter-advanced'),
     filterRows: visible('.admin-filter-row'),
-    cards: visible('.admin-card-grid > button').slice(0, 10),
+    cards: visible('.admin-card-list > button').slice(0, 10),
     smallTargets: buttons.filter((item) => item.width < 40 || item.height < 40),
     offscreen: [...document.body.querySelectorAll('*')]
       .filter((el) => !el.closest('.admin-filter-row, .admin-tablist, .admin-card-modal-tabs'))
@@ -353,16 +380,16 @@ try {
       `history.pushState({}, '', '/admin'); window.dispatchEvent(new PopStateEvent('popstate', { state: history.state }));`,
     );
     if (testCase.surface === 'table') {
-      await waitForSelector(client, '[role="tab"]');
+      await waitForSelector(client, '.admin-nav-item');
       await new Promise((resolve) => setTimeout(resolve, 700));
       await evalChecked(
         client,
-        `[...document.querySelectorAll('[role="tab"]')].find((button) => button.textContent.trim() === ${JSON.stringify(testCase.tab)})?.click()`,
+        `document.querySelector('.admin-nav-item[aria-label=${JSON.stringify(testCase.tab)}]')?.click()`,
       );
       await waitForSelector(client, '.admin-responsive-table tbody tr');
       await new Promise((resolve) => setTimeout(resolve, 600));
     } else {
-      await waitForSelector(client, '.admin-card-grid');
+      await waitForSelector(client, '.admin-card-list');
       await new Promise((resolve) => setTimeout(resolve, 700));
       if (testCase.openFilters) {
         await evalChecked(client, `document.querySelector('.admin-mobile-filter-summary button')?.click()`);

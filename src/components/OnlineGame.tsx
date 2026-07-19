@@ -42,6 +42,7 @@ import {
   connectPlatformMatchShellWithRetry,
   type PlatformMatchShellConnectionState,
 } from '../platformMatchShellConnection';
+import { trackFirstWinOnce, trackFunnelEvent } from '../funnelAnalytics';
 
 interface OnlineGameProps {
   matchID: string;
@@ -145,6 +146,7 @@ function OnlineBoard(
     onStateMismatch: (reason: OnlineStateMismatchReason) => void;
     onMoveSubmitted: (moveName: string, stateID: number | undefined) => void;
     onStateObserved: (stateID: number) => void;
+    onMatchComplete: (outcome: 'win' | 'loss' | 'draw') => void;
     onExitRequest: () => void;
   },
 ) {
@@ -156,11 +158,13 @@ function OnlineBoard(
     onStateMismatch,
     onMoveSubmitted,
     onStateObserved,
+    onMatchComplete,
     moves,
     _stateID,
     ...boardProps
   } = props;
   const lastSnapshot = useRef<OnlineStateSnapshot | null>(null);
+  const completionTrackedRef = useRef(false);
   const trackedMoves = useMemo(
     () =>
       Object.fromEntries(
@@ -209,6 +213,13 @@ function OnlineBoard(
     if (opponentJoined) onOpponentDetected();
   }, [props.matchData, onOpponentDetected]);
 
+  useEffect(() => {
+    if (spectator || completionTrackedRef.current || props.G.step !== 'gameOver') return;
+    completionTrackedRef.current = true;
+    const outcome = props.G.winner === null ? 'draw' : String(props.G.winner) === props.playerID ? 'win' : 'loss';
+    onMatchComplete(outcome);
+  }, [onMatchComplete, props.G.step, props.G.winner, props.playerID, spectator]);
+
   // P3-16：線上模式啟用伺服器權威計時器（G.turnStartTime + timeoutSkip move）。
   return (
     <Board
@@ -238,6 +249,8 @@ export function OnlineGame({
 }: OnlineGameProps) {
   const locale = useLocale();
   const connectedOnce = useRef(false);
+  const matchStartedRef = useRef(false);
+  const initialResumeTrackedRef = useRef(false);
   const statusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const resyncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const moveAckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -309,6 +322,8 @@ export function OnlineGame({
     if (moveAckTimer.current) clearTimeout(moveAckTimer.current);
     moveAckTimer.current = null;
     connectedOnce.current = false;
+    matchStartedRef.current = false;
+    initialResumeTrackedRef.current = false;
   }, [matchID]);
 
   useEffect(() => {
@@ -534,7 +549,16 @@ export function OnlineGame({
   ]);
 
   const handleOpponentDetected = useCallback(() => {
+    if (!spectator && !matchStartedRef.current) {
+      matchStartedRef.current = true;
+      trackFunnelEvent('F_Match_Start', { match_mode: 'online' });
+    }
     opponentDetectedRef.current?.();
+  }, [spectator]);
+
+  const handleMatchComplete = useCallback((outcome: 'win' | 'loss' | 'draw') => {
+    trackFunnelEvent('F_Match_Complete', { match_mode: 'online', outcome });
+    if (outcome === 'win') trackFirstWinOnce('online');
   }, []);
 
   const flashRejoined = useCallback(() => {
@@ -548,6 +572,10 @@ export function OnlineGame({
       if (isConnected) {
         const isReconnect = connectedOnce.current;
         connectedOnce.current = true;
+        if (isReconnect || (showRejoinedStatus && !initialResumeTrackedRef.current)) {
+          initialResumeTrackedRef.current = true;
+          trackFunnelEvent('F_Match_Reconnect', { match_mode: 'online' });
+        }
         setResyncingState(false);
         if (resyncTimer.current) clearTimeout(resyncTimer.current);
         if (showRejoinedStatus || isReconnect) flashRejoined();
@@ -738,6 +766,7 @@ export function OnlineGame({
     handleStateMismatch,
     handleMoveSubmitted,
     handleStateObserved,
+    handleMatchComplete,
   });
   onlineBoardRuntimeRef.current = {
     spectator,
@@ -746,6 +775,7 @@ export function OnlineGame({
     handleStateMismatch,
     handleMoveSubmitted,
     handleStateObserved,
+    handleMatchComplete,
   };
 
   const [OnlineClient] = useState(() =>
@@ -774,6 +804,7 @@ export function OnlineGame({
             onStateMismatch={runtime.handleStateMismatch}
             onMoveSubmitted={runtime.handleMoveSubmitted}
             onStateObserved={runtime.handleStateObserved}
+            onMatchComplete={runtime.handleMatchComplete}
             onExitRequest={() => onLeaveRequestRef.current()}
           />
         );
