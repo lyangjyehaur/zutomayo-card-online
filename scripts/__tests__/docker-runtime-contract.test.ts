@@ -53,6 +53,8 @@ describe('game runtime image contract', () => {
     const dockerfile = readFileSync(resolve(root, 'Dockerfile.migrate'), 'utf8');
     const dockerignore = readFileSync(resolve(root, '.dockerignore'), 'utf8');
     expect(dockerfile).toContain('COPY api/schemaGate.cjs ./api/schemaGate.cjs');
+    expect(dockerfile).toContain('COPY api/deckSharingConfig.cjs ./api/deckSharingConfig.cjs');
+    expect(dockerignore).toContain('!api/deckSharingConfig.cjs');
     expect(dockerfile).toContain('COPY api/runtimeSecurityConfig.cjs ./api/runtimeSecurityConfig.cjs');
     expect(dockerignore).toContain('!api/runtimeSecurityConfig.cjs');
     expect(dockerfile).toContain('COPY api/relationshipEvents.cjs ./api/relationshipEvents.cjs');
