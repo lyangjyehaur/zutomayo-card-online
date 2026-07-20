@@ -1,9 +1,17 @@
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
-const requiredIgnoreRules = ['cards.json', 'data/card*.json', 'data/e2e-card-seed.json', 'scripts/card-english-*.json'];
+const requiredIgnoreRules = [
+  'cards.json',
+  'qa.json',
+  'data/card*.json',
+  'data/official-rulings-*.json',
+  'data/e2e-card-seed.json',
+  'scripts/card-english-*.json',
+];
 const trackedFiles = execFileSync('git', ['ls-files', '-z'], { encoding: 'utf8' }).split('\0').filter(Boolean);
-const forbiddenTrackedPath = /^(?:cards\.json|data\/(?:card.*|e2e-card-seed)\.json|scripts\/card-english-.*\.json)$/;
+const forbiddenTrackedPath =
+  /^(?:cards\.json|qa\.json|data\/(?:card.*|official-rulings-.*|e2e-card-seed)\.json|scripts\/card-english-.*\.json)$/;
 const rawMarkers = [
   /"japaneseEffect"\s*:/,
   /"enEffectOfficial"\s*:/,
@@ -14,7 +22,8 @@ const rawMarkers = [
 const problems = [];
 
 for (const path of trackedFiles) {
-  if (forbiddenTrackedPath.test(path)) problems.push(`${path}: card source/review JSON must not be tracked`);
+  if (!existsSync(path)) continue;
+  if (forbiddenTrackedPath.test(path)) problems.push(`${path}: source/review JSON must not be tracked`);
   if (!path.endsWith('.json')) continue;
   const source = readFileSync(path, 'utf8');
   if (rawMarkers.some((marker) => marker.test(source))) {
@@ -40,4 +49,4 @@ if (problems.length > 0) {
   process.exit(1);
 }
 
-console.log('card source-data policy: no raw card text JSON is tracked or copied into images');
+console.log('source-data policy: no raw card or official-rulings JSON is tracked or copied into images');

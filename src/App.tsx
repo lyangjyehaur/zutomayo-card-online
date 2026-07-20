@@ -65,6 +65,18 @@ const CommunityPage = lazy(() => import('./pages/CommunityPage').then((module) =
 const FeedbackPage = lazy(() => import('./pages/FeedbackPage').then((module) => ({ default: module.FeedbackPage })));
 const ProfilePage = lazy(() => import('./pages/ProfilePage').then((module) => ({ default: module.ProfilePage })));
 const LegalPage = lazy(() => import('./pages/LegalPage').then((module) => ({ default: module.LegalPage })));
+const OfficialQaPage = lazy(() =>
+  import('./pages/OfficialQaPage').then((module) => ({ default: module.OfficialQaPage })),
+);
+const OfficialQaDetailPage = lazy(() =>
+  import('./pages/OfficialQaDetailPage').then((module) => ({ default: module.OfficialQaDetailPage })),
+);
+const OfficialErrataPage = lazy(() =>
+  import('./pages/OfficialErrataPage').then((module) => ({ default: module.OfficialErrataPage })),
+);
+const OfficialErrataDetailPage = lazy(() =>
+  import('./pages/OfficialErrataDetailPage').then((module) => ({ default: module.OfficialErrataDetailPage })),
+);
 const VerifyEmailPage = lazy(() =>
   import('./pages/AccountActionPage').then((module) => ({ default: module.VerifyEmailPage })),
 );
@@ -102,6 +114,7 @@ function isFullscreenRoute(pathname: string): boolean {
     pathname === '/history' ||
     pathname === '/leaderboard' ||
     pathname === '/profile' ||
+    pathname.startsWith('/rules') ||
     pathname.startsWith('/legal') ||
     pathname === '/verify-email' ||
     pathname === '/forgot-password' ||
@@ -750,6 +763,10 @@ function RouterShell() {
             <Route path="/leaderboard" element={<Navigate to="/" replace />} />
             <Route path="/feedback" element={<FeedbackPage />} />
             <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/rules/qa" element={<OfficialQaPage />} />
+            <Route path="/rules/qa/:number" element={<OfficialQaDetailPage />} />
+            <Route path="/rules/errata" element={<OfficialErrataPage />} />
+            <Route path="/rules/errata/:errataId" element={<OfficialErrataDetailPage />} />
             <Route path="/legal" element={<LegalPage documentId="overview" />} />
             <Route path="/legal/privacy" element={<LegalPage documentId="privacy" />} />
             <Route path="/legal/terms" element={<LegalPage documentId="terms" />} />

@@ -153,6 +153,11 @@ Frontend build-time variables (baked into the bundle at `vite build`):
 | `CHAT_TRANSLATION_PROVIDER`             | `http`                              | Provider label stored on ready/pending translation rows.                                                                                                                                                       |
 | `CHAT_TRANSLATION_MODEL`                | empty                               | Optional model label sent to the provider and stored with translation rows.                                                                                                                                    |
 | `CHAT_TRANSLATION_TIMEOUT_MS`           | `10000`                             | Provider request timeout, clamped between 1s and 60s.                                                                                                                                                          |
+| `TRANSLATION_ENDPOINT`                  | empty                               | Shared HTTP translation gateway used by official rulings, announcements, and chat. Falls back to `CHAT_TRANSLATION_ENDPOINT` for compatibility.                                                                |
+| `TRANSLATION_API_KEY`                   | empty                               | Optional bearer token sent to `TRANSLATION_ENDPOINT`.                                                                                                                                                          |
+| `TRANSLATION_PROVIDER`                  | `http`                              | Provider label persisted with generated official-rulings translations.                                                                                                                                         |
+| `TRANSLATION_MODEL`                     | empty                               | Optional model label sent to the shared provider and stored for review/audit.                                                                                                                                  |
+| `TRANSLATION_TIMEOUT_MS`                | `10000`                             | Shared provider timeout, clamped between 1s and 60s.                                                                                                                                                           |
 | `LOGTO_M2M_APP_ID`                      | required when recovery is enabled   | Dedicated M2M client used only to recover ambiguous account deletions after a crash. Inject at runtime.                                                                                                        |
 | `LOGTO_M2M_APP_SECRET`                  | required when recovery is enabled   | Runtime-only M2M secret. It must not appear in Docker build arguments, image layers, or frontend variables.                                                                                                    |
 | `LOGTO_MANAGEMENT_RESOURCE`             | required when recovery is enabled   | Absolute HTTPS resource identifier for the Logto Management API.                                                                                                                                               |
@@ -364,6 +369,17 @@ api:
 ```
 
 If the `migrate` service exits non-zero, `api` will not start. Check `docker compose logs migrate` for details.
+
+### Official rulings content import
+
+Migration `000039_official_rulings` only creates the schema. After the target database contains the real card dataset and the canonical official card-text/errata import, fetch the official Japanese content and write it directly to PostgreSQL from a trusted maintenance checkout:
+
+```bash
+npm run sync:official-rulings -- --apply
+npm run import:official-rulings-translations
+```
+
+The second command reads the locally controlled, Git-ignored translation source. Official-rulings JSON is never copied into runtime or migration images. Both operations validate source hashes, related cards, and canonical corrected text transactionally. Do not run them before the real card import/seed. Operational details, source-diff checks, and translation generation are documented in [`official-rulings.md`](./official-rulings.md).
 
 ### Runtime DDL policy
 

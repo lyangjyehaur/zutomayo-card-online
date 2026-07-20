@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { Link } from 'react-router-dom';
 import type { CardDef, CardType, Element } from '../game/types';
 import { getAllCardDefs, isCardsInitialized, refreshCards } from '../game/cards/loader';
 import {
@@ -881,12 +882,15 @@ export function DeckEditor({
                       ×{count}
                     </span>
                   )}
-                  {card.hasOfficialErrata && (
-                    <span className="absolute bottom-1 left-1 rounded-xs bg-accent-action/90 px-1.5 py-0.5 font-mono text-minutia leading-none text-surface-canvas">
-                      {t('card.officialErrata')}
-                    </span>
-                  )}
                 </button>
+                {card.hasOfficialErrata && card.officialErrataId && (
+                  <Link
+                    className="absolute bottom-1 left-1 z-[var(--z-dropdown)] rounded-xs bg-accent-action/90 px-1.5 py-1 font-mono text-minutia leading-none text-surface-canvas transition hover:bg-accent-action focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--focus-ring-color]"
+                    to={`/rules/errata/${card.officialErrataId}`}
+                  >
+                    {t('card.officialErrata')}
+                  </Link>
+                )}
                 <IconButton
                   className="absolute bottom-1 right-1 z-[var(--z-dropdown)] bg-surface-canvas/90 text-content-primary/70 ring-1 ring-content-primary/20 backdrop-blur hover:text-accent-primary md:hidden"
                   label={`Preview ${localizedName}`}

@@ -96,6 +96,7 @@ import { AdminOperationsPanel } from '../components/AdminOperationsPanel';
 import { AdminAnnouncementsPanel } from '../components/AdminAnnouncementsPanel';
 import { AdminTranslationSettingsPanel } from '../components/AdminTranslationSettingsPanel';
 import { AdminDeckShareReportsPanel } from '../components/AdminDeckShareReportsPanel';
+import { AdminOfficialRulingsPanel } from '../components/AdminOfficialRulingsPanel';
 import '../components/AdminPanel.css';
 
 const ADMIN_TOKEN_KEY = 'zutomayo_admin_token';
@@ -157,6 +158,7 @@ const ABOUT_LANGS: Array<{ code: AboutPageLocale; label: string }> = I18N_LANGS.
 type AdminTab =
   | 'cards'
   | 'songs'
+  | 'official-rulings'
   | 'users'
   | 'matches'
   | 'chat'
@@ -1852,6 +1854,7 @@ export function AdminPage() {
         { value: 'about', label: 'About 設定', icon: Info },
         { value: 'announcements', label: '公告', icon: Megaphone },
         { value: 'translation', label: '翻譯服務', icon: Languages },
+        { value: 'official-rulings', label: '官方規則', icon: BookOpenText },
       ],
     },
     {
@@ -2714,6 +2717,12 @@ export function AdminPage() {
           {activeTab === 'translation' && (
             <section className="admin-main flex-1 overflow-y-auto p-4">
               <AdminTranslationSettingsPanel token={token} />
+            </section>
+          )}
+
+          {activeTab === 'official-rulings' && (
+            <section className="admin-main flex-1 overflow-y-auto p-4">
+              <AdminOfficialRulingsPanel />
             </section>
           )}
 

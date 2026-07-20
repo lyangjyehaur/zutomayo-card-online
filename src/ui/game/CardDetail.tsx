@@ -43,9 +43,7 @@ export function CardDetailBody({ focus, G, ownerName }: { focus: FocusedCard; G:
       {def.hasOfficialErrata && (
         <a
           className="inline-flex w-fit text-caption font-bold text-accent-action underline underline-offset-2"
-          href={def.officialErrataUrl}
-          target="_blank"
-          rel="noreferrer"
+          href={def.officialErrataId ? `/rules/errata/${def.officialErrataId}` : def.officialErrataUrl}
         >
           {t('card.officialErrata')} #{def.officialErrataId}
         </a>

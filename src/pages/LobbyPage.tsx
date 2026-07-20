@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Bot,
+  BookOpenCheck,
   Code2,
   ExternalLink,
   Github,
@@ -91,6 +92,13 @@ const CHANNELS: Channel[] = [
     titleKey: 'community.title',
     captionKey: 'community.caption',
     Icon: MessageCircle,
+  },
+  {
+    to: '/rules/qa',
+    no: '07',
+    titleKey: 'officialRules.channelTitle',
+    captionKey: 'officialRules.channelCaption',
+    Icon: BookOpenCheck,
   },
 ];
 
@@ -489,7 +497,9 @@ export function LobbyPage({ onAuthChanged, deckSharingEnabled }: LobbyPageProps)
             <span className="h-px flex-1 bg-border-soft" aria-hidden="true" />
           </div>
           <ul
-            className={`grid grid-cols-1 gap-2 sm:grid-cols-2 ${deckSharingEnabled ? 'lg:grid-cols-6' : 'lg:grid-cols-5'} lg:gap-3`}
+            className={`grid grid-cols-1 gap-2 sm:grid-cols-2 ${
+              deckSharingEnabled ? 'lg:grid-cols-7' : 'lg:grid-cols-6'
+            } lg:gap-3`}
           >
             {channels.map(({ to, no, titleKey, captionKey, Icon }) => (
               <li key={to} className="min-w-0">

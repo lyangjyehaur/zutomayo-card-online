@@ -783,6 +783,193 @@ export interface CardOfficialErrata {
   sourceUrl: string;
 }
 
+export type OfficialTranslationStatus = 'source' | 'pending_review' | 'machine' | 'verified' | 'failed' | string;
+
+export interface OfficialQaItem {
+  id: string;
+  number: number;
+  publishedAt: string;
+  tags: string[];
+  relatedCardIds: string[];
+  source: { question: string; answer: string };
+  localized: { question: string; answer: string };
+  requestedLocale: string;
+  effectiveLocale: string;
+  translationStatus: OfficialTranslationStatus;
+  sourceUrl: string;
+  lastSyncedAt: string;
+  contentVersion: number;
+}
+
+export interface OfficialErrataItem {
+  errataId: string;
+  cardId: string;
+  cardName: string;
+  cardNameJa: string;
+  pack: string;
+  rarity: string;
+  cardNumber: string;
+  publishedAt: string;
+  affectsName: boolean;
+  affectsEffect: boolean;
+  source: OfficialErrataContent;
+  localized: OfficialErrataContent;
+  requestedLocale: string;
+  effectiveLocale: string;
+  translationStatus: OfficialTranslationStatus;
+  sourceUrl: string;
+  lastSyncedAt: string;
+  contentVersion: number;
+}
+
+export interface OfficialErrataContent {
+  incorrectText: string;
+  correctedText: string;
+  reason: string;
+  replacementPolicy: string;
+  usagePolicy: string;
+}
+
+export type AdminOfficialResourceType = 'qa' | 'errata';
+export type AdminOfficialTranslationStatus = 'pending_review' | 'machine' | 'verified' | 'failed';
+
+export interface AdminOfficialTranslationItem {
+  resourceType: AdminOfficialResourceType;
+  id: string;
+  number?: number;
+  label: string;
+  cardId?: string;
+  cardName?: string;
+  contentVersion: number;
+  source: Record<string, string>;
+  translation: Record<string, string>;
+  status: AdminOfficialTranslationStatus;
+  provider: string;
+  model: string;
+  reviewNote: string;
+  updatedAt: string;
+}
+
+export interface AdminOfficialTranslationCoverage {
+  total: number;
+  translated: number;
+  verified: number;
+  pending: number;
+  failed: number;
+}
+
+export interface AdminOfficialSyncRun {
+  id: string;
+  triggerSource: string;
+  status: 'running' | 'no_change' | 'changes' | 'failed' | string;
+  qaLocalCount: number;
+  qaRemoteCount: number;
+  errataLocalCount: number;
+  errataRemoteCount: number;
+  diff: Record<string, { added?: string[]; updated?: string[]; removed?: string[] }>;
+  error: string;
+  requestedByAdminUserId: string;
+  startedAt: string;
+  finishedAt: string;
+}
+
+export async function fetchOfficialQa(
+  language: string,
+  filters: { query?: string; tag?: string; cardId?: string } = {},
+): Promise<OfficialQaItem[]> {
+  const params = new URLSearchParams({ lang: language });
+  if (filters.query) params.set('query', filters.query);
+  if (filters.tag) params.set('tag', filters.tag);
+  if (filters.cardId) params.set('cardId', filters.cardId);
+  const data = await request<{ items: OfficialQaItem[] }>(`/official/qa?${params.toString()}`);
+  return data.items;
+}
+
+export async function fetchOfficialQaItem(number: number, language: string): Promise<OfficialQaItem> {
+  const data = await request<{ item: OfficialQaItem }>(
+    `/official/qa/${encodeURIComponent(String(number))}?${new URLSearchParams({ lang: language }).toString()}`,
+  );
+  return data.item;
+}
+
+export async function fetchOfficialErrata(
+  language: string,
+  filters: { cardId?: string } = {},
+): Promise<OfficialErrataItem[]> {
+  const params = new URLSearchParams({ lang: language });
+  if (filters.cardId) params.set('cardId', filters.cardId);
+  const data = await request<{ items: OfficialErrataItem[] }>(`/official/errata?${params.toString()}`);
+  return data.items;
+}
+
+export async function fetchOfficialErrataItem(errataId: string, language: string): Promise<OfficialErrataItem> {
+  const data = await request<{ item: OfficialErrataItem }>(
+    `/official/errata/${encodeURIComponent(errataId)}?${new URLSearchParams({ lang: language }).toString()}`,
+  );
+  return data.item;
+}
+
+export async function adminGetOfficialTranslations(filters: {
+  locale: string;
+  resourceType?: 'all' | AdminOfficialResourceType;
+  status?: '' | AdminOfficialTranslationStatus;
+  query?: string;
+}): Promise<{
+  items: AdminOfficialTranslationItem[];
+  coverage: AdminOfficialTranslationCoverage;
+  locale: string;
+}> {
+  const params = new URLSearchParams({
+    locale: filters.locale,
+    resourceType: filters.resourceType || 'all',
+    status: filters.status || '',
+    query: filters.query || '',
+  });
+  return request(`/admin/official-content/translations?${params.toString()}`, { headers: adminAuthHeaders() });
+}
+
+export async function adminUpdateOfficialTranslation(
+  item: AdminOfficialTranslationItem,
+  locale: string,
+  input: Record<string, string>,
+): Promise<void> {
+  await request(
+    `/admin/official-content/translations/${item.resourceType}/${encodeURIComponent(item.id)}/${encodeURIComponent(locale)}`,
+    {
+      method: 'PUT',
+      headers: adminAuthHeaders(),
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export async function adminGenerateOfficialTranslation(
+  item: AdminOfficialTranslationItem,
+  locale: string,
+): Promise<void> {
+  await request(
+    `/admin/official-content/translations/${item.resourceType}/${encodeURIComponent(item.id)}/${encodeURIComponent(locale)}/generate`,
+    { method: 'POST', headers: adminAuthHeaders(), body: '{}' },
+  );
+}
+
+export async function adminCheckOfficialSources(): Promise<AdminOfficialSyncRun> {
+  const data = await request<{ run: AdminOfficialSyncRun }>('/admin/official-content/sync', {
+    method: 'POST',
+    headers: adminAuthHeaders(),
+    body: '{}',
+  });
+  return data.run;
+}
+
+export async function adminGetOfficialSyncStatus(limit = 20): Promise<AdminOfficialSyncRun[]> {
+  const data = await request<{ runs: AdminOfficialSyncRun[] }>(
+    `/admin/official-content/sync-status?${new URLSearchParams({ limit: String(limit) }).toString()}`,
+    { headers: adminAuthHeaders() },
+  );
+  return data.runs;
+}
+
 export type CardTextsI18n = Record<string, Record<string, CardTextI18nEntry>>;
 
 export async function fetchAllCardTextsI18n(): Promise<CardTextsI18n> {

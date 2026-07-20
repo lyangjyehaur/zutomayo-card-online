@@ -165,8 +165,8 @@ services:
   api:
     image: ${API_IMAGE:-zutomayo-card-online-api:local}
     build:
-      context: ./api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: api/Dockerfile
       args:
         APP_VERSION: ${APP_VERSION:-}
         APP_BUILD_ID: ${APP_BUILD_ID:-}

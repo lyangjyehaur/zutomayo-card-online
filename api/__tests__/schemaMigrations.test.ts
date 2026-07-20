@@ -114,6 +114,31 @@ describe('schema migrations', () => {
     expect(initSchema).toContain('requireDeckSharing: DECK_SHARING_ENABLED');
   });
 
+  it('stores versioned official Q&A and errata translations separately from Japanese source content', () => {
+    const migration = readRepoFile('migrations/000039_official_rulings.js');
+    const schemaGate = readRepoFile('api/schemaGate.cjs');
+    const initSchema = readRepoFile('api/server.cjs');
+
+    for (const artifact of [
+      'official_qa_items',
+      'official_qa_translations',
+      'card_official_errata_translations',
+      'official_rulings_sync_runs',
+      'content_version',
+      'publication_status',
+      'replacement_policy_ja',
+      'usage_policy_ja',
+    ]) {
+      expect(migration).toContain(artifact);
+      expect(schemaGate).toContain(artifact);
+      expect(initSchema).toContain(artifact);
+    }
+    expect(migration).toContain("primaryKey: ['qa_id', 'content_version', 'locale']");
+    expect(migration).toContain("primaryKey: ['errata_id', 'content_version', 'locale']");
+    expect(migration).toContain("status IN ('running', 'no_change', 'changes', 'failed')");
+    expect(migration).toContain('export const down = false');
+  });
+
   it('backfills the reward entitlement ledger for every existing grant', () => {
     const consistencyMigration = readRepoFile('migrations/000021_season_result_consistency.js');
     expect(consistencyMigration).toContain('SELECT season_id, user_id, reward_tier, reward_payload, granted_at');

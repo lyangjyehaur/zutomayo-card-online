@@ -255,6 +255,35 @@ const adminTranslationTestSchema = z
   })
   .strict();
 
+const officialTranslationStatusSchema = z.enum(['pending_review', 'machine', 'verified', 'failed']);
+
+const officialQaTranslationWriteSchema = z.object({
+  question: z.string().max(10000),
+  answer: z.string().max(20000),
+  status: officialTranslationStatusSchema,
+  provider: z.string().max(60).optional(),
+  model: z.string().max(120).optional(),
+  reviewNote: z.string().max(2000).optional(),
+});
+
+const officialErrataTranslationWriteSchema = z.object({
+  incorrectText: z.string().max(20000),
+  reason: z.string().max(20000),
+  replacementPolicy: z.string().max(20000),
+  usagePolicy: z.string().max(20000),
+  status: officialTranslationStatusSchema,
+  provider: z.string().max(60).optional(),
+  model: z.string().max(120).optional(),
+  reviewNote: z.string().max(2000).optional(),
+});
+
+const officialTranslationListQuerySchema = z.object({
+  locale: z.enum(['zh-TW', 'zh-CN', 'zh-HK', 'en', 'ko']).default('zh-TW'),
+  resourceType: z.enum(['all', 'qa', 'errata']).default('all'),
+  status: z.enum(['', 'pending_review', 'machine', 'verified', 'failed']).default(''),
+  query: z.string().max(200).default(''),
+});
+
 // ===== Admin =====
 const adminLoginSchema = z.object({
   username: z.string().min(3).max(80),
@@ -396,6 +425,9 @@ module.exports = {
   announcementWriteSchema,
   adminTranslationSettingsSchema,
   adminTranslationTestSchema,
+  officialQaTranslationWriteSchema,
+  officialErrataTranslationWriteSchema,
+  officialTranslationListQuerySchema,
   adminLoginSchema,
   adminEloSchema,
   adminUserListQuerySchema,

@@ -2,6 +2,10 @@ node_modules
 api
 !api/
 api/*
+!api/*.cjs
+!api/package.json
+!api/package-lock.json
+!api/Dockerfile
 !api/retentionService.cjs
 !api/deckService.cjs
 !api/schemaGate.cjs
@@ -42,7 +46,9 @@ QA_OFFICIAL*.json
 cards-by-pack
 schema.json
 cards.json
+qa.json
 data/card*.json
+data/official-rulings-*.json
 data/e2e-card-seed.json
 data/vision-ocr
 scripts/card-english-*.json

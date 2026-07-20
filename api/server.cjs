@@ -181,6 +181,20 @@ const {
   testAdminTranslationSettings,
   updateAdminTranslationSettings,
 } = require('./translationSettingsService.cjs');
+const {
+  getPublicErrata,
+  getPublicQa,
+  listPublicErrata,
+  listPublicQa,
+  upsertOfficialErrataTranslation,
+  upsertOfficialQaTranslation,
+} = require('./officialRulingsService.cjs');
+const {
+  checkOfficialSources,
+  generateOfficialTranslation,
+  getOfficialSyncStatus,
+  listOfficialTranslations,
+} = require('./officialRulingsAdminService.cjs');
 
 const pbkdf2 = util.promisify(crypto.pbkdf2);
 
@@ -650,6 +664,103 @@ async function initSchema() {
     `ALTER TABLE card_official_errata
       ADD COLUMN IF NOT EXISTS corrected_english_source TEXT NOT NULL
       DEFAULT 'official_japanese_errata_translation'`,
+    `ALTER TABLE card_official_errata
+      ADD COLUMN IF NOT EXISTS reason_ja TEXT NOT NULL DEFAULT '',
+      ADD COLUMN IF NOT EXISTS replacement_policy_ja TEXT NOT NULL DEFAULT '',
+      ADD COLUMN IF NOT EXISTS usage_policy_ja TEXT NOT NULL DEFAULT '',
+      ADD COLUMN IF NOT EXISTS card_number TEXT NOT NULL DEFAULT '',
+      ADD COLUMN IF NOT EXISTS content_hash TEXT NOT NULL DEFAULT '',
+      ADD COLUMN IF NOT EXISTS content_version INTEGER NOT NULL DEFAULT 1,
+      ADD COLUMN IF NOT EXISTS publication_status TEXT NOT NULL DEFAULT 'published',
+      ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+
+    `CREATE TABLE IF NOT EXISTS official_qa_items (
+      id TEXT PRIMARY KEY,
+      number INTEGER NOT NULL UNIQUE,
+      published_at DATE NOT NULL,
+      question_ja TEXT NOT NULL,
+      answer_ja TEXT NOT NULL,
+      tags TEXT[] NOT NULL DEFAULT '{}'::text[],
+      related_card_ids TEXT[] NOT NULL DEFAULT '{}'::text[],
+      source_url TEXT NOT NULL,
+      content_hash TEXT NOT NULL,
+      content_version INTEGER NOT NULL DEFAULT 1,
+      publication_status TEXT NOT NULL DEFAULT 'published',
+      source_updated_at TIMESTAMPTZ,
+      last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CHECK (number > 0 AND content_version > 0),
+      CHECK (publication_status IN ('published', 'inactive')),
+      CHECK (question_ja <> '' AND answer_ja <> '')
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_official_qa_publication_number
+      ON official_qa_items(publication_status, number ASC)`,
+    `CREATE INDEX IF NOT EXISTS idx_official_qa_related_cards
+      ON official_qa_items USING GIN(related_card_ids)`,
+    `CREATE TABLE IF NOT EXISTS official_qa_translations (
+      qa_id TEXT NOT NULL REFERENCES official_qa_items(id) ON DELETE CASCADE,
+      content_version INTEGER NOT NULL,
+      locale TEXT NOT NULL,
+      question_text TEXT NOT NULL DEFAULT '',
+      answer_text TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'pending_review',
+      provider TEXT NOT NULL DEFAULT '',
+      model TEXT NOT NULL DEFAULT '',
+      review_note TEXT NOT NULL DEFAULT '',
+      reviewed_by_user_id TEXT,
+      reviewed_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (qa_id, content_version, locale),
+      CHECK (locale IN ('zh-TW', 'zh-CN', 'zh-HK', 'en', 'ko')),
+      CHECK (status IN ('pending_review', 'machine', 'verified', 'failed'))
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_official_qa_translations_locale_status
+      ON official_qa_translations(locale, status)`,
+    `CREATE TABLE IF NOT EXISTS card_official_errata_translations (
+      errata_id TEXT NOT NULL REFERENCES card_official_errata(errata_id) ON DELETE CASCADE,
+      content_version INTEGER NOT NULL,
+      locale TEXT NOT NULL,
+      incorrect_text TEXT NOT NULL DEFAULT '',
+      reason_text TEXT NOT NULL DEFAULT '',
+      replacement_policy_text TEXT NOT NULL DEFAULT '',
+      usage_policy_text TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'pending_review',
+      provider TEXT NOT NULL DEFAULT '',
+      model TEXT NOT NULL DEFAULT '',
+      review_note TEXT NOT NULL DEFAULT '',
+      reviewed_by_user_id TEXT,
+      reviewed_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (errata_id, content_version, locale),
+      CHECK (locale IN ('zh-TW', 'zh-CN', 'zh-HK', 'en', 'ko')),
+      CHECK (status IN ('pending_review', 'machine', 'verified', 'failed'))
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_card_official_errata_translations_locale_status
+      ON card_official_errata_translations(locale, status)`,
+    `CREATE TABLE IF NOT EXISTS official_rulings_sync_runs (
+      id TEXT PRIMARY KEY,
+      trigger_source TEXT NOT NULL DEFAULT 'admin',
+      status TEXT NOT NULL DEFAULT 'running',
+      qa_local_count INTEGER NOT NULL DEFAULT 0,
+      qa_remote_count INTEGER NOT NULL DEFAULT 0,
+      errata_local_count INTEGER NOT NULL DEFAULT 0,
+      errata_remote_count INTEGER NOT NULL DEFAULT 0,
+      diff JSONB NOT NULL DEFAULT '{}'::jsonb,
+      error_text TEXT NOT NULL DEFAULT '',
+      requested_by_admin_user_id TEXT,
+      started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      finished_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CHECK (trigger_source IN ('admin', 'schedule', 'cli')),
+      CHECK (status IN ('running', 'no_change', 'changes', 'failed')),
+      CHECK (qa_local_count >= 0 AND qa_remote_count >= 0),
+      CHECK (errata_local_count >= 0 AND errata_remote_count >= 0)
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_official_rulings_sync_runs_started
+      ON official_rulings_sync_runs(started_at DESC)`,
 
     `CREATE TABLE IF NOT EXISTS card_texts_i18n (
       card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
@@ -3078,6 +3189,19 @@ function handleRequest(req, res) {
     }
     return json(result, status);
   };
+  const publicServiceJson = (result, status = 200) => {
+    if (!result || typeof result !== 'object' || !result.ok) return serviceJson(result, status);
+    const payload = JSON.stringify(result.body ?? {});
+    const etag = `"${crypto.createHash('sha256').update(payload).digest('base64url')}"`;
+    res.setHeader('ETag', etag);
+    if (req.headers['if-none-match'] === etag) {
+      res.writeHead(304);
+      res.end();
+      return;
+    }
+    res.writeHead(status, { 'Content-Type': 'application/json' });
+    res.end(payload);
+  };
 
   const readBody = (maxBytes = 3 * 1024 * 1024) =>
     new Promise((resolve) => {
@@ -4218,6 +4342,54 @@ function handleRequest(req, res) {
       return;
     }
 
+    if (pathname === '/api/official/qa' && method === 'GET') {
+      res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=1800');
+      publicServiceJson(
+        await listPublicQa({
+          pool,
+          language: url.searchParams.get('lang'),
+          query: url.searchParams.get('query'),
+          tag: url.searchParams.get('tag'),
+          cardId: url.searchParams.get('cardId'),
+        }),
+      );
+      return;
+    }
+
+    const publicOfficialQaRoute = pathname.match(/^\/api\/official\/qa\/(\d+)$/);
+    if (publicOfficialQaRoute && method === 'GET') {
+      res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=1800');
+      publicServiceJson(
+        await getPublicQa({ pool, language: url.searchParams.get('lang'), number: publicOfficialQaRoute[1] }),
+      );
+      return;
+    }
+
+    if (pathname === '/api/official/errata' && method === 'GET') {
+      res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=1800');
+      publicServiceJson(
+        await listPublicErrata({
+          pool,
+          language: url.searchParams.get('lang'),
+          cardId: url.searchParams.get('cardId'),
+        }),
+      );
+      return;
+    }
+
+    const publicOfficialErrataRoute = pathname.match(/^\/api\/official\/errata\/(\d{3})$/);
+    if (publicOfficialErrataRoute && method === 'GET') {
+      res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=1800');
+      publicServiceJson(
+        await getPublicErrata({
+          pool,
+          language: url.searchParams.get('lang'),
+          errataId: publicOfficialErrataRoute[1],
+        }),
+      );
+      return;
+    }
+
     // ===== Chat Routes =====
 
     // GET /api/chat/messages?type=match&subjectId=... — 對話歷史同步。
@@ -4665,6 +4837,131 @@ function handleRequest(req, res) {
     if (adminAnnouncementRoute && method === 'DELETE') {
       if (!(await authorizeAdmin(req, 'config:write'))) return json({ error: 'Unauthorized' }, 401);
       serviceJson(await deleteAnnouncement({ pool, id: decodeURIComponent(adminAnnouncementRoute[1]) }));
+      return;
+    }
+
+    if (pathname === '/api/admin/official-content/sync-status' && method === 'GET') {
+      if (!(await authorizeAdmin(req, 'config:write'))) return json({ error: 'Unauthorized' }, 401);
+      serviceJson(await getOfficialSyncStatus({ pool, limit: url.searchParams.get('limit') }));
+      return;
+    }
+
+    if (pathname === '/api/admin/official-content/sync' && method === 'POST') {
+      const admin = await authorizeAdmin(req, 'config:write');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
+      serviceJson(
+        await checkOfficialSources({
+          pool,
+          adminUserId: admin.adminUserId,
+          fetchImpl: globalThis.fetch,
+        }),
+      );
+      return;
+    }
+
+    if (pathname === '/api/admin/official-content/translations' && method === 'GET') {
+      if (!(await authorizeAdmin(req, 'config:write'))) return json({ error: 'Unauthorized' }, 401);
+      const parsed = validateBody(S.officialTranslationListQuerySchema, Object.fromEntries(url.searchParams.entries()));
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      serviceJson(
+        await listOfficialTranslations({
+          pool,
+          language: parsed.data.locale,
+          resourceType: parsed.data.resourceType,
+          status: parsed.data.status,
+          query: parsed.data.query,
+        }),
+      );
+      return;
+    }
+
+    const adminOfficialTranslationGenerateRoute = pathname.match(
+      /^\/api\/admin\/official-content\/translations\/(qa|errata)\/([^/]+)\/([^/]+)\/generate$/,
+    );
+    if (adminOfficialTranslationGenerateRoute && method === 'POST') {
+      const admin = await authorizeAdmin(req, 'config:write');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
+      serviceJson(
+        await generateOfficialTranslation({
+          pool,
+          resourceType: adminOfficialTranslationGenerateRoute[1],
+          resourceId: decodeURIComponent(adminOfficialTranslationGenerateRoute[2]),
+          language: decodeURIComponent(adminOfficialTranslationGenerateRoute[3]),
+          adminUserId: admin.adminUserId,
+          translateText: await translationRuntime.getTranslateText(),
+        }),
+      );
+      return;
+    }
+
+    const adminOfficialTranslationWriteRoute = pathname.match(
+      /^\/api\/admin\/official-content\/translations\/(qa|errata)\/([^/]+)\/([^/]+)$/,
+    );
+    if (adminOfficialTranslationWriteRoute && method === 'PUT') {
+      const admin = await authorizeAdmin(req, 'config:write');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
+      const resourceType = adminOfficialTranslationWriteRoute[1];
+      const body = await readBody(64 * 1024);
+      const schema =
+        resourceType === 'qa' ? S.officialQaTranslationWriteSchema : S.officialErrataTranslationWriteSchema;
+      const parsed = validateBody(schema, body);
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      const shared = {
+        pool,
+        body: { ...parsed.data, locale: decodeURIComponent(adminOfficialTranslationWriteRoute[3]) },
+        reviewerUserId: admin.adminUserId,
+      };
+      serviceJson(
+        resourceType === 'qa'
+          ? await upsertOfficialQaTranslation({
+              ...shared,
+              qaId: decodeURIComponent(adminOfficialTranslationWriteRoute[2]),
+            })
+          : await upsertOfficialErrataTranslation({
+              ...shared,
+              errataId: decodeURIComponent(adminOfficialTranslationWriteRoute[2]),
+            }),
+      );
+      return;
+    }
+
+    const adminOfficialQaTranslationRoute = pathname.match(
+      /^\/api\/admin\/official-content\/qa\/([^/]+)\/translations\/([^/]+)$/,
+    );
+    if (adminOfficialQaTranslationRoute && method === 'PUT') {
+      const admin = await authorizeAdmin(req, 'config:write');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
+      const body = await readBody(64 * 1024);
+      const parsed = validateBody(S.officialQaTranslationWriteSchema, body);
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      serviceJson(
+        await upsertOfficialQaTranslation({
+          pool,
+          qaId: decodeURIComponent(adminOfficialQaTranslationRoute[1]),
+          body: { ...parsed.data, locale: decodeURIComponent(adminOfficialQaTranslationRoute[2]) },
+          reviewerUserId: admin.adminUserId,
+        }),
+      );
+      return;
+    }
+
+    const adminOfficialErrataTranslationRoute = pathname.match(
+      /^\/api\/admin\/official-content\/errata\/(\d{3})\/translations\/([^/]+)$/,
+    );
+    if (adminOfficialErrataTranslationRoute && method === 'PUT') {
+      const admin = await authorizeAdmin(req, 'config:write');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
+      const body = await readBody(64 * 1024);
+      const parsed = validateBody(S.officialErrataTranslationWriteSchema, body);
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      serviceJson(
+        await upsertOfficialErrataTranslation({
+          pool,
+          errataId: adminOfficialErrataTranslationRoute[1],
+          body: { ...parsed.data, locale: decodeURIComponent(adminOfficialErrataTranslationRoute[2]) },
+          reviewerUserId: admin.adminUserId,
+        }),
+      );
       return;
     }
 

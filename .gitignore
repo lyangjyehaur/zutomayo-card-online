@@ -61,7 +61,9 @@ schema.json
 
 # Card data (source of truth is PostgreSQL; source/review JSON stays local only)
 cards.json
+qa.json
 data/card*.json
+data/official-rulings-*.json
 data/e2e-card-seed.json
 data/vision-ocr/
 scripts/card-english-*.json
@@ -84,3 +86,4 @@ CARD_EFFECT_AUDIT_FINAL.md
 # Playwright E2E
 playwright-report/
 test-results/
+official-rulings-sync-report.json

@@ -117,8 +117,8 @@ services:
   api:
     image: ghcr.io/${GHCR_OWNER:-lyangjyehaur}/zutomayo-card-online-api:${TAG:-latest}
     build:
-      context: ./api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: api/Dockerfile
       args:
         APP_VERSION: ${APP_VERSION:-}
         APP_BUILD_ID: ${APP_BUILD_ID:-}
