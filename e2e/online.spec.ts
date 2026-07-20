@@ -80,8 +80,8 @@ test.describe('雙瀏覽器線上對戰 @requires-backend', () => {
 
       // 每位玩家放置一張初始牌並確認，進入 turnSet 後由玩家 0 投降，驗證完整結算流程。
       await Promise.all([
-        page.locator('[data-zone="hand"] button').first().click(),
-        guestPage.locator('[data-zone="hand"] button').first().click(),
+        page.locator('[data-zone="hand"] [data-tut-card^="e2e_"]').first().click(),
+        guestPage.locator('[data-zone="hand"] [data-tut-card^="e2e_"]').first().click(),
       ]);
       await Promise.all([
         page.getByRole('button', { name: /打出檢視中的牌/ }).click(),

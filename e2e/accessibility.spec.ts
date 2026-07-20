@@ -216,8 +216,8 @@ test.describe('線上 Battle/Result 無障礙 @a11y @requires-backend', () => {
       await expect(guestPage.locator('[data-game-step="initialSet"]')).toBeVisible({ timeout: 20_000 });
 
       await Promise.all([
-        page.locator('[data-zone="hand"] button').first().click(),
-        guestPage.locator('[data-zone="hand"] button').first().click(),
+        page.locator('[data-zone="hand"] [data-tut-card^="e2e_"]').first().click(),
+        guestPage.locator('[data-zone="hand"] [data-tut-card^="e2e_"]').first().click(),
       ]);
       await Promise.all([
         page.getByRole('button', { name: /打出檢視中的牌/ }).click(),
