@@ -2,7 +2,7 @@
 
 **語言 / Languages：** [繁體中文](README.md) | [日本語](README.ja.md) | [English](README.en.md)
 
-目前版本：**0.2.0**
+目前版本：**0.2.2**
 
 > ZUTOMAYO CARD（ずっと真夜中でいいのに。官方 TCG）的非官方數位化對戰平台。
 > 支援本機雙人、AI 練習、互動式教學與即時線上對戰。
@@ -10,6 +10,8 @@
 ## 專案現況
 
 0.2.0 將專案從單一對戰應用擴充為多人平台：`boardgame.io` 繼續掌管權威卡牌狀態，Colyseus 負責大廳、配對、房間、邀請與觀戰 presence，ChatService 負責可持久化聊天、未讀、翻譯、舉報與管理審核。
+
+0.2.2 新增卡組分享大廳，以及由 PostgreSQL 提供的官方日文 Q&A／勘誤資料、六語頁面、後台校訂與來源同步流程。
 
 ### 遊戲與對戰
 
@@ -38,7 +40,8 @@
 ### 其他產品能力
 
 - 六語 UI：繁中、粵語、簡中、日文、英文、韓文。
-- 牌組編輯器、排行榜、跨裝置戰績、個人頁、OAuth 身份與反饋看板。
+- 牌組編輯器、卡組分享大廳、排行榜、跨裝置戰績、個人頁、OAuth 身份與反饋看板。
+- 官方日文 Q&A／勘誤、在地化閱讀頁面，以及人工校訂與來源同步後台。
 - PWA 安裝／更新提示與 app、build、rules 三層版本相容檢查。
 - 卡牌、翻譯、使用者、ELO、聊天證據、處分與反饋管理後台。
 - Playwright 核心 E2E、k6 API／WebSocket／認證／配對負載測試，以及 staging／production CD pipeline。
@@ -105,29 +108,29 @@ npm run dev
 
 ### 常用命令
 
-| 命令                                           | 用途                                                       |
-| ---------------------------------------------- | ---------------------------------------------------------- |
-| `npm run verify`                               | 依序執行格式、版本、Lint、兩套型別檢查、單元測試與生產建置 |
-| `npm test` / `npm run test:watch`              | Vitest 單次／監看模式                                      |
-| `npm run typecheck`                            | 檢查應用與伺服器 TypeScript                                |
-| `npm run typecheck:scripts`                    | 檢查 scripts TypeScript                                    |
-| `npm run lint`                                 | ESLint                                                     |
-| `npm run format:check:tracked`                 | 只檢查 Git 追蹤檔案的 Prettier 格式                        |
-| `npm run build`                                | 型別檢查後建立正式前端 bundle                              |
-| `npm run server`                               | 啟動 game／boardgame.io 伺服器                             |
-| `npm run platform`                             | 啟動 Colyseus 平台服務                                     |
-| `npm run db:migrate`                           | 套用 PostgreSQL migrations                                 |
-| `npm run import:official-rulings-translations` | 從本機未追蹤來源匯入官方裁定翻譯至 PostgreSQL              |
-| `npm run sync:official-rulings`                | 唯讀檢查官方 Q&A／勘誤是否有差異                           |
-| `npm run translate:official-rulings`           | 產生缺少的官方規則衍生語言翻譯                             |
-| `npm run smoke`                                | 核心遊戲流程 smoke                                         |
-| `npm run smoke:api`                            | REST API 整合 smoke                                        |
-| `npm run smoke:online`                         | boardgame.io 線上對戰 smoke                                |
-| `npm run smoke:platform-deployment`            | 驗證 platform 健康度與真實 lobby WebSocket join/leave      |
-| `npm run smoke:responsive`                     | 全部響應式瀏覽器 smoke                                     |
-| `npm run rule:audit`                           | 卡牌效果解析覆蓋審計                                       |
-| `npm run e2e` / `npm run e2e:ui`               | Playwright 完整 E2E／互動 UI                               |
-| `npm run load:api` / `load:ws`                 | k6 API／WebSocket 負載測試（需另行安裝 k6）                |
+| 命令                                           | 用途                                                        |
+| ---------------------------------------------- | ----------------------------------------------------------- |
+| `npm run verify`                               | 依序執行格式、policy、設定、Lint、型別、coverage 與生產建置 |
+| `npm test` / `npm run test:watch`              | Vitest 單次／監看模式                                       |
+| `npm run typecheck`                            | 檢查應用與伺服器 TypeScript                                 |
+| `npm run typecheck:scripts`                    | 檢查 scripts TypeScript                                     |
+| `npm run lint`                                 | ESLint                                                      |
+| `npm run format:check:tracked`                 | 只檢查 Git 追蹤檔案的 Prettier 格式                         |
+| `npm run build`                                | 型別檢查後建立正式前端 bundle                               |
+| `npm run server`                               | 啟動 game／boardgame.io 伺服器                              |
+| `npm run platform`                             | 啟動 Colyseus 平台服務                                      |
+| `npm run db:migrate`                           | 套用 PostgreSQL migrations                                  |
+| `npm run import:official-rulings-translations` | 從本機未追蹤來源匯入官方裁定翻譯至 PostgreSQL               |
+| `npm run sync:official-rulings`                | 唯讀檢查官方 Q&A／勘誤是否有差異                            |
+| `npm run translate:official-rulings`           | 產生缺少的官方規則衍生語言翻譯                              |
+| `npm run smoke`                                | 核心遊戲流程 smoke                                          |
+| `npm run smoke:api`                            | REST API 整合 smoke                                         |
+| `npm run smoke:online`                         | boardgame.io 線上對戰 smoke                                 |
+| `npm run smoke:platform-deployment`            | 驗證 platform 健康度與真實 lobby WebSocket join/leave       |
+| `npm run smoke:responsive`                     | 全部響應式瀏覽器 smoke                                      |
+| `npm run rule:audit`                           | 卡牌效果解析覆蓋審計                                        |
+| `npm run e2e` / `npm run e2e:ui`               | Playwright 完整 E2E／互動 UI                                |
+| `npm run load:api` / `load:ws`                 | k6 API／WebSocket 負載測試（需另行安裝 k6）                 |
 
 ## Docker 部署
 
@@ -140,7 +143,7 @@ docker compose ps
 
 Compose 包含六個單元：`postgres`、`redis`、一次性的 `migrate`、`game`、`api` 與 `platform`。
 
-另提供 `docker-compose.e2e.yml`、`docker-compose.load-test.yml` 與隔離 port／資料庫的 `docker-compose.staging.yml`。CD workflow 會在 master 更新時建置 GHCR staging images，版本 tag 建置 production images；SSH 部署由 `workflow_dispatch` 控制。
+另提供 `docker-compose.e2e.yml`、`docker-compose.load-test.yml` 與隔離 port／資料庫的 `docker-compose.staging.yml`。Production-hardening CD 目前隔離在 `codex/deferred-production-hardening`；staging／production SSH 部署由 `workflow_dispatch` 以已驗證 artifacts 明確觸發。
 
 | Port   | 服務     | 說明                                            |
 | ------ | -------- | ----------------------------------------------- |
@@ -190,7 +193,7 @@ docs/                 架構、API、部署、多人平台與 UI/UX 文檔
 - [貢獻指南](CONTRIBUTING.md)
 - [版本紀錄](CHANGELOG.md)
 - [負載測試](load-tests/README.md)
-- [遊戲規則](rules.md) / [官方 Q&A](https://battle.zutomayocard.online/rules/qa)
+- [遊戲規則](rules.md) / [官方 Q&A](https://battle.zutomayocard.online/rules/qa) / [官方勘誤](https://battle.zutomayocard.online/rules/errata)
 
 ## 授權
 

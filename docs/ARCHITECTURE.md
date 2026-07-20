@@ -71,14 +71,14 @@ ZUTOMAYO CARD Online 的系統架構文檔。本文說明前端 SPA、boardgame.
 
 ### 各層職責
 
-| 層              | 主要職責                                                                                                      | 技術                                                            |
-| --------------- | ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| 前端 SPA        | UI、路由、牌組編輯、教學、i18n、PWA、boardgame.io client（state sync + playerView）、Colyseus platform client | React 19、Vite 7、React Router 7、Tailwind/daisyUI、PWA         |
-| Game Server     | boardgame.io 權威遊戲狀態、playerView 資訊隱藏、Socket.IO 連線、跨節點廣播、版本檢查                          | boardgame.io 0.50、Koa、Socket.IO、PostgresAdapter、RedisPubSub |
-| API Server      | 帳號 / OAuth / 牌組 / 對戰結果 / 聊天持久化 / 好友 / 反饋 / 管理 / 卡牌資料 / legacy REST 配對                | Node HTTP、pg、ioredis、zod、node-pg-migrate                    |
-| Platform Server | Colyseus lobby presence、quick matchmaking、custom-room lifecycle、invite、match shell、spectator presence    | Colyseus、@colyseus/ws-transport、RedisDriver、RedisPresence    |
-| PostgreSQL      | 持久資料（用戶、好友、牌組、對戰、聊天、檢舉、制裁、卡牌、反饋、boardgame.io state）                          | PostgreSQL 16                                                   |
-| Redis           | 跨節點同步、Colyseus room/presence backing、refresh 原子輪替、legacy 配對佇列、限流、HTTP presence fallback   | Redis 7（密碼、AOF + noeviction）                               |
+| 層              | 主要職責                                                                                                    | 技術                                                            |
+| --------------- | ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| 前端 SPA        | UI、路由、牌組編輯／分享、官方裁定、教學、i18n、PWA、boardgame.io client、Colyseus platform client          | React 19、Vite 7、React Router 7、Tailwind/daisyUI、PWA         |
+| Game Server     | boardgame.io 權威遊戲狀態、playerView 資訊隱藏、Socket.IO 連線、跨節點廣播、版本檢查                        | boardgame.io 0.50、Koa、Socket.IO、PostgresAdapter、RedisPubSub |
+| API Server      | 帳號 / OAuth / 牌組與分享 / 官方裁定 / 對戰結果 / 聊天 / 好友 / 反饋 / 管理 / 卡牌資料                      | Node HTTP、pg、ioredis、zod、node-pg-migrate                    |
+| Platform Server | Colyseus lobby presence、quick matchmaking、custom-room lifecycle、invite、match shell、spectator presence  | Colyseus、@colyseus/ws-transport、RedisDriver、RedisPresence    |
+| PostgreSQL      | 持久資料（用戶、牌組／分享、官方裁定、對戰、聊天、制裁、卡牌、反饋、boardgame.io state）                    | PostgreSQL 16                                                   |
+| Redis           | 跨節點同步、Colyseus room/presence backing、refresh 原子輪替、legacy 配對佇列、限流、HTTP presence fallback | Redis 7（密碼、AOF + noeviction）                               |
 
 ### 請求/同步流向
 
@@ -104,7 +104,7 @@ flowchart LR
 ### React + Vite SPA
 
 - **入口**：`src/main.tsx` → `src/App.tsx`（路由 + NavBar + 教學 overlay + 重連提示）。
-- **路由**：React Router 7，路徑定義於 `src/pages/`（大廳、AI/線上/教學對戰、牌組編輯器、對戰紀錄、排行榜、反饋看板、個人頁、管理後台）。
+- **路由**：React Router 7，路徑定義於 `src/pages/`（大廳、AI/線上/教學對戰、牌組編輯／分享、官方 Q&A／勘誤、對戰紀錄、排行榜、反饋、個人頁、管理後台）。
 - **建構**：Vite 7，Strict TypeScript。`npm run build` 會先跑 `typecheck` + `typecheck:scripts` 再 `vite build`。
 - **Design System v1**：`src/ui/` 提供 `primitives/`、`layout/`、`game/`、`feedback/`、`forms/`、`tokens/`（colors / spacing / typography / z-index / motion）。
 
@@ -256,23 +256,27 @@ boardgame.io 多實例需要**兩個獨立的跨節點層**，兩者職責不同
 
 ### Service 模組
 
-| 模組                          | 職責                                                                           |
-| ----------------------------- | ------------------------------------------------------------------------------ |
-| `accountService.cjs`          | 本地帳號註冊/登入、OAuth 身份連結/查詢/解除、密碼變更                          |
-| `adminService.cjs`            | Admin 登入、使用者列表、ELO 重設                                               |
-| `adminCardService.cjs`        | 卡牌資料與效果翻譯寫入（`upsertCard` / `upsertCardI18n` / `upsertGameConfig`） |
-| `cardDataService.cjs`         | 卡牌列表、單卡、i18n、動態設定、預設牌組（公開唯讀）                           |
-| `chatService.cjs`             | 持久化聊天、歷史同步、未讀、翻譯、檢舉、證據快照、審核與禁言制裁               |
-| `chatTranslationProvider.cjs` | 可配置 HTTP/LLM 翻譯 provider，未配置時讓 ChatService 保持 pending 合約        |
-| `deckService.cjs`             | 個人牌組 CRUD                                                                  |
-| `friendService.cjs`           | 好友新增 / 列表 / 移除，供 lobby 與 platform friend presence 使用              |
-| `presenceService.cjs`         | 線上人數 presence heartbeat / 計數                                             |
-| `matchQueries.cjs`            | 排行榜、個人對戰歷史、admin 對戰列表、已清理 action log                        |
-| `matchSubmission.cjs`         | 對戰結果上報 + ELO 計算（呼叫 `matchVerification`）                            |
-| `matchVerification.cjs`       | 防作弊驗證（見下節）                                                           |
-| `feedbackService.cjs`         | 反饋看板（文章、投票、留言、標籤、emoji 反應、圖片附件、重複標記）             |
-| `imgproxySigner.cjs`          | imgproxy 簽名 URL 產生與來源白名單                                             |
-| `observability.cjs`           | pino log、Prometheus metrics、request tracing                                  |
+| 模組                              | 職責                                                                           |
+| --------------------------------- | ------------------------------------------------------------------------------ |
+| `accountService.cjs`              | 本地帳號註冊/登入、OAuth 身份連結/查詢/解除、密碼變更                          |
+| `adminService.cjs`                | Admin 登入、使用者列表、ELO 重設                                               |
+| `adminCardService.cjs`            | 卡牌資料與效果翻譯寫入（`upsertCard` / `upsertCardI18n` / `upsertGameConfig`） |
+| `cardDataService.cjs`             | 卡牌列表、單卡、i18n、動態設定、預設牌組（公開唯讀）                           |
+| `chatService.cjs`                 | 持久化聊天、歷史同步、未讀、翻譯、檢舉、證據快照、審核與禁言制裁               |
+| `chatTranslationProvider.cjs`     | 可配置 HTTP/LLM 翻譯 provider，未配置時讓 ChatService 保持 pending 合約        |
+| `deckService.cjs`                 | 個人牌組 CRUD                                                                  |
+| `deckShareService.cjs`            | 牌組發布、可見性、快照更新、複製、按讚、檢舉與管理審核                         |
+| `friendService.cjs`               | 好友新增 / 列表 / 移除，供 lobby 與 platform friend presence 使用              |
+| `presenceService.cjs`             | 線上人數 presence heartbeat / 計數                                             |
+| `matchQueries.cjs`                | 排行榜、個人對戰歷史、admin 對戰列表、已清理 action log                        |
+| `matchSubmission.cjs`             | 對戰結果上報 + ELO 計算（呼叫 `matchVerification`）                            |
+| `matchVerification.cjs`           | 防作弊驗證（見下節）                                                           |
+| `feedbackService.cjs`             | 反饋看板（文章、投票、留言、標籤、emoji 反應、圖片附件、重複標記）             |
+| `imgproxySigner.cjs`              | imgproxy 簽名 URL 產生與來源白名單                                             |
+| `officialRulingsService.cjs`      | 官方 Q&A／勘誤公開讀取、多語回退、翻譯寫入與內容版本                           |
+| `officialRulingsAdminService.cjs` | 翻譯覆蓋率、人工複核、來源同步狀態與 audit log                                 |
+| `officialRulingsSource.cjs`       | 官方來源抓取、解析與 fail-closed 差異比較                                      |
+| `observability.cjs`               | pino log、Prometheus metrics、request tracing                                  |
 
 ### 卡牌圖片交付規範
 
@@ -451,7 +455,7 @@ flowchart LR
 ### PostgreSQL
 
 - **兩個 database**：
-  - `zutomayo`：應用資料（users / decks / matches / cards / card_texts_i18n / game_config / preset_decks / admin_audit_log / feedback\*\* / `bjg_matches`）。
+  - `zutomayo`：應用資料（users / decks / deck_shares / matches / cards / official_qa_items / official-rulings translations / game_config / feedback\*\* / `bjg_matches`）。
   - `logto`：Logto 自管的身份 / session database（獨立，不由本專案 code 直接存取）。
 - **table 隔離**：boardgame.io state 用 `bjg_` 前綴（`bjg_matches`），其餘 API table 無前綴，兩者共存於同一個 `zutomayo` database。
 
@@ -652,7 +656,7 @@ GitHub Actions（`.github/workflows/ci.yml`），`ubuntu-latest` + Node 22 + npm
 ```text
 checkout → setup-node → npm ci
   → format:check:tracked (Prettier)
-  → version:check  (root / api package version sync)
+  → version:check  (manifests / lockfiles / README / CHANGELOG / current plan sync)
   → lint           (ESLint)
   → typecheck      (tsc --noEmit, app)
   → typecheck:scripts

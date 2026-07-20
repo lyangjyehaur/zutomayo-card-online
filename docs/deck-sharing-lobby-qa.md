@@ -1,8 +1,8 @@
 # 牌組分享與分享大廳 QA 記錄
 
-更新日期：2026-07-20
+更新日期：2026-07-21
 
-分支：`codex/deck-sharing-lobby`
+交付版本：`0.2.2`；commit `e195dfcc`（#18）
 
 ## 自動化驗收
 
@@ -42,5 +42,5 @@
 ## Release 前外部條件
 
 - 確認 Public Beta 功能凍結已解除或取得豁免，再於 production 設定 `DECK_SHARING_ENABLED=true`。
-- rebase 後確認 `000037_service_integrations.js` 先於 `000038_deck_sharing.js`。
+- `000037_service_integrations.js` 先於 `000038_deck_sharing.js` 的 migration 順序已在合併後驗證。
 - 在具有真實 PostgreSQL、Redis 與登入帳號的 staging 執行一次非 mock smoke test；這是部署前環境驗收，不是程式實作缺口。

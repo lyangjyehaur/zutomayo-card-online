@@ -1,10 +1,10 @@
 # 卡組分享與分享大廳功能規格
 
-更新日期：2026-07-20
+更新日期：2026-07-21
 
-狀態：MVP 已實作並通過驗證，待合併與正式環境 release guard 核准
+狀態：MVP 已完成、驗證並合併至 `master`，納入 `0.2.2`；正式環境仍由 release guard 控制是否啟用
 
-目標分支：`codex/deck-sharing-lobby`
+交付 commit：`e195dfcc`（#18）
 
 驗收證據見 [deck-sharing-lobby-qa.md](./deck-sharing-lobby-qa.md)。
 
@@ -13,9 +13,9 @@
 - 登入玩家已有伺服器牌組 CRUD：`GET/POST/PUT/DELETE /api/decks`；未登入玩家使用瀏覽器 `localStorage` 牌組庫。
 - 合法牌組固定 20 張、同卡最多 2 張；Character 至少 10 張目前是推薦而非硬性規則。
 - 線上對戰會為伺服器牌組建立短效 reservation，分享功能不應改變這條可信任對戰路徑。
-- 現有 `decks` 僅包含擁有者、名稱、卡牌 ID 與時間，沒有公開狀態、分享連結或互動數據。
+- 私人 `decks` 與公開 `deck_shares` 保持分離；分享連結、快照、可見性與互動數據由分享資料表保存。
 - 專案已有登入、封鎖、聊天舉報、管理審核、帳號匯出與刪除流程。公開牌組名稱與作者暱稱屬於公開 UGC，必須納入安全、匯出、刪除及保存政策。
-- `docs/release-readiness-remediation-plan.md` 目前仍記錄 Public Beta 功能凍結；本功能應在獨立 worktree 完成，合併前需確認功能凍結已解除或取得明確豁免。
+- 功能程式已合併，但 production 的 `DECK_SHARING_ENABLED` 預設仍為 `false`；啟用是獨立的 release 決策，不是實作缺口。
 
 ## 2. 產品定義
 
