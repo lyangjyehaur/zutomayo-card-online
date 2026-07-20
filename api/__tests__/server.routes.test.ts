@@ -417,6 +417,102 @@ describe('server routes', () => {
     });
   });
 
+  describe('deck sharing routes', () => {
+    it('allows guests to browse the public lobby', async () => {
+      const res = await sendRequest('GET', '/api/deck-shares?sort=popular&element=%E7%82%8E&limit=24');
+
+      expect(res.statusCode).toBe(200);
+      expect(parseBody(res)).toEqual({ shares: [], nextCursor: null });
+      expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining("ds.visibility = 'public'"), ['炎', 24]);
+    });
+
+    it('allows guests to open a published public or unlisted share link', async () => {
+      mockQuery.mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'ds_share_12345678',
+            name: 'Night deck',
+            card_ids: ['1st_1', '1st_2'],
+            visibility: 'unlisted',
+            publication_status: 'published',
+            moderation_status: 'visible',
+            published_rules_version: '2026-07',
+            published_at: '2026-07-20T00:00:00.000Z',
+            updated_at: '2026-07-20T01:00:00.000Z',
+            owner_user_id: 'u_owner',
+            owner_nickname: 'Owner',
+            elements: ['闇'],
+            character_count: 1,
+            representative_card_ids: ['1st_1'],
+            like_count: '3',
+            copy_count: '2',
+            viewer_has_liked: false,
+          },
+        ],
+        rowCount: 1,
+      });
+
+      const res = await sendRequest('GET', '/api/deck-shares/ds_share_12345678');
+
+      expect(res.statusCode).toBe(200);
+      expect(parseBody(res)).toMatchObject({
+        id: 'ds_share_12345678',
+        name: 'Night deck',
+        visibility: 'unlisted',
+        cardIds: ['1st_1', '1st_2'],
+        owner: { userId: 'u_owner', nickname: 'Owner' },
+        likeCount: 3,
+        copyCount: 2,
+      });
+    });
+
+    it('rejects malformed lobby queries and publish bodies', async () => {
+      const queryRes = await sendRequest('GET', '/api/deck-shares?sort=oldest&limit=0');
+      expect(queryRes.statusCode).toBe(400);
+      expect(parseBody(queryRes)).toEqual(expect.objectContaining({ error: 'Validation failed' }));
+
+      const publishRes = await sendRequest(
+        'POST',
+        '/api/deck-shares',
+        { deckId: 'not-a-deck', visibility: 'friends' },
+        userUnsafeHeaders(),
+      );
+      expect(publishRes.statusCode).toBe(400);
+      expect(parseBody(publishRes)).toEqual(expect.objectContaining({ error: 'Validation failed' }));
+    });
+
+    it('requires an account session for publish, copy, like, and report mutations', async () => {
+      const csrfToken = 'valid-csrf-token-for-testing-1234567890';
+      const headers = { cookie: `zutomayo_csrf=${csrfToken}`, 'x-csrf-token': csrfToken };
+      const cases: Array<[string, string, unknown]> = [
+        ['POST', '/api/deck-shares', { deckId: 'd_source_1234', visibility: 'public' }],
+        ['POST', '/api/deck-shares/ds_share_12345678/copy', { name: 'Copy', idempotencyKey: 'copy-key-1234' }],
+        ['PUT', '/api/deck-shares/ds_share_12345678/like', null],
+        ['DELETE', '/api/deck-shares/ds_share_12345678/like', null],
+        ['POST', '/api/deck-shares/ds_share_12345678/reports', { reason: 'spam' }],
+      ];
+
+      for (const [method, path, body] of cases) {
+        const res = await sendRequest(method, path, body, headers);
+        expect(res.statusCode, `${method} ${path}`).toBe(401);
+      }
+    });
+
+    it('requires an admin session for share report moderation routes', async () => {
+      const listRes = await sendRequest('GET', '/api/admin/deck-share-reports');
+      expect(listRes.statusCode).toBe(401);
+
+      const csrfToken = 'valid-csrf-token-for-testing-1234567890';
+      const moderateRes = await sendRequest(
+        'PUT',
+        '/api/admin/deck-shares/ds_share_12345678/moderation',
+        { moderationStatus: 'hidden', reportStatus: 'resolved' },
+        { cookie: `zutomayo_csrf=${csrfToken}`, 'x-csrf-token': csrfToken },
+      );
+      expect(moderateRes.statusCode).toBe(401);
+    });
+  });
+
   describe('security headers', () => {
     it('sets X-Content-Type-Options: nosniff', async () => {
       const res = await sendRequest('GET', '/api/app-version');

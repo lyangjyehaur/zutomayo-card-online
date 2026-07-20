@@ -81,8 +81,8 @@ const zhTW: LegalLocaleContent = {
           heading: '蒐集的資料',
           bullets: [
             '帳號資料：Email、暱稱、驗證狀態及玩家選擇使用的登入供應商識別資料。',
-            '遊戲資料：牌組、配對、對局結果、ELO、回合與伺服器產生的操作紀錄。',
-            '社交與社群資料：好友、封鎖、聊天訊息、舉報、moderation 與制裁紀錄。',
+            '遊戲資料：私人牌組、公開或僅連結的牌組分享快照、複製紀錄、配對、對局結果、ELO、回合與伺服器產生的操作紀錄。',
+            '社交與社群資料：好友、封鎖、牌組分享按讚、聊天訊息、舉報、moderation 與制裁紀錄。',
             '技術資料：IP、user agent、request ID、錯誤、效能、安全與稽核日誌。',
           ],
         },
@@ -114,7 +114,7 @@ const zhTW: LegalLocaleContent = {
         {
           heading: '玩家權利',
           paragraphs: [
-            '登入後可在個人頁匯出帳號資料或刪除帳號。無法登入時可由註冊 Email 聯絡營運者。刪除後，維持排行榜與反作弊完整性所需的對局資料可能在移除直接識別資訊後保留。',
+            '登入後可在個人頁匯出帳號、私人牌組、牌組分享、按讚、複製與檢舉資料，或刪除帳號。匯出不包含其他玩家的私人資料或管理員內部備註。刪除帳號會移除玩家擁有的分享與按讚，複製和檢舉證據則會移除帳號識別；維持排行榜、反作弊或爭議處理所需的資料可能在去識別後保留。',
           ],
         },
         {
@@ -275,8 +275,8 @@ const en: LegalLocaleContent = {
           heading: 'Data processed',
           bullets: [
             'Account data: email, nickname, verification state, and identifiers from a login provider selected by the player.',
-            'Game data: decks, matchmaking, results, ELO, turns, and server-generated action records.',
-            'Social data: friends, blocks, chat, reports, moderation, and sanction records.',
+            'Game data: private decks, public or link-only deck-share snapshots, trusted copy records, matchmaking, results, ELO, turns, and server-generated action records.',
+            'Social data: friends, blocks, deck-share likes, chat, reports, moderation, and sanction records.',
             'Technical data: IP address, user agent, request IDs, errors, performance, security, and audit logs.',
           ],
         },
@@ -312,7 +312,7 @@ const en: LegalLocaleContent = {
         {
           heading: 'Player rights',
           paragraphs: [
-            'Signed-in players can export data or delete their account from Profile. If sign-in is unavailable, contact the operator from the registered email. Match records needed for rating and anti-cheat integrity may remain after direct identifiers are removed.',
+            'Signed-in players can export account, private deck, deck-share, like, copy, and report data or delete their account from Profile. Exports exclude other players’ private data and internal moderator notes. Account deletion removes owned shares and likes and de-identifies copy or report evidence; records needed for rating, anti-cheat, or disputes may remain after direct identifiers are removed.',
           ],
         },
         {

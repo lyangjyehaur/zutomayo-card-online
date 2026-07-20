@@ -3,6 +3,7 @@
 
 const { Pool } = require('pg');
 const { assertRuntimeSchema } = require('../api/schemaGate.cjs');
+const { deckSharingEnabled } = require('../api/deckSharingConfig.cjs');
 const {
   assertPostgresExpectedRole,
   postgresConnectionString,
@@ -40,7 +41,12 @@ async function main() {
     connectionTimeoutMillis: 5_000,
   });
   try {
-    await assertRuntimeSchema({ pool, expectedMigration, expectedChecksum });
+    await assertRuntimeSchema({
+      pool,
+      expectedMigration,
+      expectedChecksum,
+      requireDeckSharing: deckSharingEnabled(process.env),
+    });
     console.log(`schema gate: ${expectedMigration} applied (${expectedChecksum})`);
   } finally {
     await pool.end();

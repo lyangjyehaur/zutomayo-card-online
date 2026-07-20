@@ -27,6 +27,76 @@ export interface DeckReservationResponse {
   expiresAt: string;
 }
 
+export type DeckShareVisibility = 'public' | 'unlisted';
+export type DeckSharePublicationStatus = 'published' | 'unpublished';
+export type DeckShareModerationStatus = 'visible' | 'hidden' | 'pending_review';
+export type DeckShareSort = 'newest' | 'popular' | 'most-copied';
+
+export interface DeckShareOwner {
+  userId: string;
+  nickname: string;
+}
+
+export interface DeckShareSummary {
+  id: string;
+  name: string;
+  visibility: DeckShareVisibility;
+  publicationStatus: DeckSharePublicationStatus;
+  moderationStatus: DeckShareModerationStatus;
+  publishedRulesVersion: string;
+  publishedAt: string | null;
+  updatedAt: string | null;
+  owner: DeckShareOwner;
+  elements: string[];
+  characterCount: number;
+  representativeCardIds: string[];
+  likeCount: number;
+  copyCount: number;
+  viewerHasLiked: boolean;
+}
+
+export interface DeckShareDetail extends DeckShareSummary {
+  cardIds: string[];
+}
+
+export interface OwnedDeckShare extends DeckShareDetail {
+  sourceDeckId: string | null;
+  sourceDeckExists: boolean;
+  sourceChanged: boolean;
+  unpublishedAt: string | null;
+  moderationReason: string;
+}
+
+export interface DeckSharePage {
+  shares: DeckShareSummary[];
+  nextCursor: string | null;
+}
+
+export type DeckShareReportReason = 'inappropriate_name' | 'impersonation_or_harassment' | 'spam' | 'other';
+
+export interface DeckShareReport {
+  id: string;
+  shareId: string;
+  reporterUserId: string | null;
+  reporterNickname: string;
+  reason: DeckShareReportReason;
+  note: string;
+  status: 'pending' | 'reviewing' | 'resolved' | 'dismissed';
+  resolutionNote: string;
+  createdAt: string | null;
+  updatedAt: string | null;
+  resolvedAt: string | null;
+  share: {
+    name: string;
+    ownerUserId: string;
+    ownerNickname: string;
+    publicationStatus: DeckSharePublicationStatus;
+    moderationStatus: DeckShareModerationStatus;
+    moderationReason: string;
+    cardIds: string[];
+  };
+}
+
 export interface ProfileResponse {
   id: string;
   email: string;
@@ -170,6 +240,10 @@ export interface AccountExport {
   account: Record<string, unknown>;
   identities: unknown[];
   decks: unknown[];
+  deckShares: unknown[];
+  deckShareLikes: unknown[];
+  deckShareCopies: unknown[];
+  deckShareReports: unknown[];
   matches: unknown[];
   friends: unknown[];
   friendRequests: unknown[];
@@ -1033,6 +1107,91 @@ export async function deleteDeck(deckId: string): Promise<{ deleted: boolean }> 
   return request<{ deleted: boolean }>(`/decks/${deckId}`, { method: 'DELETE' });
 }
 
+// ===== Deck sharing =====
+export async function listDeckShares(
+  params: {
+    sort?: DeckShareSort;
+    q?: string;
+    element?: string;
+    cursor?: string;
+    limit?: number;
+  } = {},
+): Promise<DeckSharePage> {
+  const query = new URLSearchParams();
+  if (params.sort) query.set('sort', params.sort);
+  if (params.q) query.set('q', params.q);
+  if (params.element) query.set('element', params.element);
+  if (params.cursor) query.set('cursor', params.cursor);
+  if (params.limit) query.set('limit', String(params.limit));
+  return request<DeckSharePage>(`/deck-shares${query.size > 0 ? `?${query.toString()}` : ''}`);
+}
+
+export async function getDeckShare(shareId: string): Promise<DeckShareDetail> {
+  return request<DeckShareDetail>(`/deck-shares/${encodeURIComponent(shareId)}`);
+}
+
+export async function getOwnedDeckShare(deckId: string): Promise<OwnedDeckShare> {
+  return request<OwnedDeckShare>(`/decks/${encodeURIComponent(deckId)}/share`);
+}
+
+export async function publishDeckShare(deckId: string, visibility: DeckShareVisibility): Promise<OwnedDeckShare> {
+  return request<OwnedDeckShare>('/deck-shares', {
+    method: 'POST',
+    body: JSON.stringify({ deckId, visibility }),
+  });
+}
+
+export async function updateDeckShare(
+  shareId: string,
+  input: { visibility?: DeckShareVisibility; published?: boolean; publishLatest?: boolean },
+): Promise<OwnedDeckShare> {
+  return request<OwnedDeckShare>(`/deck-shares/${encodeURIComponent(shareId)}`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function unpublishDeckShare(shareId: string): Promise<{ unpublished: boolean; shareId: string }> {
+  return request<{ unpublished: boolean; shareId: string }>(`/deck-shares/${encodeURIComponent(shareId)}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function copyDeckShare(
+  shareId: string,
+  name: string,
+  idempotencyKey: string,
+): Promise<{ deck: DeckResponse; copyCount: number }> {
+  return request<{ deck: DeckResponse; copyCount: number }>(`/deck-shares/${encodeURIComponent(shareId)}/copy`, {
+    method: 'POST',
+    body: JSON.stringify({ name, idempotencyKey }),
+  });
+}
+
+export async function likeDeckShare(shareId: string): Promise<{ liked: true; likeCount: number }> {
+  return request<{ liked: true; likeCount: number }>(`/deck-shares/${encodeURIComponent(shareId)}/like`, {
+    method: 'PUT',
+  });
+}
+
+export async function unlikeDeckShare(shareId: string): Promise<{ liked: false; likeCount: number }> {
+  return request<{ liked: false; likeCount: number }>(`/deck-shares/${encodeURIComponent(shareId)}/like`, {
+    method: 'DELETE',
+  });
+}
+
+export async function reportDeckShare(
+  shareId: string,
+  input: { reason: DeckShareReportReason; note?: string },
+): Promise<{
+  report: Pick<DeckShareReport, 'id' | 'shareId' | 'reason' | 'note' | 'status' | 'createdAt' | 'updatedAt'>;
+}> {
+  return request(`/deck-shares/${encodeURIComponent(shareId)}/reports`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
 // ===== Matches =====
 export async function submitMatch(
   winnerId: string,
@@ -1728,6 +1887,34 @@ export async function adminReviewChatMessageModeration(
 ): Promise<{ message: ChatMessage }> {
   return request<{ message: ChatMessage }>(`/admin/chat/messages/${encodeURIComponent(messageId)}/moderation`, {
     method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function adminGetDeckShareReports(
+  token: string,
+  status: DeckShareReport['status'] = 'pending',
+  limit = 50,
+): Promise<{ reports: DeckShareReport[] }> {
+  return request<{ reports: DeckShareReport[] }>(
+    `/admin/deck-share-reports?status=${encodeURIComponent(status)}&limit=${limit}`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+}
+
+export async function adminModerateDeckShare(
+  token: string,
+  shareId: string,
+  input: {
+    moderationStatus: 'visible' | 'hidden';
+    reason?: string;
+    reportStatus: 'resolved' | 'dismissed';
+    resolutionNote?: string;
+  },
+): Promise<{ shareId: string; moderationStatus: string; moderationReason: string }> {
+  return request(`/admin/deck-shares/${encodeURIComponent(shareId)}/moderation`, {
+    method: 'PUT',
     headers: { Authorization: `Bearer ${token}` },
     body: JSON.stringify(input),
   });

@@ -69,6 +69,67 @@ const deckReservationSchema = z.object({
   rulesVersion: z.string().min(1).max(120).optional(),
 });
 
+const deckShareIdSchema = z.string().regex(/^ds_[A-Za-z0-9_-]{8,128}$/);
+
+const deckShareCreateSchema = z
+  .object({
+    deckId: z.string().regex(/^d_[A-Za-z0-9_-]{4,128}$/),
+    visibility: z.enum(['public', 'unlisted']),
+  })
+  .strict();
+
+const deckShareUpdateSchema = z
+  .object({
+    visibility: z.enum(['public', 'unlisted']).optional(),
+    published: z.boolean().optional(),
+    publishLatest: z.boolean().optional(),
+  })
+  .strict()
+  .refine(
+    (value) => value.visibility !== undefined || value.published !== undefined || value.publishLatest === true,
+    'At least one deck share change is required',
+  );
+
+const deckShareListQuerySchema = z
+  .object({
+    sort: z.enum(['newest', 'popular', 'most-copied']).optional(),
+    q: z.string().trim().max(120).optional(),
+    element: z.enum(['闇', '炎', '電気', '風', 'カオス']).optional(),
+    cursor: z.string().max(512).optional(),
+    limit: z.coerce.number().int().min(1).max(48).optional(),
+  })
+  .strict();
+
+const deckShareCopySchema = z
+  .object({
+    name: z.string().trim().min(1).max(60).optional(),
+    idempotencyKey: z.string().regex(/^[A-Za-z0-9_-]{8,128}$/),
+  })
+  .strict();
+
+const deckShareReportCreateSchema = z
+  .object({
+    reason: z.enum(['inappropriate_name', 'impersonation_or_harassment', 'spam', 'other']),
+    note: z.string().trim().max(300).optional(),
+  })
+  .strict();
+
+const adminDeckShareReportListSchema = z
+  .object({
+    status: z.enum(['pending', 'reviewing', 'resolved', 'dismissed']).optional(),
+    limit: z.coerce.number().int().min(1).max(200).optional(),
+  })
+  .strict();
+
+const adminDeckShareModerationSchema = z
+  .object({
+    moderationStatus: z.enum(['visible', 'hidden']),
+    reason: z.string().trim().max(300).optional(),
+    reportStatus: z.enum(['resolved', 'dismissed']),
+    resolutionNote: z.string().trim().max(1000).optional(),
+  })
+  .strict();
+
 // ===== Match submission =====
 // Loose: service layer (matchSubmission.cjs) performs deeper auth + business checks.
 const matchSubmitSchema = z
@@ -312,6 +373,14 @@ module.exports = {
   accountCenterPasswordSchema,
   deckCreateSchema,
   deckReservationSchema,
+  deckShareIdSchema,
+  deckShareCreateSchema,
+  deckShareUpdateSchema,
+  deckShareListQuerySchema,
+  deckShareCopySchema,
+  deckShareReportCreateSchema,
+  adminDeckShareReportListSchema,
+  adminDeckShareModerationSchema,
   matchSubmitSchema,
   heartbeatSchema,
   friendCreateSchema,

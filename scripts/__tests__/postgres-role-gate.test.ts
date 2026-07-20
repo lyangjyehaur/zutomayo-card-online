@@ -25,7 +25,10 @@ const { ALL_RELATIONS, ALL_TABLES, APPLICATION_TABLES, enforceRuntimeRolePrivile
       requiredRoleTypes: string[];
     }>;
   };
-const { REQUIRED_RUNTIME_TABLES } = require('../../api/schemaGate.cjs') as { REQUIRED_RUNTIME_TABLES: string[] };
+const { REQUIRED_RUNTIME_TABLES, DECK_SHARING_RUNTIME_TABLES } = require('../../api/schemaGate.cjs') as {
+  REQUIRED_RUNTIME_TABLES: string[];
+  DECK_SHARING_RUNTIME_TABLES: string[];
+};
 
 const roleUsers = Object.freeze({
   api: 'z_api',
@@ -111,6 +114,8 @@ describe('PostgreSQL runtime role gate', () => {
     const statements = query.mock.calls.map(([sql]) => String(sql));
     expect(statements).toContain('GRANT SELECT, UPDATE ON TABLE public."matches" TO "z_retention"');
     expect(statements).toContain('GRANT SELECT, DELETE ON TABLE public."chat_message_translations" TO "z_retention"');
+    expect(statements).toContain('GRANT SELECT ON TABLE public."deck_shares" TO "z_retention"');
+    expect(statements).toContain('GRANT SELECT, DELETE ON TABLE public."deck_share_reports" TO "z_retention"');
     expect(statements).toContain('GRANT INSERT, UPDATE ON TABLE public."retention_runs" TO "z_retention"');
     expect(statements).not.toContain('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public."matches" TO "z_retention"');
     expect(statements).toContain('GRANT SELECT ON TABLE public."users" TO "z_backup"');
@@ -254,11 +259,10 @@ describe('PostgreSQL runtime role gate', () => {
 
 describe('PostgreSQL role provisioning contract', () => {
   it('keeps the ACL allowlist aligned with the runtime schema list', () => {
-    expect(new Set(ALL_RELATIONS.filter((table) => table !== 'schema_migrations'))).toEqual(
-      new Set(REQUIRED_RUNTIME_TABLES),
-    );
+    const runtimeTables = [...REQUIRED_RUNTIME_TABLES, ...DECK_SHARING_RUNTIME_TABLES];
+    expect(new Set(ALL_RELATIONS.filter((table) => table !== 'schema_migrations'))).toEqual(new Set(runtimeTables));
     expect(new Set(APPLICATION_TABLES)).toEqual(
-      new Set(REQUIRED_RUNTIME_TABLES.filter((table) => table !== 'schema_migration_checksums')),
+      new Set(runtimeTables.filter((table) => table !== 'schema_migration_checksums')),
     );
   });
 

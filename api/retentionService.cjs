@@ -8,6 +8,7 @@ const RETENTION_DAYS = Object.freeze({
   actionLogs: 180,
   chat: 180,
   reports: 365,
+  deckShareReports: 365,
   adminAudit: 365,
   accountTokens: 2,
   relationshipOutboxDelivered: 30,
@@ -97,6 +98,7 @@ function operationDefinitions(cutoffs) {
   const conversationHold = activeHoldForAny('conversation', ['c.id', 'c.subject_id'], messageAccountScope);
   const reportHold = activeHoldForAny('report', ['r.id'], reportAccountScope);
   const reportMessageHold = activeHoldForAny('message', ['r.message_id'], reportAccountScope);
+  const deckShareReportHold = activeHoldForAny('report', ['r.id'], ['r.reporter_user_id', 's.owner_user_id']);
 
   return [
     {
@@ -242,6 +244,31 @@ function operationDefinitions(cutoffs) {
        WHERE r.id = c.id`,
       countParams: [cutoffs.reports],
       mutateParams: [cutoffs.reports],
+    },
+    {
+      name: 'deckShareReports',
+      countSql: `SELECT COUNT(*)::int AS count
+        FROM deck_share_reports r
+        JOIN deck_shares s ON s.id = r.share_id
+       WHERE r.created_at < $1
+         AND r.status IN ('resolved', 'dismissed')
+         AND ${deckShareReportHold}`,
+      mutateSql: `WITH candidates AS (
+        SELECT r.id
+          FROM deck_share_reports r
+          JOIN deck_shares s ON s.id = r.share_id
+         WHERE r.created_at < $1
+           AND r.status IN ('resolved', 'dismissed')
+           AND ${deckShareReportHold}
+         ORDER BY r.created_at ASC
+         FOR UPDATE OF r SKIP LOCKED
+         LIMIT $2
+      )
+      DELETE FROM deck_share_reports r
+       USING candidates c
+       WHERE r.id = c.id`,
+      countParams: [cutoffs.deckShareReports],
+      mutateParams: [cutoffs.deckShareReports],
     },
     {
       name: 'adminAudit',

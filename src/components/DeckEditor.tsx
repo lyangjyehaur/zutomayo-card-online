@@ -65,6 +65,7 @@ interface DeckEditorProps {
   synced?: boolean;
   syncLabel?: string;
   errorMessage?: string;
+  headerActions?: ReactNode;
 }
 
 interface DeckLibraryOption {
@@ -139,6 +140,7 @@ export function DeckEditor({
   synced = false,
   syncLabel,
   errorMessage,
+  headerActions,
 }: DeckEditorProps) {
   const [allCards, setAllCards] = useState<CardDef[]>(() => getAllCardDefs());
   const locale = useLocale();
@@ -703,6 +705,7 @@ export function DeckEditor({
                   {syncLabel}
                 </span>
               )}
+              {headerActions}
               <Button
                 type="button"
                 disabled={!isValid || saving}

@@ -45,12 +45,14 @@ describe('retention service', () => {
       chat: 2,
       translations: 2,
       reports: 2,
+      deckShareReports: 2,
       adminAudit: 2,
       accountTokens: 2,
       relationshipOutbox: 2,
     });
     expect(pool.queries.some(({ sql }) => sql.startsWith('UPDATE matches'))).toBe(false);
     expect(pool.queries.some(({ sql }) => sql.startsWith('DELETE FROM chat_reports'))).toBe(false);
+    expect(pool.queries.some(({ sql }) => sql.startsWith('DELETE FROM deck_share_reports'))).toBe(false);
     expect(pool.queries.some(({ sql }) => sql.includes("status = 'succeeded'"))).toBe(true);
   });
 
@@ -58,7 +60,9 @@ describe('retention service', () => {
     const pool = createPool();
     await runRetention({ pool, dryRun: false, runId: 'retention_live' });
     const destructiveQueries = pool.queries.filter(({ sql }) =>
-      /UPDATE matches|UPDATE chat_messages|DELETE FROM chat_reports|DELETE FROM admin_audit_log/.test(sql),
+      /UPDATE matches|UPDATE chat_messages|DELETE FROM chat_reports|DELETE FROM deck_share_reports|DELETE FROM admin_audit_log/.test(
+        sql,
+      ),
     );
     expect(destructiveQueries.length).toBeGreaterThanOrEqual(4);
     expect(destructiveQueries.every(({ sql }) => sql.includes('legal_holds'))).toBe(true);

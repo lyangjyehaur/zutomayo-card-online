@@ -156,6 +156,10 @@ describe('account lifecycle service', () => {
       if (sql.includes('FROM users')) return { rows: [{ id: 'u_1', email: 'user@example.com' }] };
       if (sql.includes('FROM chat_messages')) return { rows: [{ id: 'msg_1' }] };
       if (sql.includes('FROM chat_reports')) return { rows: [{ id: 'report_1' }] };
+      if (sql.includes('FROM deck_shares')) return { rows: [{ id: 'ds_1' }] };
+      if (sql.includes('FROM deck_share_likes')) return { rows: [{ share_id: 'ds_1' }] };
+      if (sql.includes('FROM deck_share_copy_events')) return { rows: [{ share_id: 'ds_1' }] };
+      if (sql.includes('FROM deck_share_reports')) return { rows: [{ id: 'dsr_1' }] };
       if (sql.includes('FROM feedback_posts')) return { rows: [{ id: 'post_1' }] };
       if (sql.includes('FROM feedback_comments')) return { rows: [{ id: 'comment_1' }] };
       return { rows: [] };
@@ -166,6 +170,10 @@ describe('account lifecycle service', () => {
     };
     expect(result.body.chatMessages).toEqual([{ id: 'msg_1' }]);
     expect(result.body.chatReports).toEqual([{ id: 'report_1' }]);
+    expect(result.body.deckShares).toEqual([{ id: 'ds_1' }]);
+    expect(result.body.deckShareLikes).toEqual([{ share_id: 'ds_1' }]);
+    expect(result.body.deckShareCopies).toEqual([{ share_id: 'ds_1' }]);
+    expect(result.body.deckShareReports).toEqual([{ id: 'dsr_1' }]);
     expect(result.body.feedbackPosts).toEqual([{ id: 'post_1' }]);
     expect(result.body.feedbackComments).toEqual([{ id: 'comment_1' }]);
     expect(result.body).toHaveProperty('friendRequests');
@@ -221,6 +229,15 @@ describe('account lifecycle service', () => {
       expect.stringContaining("nickname = 'Deleted Player'"),
       expect.arrayContaining(['u_1', expect.stringMatching(/^deleted\+[a-f0-9]{32}@invalid\.local$/)]),
     );
+    expect(pool.query).toHaveBeenCalledWith('DELETE FROM deck_share_likes WHERE user_id = $1', ['u_1']);
+    expect(pool.query).toHaveBeenCalledWith('UPDATE deck_share_copy_events SET user_id = NULL WHERE user_id = $1', [
+      'u_1',
+    ]);
+    expect(pool.query).toHaveBeenCalledWith(
+      'UPDATE deck_share_reports SET reporter_user_id = NULL WHERE reporter_user_id = $1',
+      ['u_1'],
+    );
+    expect(pool.query).toHaveBeenCalledWith('DELETE FROM deck_shares WHERE owner_user_id = $1', ['u_1']);
     expect(pool.query).not.toHaveBeenCalledWith(expect.stringContaining('DELETE FROM matches'), expect.anything());
     expect(pool.query).toHaveBeenCalledWith('DELETE FROM deck_reservations WHERE user_id = $1', ['u_1']);
     expect(pool.query).toHaveBeenCalledWith('DELETE FROM platform_match_participants WHERE user_id = $1', ['u_1']);
