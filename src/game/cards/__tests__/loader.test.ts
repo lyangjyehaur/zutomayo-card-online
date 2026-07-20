@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getCardDef, initCards, refreshCards } from '../loader';
+import { getAllCardDefs, getCardDef, initCards, refreshCards, registerCardDefFallbacks } from '../loader';
 import { randomDeck } from '../deckBuilder';
 
 describe('card loader', () => {
@@ -39,5 +39,18 @@ describe('card loader', () => {
 
   it('refuses to build a random deck from an empty card pool', () => {
     expect(() => randomDeck()).toThrow('Cards not loaded yet');
+  });
+
+  it('uses presentation fallbacks without treating them as the authoritative card dataset', () => {
+    const fallback = { id: 'tutorial_fallback' } as Parameters<typeof registerCardDefFallbacks>[0][number];
+    registerCardDefFallbacks([fallback]);
+
+    expect(getCardDef(fallback.id)).toBe(fallback);
+    expect(getAllCardDefs()).toEqual([]);
+    expect(() => randomDeck()).toThrow('Cards not loaded yet');
+
+    const authoritative = { id: fallback.id, name: 'Authoritative' } as typeof fallback;
+    initCards([authoritative]);
+    expect(getCardDef(fallback.id)).toBe(authoritative);
   });
 });

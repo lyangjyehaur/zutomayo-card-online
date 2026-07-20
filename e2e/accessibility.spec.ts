@@ -39,7 +39,7 @@ test.describe('核心頁面無障礙 @a11y', () => {
     '/deck-builder',
     '/feedback',
     '/profile',
-    '/leaderboard',
+    '/tutorial',
     '/legal',
     '/legal/privacy',
     '/legal/terms',
@@ -100,6 +100,31 @@ test.describe('登入 dialog 無障礙 @a11y', () => {
     await expect(trigger).toBeFocused();
     await expect(root).not.toHaveAttribute('aria-hidden', 'true');
     await expect.poll(() => root.evaluate((element) => (element as HTMLElement).inert)).toBe(false);
+  });
+});
+
+test.describe('實戰教學覆蓋層無障礙 @a11y @requires-backend', () => {
+  test('手機操作步驟通過 axe，焦點只在提示卡與允許的目標間移動', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('zutomayo_deck_intro_seen', 'true');
+      localStorage.setItem('zutomayo_locale', 'zh-TW');
+    });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/tutorial');
+    await page.getByTestId('tutorial-chapter-tab-preparation').click();
+    await page.getByRole('button', { name: '開始戰鬥準備', exact: true }).click();
+
+    const overlay = page.locator('.tutorial-game-overlay');
+    await expect(overlay).toHaveAttribute('data-tutorial-phase', 'janken', { timeout: 30_000 });
+    await expect(overlay.getByTestId('tutorial-fixed-instruction')).toBeVisible();
+    await expectNoBlockingAxeViolations(page, 'Tutorial janken overlay');
+
+    const tooltip = page.locator('.tutorial-tooltip');
+    await expect(tooltip).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(page.getByRole('button', { name: '關閉', exact: true })).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    await expect(tooltip).toBeFocused();
   });
 });
 

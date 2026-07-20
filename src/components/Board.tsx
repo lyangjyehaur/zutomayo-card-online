@@ -50,6 +50,7 @@ import {
 } from '../game/GameLogic';
 import { getLocale, t, useLocale } from '../i18n';
 import { getLocalizedCardEffect, getLocalizedCardName, getTranslatedEffect } from '../game/cards/i18n';
+import { getCardElementTranslationKey, getCardTypeTranslationKey } from '../game/cards/taxonomy';
 import { pendingChoiceSelectionError } from '../game/pendingChoices';
 import { canSubmitOnlineTimeout, onlinePhaseTimerStartedAt } from '../onlineTimeout';
 import {
@@ -130,7 +131,7 @@ function CardPopover({
     <aside className={`card-popover popover-${position.placement}`} style={style} aria-hidden="true">
       <strong>{localizedName}</strong>
       <span className="popover-meta">
-        {t(`card.element.${def.element}` as never)} • {t(`card.type.${def.type}` as never)}
+        {t(getCardElementTranslationKey(def.element))} • {t(getCardTypeTranslationKey(def.type))}
       </span>
       <div className="popover-rule" />
       {def.attack && (
@@ -187,6 +188,8 @@ export type BoardGameOverActions = {
   secondary?: BoardGameOverAction;
 };
 
+export type TutorialBoardAction = 'mulligan-select' | 'set-select' | 'set-play';
+
 type Props = BoardProps<GameState> & {
   gameOverActions?: BoardGameOverActions;
   // 線上觀戰者沒有玩家座位，不應以 player 0 視角顯示或提交結算。
@@ -199,6 +202,10 @@ type Props = BoardProps<GameState> & {
   opponentLabel?: string;
   // 我方顯示名稱 override（如 AI 對戰時傳入「玩家」），未傳則用 player.zero i18n key。
   selfLabel?: string;
+  // 教學模式：前置流程只放行劇本指定操作。
+  tutorialMode?: boolean;
+  // 教學模式：真實 UI 操作成功後通知劇本引擎推進。
+  onTutorialAction?: (action: TutorialBoardAction, cardDefId: string) => void;
   // 教學模式：隱藏 janken/mulligan 浮層，等教學進度到了才顯示
   hideSetupOverlay?: boolean;
   // 教學模式：setupFeedback 彈窗（如猜拳結果）確認按鈕點擊時的通知
@@ -211,6 +218,12 @@ type Props = BoardProps<GameState> & {
   tutorialRequiredSetCardDefIds?: string[];
   // 教學模式：只在指定操作步驟開放出牌與確認，避免導覽步驟提早推進戰局。
   tutorialSetInteractionEnabled?: boolean;
+  // 教學回溯正在由固定劇本重建安全檢查點，不顯示前置階段回饋。
+  tutorialAutoReplay?: 'flow' | 'turn2' | 'effects';
+  // 快速重放時略過歷史時計／HP 通知，避免抵達檢查點後重新播放舊事件。
+  tutorialSuppressNotices?: boolean;
+  // 教學先完成角色替換、充能與區域附魔說明，第 13 步才顯示效果選擇層。
+  tutorialEffectOverlayVisible?: boolean;
 };
 
 type FeedbackTone = 'phase' | 'success' | 'danger' | 'neutral';
@@ -735,11 +748,13 @@ function GameNoticeOverlay({
   me,
   onNoticeDismiss,
   onActivityChange,
+  suppress = false,
 }: {
   G: GameState;
   me?: PlayerIndex;
   onNoticeDismiss?: () => void;
   onActivityChange?: (active: boolean) => void;
+  suppress?: boolean;
 }) {
   const lastSeenIdRef = useRef<number>(-1);
   const [queue, setQueue] = useState<GameNotice[]>([]);
@@ -755,8 +770,20 @@ function GameNoticeOverlay({
   const noticeCount = notices.length;
 
   useEffect(() => {
+    if (!suppress) return;
+    lastSeenIdRef.current = lastNoticeId;
+    setQueue([]);
+    setCurrent(null);
+    setBusy(false);
+  }, [lastNoticeId, noticeCount, suppress]);
+
+  useEffect(() => {
     const arr = G.recentGameNotices ?? [];
     const maxId = arr.reduce((max, n) => Math.max(max, n.id), 0);
+    if (suppress) {
+      lastSeenIdRef.current = maxId;
+      return;
+    }
     if (lastSeenIdRef.current === -1) {
       lastSeenIdRef.current = maxId;
       return;
@@ -767,7 +794,7 @@ function GameNoticeOverlay({
     setBusy(true);
     setQueue((prev) => [...prev, ...newOnes]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lastNoticeId, noticeCount]);
+  }, [lastNoticeId, noticeCount, suppress]);
 
   useEffect(() => {
     if (current || queue.length === 0) return;
@@ -818,7 +845,7 @@ function GameNoticeOverlay({
     };
   }, []);
 
-  if (!current) return null;
+  if (suppress || !current) return null;
 
   let content: ReactNode;
   try {
@@ -924,6 +951,8 @@ function MulliganScreen({
   focusedCard,
   onFocusCard,
   floating = false,
+  tutorialMode = false,
+  onTutorialAction,
 }: Props & {
   onMulliganFeedback: (redrawCount: number) => void;
   focusedCard?: FocusedCard;
@@ -952,11 +981,12 @@ function MulliganScreen({
   };
   const activateCard = (card: CardInstance, index: number) => {
     if (done) return;
-    if (touchLike) {
+    if (touchLike && !tutorialMode) {
       openCardDetail(card);
       return;
     }
     toggle(index);
+    if (tutorialMode) onTutorialAction?.('mulligan-select', card.defId);
   };
 
   useEffect(() => {
@@ -1009,6 +1039,7 @@ function MulliganScreen({
                 } ${done ? 'opacity-70' : ''}`}
                 data-tut-mulligan-card={card.defId}
                 data-card-defid={card.defId}
+                data-tut-selected={selected.includes(index) ? 'true' : 'false'}
               >
                 <CardView
                   card={card}
@@ -1230,21 +1261,19 @@ function GameOverScreen({ G, ctx, playerID, matchID, gameOverActions, spectator 
           {title} · {t('board.turn')} {G.turnNumber}
         </div>
 
-        <div className="mt-10 grid w-full grid-cols-2 gap-3 border-y border-content-primary/10 py-6 md:grid-cols-4">
-          <ResultCell
-            label={t('auth.eloChange')}
-            value={eloState.message}
-            accent={win && eloState.status === 'rated'}
-          />
+        <div className="mt-10 grid w-full grid-cols-3 gap-3 border-y border-content-primary/10 py-6">
           <ResultCell label={t('board.result.duration')} value={formatDuration(durationSeconds)} />
           <ResultCell label={t('board.result.turns')} value={String(G.turnNumber)} />
           <ResultCell label={t('board.result.reason')} value={reason} />
         </div>
 
         {eloState.status === 'failed' && eloState.retry && (
-          <Button className="mt-4" type="button" variant="secondary" onClick={eloState.retry}>
-            {t('common.retry')}
-          </Button>
+          <div className="mt-4 flex flex-col items-center gap-2 text-body-sm text-content-muted">
+            <span>{t('auth.matchSubmitFailed')}</span>
+            <Button type="button" variant="secondary" onClick={eloState.retry}>
+              {t('common.retry')}
+            </Button>
+          </div>
         )}
 
         {ctx.gameover &&
@@ -1352,6 +1381,7 @@ function EffectOrderPanel({
                 key={effect.id}
                 className="effect-order-item"
                 type="button"
+                data-tut-effect-card={effect.cardDefId}
                 onClick={() => moves.resolvePendingEffect(index)}
               >
                 <span className="effect-order-card">
@@ -1769,9 +1799,13 @@ function BattleBoard({
   opponentLabel,
   selfLabel,
   onNoticeDismiss,
+  onTutorialAction,
+  tutorialMode,
   tutorialAllowedSetCardDefIds,
   tutorialRequiredSetCardDefIds,
   tutorialSetInteractionEnabled = true,
+  tutorialSuppressNotices,
+  tutorialEffectOverlayVisible,
   onNoticeActivityChange,
   onBattleAnimationChange,
   onPause,
@@ -1991,6 +2025,7 @@ function BattleBoard({
     else moves.setTurnCard(handIndex, me.setZoneA ? 'B' : 'A');
     setInteractionMessage('');
     setSelectedHandIndex(null);
+    onTutorialAction?.('set-play', card.defId);
   };
   const canConfirm =
     !spectator &&
@@ -2057,10 +2092,12 @@ function BattleBoard({
         return;
       }
       setSelectedHandIndex(index);
+      onTutorialAction?.('set-select', card.defId);
       return;
     }
     // 桌面與觸控統一採兩段式：先選中／預覽，再由 ActionDock 明確打出，避免單擊誤出牌。
     setSelectedHandIndex(index);
+    onTutorialAction?.('set-select', card.defId);
   };
 
   const zoneNames = {
@@ -2104,6 +2141,7 @@ function BattleBoard({
       <button
         className="mobile-zone-button mobile-zone-button-abyss"
         type="button"
+        data-tut={owner === meIndex ? 'player-abyss' : 'opponent-abyss'}
         data-chronos-side={setZoneChronosSide(owner)}
         aria-label={`${playerName(owner)} ${zoneNames.abyss}: ${count}`}
         onClick={() => setZoneSheet({ kind: 'abyss', owner })}
@@ -2209,6 +2247,7 @@ function BattleBoard({
                     cards={opponent.abyss}
                     chronosSide={setZoneChronosSide(opponentIndex)}
                     onOpen={() => setZoneSheet({ kind: 'abyss', owner: opponentIndex })}
+                    tutId="opponent-abyss"
                     animationZone={`p${opponentIndex}:abyss`}
                   />
                 </>
@@ -2289,6 +2328,7 @@ function BattleBoard({
                   state={meSlotUndo('C', me.setZoneC) ? 'undoable' : 'idle'}
                   onActivate={meSlotUndo('C', me.setZoneC) ?? detailActivate(me.setZoneC, meIndex, zoneNames.C)}
                   onInspect={(card) => inspect(card, meIndex, zoneNames.C)}
+                  tutId="player-area-enchant"
                   animationZone={`p${meIndex}:setZoneC`}
                 />
               </div>
@@ -2298,6 +2338,7 @@ function BattleBoard({
                     side="me"
                     count={me.deck.length}
                     chronosSide={setZoneChronosSide(meIndex)}
+                    tutId="player-deck"
                     animationZone={`p${meIndex}:deck`}
                   />
                   <AbyssZone
@@ -2329,6 +2370,7 @@ function BattleBoard({
                 selectedIndex={selectedHandIndex}
                 canAct={canAct}
                 allowedCardDefIds={playableCardDefIds}
+                tutId="player-hand"
                 onCardTap={spectator ? undefined : handleHandTap}
                 onCardHover={
                   touchLike || spectator
@@ -2372,15 +2414,17 @@ function BattleBoard({
       </div>
 
       {/* 效果結算 — 居中覆蓋層 */}
-      {!spectator && (G.step === 'effectOrder' || G.pendingChoice) && (
-        <BattleOverlayLayer>
-          {G.pendingChoice ? (
-            <PendingChoicePanel G={G} moves={moves} playerID={playerID} />
-          ) : (
-            <EffectOrderPanel G={G} moves={moves} playerID={playerID} />
-          )}
-        </BattleOverlayLayer>
-      )}
+      {!spectator &&
+        (G.step === 'effectOrder' || G.pendingChoice) &&
+        (!tutorialMode || tutorialEffectOverlayVisible !== false) && (
+          <BattleOverlayLayer>
+            {G.pendingChoice ? (
+              <PendingChoicePanel G={G} moves={moves} playerID={playerID} />
+            ) : (
+              <EffectOrderPanel G={G} moves={moves} playerID={playerID} />
+            )}
+          </BattleOverlayLayer>
+        )}
 
       <BattleSideSheet
         activePanel={activeSidePanel}
@@ -2424,6 +2468,7 @@ function BattleBoard({
         me={meIndex}
         onNoticeDismiss={onNoticeDismiss}
         onActivityChange={onNoticeActivityChange}
+        suppress={tutorialSuppressNotices}
       />
       <BattleAnimationLayer G={G} me={meIndex} onAnimatingChange={onBattleAnimationChange} />
     </BoardLayout>
@@ -2529,6 +2574,11 @@ export function Board(props: Props) {
   }, [clearGameOverTimers, props.G.step, revealGameOver, scheduleGameOverWhenIdle]);
 
   useEffect(() => {
+    if (props.tutorialAutoReplay) {
+      setSetupFeedback(null);
+      previousStep.current = props.G.step;
+      return;
+    }
     if (
       previousStep.current === 'janken' &&
       props.G.step === 'mulligan' &&
@@ -2545,7 +2595,7 @@ export function Board(props: Props) {
       });
     }
     previousStep.current = props.G.step;
-  }, [props.G.step, props.G.jankenChoices, props.G.chronos.nightSidePlayer, me]);
+  }, [props.G.step, props.G.jankenChoices, props.G.chronos.nightSidePlayer, props.tutorialAutoReplay, me]);
 
   // 猜拳平手提示：resolveJanken 平手時不改 step，僅遞增 jankenDrawCount 並重置 choices。
   // 以 ref 記錄上次 drawCount，變化時顯示短暫提示，避免與「初次進入 janken」混淆。

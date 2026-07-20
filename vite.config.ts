@@ -18,6 +18,7 @@ function versionEnv(name: string, fallback: string): string {
 const appVersion = versionEnv('APP_VERSION', packageVersion);
 const appBuildId = versionEnv('APP_BUILD_ID', appVersion);
 const gameRulesVersion = versionEnv('GAME_RULES_VERSION', appVersion);
+const imgproxyDevProxyTarget = process.env.IMGPROXY_DEV_PROXY_TARGET?.trim();
 
 // Release 字串必須與 src/sentry.ts 的 release 完全一致，source map 才能正確關聯。
 const release = `${appVersion}@${appBuildId}`;
@@ -113,7 +114,7 @@ export default defineConfig({
             },
           },
           {
-            urlPattern: /^https:\/\/r2\.dan\.tw\/.*/i,
+            urlPattern: /\/api\/imgproxy\//i,
             handler: 'CacheFirst',
             options: {
               cacheName: 'card-images',
@@ -130,6 +131,15 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
+      ...(imgproxyDevProxyTarget
+        ? {
+            '/api/imgproxy': {
+              target: imgproxyDevProxyTarget.replace(/\/+$/, ''),
+              changeOrigin: true,
+              secure: true,
+            },
+          }
+        : {}),
       '/api': {
         target: 'http://127.0.0.1:3001',
         changeOrigin: true,

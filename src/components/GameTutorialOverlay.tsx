@@ -10,11 +10,16 @@ export interface TutorialEntrySnapshot {
 }
 
 export interface TutorialStep {
+  chapter: 'preparation' | 'flow';
   phase: string;
   /** css selector(s) of element(s) to highlight; null => centered modal. 陣列可挖多個洞（如戰鬥區+時鐘） */
   target: string | string[] | null;
+  /** 只允許點擊的精確目標；未指定時，操作步驟沿用 target。 */
+  interactionTarget?: string | string[] | null;
   title: string;
   body: string;
+  /** 固定顯示在操作區上方的下一步提示；不應依賴內層捲動才能看見。 */
+  instruction?: string;
   placement?: 'top' | 'bottom' | 'left' | 'right' | 'center';
   padding?: number;
   /** 操作步驟：條件達成時自動推進（取代手動 Next）。未定義即為導覽步驟。 */
@@ -25,9 +30,13 @@ export interface TutorialStep {
   resolveKeys?: (G: GameState) => { title: string; body: string };
   /** 導覽步驟但隱藏 Next/Prev：只能透過特定操作（如點擊彈窗確認按鈕）推進 */
   hideNext?: boolean;
+  /** 由遊戲元件回報成功操作並推進，此步不顯示 Next。 */
+  actionOnly?: boolean;
   /** 標記此步驟可由 GameNotice 彈窗的確認按鈕推進（如時鐘推進、HP 計算彈窗）。
    *  解決多回合場景中同類步驟（clock-advance/hp-calc）重複出現時的 findIndex 問題。 */
   advanceOnNoticeDismiss?: boolean;
+  /** 返回上一個說明時是否可直接切換，或必須從安全檢查點重建對局。 */
+  backBehavior?: { type: 'direct' } | { type: 'restart'; checkpoint: 'preparation' | 'flow' | 'turn2' | 'effects' };
 }
 
 type Rect = { x: number; y: number; w: number; h: number };
@@ -50,6 +59,12 @@ function sameRects(a: Rect[], b: Rect[]): boolean {
   );
 }
 
+function isVisibleElement(element: HTMLElement): boolean {
+  const rect = element.getBoundingClientRect();
+  const style = window.getComputedStyle(element);
+  return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
+}
+
 function useTargetRects(selector: string | string[] | null, pad: number, stepKey: number): Rect[] {
   const [rects, setRects] = useState<Rect[]>([]);
 
@@ -64,15 +79,15 @@ function useTargetRects(selector: string | string[] | null, pad: number, stepKey
     const measure = () => {
       const next: Rect[] = [];
       for (const sel of selectors) {
-        const el = document.querySelector(sel) as HTMLElement | null;
-        if (!el) continue;
-        const r = el.getBoundingClientRect();
-        next.push({
-          x: r.left - pad,
-          y: r.top - pad,
-          w: r.width + pad * 2,
-          h: r.height + pad * 2,
-        });
+        for (const el of Array.from(document.querySelectorAll<HTMLElement>(sel)).filter(isVisibleElement)) {
+          const r = el.getBoundingClientRect();
+          next.push({
+            x: r.left - pad,
+            y: r.top - pad,
+            w: r.width + pad * 2,
+            h: r.height + pad * 2,
+          });
+        }
       }
       setRects((previous) => (sameRects(previous, next) ? previous : next));
     };
@@ -81,8 +96,7 @@ function useTargetRects(selector: string | string[] | null, pad: number, stepKey
     const resizeObserver = new ResizeObserver(measure);
     if (document.documentElement) resizeObserver.observe(document.documentElement);
     for (const sel of selectors) {
-      const element = document.querySelector(sel);
-      if (element) resizeObserver.observe(element);
+      document.querySelectorAll(sel).forEach((element) => resizeObserver.observe(element));
     }
     const mutationObserver = new MutationObserver(measure);
     mutationObserver.observe(document.body, { childList: true, subtree: true });
@@ -105,7 +119,9 @@ interface GameTutorialOverlayProps {
   currentStep: number;
   gameState: GameState | null;
   onNext: () => void;
+  onPrevious?: () => void;
   onComplete: () => void;
+  onContinueBattle?: () => void;
   onSkip: () => void;
   /** 跳過確認 Dialog 開啟時交由 Dialog 接管焦點。 */
   suspendFocusManagement?: boolean;
@@ -116,17 +132,28 @@ export function GameTutorialOverlay({
   currentStep,
   gameState,
   onNext,
+  onPrevious,
   onComplete,
+  onContinueBattle,
   onSkip,
   suspendFocusManagement = false,
 }: GameTutorialOverlayProps) {
   const current = steps[currentStep];
   const titleId = useId();
   const tooltipRef = useRef<HTMLDivElement | null>(null);
+  const bodyRef = useRef<HTMLDivElement | null>(null);
   const resolved = current.resolveKeys && gameState ? current.resolveKeys(gameState) : null;
   const titleKey = resolved?.title ?? current.title;
   const bodyKey = resolved?.body ?? current.body;
   const rects = useTargetRects(current.target, current.padding ?? 12, currentStep);
+  const isActionStep = Boolean(current.completeWhen || current.actionOnly);
+  const interactionTarget =
+    current.interactionTarget !== undefined
+      ? current.interactionTarget
+      : isActionStep || current.hideNext
+        ? current.target
+        : null;
+  const interactionRects = useTargetRects(interactionTarget, 0, currentStep);
   const [vp, setVp] = useState({ w: 0, h: 0 });
 
   useEffect(() => {
@@ -137,12 +164,16 @@ export function GameTutorialOverlay({
   }, []);
 
   const isLast = currentStep === steps.length - 1;
-  // 操作步驟：有 completeWhen，需用戶在遊戲中實際操作才會推進，故隱藏 Next/Prev
-  const isActionStep = Boolean(current.completeWhen);
+  // 操作步驟需用戶在遊戲中實際操作才會前進，但仍可透過安全回溯返回。
   const hasRects = rects.length > 0;
   const isMobileViewport = vp.w > 0 && vp.w <= 768;
   const allowTargetFocus = isActionStep || current.hideNext;
   const [tooltipHeight, setTooltipHeight] = useState(220);
+  const [bodyScrollState, setBodyScrollState] = useState({ scrollable: false, atEnd: true });
+  const chapterSteps = steps.filter((step) => step.chapter === current.chapter);
+  const chapterStep = steps.slice(0, currentStep + 1).filter((step) => step.chapter === current.chapter).length;
+  const chapterTotal = chapterSteps.length;
+  const canGoPrevious = chapterStep > 1 && Boolean(onPrevious);
 
   useLayoutEffect(() => {
     const tooltip = tooltipRef.current;
@@ -155,14 +186,37 @@ export function GameTutorialOverlay({
     return () => observer.disconnect();
   }, [bodyKey, titleKey, currentStep, vp.w, vp.h]);
 
+  useLayoutEffect(() => {
+    const body = bodyRef.current;
+    if (!body) return;
+    const measure = () => {
+      const scrollable = body.scrollHeight > body.clientHeight + 2;
+      const atEnd = !scrollable || body.scrollTop + body.clientHeight >= body.scrollHeight - 2;
+      setBodyScrollState((previous) =>
+        previous.scrollable === scrollable && previous.atEnd === atEnd ? previous : { scrollable, atEnd },
+      );
+    };
+    body.scrollTop = 0;
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(body);
+    return () => observer.disconnect();
+  }, [bodyKey, currentStep, vp.w, vp.h]);
+
   useEffect(() => {
     if (suspendFocusManagement) return;
     const tooltip = tooltipRef.current;
     const board = document.querySelector('.board-client-frame');
     if (!tooltip || !board) return;
     const selectors =
-      allowTargetFocus && current.target ? (Array.isArray(current.target) ? current.target : [current.target]) : [];
-    const targets = selectors.flatMap((selector) => Array.from(document.querySelectorAll<HTMLElement>(selector)));
+      allowTargetFocus && interactionTarget
+        ? Array.isArray(interactionTarget)
+          ? interactionTarget
+          : [interactionTarget]
+        : [];
+    const targets = selectors.flatMap((selector) =>
+      Array.from(document.querySelectorAll<HTMLElement>(selector)).filter(isVisibleElement),
+    );
     const isTargetFocusable = (element: HTMLElement) =>
       targets.some((target) => target === element || target.contains(element));
     const restoredTabIndexes = Array.from(board.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
@@ -206,7 +260,7 @@ export function GameTutorialOverlay({
         else element.setAttribute('tabindex', tabIndex);
       });
     };
-  }, [allowTargetFocus, current.target, currentStep, suspendFocusManagement]);
+  }, [allowTargetFocus, interactionTarget, currentStep, suspendFocusManagement]);
 
   // Tooltip placement calculation
   const tipW = 380;
@@ -295,7 +349,16 @@ export function GameTutorialOverlay({
   tipX = Math.min(Math.max(tipX, 8), Math.max(8, vp.w - tipW - 8));
   tipY = Math.min(Math.max(tipY, 8), Math.max(8, vp.h - tipH - 8));
 
-  const mobileSheetAtTop = Boolean(isMobileViewport && union && union.maxY > vp.h * 0.55);
+  const mobileSheetAtTop = (() => {
+    if (!isMobileViewport || !union) return false;
+    const edgeGap = 10;
+    const spaceAbove = Math.max(0, union.minY - edgeGap);
+    const spaceBelow = Math.max(0, vp.h - union.maxY - edgeGap);
+    const topFits = spaceAbove >= tooltipHeight;
+    const bottomFits = spaceBelow >= tooltipHeight;
+    if (topFits !== bottomFits) return topFits;
+    return spaceAbove >= spaceBelow;
+  })();
   const tooltipStyle = isMobileViewport
     ? {
         left: '12px',
@@ -315,12 +378,12 @@ export function GameTutorialOverlay({
 
   // 點擊攔截：視覺遮罩與命中區皆採逐洞處理，只有實際高亮區可穿透到遊戲。
   const renderClickBlockers = () => {
-    if (!hasRects || !union) {
+    if (interactionRects.length === 0) {
       return <div className="tutorial-click-blocker" style={{ left: 0, top: 0, width: vp.w, height: vp.h }} />;
     }
     const path = [
       `M 0 0 H ${vp.w} V ${vp.h} H 0 Z`,
-      ...rects.map((rect) => `M ${rect.x} ${rect.y} h ${rect.w} v ${rect.h} h ${-rect.w} Z`),
+      ...interactionRects.map((rect) => `M ${rect.x} ${rect.y} h ${rect.w} v ${rect.h} h ${-rect.w} Z`),
     ].join(' ');
     return (
       <svg
@@ -338,8 +401,10 @@ export function GameTutorialOverlay({
     <div
       className="tutorial-game-overlay fixed inset-0 z-[var(--z-tour)]"
       data-tutorial-phase={current.phase}
-      data-tutorial-step={currentStep + 1}
-      data-tutorial-total={steps.length}
+      data-tutorial-step={chapterStep}
+      data-tutorial-total={chapterTotal}
+      data-tutorial-global-step={currentStep + 1}
+      data-tutorial-global-total={steps.length}
     >
       {/* 視覺遮罩：SVG mask 挖洞，pointer-events: none 不攔截點擊 */}
       <svg
@@ -366,9 +431,26 @@ export function GameTutorialOverlay({
           mask="url(#tutorial-game-mask)"
           style={{ transition: 'all var(--motion-duration-slow) var(--motion-ease-standard)' }}
         />
-        {rects.map((r, i) => (
+        {!allowTargetFocus &&
+          rects.map((r, i) => (
+            <rect
+              key={i}
+              x={r.x}
+              y={r.y}
+              width={r.w}
+              height={r.h}
+              rx="6"
+              ry="6"
+              fill="none"
+              stroke="var(--accent-primary)"
+              strokeWidth="2"
+              style={{ transition: 'all var(--motion-duration-slow) var(--motion-ease-standard)' }}
+            />
+          ))}
+        {interactionRects.map((r, i) => (
           <rect
-            key={i}
+            key={`interaction-${i}`}
+            className="tutorial-interaction-target"
             x={r.x}
             y={r.y}
             width={r.w}
@@ -376,8 +458,8 @@ export function GameTutorialOverlay({
             rx="6"
             ry="6"
             fill="none"
-            stroke="var(--accent-primary)"
-            strokeWidth="2"
+            stroke="var(--accent-action)"
+            strokeWidth="3"
             style={{ transition: 'all var(--motion-duration-slow) var(--motion-ease-standard)' }}
           />
         ))}
@@ -390,7 +472,7 @@ export function GameTutorialOverlay({
         ref={tooltipRef}
         className={`tutorial-tooltip absolute rounded-sm bg-gradient-to-br from-surface-canvas via-surface-canvas to-surface-base p-5 text-content-primary shadow-sheet ring-1 ring-accent-primary/40 backdrop-blur ${
           mobileSheetAtTop ? 'tutorial-tooltip--mobile-top' : ''
-        }`}
+        } ${!hasRects ? 'tutorial-tooltip--centered' : ''} ${isActionStep || current.hideNext ? 'tutorial-tooltip--action' : ''}`}
         style={tooltipStyle}
         role="dialog"
         aria-labelledby={titleId}
@@ -399,38 +481,109 @@ export function GameTutorialOverlay({
         {/* Header */}
         <div className="tutorial-tooltip-header mb-3 flex items-center justify-between">
           <span className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">
-            {String(currentStep + 1).padStart(2, '0')} / {String(steps.length).padStart(2, '0')}
+            {String(chapterStep).padStart(2, '0')} / {String(chapterTotal).padStart(2, '0')}
           </span>
-          <Button
-            onClick={onSkip}
-            className="tutorial-tooltip-action tutorial-tooltip-close text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40 transition hover:text-accent-action"
-            variant="ghost"
-            size="sm"
-            type="button"
-          >
-            {t('common.close')}
-          </Button>
+          <div className="flex items-center gap-1">
+            {canGoPrevious && (isActionStep || current.hideNext || isLast) && (
+              <Button
+                onClick={onPrevious}
+                className="tutorial-tooltip-action tutorial-tooltip-previous-compact"
+                variant="ghost"
+                size="sm"
+                type="button"
+              >
+                {t('common.prev')}
+              </Button>
+            )}
+            <Button
+              onClick={onSkip}
+              className="tutorial-tooltip-action tutorial-tooltip-close text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40 transition hover:text-accent-action"
+              variant="ghost"
+              size="sm"
+              type="button"
+            >
+              {t('common.close')}
+            </Button>
+          </div>
         </div>
 
         {/* Content */}
-        <div className="tutorial-tooltip-body">
+        <div
+          ref={bodyRef}
+          className="tutorial-tooltip-body"
+          data-scrollable={bodyScrollState.scrollable || undefined}
+          data-scroll-end={bodyScrollState.atEnd || undefined}
+          tabIndex={bodyScrollState.scrollable ? 0 : undefined}
+          aria-label={bodyScrollState.scrollable ? t('tutorial.game.scrollHint' as never) : undefined}
+          onScroll={() => {
+            const body = bodyRef.current;
+            if (!body) return;
+            const atEnd = body.scrollTop + body.clientHeight >= body.scrollHeight - 2;
+            setBodyScrollState((previous) => (previous.atEnd === atEnd ? previous : { ...previous, atEnd }));
+          }}
+        >
           <h3 id={titleId} className="font-display text-2xl font-bold leading-tight text-content-primary">
             {t(titleKey as never)}
           </h3>
-          <p className="mt-3 text-body leading-relaxed text-content-primary/75">{t(bodyKey as never)}</p>
+          <p className="mt-3 whitespace-pre-line text-body leading-relaxed text-content-primary/75">
+            {t(bodyKey as never)}
+          </p>
         </div>
+
+        {bodyScrollState.scrollable && !bodyScrollState.atEnd && (
+          <div className="tutorial-tooltip-scroll-hint" aria-hidden="true">
+            {t('tutorial.game.scrollHint' as never)}
+          </div>
+        )}
 
         {/* Footer：操作按鈕與提示 */}
         <div className="tutorial-tooltip-footer mt-5 flex flex-col gap-3">
+          {(isActionStep || current.hideNext) && (
+            <p className="tutorial-tooltip-instruction" data-testid="tutorial-fixed-instruction">
+              {t((current.instruction ?? 'tutorial.game.actionHint') as never)}
+            </p>
+          )}
           {/* Navigation / action hint */}
           {isActionStep || current.hideNext ? (
-            <div className="flex justify-center">
+            <div className="flex items-center justify-center gap-2">
               <span className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/60">
                 {t('common.continue')}
               </span>
             </div>
+          ) : isLast && onContinueBattle ? (
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <Button
+                onClick={onComplete}
+                className="tutorial-tooltip-action"
+                variant="secondary"
+                size="sm"
+                type="button"
+              >
+                {t('tutorial.game.complete.return')}
+              </Button>
+              <Button
+                onClick={onContinueBattle}
+                className="tutorial-tooltip-action bg-accent-primary text-content-inverse transition hover:bg-content-primary active:scale-95"
+                variant="primary"
+                size="sm"
+                type="button"
+              >
+                {t('tutorial.game.complete.continue')}
+              </Button>
+            </div>
           ) : (
-            <div className="flex justify-end gap-2">
+            <div className={`flex gap-2 ${canGoPrevious ? 'justify-between' : 'justify-end'}`}>
+              {canGoPrevious && (
+                <Button
+                  onClick={onPrevious}
+                  className="tutorial-tooltip-action"
+                  variant="secondary"
+                  size="sm"
+                  type="button"
+                >
+                  {t('common.prev')}
+                </Button>
+              )}
               <Button
                 onClick={isLast ? onComplete : onNext}
                 className="tutorial-tooltip-action bg-accent-primary px-4 py-1.5 text-caption font-medium uppercase tracking-[var(--tracking-kicker)] text-content-inverse transition hover:bg-content-primary active:scale-95"

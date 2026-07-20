@@ -816,6 +816,13 @@
     );
 }
 
+/* The static tutorial field is allowed to scroll as a document. Keep a
+   visible breathing gap when its narrowest layout stacks opponent resources. */
+.bf-root[data-board-layout='tutorial-simplified'] .bf-stage {
+  box-sizing: border-box;
+  padding-block: var(--space-4);
+}
+
 .bf-stage::before {
   content: '';
   position: absolute;

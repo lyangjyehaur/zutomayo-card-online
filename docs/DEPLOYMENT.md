@@ -581,6 +581,11 @@ curl http://localhost:3002/health
 curl http://localhost:3002/ready
 ```
 
+The immutable deploy smoke also requests a representative card through imgproxy in JPEG, WebP, and AVIF form. Each
+response must be HTTP 200, use the expected image content type, contain a non-empty payload, and expose decodable
+non-zero dimensions. An unset or unreachable imgproxy therefore fails deployment verification instead of leaving blank
+card artwork in a nominally healthy release.
+
 For application-level verification, run before building the image when possible:
 
 ```bash

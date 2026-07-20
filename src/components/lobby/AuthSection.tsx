@@ -354,7 +354,9 @@ export function AuthSection({
               <p className="truncate font-display text-sm font-bold leading-none text-content-primary">
                 {user.nickname || t('auth.guest')}
               </p>
-              <p className="mt-0.5 font-mono text-[10px] text-accent-primary/60">ELO {user.elo}</p>
+              <p className="mt-0.5 font-mono text-[10px] text-content-primary/45">
+                {profileStats(user).matchCount} {t('auth.matches')}
+              </p>
             </div>
             <Button
               variant="ghost"
@@ -416,7 +418,9 @@ export function AuthSection({
                 <p className="font-display text-base font-bold leading-none text-content-primary">
                   {user.nickname || t('auth.guest')}
                 </p>
-                <p className="mt-1 font-mono text-caption text-accent-primary/60">ELO {user.elo}</p>
+                <p className="mt-1 font-mono text-caption text-content-primary/45">
+                  {stats.matchCount} {t('auth.matches')}
+                </p>
               </div>
             </div>
 

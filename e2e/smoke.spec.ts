@@ -64,7 +64,8 @@ test.describe('首頁煙霧測試', () => {
     await expect(page.getByText('Channels', { exact: true })).toBeVisible({ timeout: 30_000 });
 
     const separators = page.locator('.lobby-home-footer span[aria-hidden="true"]').filter({ hasText: /^\/$/ });
-    await expect(separators).toHaveCount(4);
+    await expect(separators).toHaveCount(2);
+    await expect(page.getByRole('button', { name: '政策與支援', exact: true })).toBeVisible();
   });
 
   test('能導覽到牌組編輯器頁面', async ({ page }) => {

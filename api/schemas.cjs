@@ -166,6 +166,34 @@ const announcementWriteSchema = z.object({
   expiresAt: z.string().datetime().nullable().optional(),
 });
 
+const adminTranslationSettingsSchema = z
+  .object({
+    enabled: z.boolean(),
+    endpoint: z.string().trim().max(1000),
+    provider: z.string().trim().min(1).max(60),
+    model: z.string().trim().max(120),
+    timeoutMs: z.number().int().min(1000).max(60_000),
+    apiKeyAction: z.enum(['keep', 'replace', 'clear', 'environment']),
+    apiKey: z.string().max(2000).optional().default(''),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (value.enabled && !value.endpoint) {
+      context.addIssue({ code: 'custom', path: ['endpoint'], message: 'Endpoint is required when enabled' });
+    }
+    if (value.apiKeyAction === 'replace' && !value.apiKey.trim()) {
+      context.addIssue({ code: 'custom', path: ['apiKey'], message: 'API key is required' });
+    }
+  });
+
+const adminTranslationTestSchema = z
+  .object({
+    text: z.string().trim().min(1).max(4000),
+    sourceLanguage: z.string().trim().min(2).max(16),
+    targetLanguage: z.string().trim().min(2).max(16),
+  })
+  .strict();
+
 // ===== Admin =====
 const adminLoginSchema = z.object({
   username: z.string().min(3).max(80),
@@ -297,6 +325,8 @@ module.exports = {
   chatUserSanctionCreateSchema,
   chatTranslationRequestSchema,
   announcementWriteSchema,
+  adminTranslationSettingsSchema,
+  adminTranslationTestSchema,
   adminLoginSchema,
   adminEloSchema,
   adminUserListQuerySchema,

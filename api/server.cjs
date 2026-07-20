@@ -66,7 +66,7 @@ const {
   validateProductionRuntimeSecurity,
 } = require('./runtimeSecurityConfig.cjs');
 const { metricsRequestAuthorized } = require('./metricsAuth.cjs');
-const { decryptAdminTotpSecret } = require('./adminSecretCrypto.cjs');
+const { decryptAdminTotpSecret, decryptSecretEnvelope, encryptSecretEnvelope } = require('./adminSecretCrypto.cjs');
 const {
   logger,
   attachRequestObservability,
@@ -160,10 +160,14 @@ const {
   listPublicAnnouncements,
   updateAnnouncement,
 } = require('./announcementService.cjs');
-const { createTranslationServiceFromEnv } = require('./translationService.cjs');
+const {
+  createRuntimeTranslationService,
+  getAdminTranslationSettings,
+  testAdminTranslationSettings,
+  updateAdminTranslationSettings,
+} = require('./translationSettingsService.cjs');
 
 const pbkdf2 = util.promisify(crypto.pbkdf2);
-const translateText = createTranslationServiceFromEnv(process.env);
 
 function readPackageVersion() {
   for (const packagePath of ['../package.json', './package.json']) {
@@ -183,6 +187,8 @@ const JWT_SECRET = process.env.JWT_SECRET;
 // B4：OAuth token 加密金鑰獨立於 JWT_SECRET，避免金鑰輪換時 OAuth token 失效。
 const OAUTH_TOKEN_ENCRYPTION_KEY = process.env.OAUTH_TOKEN_ENCRYPTION_KEY || '';
 const ADMIN_TOTP_ENCRYPTION_KEY = process.env.ADMIN_TOTP_ENCRYPTION_KEY || '';
+const SERVICE_CONFIG_ENCRYPTION_KEY =
+  process.env.SERVICE_CONFIG_ENCRYPTION_KEY || ADMIN_TOTP_ENCRYPTION_KEY || JWT_SECRET || '';
 const ADMIN_SESSION_TTL_SECONDS = Number(process.env.ADMIN_SESSION_TTL_SECONDS) || 60 * 60;
 const PACKAGE_VERSION = readPackageVersion();
 const APP_VERSION = process.env.APP_VERSION || PACKAGE_VERSION;
@@ -360,6 +366,12 @@ const pool = new Pool({
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 5_000,
   ssl: postgresSslConfig(process.env),
+});
+const translationRuntime = createRuntimeTranslationService({
+  pool,
+  env: process.env,
+  decryptSecret: decryptSecretEnvelope,
+  encryptionKey: SERVICE_CONFIG_ENCRYPTION_KEY,
 });
 
 const redis = new Redis(REDIS_URL, {
@@ -636,6 +648,15 @@ async function initSchema() {
       key TEXT PRIMARY KEY,
       value JSONB NOT NULL,
       description TEXT DEFAULT '',
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS service_integrations (
+      key TEXT PRIMARY KEY,
+      config JSONB NOT NULL DEFAULT '{}'::jsonb,
+      secret_ciphertext TEXT,
+      updated_by_user_id TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )`,
 
@@ -4005,7 +4026,7 @@ function handleRequest(req, res) {
         pool,
         language: url.searchParams.get('lang'),
         limit: url.searchParams.get('limit'),
-        translateText,
+        translateText: await translationRuntime.getTranslateText(),
       });
       res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
       serviceJson(result);
@@ -4115,7 +4136,7 @@ function handleRequest(req, res) {
         messageId: chatTranslationRoute[1],
         body: __parsed.data,
         sanitizeText,
-        translateText,
+        translateText: await translationRuntime.getTranslateText(),
         providerName: process.env.CHAT_TRANSLATION_PROVIDER || '',
         modelName: process.env.CHAT_TRANSLATION_MODEL || '',
         enforceDirectFriendship: true,
@@ -4360,6 +4381,55 @@ function handleRequest(req, res) {
         reason: parsed.data.reason,
       });
       serviceJson(result);
+      return;
+    }
+
+    if (pathname === '/api/admin/translation-settings' && method === 'GET') {
+      if (!(await authorizeAdmin(req, 'config:write'))) return json({ error: 'Unauthorized' }, 401);
+      res.setHeader('Cache-Control', 'no-store');
+      serviceJson(
+        await getAdminTranslationSettings({
+          pool,
+          env: process.env,
+          decryptSecret: decryptSecretEnvelope,
+          encryptionKey: SERVICE_CONFIG_ENCRYPTION_KEY,
+        }),
+      );
+      return;
+    }
+
+    if (pathname === '/api/admin/translation-settings' && method === 'PUT') {
+      const admin = await authorizeAdmin(req, 'config:write');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
+      const body = await readBody(32 * 1024);
+      const parsed = validateBody(S.adminTranslationSettingsSchema, body);
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      const result = await updateAdminTranslationSettings({
+        pool,
+        env: process.env,
+        body: parsed.data,
+        adminUserId: admin.adminUserId,
+        encryptSecret: encryptSecretEnvelope,
+        decryptSecret: decryptSecretEnvelope,
+        encryptionKey: SERVICE_CONFIG_ENCRYPTION_KEY,
+      });
+      translationRuntime.invalidate({ enableDatabaseSettings: true });
+      serviceJson(result);
+      return;
+    }
+
+    if (pathname === '/api/admin/translation-settings/test' && method === 'POST') {
+      if (!(await authorizeAdmin(req, 'config:write'))) return json({ error: 'Unauthorized' }, 401);
+      const body = await readBody(16 * 1024);
+      const parsed = validateBody(S.adminTranslationTestSchema, body);
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      translationRuntime.invalidate({ enableDatabaseSettings: true });
+      serviceJson(
+        await testAdminTranslationSettings({
+          translateText: await translationRuntime.getTranslateText(),
+          body: parsed.data,
+        }),
+      );
       return;
     }
 

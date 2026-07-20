@@ -29,6 +29,10 @@
   overflow: hidden;
 }
 
+.tutorial-tooltip--action {
+  max-height: min(42dvh, 24rem);
+}
+
 .tutorial-skip-dialog-overlay {
   z-index: calc(var(--z-tour) + 1) !important;
 }
@@ -36,6 +40,30 @@
 .tutorial-tooltip-body {
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: color-mix(in srgb, var(--accent-primary) 55%, transparent) transparent;
+  scrollbar-width: thin;
+}
+
+.tutorial-tooltip-scroll-hint {
+  flex-shrink: 0;
+  margin-top: -1.5rem;
+  padding-top: 1.75rem;
+  padding-bottom: 0.1rem;
+  background: linear-gradient(to bottom, transparent, var(--surface-canvas) 58%);
+  color: var(--content-muted);
+  font-size: var(--type-caption);
+  text-align: center;
+  pointer-events: none;
+}
+
+.tutorial-tooltip-instruction {
+  border-left: 2px solid var(--accent-action);
+  padding: 0.55rem 0.7rem;
+  background: color-mix(in srgb, var(--accent-action) 8%, transparent);
+  color: var(--content-primary);
+  font-size: var(--type-body-sm);
+  line-height: 1.5;
 }
 
 .tutorial-tooltip-action {
@@ -105,18 +133,35 @@
   animation: tutorial-highlight-pulse 2s var(--motion-ease-standard) infinite;
 }
 
+.tutorial-game-overlay svg .tutorial-interaction-target {
+  stroke-dasharray: 8 4;
+  filter: drop-shadow(0 0 10px oklch(from var(--accent-action) l c h / 0.7));
+}
+
 /* Mobile sheet presentation */
 @media (max-width: 768px) {
   .tutorial-tooltip {
     position: fixed !important;
-    max-height: min(38dvh, 17rem);
+    max-height: min(52dvh, 26rem);
     border-radius: var(--radius-md);
     padding: var(--space-4);
     box-shadow: var(--shadow-sheet);
   }
 
+  .tutorial-tooltip--action {
+    max-height: min(27dvh, 16rem);
+  }
+
   .tutorial-tooltip--mobile-top {
-    max-height: min(34dvh, 15rem);
+    max-height: min(48dvh, 24rem);
+  }
+
+  .tutorial-tooltip--mobile-top.tutorial-tooltip--action {
+    max-height: min(27dvh, 16rem);
+  }
+
+  .tutorial-tooltip--centered {
+    max-height: min(72dvh, 34rem);
   }
 
   .tutorial-tooltip-header,
@@ -152,13 +197,17 @@
   }
 }
 
-@media (max-width: 380px), (max-height: 760px) {
+@media (max-width: 380px) and (max-height: 760px) {
   .tutorial-tooltip {
-    max-height: min(34dvh, 14.5rem);
+    max-height: min(56dvh, 25rem);
   }
 
   .tutorial-tooltip--mobile-top {
-    max-height: min(32dvh, 13.5rem);
+    max-height: min(50dvh, 22rem);
+  }
+
+  .tutorial-tooltip--centered {
+    max-height: min(76dvh, 30rem);
   }
 
   .tutorial-tooltip-body h3 {

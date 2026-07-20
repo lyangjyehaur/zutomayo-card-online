@@ -820,8 +820,8 @@ export const ko: Record<TranslationKey, string> = {
   'deckEditor.removeCard': '제거',
   'deckEditor.emptySlot': '빈 슬롯',
   'deckEditor.ruleSize': '20장 필요',
-  'deckEditor.ruleCharacters': '캐릭터 최소 10장',
-  'deckEditor.ruleCopies': '같은 카드 최대 2장',
+  'deckEditor.ruleCharacters': '권장: 캐릭터 50% 이상',
+  'deckEditor.ruleCopies': '같은 수록 팩·카드 번호는 최대 2장',
 
   'history.title': '전투 기록',
   'history.total': '총 전투',
@@ -861,30 +861,204 @@ export const ko: Record<TranslationKey, string> = {
   'history.draw': '무승부',
 
   'tutorial.skipConfirm': '튜토리얼 모드를 닫고 로비로 돌아갈까요?',
+  'tutorial.battle.exitConfirm': '실전 튜토리얼을 종료하고 챕터 목록으로 돌아갈까요?',
+  'tutorial.hub.title': '초보자 튜토리얼',
+  'tutorial.hub.subtitle': '카드 읽기부터 첫 대전 완료까지',
+  'tutorial.hub.body':
+    '승패 조건과 턴 흐름, 덱 구성을 먼저 익히고 카드와 전장을 확인한 뒤 조작 가능한 실전 튜토리얼로 첫 대전을 완료합니다.',
+  'tutorial.hub.progress': '챕터 진행도',
+  'tutorial.hub.completed': '완료',
+  'tutorial.hub.notCompleted': '미완료',
+  'tutorial.hub.officialGuide': '공식 Start Guide 보기',
+  'tutorial.hub.startBattle': '실전 튜토리얼 시작',
+  'tutorial.hub.startPreparation': '대전 준비 시작',
+  'tutorial.hub.nextChapter': '완료하고 다음 챕터로',
+  'tutorial.hub.cardsRemaining': '이 장을 완료하려면 확인 필요 — 카드 종류 / 핵심 항목:',
+  'tutorial.hub.fieldRemaining': '아직 살펴볼 전장 영역:',
+  'tutorial.game.actionHint': '화면에서 강조된 조작을 완료하세요.',
+  'tutorial.game.scrollHint': '아래로 스크롤해 전체 설명 보기',
+  'tutorial.chapter.overview.title': '게임 개요',
+  'tutorial.chapter.overview.subtitle': '게임 목표와 덱 준비를 알아봅니다',
+  'tutorial.chapter.overview.objective.title': '2명이 겨루는 카드 게임',
+  'tutorial.chapter.overview.objective.body':
+    'ZUTOMAYO CARD는 2명이 겨루는 트레이딩 카드 게임입니다. 나와 상대가 각각 덱을 준비해 대전합니다.',
+  'tutorial.chapter.overview.turn.title': '게임의 목표',
+  'tutorial.chapter.overview.turn.body':
+    '손에서 카드를 내고 배틀해 상대에게 피해를 줍니다. 먼저 상대 HP를 0으로 만든 플레이어가 승리합니다.',
+  'tutorial.chapter.overview.nightDay.title': '밤과 낮의 특징',
+  'tutorial.chapter.overview.nightDay.body':
+    '전장의 크로노스는 게임 속 시간을 나타냅니다. 시간이 밤과 낮 사이에서 바뀌면 카드 공격력과 효과도 함께 달라집니다. 구체적인 방식은 뒤의 챕터에서 설명합니다.',
+  'tutorial.chapter.overview.catchup.title': '패배한 쪽의 추격',
+  'tutorial.chapter.overview.catchup.body':
+    '이전 배틀에서 공격력이 낮아 패배한 쪽은 다음 턴에 2장, 승리한 쪽은 1장을 세트합니다. 무승부라면 양쪽 모두 1장이어서 뒤처진 쪽이 따라잡을 기회가 생깁니다.',
+  'tutorial.chapter.cards.title': '카드 소개',
+  'tutorial.chapter.cards.subtitle': '카드 종류와 카드에 표시된 항목을 알아봅니다',
+  'tutorial.chapter.cards.interaction':
+    '카드 종류를 선택한 다음 카드 위 표시 영역을 눌러 이 예시와 함께 각 항목을 확인하세요.',
+  'tutorial.chapter.cards.hotspotsLabel': '카드에 인쇄된 규칙 항목',
+  'tutorial.chapter.cards.fact.type.title': '카드 종류 / 번호',
+  'tutorial.chapter.cards.fact.type.body':
+    '캐릭터, 인챈트, 에리어 인챈트는 들어가는 존과 공개 후 처리 방식이 다릅니다.',
+  'tutorial.chapter.cards.fact.type.example':
+    '이 카드에는 “{printedType}”, 즉 {type}로 표시됩니다. {typeRule} 번호는 {number}, 수록 팩은 {pack}이며 같은 팩과 번호의 카드는 덱에 최대 2장까지 넣을 수 있습니다.',
+  'tutorial.chapter.cards.fact.name.title': '카드 이름',
+  'tutorial.chapter.cards.fact.name.body':
+    '이름, 수록 팩, 카드 번호로 카드를 구분합니다. 같은 수록 팩과 카드 번호의 카드는 덱에 최대 2장까지 넣을 수 있습니다.',
+  'tutorial.chapter.cards.fact.name.example':
+    '이 카드의 이름은 “{name}”입니다. 같은 이름의 카드도 있으므로 특정 카드를 구분할 때는 수록 팩과 번호를 함께 확인하세요.',
+  'tutorial.chapter.cards.fact.element.title': '속성',
+  'tutorial.chapter.cards.fact.element.body':
+    '카드 속성은 어둠, 불꽃, 전기, 바람, 카오스의 5가지입니다. 일부 효과는 속성으로 카드를 선택하거나 계산하며, 속성마다 능력치와 플레이 방식의 경향도 있습니다.',
+  'tutorial.chapter.cards.fact.element.example':
+    '이 카드의 속성은 “{element}”입니다. 속성은 일부 효과의 지정과 판정에 사용되며, 현재 카드 풀에서는 속성마다 능력치와 플레이 방식의 경향이 있습니다.',
+  'tutorial.chapter.cards.fact.element.profilesLabel': '5가지 속성의 일반적인 특징',
+  'tutorial.chapter.cards.fact.element.profilesNote':
+    '아래 내용은 현재 카드 풀 전체의 경향이며 모든 카드에 적용되는 고정 규칙은 아닙니다.',
+  'tutorial.chapter.cards.fact.element.profile.dark': '전반적으로 밤에 더 강합니다.',
+  'tutorial.chapter.cards.fact.element.profile.flame': '공격적인 대신 파워 코스트도 높은 편입니다.',
+  'tutorial.chapter.cards.fact.element.profile.electric': '전반적으로 낮에 더 강합니다.',
+  'tutorial.chapter.cards.fact.element.profile.wind': '파워 코스트가 낮은 편이라 대전 초반에 활약하기 쉽습니다.',
+  'tutorial.chapter.cards.fact.element.profile.chaos':
+    '어비스를 중심으로 그곳의 카드를 회수해 강력한 효과를 발동합니다.',
+  'tutorial.chapter.cards.fact.clock.title': '시계',
+  'tutorial.chapter.cards.fact.clock.body':
+    '시계는 크로노스를 진행하는 수치입니다. 카드를 공개한 뒤 이번 턴 양쪽이 낸 카드의 시계 값을 합산하고 그만큼 크로노스를 시계 방향으로 이동합니다.',
+  'tutorial.chapter.cards.fact.clock.example':
+    '이 카드의 시계는 {clock}입니다. 시계는 대전 중 게임 시간을 진행하는 수치이며 자세한 계산은 뒤의 대전 흐름에서 소개합니다.',
+  'tutorial.chapter.cards.fact.attack.title': '공격력',
+  'tutorial.chapter.cards.fact.attack.body':
+    '캐릭터에는 밤/낮 공격력이 있습니다. 현재 크로노스 시간의 수치를 사용하며, 낮은 쪽이 차이만큼 피해를 받습니다.',
+  'tutorial.chapter.cards.fact.attack.example':
+    '이 캐릭터의 밤 공격력은 {night}, 낮 공격력은 {day}입니다. 대전이 밤인지 낮인지에 따라 해당하는 공격력을 사용합니다.',
+  'tutorial.chapter.cards.fact.effect.title': '효과',
+  'tutorial.chapter.cards.fact.effect.body':
+    '카드가 공개되거나 조건을 만족할 때 처리되며 HP, 공격력, 자원 또는 필드의 카드를 변화시킵니다.',
+  'tutorial.chapter.cards.fact.effect.example':
+    '모든 캐릭터 카드에 효과 텍스트가 있는 것은 아닙니다. 효과가 적힌 캐릭터는 카드 공개 후 효과 처리 단계에서 조건을 만족하고 Power가 충분할 때 발동합니다. 효과가 없는 캐릭터도 공격력으로 정상적으로 전투합니다.',
+  'tutorial.chapter.cards.fact.effect.enchantExample':
+    '인챈트는 손패에서 내고 공개한 턴의 효과 처리 단계에서 발동하며, 보통 이어지는 전투에 영향을 줍니다. Power가 부족하면 발동하지 않고, 전투 후 턴이 끝날 때 필드를 떠납니다.',
+  'tutorial.chapter.cards.fact.effect.areaExample':
+    '에리어 인챈트는 공개 후에도 필드에 남아 한 번만 처리되는 것이 아닙니다. 이후 각 턴의 효과 처리 단계에서 카드의 조건과 사용 가능한 Power에 따라 효과가 계속 적용되며, 교체되거나 자신의 효과로 필드를 떠날 때까지 유지됩니다.',
+  'tutorial.chapter.cards.fact.effect.empty':
+    '이 예시 카드에는 추가 효과가 없습니다. 효과가 있는 카드는 같은 규칙 영역에 문장이 인쇄됩니다.',
+  'tutorial.chapter.cards.fact.powerCost.title': '파워 코스트',
+  'tutorial.chapter.cards.fact.powerCost.body':
+    '파워 코스트는 효과와 캐릭터 공격력이 적용되기 위한 Power 기준입니다. Power는 “파워 차저”에 놓인 카드에서 얻으며, 파워 코스트를 확인할 때는 총량만 비교하고 소모하지 않습니다.',
+  'tutorial.chapter.cards.fact.powerCost.characterExample':
+    '대전 중 Power는 “파워 차저”에 쌓이며, 그곳에 있는 카드의 SEND TO POWER 합계가 현재 사용 가능한 Power가 됩니다. 이 캐릭터의 파워 코스트는 {cost}입니다. 사용 가능한 Power가 {cost}보다 적으면 효과가 발동하지 않고 공격력은 0으로 처리됩니다. 기준을 충족해도 Power는 줄어들지 않습니다.',
+  'tutorial.chapter.cards.fact.powerCost.otherExample':
+    '대전 중 Power는 “파워 차저”에 쌓이며, 그곳에 있는 카드의 SEND TO POWER 합계가 현재 사용 가능한 Power가 됩니다. 이 카드의 파워 코스트는 {cost}입니다. 사용 가능한 Power가 {cost}보다 적으면 효과가 발동하지 않습니다. 기준을 충족해도 Power는 줄어들지 않습니다.',
+  'tutorial.chapter.cards.fact.powerCost.zeroExample':
+    '대전 중 Power는 “파워 차저”에 쌓이며, 그곳에 있는 카드의 SEND TO POWER 합계가 현재 사용 가능한 Power가 됩니다. 이 카드의 파워 코스트는 0이므로 먼저 Power를 쌓지 않아도 정상적으로 효과가 적용됩니다.',
+  'tutorial.chapter.cards.fact.sendToPower.title': 'SEND TO POWER',
+  'tutorial.chapter.cards.fact.sendToPower.body':
+    'SEND TO POWER는 카드가 필드를 떠난 뒤 파워 차저에 더하는 Power의 양입니다. 수치가 0보다 큰 카드는 파워 차저에 들어가 같은 양의 Power를 계속 제공하며, 0인 카드는 대신 어비스로 보내집니다.',
+  'tutorial.chapter.cards.fact.sendToPower.example':
+    'SEND TO POWER는 이 카드가 필드를 떠난 뒤 파워 차저에 더하는 Power의 양입니다. 이 카드의 수치는 {power}이므로 파워 차저에 들어가 {power} Power를 계속 제공합니다. 모든 카드가 Power를 제공하는 것은 아닙니다. SEND TO POWER가 0인 카드는 파워 차저에 들어가지 않고 “어비스”로 보내지며, 해당 구역은 다음 장에서 소개합니다.',
+  'tutorial.chapter.cards.elementsLabel': '5가지 카드 속성',
+  'tutorial.chapter.cards.fact.sendToPower.zeroExample':
+    '이 카드의 SEND TO POWER는 0이므로 필드를 떠날 때 파워 차저에 들어가지 않고 “어비스”로 보내지며 Power를 제공하지 않습니다.',
+  'tutorial.chapter.cards.character.title': '캐릭터',
+  'tutorial.chapter.cards.character.body':
+    '캐릭터는 밤/낮 두 가지 공격력으로 상대 캐릭터와 전투합니다. 효과 텍스트가 있는 카드도, 효과가 없는 카드도 있습니다.',
+  'tutorial.chapter.cards.enchant.title': '인챈트',
+  'tutorial.chapter.cards.enchant.body':
+    '인챈트는 해당 턴에만 적용되는 강화, 방해 또는 자원 효과를 제공하고, 보통 이어지는 전투에 영향을 준 뒤 턴 종료 시 필드를 떠납니다.',
+  'tutorial.chapter.cards.area.title': '에리어 인챈트',
+  'tutorial.chapter.cards.area.body':
+    '인챈트와 달리 에리어 인챈트는 처리 후 바로 필드를 떠나지 않고, 필드에 남아 여러 턴 동안 효과를 적용합니다.',
+  'tutorial.chapter.field.title': '전장 소개',
+  'tutorial.chapter.field.subtitle': '배틀, 세트, 파워, 어비스, 덱, HP, 크로노스를 이해합니다',
+  'tutorial.chapter.field.interaction': '전장의 구역을 눌러 역할을 확인하세요. 확인한 구역에는 표시가 남습니다.',
+  'tutorial.chapter.field.deck': '덱 존',
+  'tutorial.chapter.deckPreparation.title': '덱 구성',
+  'tutorial.chapter.deckPreparation.subtitle': '20장 덱의 기본 구성을 알아봅니다',
+  'tutorial.chapter.deckPreparation.interaction':
+    '덱은 20장의 카드로 구성합니다. 같은 수록 팩과 카드 번호의 카드는 최대 2장까지 넣을 수 있으며, 공식 가이드는 덱의 절반 이상을 캐릭터로 구성할 것을 권장합니다.',
+  'tutorial.chapter.deckPreparation.deckPreview': '덱 구성 예시',
+  'tutorial.chapter.deckPreparation.ruleSize.body': '덱은 정확히 20장입니다.',
+  'tutorial.chapter.deckPreparation.ruleCharacters.body':
+    '공식 가이드는 매 턴 캐릭터를 내기 쉽도록 덱의 50% 이상을 캐릭터로 구성할 것을 권장합니다.',
+  'tutorial.chapter.deckPreparation.ruleCopies.body': '같은 수록 팩과 카드 번호의 카드는 최대 2장까지입니다.',
+  'tutorial.chapter.preparation.title': '대전 준비',
+  'tutorial.chapter.preparation.subtitle': '가위바위보, 시작 패, 다시 뽑기, 첫 캐릭터를 준비합니다',
+  'tutorial.chapter.preparation.deck':
+    '20장으로 덱을 구성합니다. 같은 수록 팩과 카드 번호를 가진 카드는 최대 2장까지 넣을 수 있습니다.',
+  'tutorial.chapter.preparation.side':
+    '가위바위보로 밤 진영을 정합니다. 크로노스를 자정에 놓고 양쪽 HP를 100으로 시작합니다. 온라인 대전에서는 덱 섞기와 교환이 자동으로 처리됩니다.',
+  'tutorial.chapter.preparation.opening': '덱을 섞은 뒤 양쪽이 위에서 5장을 뽑아 시작 패로 삼습니다.',
+  'tutorial.chapter.preparation.mulligan':
+    '시작할 때 한 번 다시 뽑을 수 있습니다. 원하는 장수를 선언해 고르고 같은 수를 뽑은 뒤 기존 카드를 뒷면으로 덱에 돌려 섞습니다.',
+  'tutorial.chapter.preparation.initial':
+    '양쪽이 카드 1장을 배틀 존에 뒷면으로 놓고 동시에 공개합니다. 캐릭터를 권장하며, 캐릭터가 아니면 SEND TO POWER에 따라 즉시 파워 차저 또는 어비스로 보냅니다.',
+  'tutorial.chapter.flow.title': '대전 흐름',
+  'tutorial.chapter.flow.subtitle': '세트, 공개, 시계, 효과, 배틀, 드로우를 순서대로 진행합니다',
+  'tutorial.chapter.flow.firstTurn.title': '1턴: 대전 준비에서 이어서 진행',
+  'tutorial.chapter.flow.firstTurn.body':
+    '대전 준비가 끝나면 양쪽의 시작 카드가 동시에 공개되어 있습니다. 1턴에는 A/B 존에 다시 세트하지 않고, 양쪽 시작 카드의 시계 값을 합쳐 크로노스를 진행합니다. 시작 카드가 캐릭터가 아니면 공개 후 SEND TO POWER에 따라 파워 차저 또는 어비스로 이동하지만, 그 시계 값은 이번 턴에 포함됩니다. 이후 효과 처리, 배틀 존 캐릭터의 공격력 비교, HP 피해를 순서대로 처리하고 턴 종료 시 양쪽이 1장씩 뽑습니다.',
+  'tutorial.chapter.flow.followingTurns.title': '2턴부터: 다음 흐름 반복',
+  'tutorial.chapter.flow.set':
+    '2턴부터 이전 승자는 1장, 패자는 2장을 세트합니다. 무승부라면 양쪽 모두 1장을 A/B 존에 뒷면으로 놓습니다.',
+  'tutorial.chapter.flow.reveal':
+    '양쪽이 이번 턴에 세트한 카드를 동시에 공개합니다. 캐릭터는 배틀 존으로, 에리어 인챈트는 효과 처리 후 C 존으로 이동하며 교체된 카드는 SEND TO POWER에 따라 파워 차저 또는 어비스로 갑니다.',
+  'tutorial.chapter.flow.clock':
+    '이번 턴 양쪽이 손에서 낸 카드의 시계 값을 합쳐 크로노스를 진행하고 밤인지 낮인지 확인합니다.',
+  'tutorial.chapter.flow.effects':
+    '크로노스 마커가 있는 쪽부터 캐릭터, 인챈트, 에리어 인챈트 효과를 처리합니다. 파워 코스트가 부족하면 효과가 발동하지 않습니다.',
+  'tutorial.chapter.flow.battle':
+    '현재 밤/낮 공격력으로 배틀 존 캐릭터를 비교하고 낮은 쪽이 차이만큼 피해를 받습니다. 파워가 부족한 캐릭터는 공격력 0으로 계산합니다.',
+  'tutorial.chapter.flow.draw':
+    '턴 종료 시 A/B 존에 남은 카드를 SEND TO POWER에 따라 파워 차저 또는 어비스로 보내고 낸 장수만큼 뽑습니다. 필요한 카드를 뽑지 못하면 패배합니다.',
   'tutorial.game.intro.title': 'ZUTOMAYO CARD ONLINE에 오신 것을 환영합니다',
   'tutorial.game.intro.body': '실제 AI 대전을 통해 게임의 모든 메커니즘을 단계별로 안내해 드립니다.',
-  'tutorial.game.janken.intro.title': '가위바위보로 선후공 결정',
+  'tutorial.game.janken.intro.title': '가위바위보로 야간·주간 측 결정',
   'tutorial.game.janken.intro.body':
-    '게임 시작 전, 가위바위보로 야간 플레이어를 정합니다. 승자가 야간 측, 패자가 주간 측이 됩니다. 손 모양을 클릭하여 선택합니다. 결과가 당신의 시작 위치와 효과 처리 우선권을 결정합니다.',
+    '대전 전 가위바위보에서 승자는 야간 측, 패자는 주간 측이 됩니다. 일반적인 선공·후공 결정이 아니라 크로노스가 야간 또는 주간에 있을 때 누가 효과를 먼저 처리할지 정합니다.\n\n강조된 "바위"를 클릭해 시작하세요.',
   'tutorial.game.janken.action.title': '손 모양을 선택하세요',
   'tutorial.game.janken.action.body': '가위, 바위, 보를 클릭하여 선택합니다. 결과가 당신의 시작 위치를 결정합니다.',
   'tutorial.game.janken.result.title': '가위바위보 결과',
   'tutorial.game.janken.result.body':
-    '결과가 나왔습니다! 야간 측 플레이어는 야간 시간대에 먼저 효과를 처리하고, 주간 측 플레이어는 주간 시간대에 먼저 효과를 처리합니다.',
+    '당신이 이겨 야간 측이 되었고 상대는 주간 측입니다. 양쪽 HP는 100에서 시작하며 크로노스는 한밤중 시작점인 0에 있습니다.\n\n야간에는 당신이, 주간에는 상대가 효과를 먼저 처리합니다. 강조된 확인 버튼을 눌러 시작 패 단계로 진행하세요.',
+  'tutorial.game.openingHand.title': '시작 패 확인',
+  'tutorial.game.openingHand.body':
+    '양쪽은 시작 패 5장을 뽑고 한 번에 한해 원하는 수만큼 다시 뽑을 수 있습니다. 다시 뽑기는 선택 사항이며 초반에 쓰기 어려운 카드를 바꾸는 용도입니다.\n\n강조된 캐릭터는 Power Cost 7이지만 충전 구역이 비어 현재 Power는 0, 즉 0 < 7입니다. 지금 내면 공격력은 0으로 처리되고 효과도 발동하지 않아 이 학습의 시작 카드로 적합하지 않습니다.\n\n강조된 카드를 클릭해 다시 뽑을 카드로 표시하세요.',
+  'tutorial.game.mulligan.confirm.title': '다시 뽑기 확정',
+  'tutorial.game.mulligan.confirm.body':
+    '선택한 1장을 덱으로 돌려보내고 새 카드 1장을 뽑으므로 패는 계속 5장입니다. 이 작업으로 대전당 한 번뿐인 다시 뽑기 기회를 사용합니다.\n\n강조된 "1장 다시 뽑기"를 클릭해 교환을 확정하세요.',
   'tutorial.game.mulligan.intro.title': '멀리건 단계',
   'tutorial.game.mulligan.intro.body':
-    '시작 패에 높은 파워 코스트의 캐릭터 카드가 있습니다. 충전 구역의 총 파워가 파워 코스트에 미치지 못하면 해당 캐릭터의 공격력이 0이 되어 피해를 줄 수 없습니다. 바꾸고 싶은 카드를 클릭하여 뒷면으로 (임의의 수 선택 가능) 놓고 "리드로우"를 누르면 덱에서 같은 수의 새 카드를 뽑고, 이전 카드는 덱으로 돌아갑니다. 패에 만족하면 "핸드 유지"로 건너뛸 수 있습니다. 각 대전에서 리드로우는 1회만 가능합니다.',
+    '다시 뽑기는 대전마다 한 번만 가능하며 원하는 수의 카드를 같은 수의 새 카드로 바꿀 수 있습니다. 이번에는 강조된 Power Cost 7 캐릭터를 선택합니다. Power가 부족하면 공격력은 0으로 처리됩니다. 다시 뽑기로 표시한 뒤 확인하세요.',
   'tutorial.game.mulligan.action.title': '다시 뽑을 카드 선택',
   'tutorial.game.mulligan.action.body':
     '교체할 카드를 클릭하여 뒷면으로 놓고(예: 높은 파워 코스트의 캐릭터 카드), "확인"을 눌러 같은 수의 새 카드를 뽑습니다. 핸드가 만족스러우면 "핸드 유지"로 건너뛸 수 있습니다.',
   'tutorial.game.initialSet.intro.title': '초기 배치 단계',
   'tutorial.game.initialSet.intro.body':
-    '핸드에서 캐릭터 카드 1장을 선택해 배틀 존에 뒷면으로 놓습니다. 반드시 캐릭터 카드를 선택해야 합니다: 캐릭터 이외의 카드는 공개되면 즉시 파워 차저 또는 어비스로 보내지며, 배틀 존이 비어있으면 직접 피해를 받습니다.',
+    '양쪽이 패에서 1장을 골라 배틀 존에 뒷면으로 놓고 동시에 공개합니다. 보통 캐릭터를 선택합니다. 캐릭터 이외의 카드는 공개 후 SEND TO POWER에 따라 파워 차저 또는 어비스로 보내지며, 배틀 존이 비어 있으면 직접 피해를 받습니다. 강조된 캐릭터를 선택하고 확인하세요.',
   'tutorial.game.initialSet.action.title': '카드 한 장 배치',
   'tutorial.game.initialSet.action.body': '핸드에서 1장을 선택해 배틀 존에 놓습니다. 준비되면 "확인"을 누르세요.',
+  'tutorial.game.initialSet.select.title': '초기 카드 선택',
+  'tutorial.game.initialSet.select.body':
+    '준비 마지막에 양쪽은 패 1장을 배틀 존에 직접 뒷면으로 놓습니다. 캐릭터가 아닌 카드는 공개 즉시 SEND TO POWER에 따라 떠나므로 배틀 존에 캐릭터가 없을 수 있습니다.\n\n강조된 캐릭터는 Power Cost 0이라 충전 구역이 비어도 공격력을 정상 사용합니다. 또한 SEND TO POWER 2가 있어 나중에 교체되면 다음 캐릭터에 Power를 제공합니다.\n\n강조된 캐릭터를 클릭하세요.',
+  'tutorial.game.initialSet.place.title': '배틀 존에 배치',
+  'tutorial.game.initialSet.place.body':
+    '앞의 클릭은 카드를 선택해 확인한 것뿐이며 아직 내지 않았습니다. 초기 카드는 세트 존 A／B를 거치지 않고 배틀 존에 직접 뒷면으로 놓이며 양쪽이 확정할 때까지 상대에게 보이지 않습니다.\n\n강조된 "이 카드 설정"을 클릭하세요.',
+  'tutorial.game.initialSet.confirm.title': '초기 배치 확정',
+  'tutorial.game.initialSet.confirm.body':
+    '카드가 배틀 존에 뒷면으로 놓였습니다. 확정하면 바꿀 수 없습니다. 양쪽이 모두 확정한 뒤 두 초기 카드를 동시에 공개하고, 그다음 크로노스 진행·효과 처리·공격력 비교를 시작합니다.\n\n강조된 "설정 확인"을 클릭하세요.',
+  'tutorial.game.preparationComplete.title': '전투 준비 완료',
+  'tutorial.game.preparationComplete.body':
+    '가위바위보, 시작 패 다시 뽑기, 초기 배치를 모두 완료했습니다. 튜토리얼 진행도로 돌아간 뒤 "대전 흐름"에서 이 대전을 계속하세요.',
+  'tutorial.game.preparationComplete.action': '튜토리얼 진행도로 돌아가기',
+  'tutorial.game.rewind.title': '이전 학습 단계로 돌아갈까요?',
+  'tutorial.game.rewind.body':
+    '이 단계 이후 대전 상태가 변경되었습니다. 돌아가면 가장 가까운 안전 체크포인트에서 이 구간을 다시 구성하며 이후 조작을 다시 완료해야 합니다.',
+  'tutorial.game.rewind.action': '돌아가서 재구성',
   'tutorial.game.zone.battle.title': '배틀 존',
   'tutorial.game.zone.battle.body':
     '중앙의 배틀 존은 현재 캐릭터가 대결하는 곳입니다. 양측이 각각 캐릭터 카드를 놓으며, Chronos 시간대에 따라 공격력이 결정되고 공격력이 낮은 쪽이 차액만큼 피해를 받습니다.',
+  'tutorial.game.zone.hp.title': 'HP 표시기',
+  'tutorial.game.zone.hp.body':
+    '각 플레이어의 남은 HP를 표시하며 양쪽 모두 100에서 시작합니다. 캐릭터 전투 후 공격력이 낮은 쪽은 두 공격력의 차이만큼 HP를 잃습니다. HP가 0이 되면 즉시 패배합니다.',
   'tutorial.game.zone.hand.title': '핸드',
   'tutorial.game.zone.hand.body':
     '당신의 핸드입니다. 카드를 클릭하여 배틀 존 또는 세트 존에 배치하고, 카드 효과를 활용해 상대를 물리치세요.',
@@ -894,12 +1068,14 @@ export const ko: Record<TranslationKey, string> = {
   'tutorial.game.zone.abyss.title': '어비스',
   'tutorial.game.zone.abyss.body':
     'SEND TO POWER가 없는 카드가 필드를 떠나면 이곳에 들어갑니다. 일부 카드 효과는 어비스와 상호작용할 수 있습니다.',
+  'tutorial.game.zone.deck.body':
+    '덱 존에는 카드 20장을 뒷면으로 둡니다. 턴 종료 시 그 턴에 낸 카드 수만큼 뽑으며, 필요한 장수를 모두 뽑지 못하면 패배합니다.',
   'tutorial.game.chronos.title': '크로노스 시계 시스템',
   'tutorial.game.chronos.body':
-    '크로노스는 주야 시계입니다. 진한 자정에서 시계방향으로 진행되며, 추진량은 양측이 낸 카드의 시계값 합계입니다. 밤 측에서는 밤 공격력, 낮 측에서는 낮 공격력을 사용합니다.',
+    '크로노스는 낮과 밤을 나타내는 시계입니다. 한밤중에서 시작해 매 턴 양측이 낸 카드의 시계값 합계만큼 시계 방향으로 진행합니다. 파란색은 밤, 빨간색은 낮이며 현재 시간대에 따라 카드의 공격력과 효과가 결정됩니다. 효과는 크로노스 마커가 놓인 쪽의 플레이어부터 처리합니다.',
   'tutorial.game.resources.title': '파워 차저',
   'tutorial.game.resources.body':
-    'SEND TO POWER를 가진 카드가 필드를 떠나면 파워 차저에 들어가며, 축적된 파워는 효과 발동의 파워 코스트 지불에 사용됩니다.',
+    'SEND TO POWER가 1 이상인 카드는 필드를 떠나면 파워 차저에 들어가며, 그 수치의 합계가 현재 Power가 됩니다. Power Cost는 합계가 기준에 도달했는지만 확인하며, 효과를 발동하거나 공격력을 사용해도 Power는 줄어들지 않습니다.',
   'tutorial.game.catchup.title': '추격 메커니즘',
   'tutorial.game.catchup.body':
     '지난 턴 전투에서 패배한 쪽은 다음 턴에 두 장의 카드를 배치할 수 있습니다; 승리한 쪽은 보통 한 장만 배치할 수 있습니다. 이로써 양쪽이 균형을 유지하고 일방적인 게임을 피할 수 있습니다.',
@@ -914,7 +1090,7 @@ export const ko: Record<TranslationKey, string> = {
     '이전 턴은 무승부라 추격 메커니즘이 발동하지 않습니다. 양쪽 모두 이번 턴 1장만 배치할 수 있습니다.',
   'tutorial.game.victory.title': '승리 조건',
   'tutorial.game.victory.body':
-    '어느 한 쪽의 HP가 0이 되거나 더 이상 카드를 낼 수 없게 되면 게임이 종료됩니다. 카드 효과를 적절히 사용해 상대의 HP를 줄이면 승리할 수 있습니다.',
+    '어느 한 쪽의 HP가 0이 되거나 덱이 부족해 이번 턴에 필요한 카드를 모두 뽑지 못하면 게임이 종료됩니다. 카드 효과를 적절히 사용해 상대의 HP를 줄이면 승리할 수 있습니다.',
   'tutorial.game.turnSet.intro.title': '턴 배치 단계',
   'tutorial.game.turnSet.intro.body':
     '새 턴이 시작되었습니다! 지난 턴 승패에 따라 배치 수가 결정됩니다. 1번째 카드는 세트 존 A, 2번째는 세트 존 B에 들어갑니다.',
@@ -938,18 +1114,36 @@ export const ko: Record<TranslationKey, string> = {
     '핸드에서 1장을 세트 존 A에 배치합니다. 1장만 배치할 수 있으니 신중히 선택하세요.',
   'tutorial.game.turnSet.action.draw.title': '이번 턴 카드 배치',
   'tutorial.game.turnSet.action.draw.body': '핸드에서 1장을 세트 존 A에 배치합니다.',
+  'tutorial.game.turnSet.characterSelect.title': '추격 턴: 캐릭터 선택',
+  'tutorial.game.turnSet.characterSelect.body':
+    '첫 턴에 피해를 받아 패자가 되었으므로 이번 턴에는 최대 2장을 낼 수 있습니다. 승자는 최대 1장, 무승부면 양쪽 모두 1장입니다. 첫 카드는 세트 존 A로 갑니다.\n\n강조된 캐릭터는 주간 공격력 80, Power Cost 2입니다. 이전 캐릭터가 곧 정확히 2 Power를 제공하고 이번 턴 크로노스도 주간에 도달하므로 성능을 모두 사용할 수 있습니다. 클릭하세요.',
+  'tutorial.game.turnSet.characterPlace.title': '첫 번째 카드를 A 구역에 배치',
+  'tutorial.game.turnSet.characterPlace.body':
+    '새 캐릭터를 선택했습니다. 강조된 버튼을 눌러 세트 존 A에 뒷면으로 놓으세요. 양쪽이 확정하기 전에는 공개되지 않습니다.\n\n공개 후 A 존의 캐릭터가 우선 배틀 존으로 이동해 이전 캐릭터를 교체합니다.',
+  'tutorial.game.turnSet.areaSelect.title': '추격 턴: 에리어 인챈트 선택',
+  'tutorial.game.turnSet.areaSelect.body':
+    '두 번째 카드는 세트 존 B에 낼 수 있습니다. 강조된 에리어 인챈트는 공개 후 C 존에 들어가며 주간에 캐릭터 공격력을 +20 합니다.\n\n앞서 선택한 캐릭터의 주간 공격력을 80에서 100으로 올립니다. 이 카드를 클릭하세요.',
+  'tutorial.game.turnSet.areaPlace.title': '두 번째 카드를 B 구역에 배치',
+  'tutorial.game.turnSet.areaPlace.body':
+    '강조된 버튼을 눌러 에리어 인챈트를 세트 존 B에 뒷면으로 놓으세요. 아직 C 존에 들어가지 않았고 양쪽이 확정해 공개할 때까지 효과도 활성화되지 않습니다.',
+  'tutorial.game.turnSet.confirm.title': '이번 턴 배치 확정',
+  'tutorial.game.turnSet.confirm.body':
+    'A 존에는 새 캐릭터, B 존에는 에리어 인챈트가 뒷면으로 놓였습니다. 확정하면 바꿀 수 없고 상대도 확정한 뒤 이번 턴의 모든 카드를 동시에 공개합니다.\n\n강조된 「카드 확정」을 클릭하세요.',
   'tutorial.game.effectOrder.intro.title': '효과 순서 단계',
   'tutorial.game.effectOrder.intro.body':
     '효과 처리 시, 크로노스 메달이 있는 시간대의 플레이어(우선 플레이어)가 자신의 모든 효과를 먼저 처리하고, 그 후 상대방이 처리합니다. 파워 코스트는 "효과 처리 시점"에 재확인되며, 부족하면 발동하지 않습니다. 패, 어비스 등의 매수도 처리 시점 기준으로 셉니다. 캐릭터 효과는 발동 시점 지정이 없는 한, 낸 턴의 효과 처리 시에 발동합니다. 효과 처리 단계 이외의 타이밍에 발동한 효과(카드가 구역에 진입하는 등)는 즉시 처리되며, 우선 플레이어 순서를 따르지 않습니다.',
   'tutorial.game.effectOrder.action.title': '효과 해결 순서 선택',
   'tutorial.game.effectOrder.action.body':
-    '효과 카드를 클릭해 해결 순서를 선택합니다. 먼저 해결되는 효과가 먼저 발동하며, 후속 효과 결과에 영향을 줄 수 있습니다.',
+    '크로노스가 주간에 있으므로 주간 측 상대가 먼저 처리합니다. 상대 인챈트는 당신의 캐릭터 Power Cost가 0 또는 1일 때만 공격력을 올립니다. 새 캐릭터는 2이므로 조건이 성립하지 않습니다.\n\n이제 당신의 효과를 처리합니다. 한쪽에 효과가 여러 개면 그 플레이어가 순서를 정하고, 각 효과는 처리 시 Power Cost와 효과 문구 조건을 다시 확인합니다. 패널에서 유일하게 강조된 에리어 인챈트 효과를 클릭하세요.',
   'tutorial.game.pendingChoice.intro.title': '카드 지정 효과',
   'tutorial.game.pendingChoice.intro.body':
     '일부 카드 효과는 패·어비스·덱에서 대상 카드를 지정해야 해결을 완료할 수 있습니다.',
   'tutorial.game.pendingChoice.action.title': '대상 카드 선택',
   'tutorial.game.pendingChoice.action.body':
     '목록의 카드를 클릭해 선택하세요. 필요 장수를 선택한 뒤 「선택 제출」을 눌러 해결을 완료합니다. 필요 장수는 안내문으로 확인할 수 있습니다.',
+  'tutorial.game.choiceMechanics.title': '대상을 지정하는 효과',
+  'tutorial.game.choiceMechanics.body':
+    '방금 효과는 바로 해결되므로 지금은 대상을 고르지 않습니다. 다른 카드는 처리를 잠시 멈추고 패·덱·배틀 존·어비스의 카드나 크로노스 위치를 지정하게 할 수 있습니다.\n\n합법적인 대상만 조작할 수 있습니다. 패널의 최소／최대 수에 맞춰 선택하고 확정해야 처리가 계속됩니다. 「다음」을 눌러 전투 결과를 확인하세요.',
   'tutorial.game.battle.intro.title': '전투 해결',
   'tutorial.game.battle.intro.body':
     '양쪽 카드가 공개되면 전투 해결에 들어갑니다. 캐릭터 카드는 서로 공격하고, 인챈트 카드는 효과를 발동하며, 최종적으로 HP 변화를 계산합니다.',
@@ -967,22 +1161,39 @@ export const ko: Record<TranslationKey, string> = {
     '양쪽 공격력이 같아 피해가 없습니다. 전략을 조정해 다음 턴의 승리를 노리세요.',
   'tutorial.game.turnEndDraw.title': '턴 종료 드로우',
   'tutorial.game.turnEndDraw.body':
-    '턴 종료 시, 이번 턴에 패에서 낸 카드 수만큼 덱에서 카드를 뽑습니다. 1장 내면 1장 뽑고, 2장 내면 2장 뽑아 패 수를 유지합니다. 덱이 다하여 뽑을 수 없으면 패배 조건이 발동합니다.',
+    '첫 턴에는 양쪽이 5장 패에서 1장씩 냈으므로 1장씩 뽑아 다시 5장이 되고 덱은 각각 1장 줄어듭니다. 이후에도 「패에서 낸 수만큼 턴 종료에 뽑기」가 기본입니다.\n\n필요한 수를 모두 뽑지 못하면 즉시 패배합니다. 「다음」을 눌러 두 번째 턴을 시작하세요.',
   'tutorial.game.complete.title': '튜토리얼 완료를 축하합니다!',
   'tutorial.game.complete.body':
-    'ZUTOMAYO CARD의 모든 기본 메커니즘을 마스터했습니다. 이제 AI에 도전하거나 다른 플레이어와 대전할 수 있습니다!',
+    '두 턴을 완료했습니다. 첫 턴에 패배해 두 번째 턴에는 2장을 낼 수 있었고, 캐릭터·Power·에리어 인챈트를 조합해 반격했습니다.\n\n실제 대전은 「배치→공개→시간 진행→교체→효과→전투→퇴장과 드로우」를 반복하며 HP가 0이 되거나 필요한 카드를 모두 뽑지 못할 때 끝납니다. 튜토리얼 화면으로 돌아가거나 현재 보드를 이어서 이 대전을 끝까지 진행할 수 있습니다.',
+  'tutorial.game.complete.return': '튜토리얼로 돌아가기',
+  'tutorial.game.complete.continue': '튜토리얼 대전 계속하기',
+  'tutorial.game.flowRecap.title': '전투 준비에서 첫 턴으로',
+  'tutorial.game.flowRecap.body':
+    '이전 장에서 준비를 마쳤습니다. 당신은 야간 측이고 양쪽 HP는 100, 크로노스는 0(한밤중)에서 시작합니다. 양쪽이 초기 카드 1장을 배틀 존에 뒷면으로 놓았고 지금은 동시에 공개되어 캐릭터가 되었습니다.\n\n준비는 여기서 끝입니다. 아직 새 카드를 내지 않고 「크로노스 진행→효과와 공격력 비교→HP 감소→턴 종료 드로우」 순서로 첫 턴을 처리합니다. 「다음」을 눌러 크로노스 진행을 확인하세요.',
   'tutorial.game.clockAdvance.title': '시계 추진',
   'tutorial.game.clockAdvance.body':
-    '양측 카드가 공개된 후, 두 카드의 시계 값 합계만큼 크로노스가 진행됩니다. 메달이 새 위치로 이동하여 현재가 밤인지 낮인지 결정합니다 — 이는 캐릭터가 밤 공격력을 사용할지 낮 공격력을 사용할지 결정합니다. 첫 턴의 크로노스 진행에는 준비 단계에서 충전 구역/어비스로 보내진 카드의 시계 값도 포함됩니다.',
+    '강조된 알림이 이번 계산을 보여 줍니다. 당신의 초기 캐릭터 시계는 2, 상대는 1입니다. 준비 중 비캐릭터를 공개하지 않았으므로 추가 값 없이 2 + 1 = 3입니다.\n\n크로노스는 0에서 3으로 진행하고 위치 3은 야간입니다. 양쪽은 야간 공격력을 사용하며 야간 측인 당신이 효과를 먼저 처리합니다. 알림의 「확인」을 클릭하세요.',
+  'tutorial.game.revealClock.title': '동시 공개와 시계 진행',
+  'tutorial.game.revealClock.body':
+    '양쪽이 확정하면 카드를 동시에 공개합니다. 당신의 캐릭터 시계는 1, 에리어 인챈트는 2, 상대 인챈트는 4이므로 1 + 2 + 4 = 7입니다.\n\n크로노스는 3에서 3 + 7 = 10으로 진행하며 위치 10은 주간입니다. 새 캐릭터는 주간 공격력을 사용하고 에리어 인챈트의 주간 조건도 성립합니다. 알림의 「확인」을 클릭하세요.',
+  'tutorial.game.characterReplacement.title': '캐릭터 교체',
+  'tutorial.game.characterReplacement.body':
+    '강조된 배틀 존에 새 캐릭터가 들어왔습니다. 세트 존 A에서 이동해 이전 캐릭터를 교체합니다. 같은 턴에 캐릭터 2장을 냈어도 A 존의 캐릭터만 우선합니다.\n\n교체된 캐릭터는 SEND TO POWER 2이므로 다음에 강조되는 충전 구역으로 이동합니다.',
   'tutorial.game.hpCalc.title': 'HP 계산',
   'tutorial.game.hpCalc.body':
-    '효과 처리가 끝난 후, 양측 캐릭터의 공격력을 비교하여 공격력이 낮은 쪽이 차액만큼 피해를 받습니다. 파워 코스트가 부족하면 공격력은 0으로 간주되고 효과는 발동하지 않습니다.',
+    '알림의 「-20」은 피해이며 카드 비용이나 Power 감소가 아닙니다. 현재는 야간으로 당신의 야간 공격력은 30, 상대는 50입니다. 두 캐릭터 모두 Power Cost 0이라 공격력이 유효합니다.\n\n낮은 쪽이 차이를 받으므로 50 - 30 = 20, 당신의 HP는 100 - 20 = 80입니다. 이 전투의 패자가 되어 다음 턴에 최대 2장을 낼 수 있습니다. 「확인」을 클릭하세요.',
+  'tutorial.game.hpCalc.turn2.title': '효과 조건과 HP 계산',
+  'tutorial.game.hpCalc.turn2.body':
+    '현재는 주간입니다. 당신의 주간 공격력 80에 C 존 에리어 인챈트가 20을 더해 80 + 20 = 100입니다. 상대 인챈트는 당신의 Power Cost가 0 또는 1일 때만 유효하지만 이번에는 2라 상대는 30을 유지합니다.\n\n100 - 30 = 70 피해로 상대 HP는 100 - 70 = 30입니다. Power Cost 충족과 효과 문구 조건 충족은 별도 검사입니다. 「확인」을 클릭하세요.',
   'tutorial.game.powerCharging.title': '충전 구역',
   'tutorial.game.powerCharging.body':
-    'SEND TO POWER를 가진 캐릭터 카드는 배틀 존을 떠날 때 충전 구역에 들어가 파워를 축적합니다. 축적된 파워는 다른 카드의 파워 코스트 지불에 사용됩니다. 총 파워는 효과 처리 시점에 재확인됩니다. 다음 턴에 캐릭터를 교체하면 이전 카드가 충전 구역으로 갑니다.',
+    '강조된 충전 구역에 교체된 캐릭터가 들어왔습니다. SEND TO POWER가 2이므로 현재 Power 합계는 2입니다.\n\n새 캐릭터의 Power Cost도 2라 2 ≥ 2를 충족합니다. Power Cost는 기준만 확인하며 공격하거나 효과를 발동해도 이 2 Power는 소모되지 않습니다.',
   'tutorial.game.areaEnchant.title': '에리어 인챈트',
   'tutorial.game.areaEnchant.body':
-    '에리어 인챈트는 패에서 낼 때 먼저 세트 존 A 또는 B에 뒷면으로 배치됩니다. 카드가 공개되어 효과가 발동된 후 세트 존 C로 이동하며, 전체 필드에 지속적으로 영향을 줍니다. 당신이 낸 2nd_86은 야간 측일 때 캐릭터에게 +20 공격력을 부여합니다.',
+    '강조된 C 존에 이번 턴 공개한 에리어 인챈트가 들어왔습니다. 턴이 지나도 남으며 현재는 주간이라 새 캐릭터 공격력을 80에서 100으로 올립니다.\n\nC 존에 기존 카드가 있으면 SEND TO POWER에 따라 떠납니다. 같은 턴에 2장을 냈다면 A 존 카드만 우선 C 존으로 들어갑니다.',
+  'tutorial.game.turnEndCleanup.title': '퇴장, 어비스, 턴 종료',
+  'tutorial.game.turnEndCleanup.body':
+    '강조된 상대 어비스에는 이번 턴의 일회성 인챈트가 들어왔습니다. 처리 후에도 세트 존에 남았고 SEND TO POWER가 없기 때문입니다. 당신의 에리어 인챈트는 C 존에 계속 남습니다.\n\n마지막으로 당신은 낸 2장만큼 2장, 상대는 1장만큼 1장을 뽑습니다. 필요한 수를 못 뽑으면 즉시 패배합니다. 「다음」을 눌러 완료하세요.',
   'tutorial.game.abyss.title': '어비스',
   'tutorial.game.abyss.body':
     '효과 처리가 끝난 인챈트 카드는 어비스로 보내집니다. 어비스의 카드는 더 이상 효과를 발휘하지 않지만, 일부 카드 효과로 어비스에서 카드를 꺼내 재사용할 수 있습니다.',

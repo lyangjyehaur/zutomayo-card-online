@@ -8,6 +8,21 @@
 #   - 加入 e2e runner 服務，跑 Playwright 測試
 #   - report 目錄 bind-mount 到主機，方便 CI 提取 artifact
 services:
+  # The player-facing image route is intentionally exercised end-to-end. Keep
+  # this deterministic test proxy in the E2E stack so a missing production
+  # imgproxy configuration cannot silently turn card images into 503s.
+  imgproxy:
+    image: ghcr.io/imgproxy/imgproxy:v4.0.11
+    environment:
+      IMGPROXY_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      IMGPROXY_SALT: fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
+      IMGPROXY_ALLOWED_SOURCES: https://r2.dan.tw/cards/
+    healthcheck:
+      test: ['CMD', 'imgproxy', 'health']
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
   postgres:
     environment:
       POSTGRES_DB: zutomayo_e2e
@@ -69,6 +84,10 @@ services:
       - NODE_ENV=test
       - PG_DATABASE=zutomayo_e2e
       - REDIS_DB=1
+      - IMGPROXY_INTERNAL_BASE_URL=http://imgproxy:8080
+      - IMGPROXY_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      - IMGPROXY_SALT=fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
+      - IMGPROXY_ALLOWED_SOURCES=https://r2.dan.tw/cards/
     depends_on:
       postgres:
         condition: service_healthy
@@ -78,6 +97,8 @@ services:
         condition: service_completed_successfully
       seed:
         condition: service_completed_successfully
+      imgproxy:
+        condition: service_healthy
 
   platform:
     environment:

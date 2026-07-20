@@ -274,6 +274,15 @@ boardgame.io 多實例需要**兩個獨立的跨節點層**，兩者職責不同
 | `imgproxySigner.cjs`          | imgproxy 簽名 URL 產生與來源白名單                                             |
 | `observability.cjs`           | pino log、Prometheus metrics、request tracing                                  |
 
+### 卡牌圖片交付規範
+
+- 卡牌資料可以保存 canonical 原始 URL；這只是來源資料，不代表瀏覽器可直接載入原圖。
+- 所有玩家端、Admin 與教學 UI 必須使用 `CardImage`。它會透過同源 `/api/imgproxy` 產生尺寸化的 AVIF/WebP/srcset，預設在 imgproxy 失敗時 fail closed，不得靜默回退至原始 R2 URL。
+- 若特殊 UI 確實需要原圖回退，必須同時傳入 `fallbackToOriginal={true}` 與非空的 `originalFallbackReason`，在本節記錄用途，並同步審查 CSP／效能 gate 的明確例外。Public Beta 玩家 UI 目前沒有此例外。
+- PWA 只快取 `/api/imgproxy/` 回應；Content Security Policy 不允許玩家端直接向卡圖來源站載入圖片。
+- `npm run image:policy` 會掃描直接 `<img>` 卡圖、未說明的原圖回退、PWA 原圖快取與 CSP 放行；`npm run verify` 包含此檢查。效能 smoke 也會把任何繞過 imgproxy 的實際圖片請求視為失敗。
+- 唯一既有直接來源例外是 `scripts/card-official-text-review-server.ts`：這是 localhost-only 的官方文本人工審查工具，沒有 App/imgproxy runtime；本機 OCR 圖片不存在時會導向 canonical 原圖以供核對。它不會進入玩家端 bundle 或部署服務。
+
 ### 認證流程
 
 ```mermaid
