@@ -10,14 +10,24 @@ import {
   type CardImageSourceKind,
 } from '../lib/cardImages';
 
-export interface CardImageProps extends Omit<ImgHTMLAttributes<HTMLImageElement>, 'src' | 'srcSet' | 'sizes'> {
-  cardId?: string;
-  src?: string;
-  context?: CardImageContext;
-  sourceKind?: CardImageSourceKind;
-  sizes?: string;
-  fallbackToOriginal?: boolean;
-}
+type OriginalFallbackPolicy =
+  | {
+      fallbackToOriginal?: false;
+      originalFallbackReason?: never;
+    }
+  | {
+      fallbackToOriginal: true;
+      originalFallbackReason: string;
+    };
+
+export type CardImageProps = Omit<ImgHTMLAttributes<HTMLImageElement>, 'src' | 'srcSet' | 'sizes'> &
+  OriginalFallbackPolicy & {
+    cardId?: string;
+    src?: string;
+    context?: CardImageContext;
+    sourceKind?: CardImageSourceKind;
+    sizes?: string;
+  };
 
 export function CardImage({
   cardId,
@@ -28,7 +38,8 @@ export function CardImage({
   loading = 'lazy',
   decoding = 'async',
   alt = '',
-  fallbackToOriginal = true,
+  fallbackToOriginal = false,
+  originalFallbackReason,
   onError,
   ...imgProps
 }: CardImageProps) {
@@ -53,11 +64,31 @@ export function CardImage({
   };
 
   if (!input) {
-    return <img alt={alt} loading={loading} decoding={decoding} onError={onError} {...imgProps} />;
+    return (
+      <img
+        {...imgProps}
+        data-card-image-delivery="missing"
+        alt={alt}
+        loading={loading}
+        decoding={decoding}
+        onError={onError}
+      />
+    );
   }
 
   if (useOriginalFallback) {
-    return <img src={originalSource} alt={alt} loading={loading} decoding={decoding} onError={onError} {...imgProps} />;
+    return (
+      <img
+        {...imgProps}
+        src={originalSource}
+        data-card-image-delivery="original-exception"
+        data-card-image-fallback-reason={originalFallbackReason}
+        alt={alt}
+        loading={loading}
+        decoding={decoding}
+        onError={onError}
+      />
+    );
   }
 
   return (
@@ -73,14 +104,15 @@ export function CardImage({
         sizes={imageSizes}
       />
       <img
+        {...imgProps}
         src={getCardImageUrl(input, fallbackWidth, { sourceKind: resolvedSourceKind })}
         srcSet={getCardImageSrcSet(input, { sourceKind: resolvedSourceKind, widths })}
         sizes={imageSizes}
+        data-card-image-delivery="imgproxy"
         alt={alt}
         loading={loading}
         decoding={decoding}
         onError={handleImgproxyError}
-        {...imgProps}
       />
     </picture>
   );

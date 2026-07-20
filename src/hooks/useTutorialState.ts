@@ -6,6 +6,7 @@ interface UseTutorialStateOptions {
   steps: TutorialStep[];
   gameState: GameState | null;
   onComplete: () => void;
+  initialStep?: number;
 }
 
 function snapshot(G: GameState | null): TutorialEntrySnapshot | null {
@@ -24,8 +25,10 @@ function snapshot(G: GameState | null): TutorialEntrySnapshot | null {
  *
  * 進入每個步驟時記錄遊戲狀態快照（entry），供 completeWhen 比對前後變化。
  */
-export function useTutorialState({ steps, gameState, onComplete }: UseTutorialStateOptions) {
-  const [currentStep, setCurrentStep] = useState(0);
+export function useTutorialState({ steps, gameState, onComplete, initialStep = 0 }: UseTutorialStateOptions) {
+  const [currentStep, setCurrentStep] = useState(() =>
+    Math.min(Math.max(initialStep, 0), Math.max(steps.length - 1, 0)),
+  );
   // 持續追蹤最新遊戲狀態，供步驟切換時立即取快照
   const gameRef = useRef<GameState | null>(gameState);
   // 進入當前步驟時的遊戲狀態快照
@@ -84,8 +87,29 @@ export function useTutorialState({ steps, gameState, onComplete }: UseTutorialSt
     advance();
   }, [advance]);
 
+  const goPrevious = useCallback(() => {
+    clearTimer();
+    setCurrentStep((previous) => {
+      const next = Math.max(0, previous - 1);
+      entryRef.current = snapshot(gameRef.current);
+      return next;
+    });
+  }, [clearTimer]);
+
+  const resetToStep = useCallback(
+    (step: number) => {
+      clearTimer();
+      const next = Math.min(Math.max(step, 0), Math.max(steps.length - 1, 0));
+      entryRef.current = snapshot(gameRef.current);
+      setCurrentStep(next);
+    },
+    [clearTimer, steps.length],
+  );
+
   return {
     currentStep,
     goNext,
+    goPrevious,
+    resetToStep,
   };
 }

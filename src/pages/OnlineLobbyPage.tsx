@@ -101,22 +101,6 @@ type LobbyChatEntry = ChatMessage & { translation?: DirectChatTranslationState }
 type RoomChatEntry = LobbyChatEntry;
 const ANONYMOUS_NAME_PROMPT_STORAGE_KEY = 'zutomayo_anonymous_name_prompt_seen';
 
-// 段位定義：依 ELO 劃分漆面塔羅風格的段位名（專有名詞，不 i18n）。
-const RANKS = [
-  { name: '金輝 V', min: 1800, max: 2400 },
-  { name: '朱痕 IV', min: 1600, max: 1800 },
-  { name: '幽影 III', min: 1400, max: 1600 },
-  { name: '殘月 II', min: 1200, max: 1400 },
-  { name: '新月 I', min: 0, max: 1200 },
-] as const;
-
-function eloToRank(elo: number): { name: string; progress: number } {
-  const rank = RANKS.find((r) => elo >= r.min && elo < r.max) ?? RANKS[RANKS.length - 1];
-  const span = rank.max - rank.min;
-  const progress = span > 0 ? Math.min(1, Math.max(0, (elo - rank.min) / span)) : 0;
-  return { name: rank.name, progress };
-}
-
 function resolveDeckLabel(deckId: string, groups: DeckOptionGroup[]): string {
   for (const group of groups) {
     const found = group.options.find((option) => option.id === deckId);
@@ -735,7 +719,6 @@ export function OnlineLobbyPage({
 
   const canStart = cardsReady && !!deck0Name;
   const startDisabledReason = !cardsReady ? t('game.loading') : !deck0Name ? t('lobby.selectDeckFirst') : '';
-  const rank = profile ? eloToRank(profile.elo) : null;
   const draftPreview = formatAnonymousDisplayName({
     baseName: sanitizeAnonymousBaseName(anonymousNameDraft),
     suffix: anonymousIdentity.suffix,
@@ -1187,9 +1170,7 @@ export function OnlineLobbyPage({
         actions={
           <div className="hidden items-center gap-2 px-2 font-mono text-caption uppercase tracking-[var(--tracking-label)] text-content-primary/50 sm:flex">
             <Radio className="size-3 animate-pulse text-accent-action" aria-hidden="true" />
-            <span className="max-w-[14rem] truncate">
-              {profile ? `${profile.nickname} · ELO ${profile.elo}` : anonymousDisplayName}
-            </span>
+            <span className="max-w-[14rem] truncate">{profile ? profile.nickname : anonymousDisplayName}</span>
           </div>
         }
       />
@@ -1295,23 +1276,6 @@ export function OnlineLobbyPage({
               </div>
               <div className="mt-1 truncate font-display text-lg font-bold">
                 {deck0Name ? resolveDeckLabel(deck0Name, deckOptions) : t('lobby.noDeckSelected')}
-              </div>
-            </Panel>
-
-            {/* 段位卡 */}
-            <Panel variant="ghost">
-              <div className="flex items-center justify-between text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">
-                <span>{t('lobby.rank')}</span>
-                <span className="text-accent-primary">{rank ? rank.name : t('lobby.guestRank')}</span>
-              </div>
-              <div className="mt-2 h-1 w-full bg-content-primary/10">
-                <div
-                  className="h-full bg-gradient-to-r from-accent-action to-accent-primary transition-all"
-                  style={{ width: rank ? `${Math.round(rank.progress * 100)}%` : '0%' }}
-                />
-              </div>
-              <div className="mt-1 font-mono text-minutia text-content-primary/40">
-                {profile ? `ELO ${profile.elo} · ${profile.wins}/${profile.matchCount}` : t('lobby.loginRequired')}
               </div>
             </Panel>
 

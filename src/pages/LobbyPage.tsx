@@ -13,7 +13,6 @@ import {
   ScrollText,
   Send,
   Swords,
-  Trophy,
   UserRound,
   Users,
 } from 'lucide-react';
@@ -24,6 +23,7 @@ import { VersionUpdateTrigger } from '../components/VersionUpdateTrigger';
 import { AuthSection } from '../components/lobby/AuthSection';
 import { OnlinePresenceBadge } from '../components/OnlinePresenceBadge';
 import { useOnlinePresence } from '../hooks/useOnlinePresence';
+import { LOBBY_BACKGROUND_FALLBACK_IMAGE } from '../data/cardImageSources';
 import {
   DEFAULT_ABOUT_PAGE_I18N_CONFIG,
   fetchAnnouncements,
@@ -77,22 +77,15 @@ const CHANNELS: Channel[] = [
     Icon: LayoutGrid,
   },
   {
-    to: '/leaderboard',
-    no: '04',
-    titleKey: 'leaderboard.title',
-    captionKey: 'lobby.homeLeaderboardCaption',
-    Icon: Trophy,
-  },
-  {
     to: '/history',
-    no: '05',
+    no: '04',
     titleKey: 'lobby.matchHistory',
     captionKey: 'lobby.homeHistoryCaption',
     Icon: ScrollText,
   },
   {
     to: '/community',
-    no: '06',
+    no: '05',
     titleKey: 'community.title',
     captionKey: 'community.caption',
     Icon: MessageCircle,
@@ -110,7 +103,6 @@ const PROJECT_CREDITS = [
 
 // 待機儀表的靜態 Chronos 狀態（真夜中・夜側）— 純裝飾，與對戰共用同一元件
 const IDLE_CHRONOS = { position: 0, nightSidePlayer: 1 as const };
-const LOBBY_BACKGROUND_FALLBACK_IMAGE = 'https://r2.dan.tw/cards/the-world-is-changing/zutomayocard_1st_1.jpg';
 
 function randomLobbyBackgroundImage(cards: CardDef[]): string | null {
   const featuredCards = cards.filter((card) => card.rarity === 'UR' || card.rarity === 'SR' || card.rarity === 'SE');
@@ -141,6 +133,57 @@ function AboutFeatureLink({ link, Icon }: { link: AboutPageLink; Icon: typeof Gi
         <span className="mt-1 block text-caption leading-relaxed text-content-muted">{link.description}</span>
       </span>
     </a>
+  );
+}
+
+function HomeAnnouncements({
+  announcements,
+  loading,
+  locale,
+}: {
+  announcements: Announcement[];
+  loading: boolean;
+  locale: string;
+}) {
+  return (
+    <section
+      className="w-full rounded-md border border-border-soft bg-surface-base/65 p-4 text-left shadow-floating backdrop-blur-md"
+      aria-labelledby="home-announcements-title"
+    >
+      <div className="flex items-center gap-2 border-b border-border-soft pb-3">
+        <Megaphone className="size-4 text-accent-primary" strokeWidth={1.5} aria-hidden="true" />
+        <h2
+          id="home-announcements-title"
+          className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-muted"
+        >
+          {t('announcement.title')}
+        </h2>
+      </div>
+      {loading ? (
+        <p className="pt-3 text-caption text-content-dim">{t('announcement.loading')}</p>
+      ) : announcements.length === 0 ? (
+        <p className="pt-3 text-caption text-content-dim">{t('announcement.empty')}</p>
+      ) : (
+        <div className="divide-y divide-border-soft">
+          {announcements.map((announcement) => (
+            <article key={announcement.id} className="grid gap-1 py-3 first:pt-3 last:pb-0">
+              <div className="flex items-baseline justify-between gap-3">
+                <h3 className="min-w-0 truncate text-body font-semibold text-content-primary">{announcement.title}</h3>
+                {announcement.publishedAt && (
+                  <time className="shrink-0 font-mono text-[10px] text-content-dim" dateTime={announcement.publishedAt}>
+                    {new Date(announcement.publishedAt).toLocaleDateString(locale, {
+                      month: '2-digit',
+                      day: '2-digit',
+                    })}
+                  </time>
+                )}
+              </div>
+              <p className="line-clamp-2 text-caption leading-relaxed text-content-muted">{announcement.content}</p>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -413,58 +456,14 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
             </div>
           </div>
 
-          {/* 右：待機中的 Chronos 儀表（純裝飾，與對戰共用元件） */}
-          <div
-            className="relative hidden shrink-0 scale-125 opacity-90 sm:block md:mr-8 md:scale-150 lg:mr-16"
-            aria-hidden="true"
-          >
-            <div className="absolute left-1/2 top-1/2 h-72 w-72 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[oklch(from_var(--time-night)_l_c_h_/_0.1)] blur-3xl" />
-            <ChronosDial chronos={IDLE_CHRONOS} currentTime="night" currentPlayer={0} />
-          </div>
-        </section>
-
-        <section
-          className="mx-auto w-full max-w-6xl shrink-0 border-y border-border-soft bg-surface-base/45 px-4 py-3 backdrop-blur-md"
-          aria-labelledby="home-announcements-title"
-        >
-          <div className="flex items-center gap-2">
-            <Megaphone className="size-4 text-accent-primary" strokeWidth={1.5} aria-hidden="true" />
-            <h2
-              id="home-announcements-title"
-              className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-muted"
-            >
-              {t('announcement.title')}
-            </h2>
-          </div>
-          {announcementsLoading ? (
-            <p className="mt-2 text-caption text-content-dim">{t('announcement.loading')}</p>
-          ) : announcements.length === 0 ? (
-            <p className="mt-2 text-caption text-content-dim">{t('announcement.empty')}</p>
-          ) : (
-            <div className="mt-2 grid gap-x-6 gap-y-3 md:grid-cols-3">
-              {announcements.map((announcement) => (
-                <article key={announcement.id} className="min-w-0 border-l-2 border-accent-primary/45 pl-3">
-                  <div className="flex items-baseline justify-between gap-3">
-                    <h3 className="truncate text-body font-semibold text-content-primary">{announcement.title}</h3>
-                    {announcement.publishedAt && (
-                      <time
-                        className="shrink-0 font-mono text-[10px] text-content-dim"
-                        dateTime={announcement.publishedAt}
-                      >
-                        {new Date(announcement.publishedAt).toLocaleDateString(locale, {
-                          month: '2-digit',
-                          day: '2-digit',
-                        })}
-                      </time>
-                    )}
-                  </div>
-                  <p className="mt-1 line-clamp-2 text-caption leading-relaxed text-content-muted">
-                    {announcement.content}
-                  </p>
-                </article>
-              ))}
+          {/* 右：Chronos 待機儀表與精簡公告，不再切斷主視覺與頻道入口。 */}
+          <div className="flex w-full max-w-md shrink-0 flex-col items-center gap-8 md:items-stretch">
+            <div className="relative hidden self-center opacity-90 sm:block md:scale-125" aria-hidden="true">
+              <div className="absolute left-1/2 top-1/2 h-72 w-72 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[oklch(from_var(--time-night)_l_c_h_/_0.1)] blur-3xl" />
+              <ChronosDial chronos={IDLE_CHRONOS} currentTime="night" currentPlayer={0} />
             </div>
-          )}
+            <HomeAnnouncements announcements={announcements} loading={announcementsLoading} locale={locale} />
+          </div>
         </section>
 
         {/* ===== 頻道列：模式入口 ===== */}
@@ -475,7 +474,7 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
             </span>
             <span className="h-px flex-1 bg-border-soft" aria-hidden="true" />
           </div>
-          <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-6 lg:gap-3">
+          <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5 lg:gap-3">
             {CHANNELS.map(({ to, no, titleKey, captionKey, Icon }) => (
               <li key={to} className="min-w-0">
                 <button
@@ -547,33 +546,9 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
                 className="min-h-10 min-w-0 px-2 text-center font-sans leading-relaxed text-content-primary/35 normal-case tracking-normal hover:text-accent-primary"
                 variant="ghost"
                 size="sm"
-                onClick={() => navigate('/legal/privacy')}
+                onClick={() => navigate('/legal')}
               >
-                {t('legal.privacy')}
-              </Button>
-              <span className="text-content-primary/20" aria-hidden="true">
-                /
-              </span>
-              <Button
-                type="button"
-                className="min-h-10 min-w-0 px-2 text-center font-sans leading-relaxed text-content-primary/35 normal-case tracking-normal hover:text-accent-primary"
-                variant="ghost"
-                size="sm"
-                onClick={() => navigate('/legal/terms')}
-              >
-                {t('legal.terms')}
-              </Button>
-              <span className="text-content-primary/20" aria-hidden="true">
-                /
-              </span>
-              <Button
-                type="button"
-                className="min-h-10 min-w-0 px-2 text-center font-sans leading-relaxed text-content-primary/35 normal-case tracking-normal hover:text-accent-primary"
-                variant="ghost"
-                size="sm"
-                onClick={() => navigate('/legal/contact')}
-              >
-                {t('legal.contact')}
+                {t('legal.accountTitle')}
               </Button>
             </div>
             <span className="min-w-0 text-center font-sans leading-relaxed normal-case tracking-normal text-content-primary/35 sm:col-span-2 lg:col-span-1 lg:text-right">

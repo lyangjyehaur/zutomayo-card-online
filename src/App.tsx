@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { Menu, X } from 'lucide-react';
-import { BrowserRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { identifyAnalytics, trackPageView } from './analytics';
 import { formatAnonymousDisplayName } from './anonymousIdentity';
 import { getDecks, getProfile, isLoggedIn, reserveDeck, type DeckResponse } from './api/client';
@@ -55,9 +55,6 @@ const OnlineLobbyPage = lazy(() =>
   import('./pages/OnlineLobbyPage').then((module) => ({ default: module.OnlineLobbyPage })),
 );
 const CommunityPage = lazy(() => import('./pages/CommunityPage').then((module) => ({ default: module.CommunityPage })));
-const LeaderboardPage = lazy(() =>
-  import('./pages/LeaderboardPage').then((module) => ({ default: module.LeaderboardPage })),
-);
 const FeedbackPage = lazy(() => import('./pages/FeedbackPage').then((module) => ({ default: module.FeedbackPage })));
 const ProfilePage = lazy(() => import('./pages/ProfilePage').then((module) => ({ default: module.ProfilePage })));
 const LegalPage = lazy(() => import('./pages/LegalPage').then((module) => ({ default: module.LegalPage })));
@@ -721,7 +718,7 @@ function RouterShell() {
               }
             />
             <Route path="/history" element={<MatchHistoryPage />} />
-            <Route path="/leaderboard" element={<LeaderboardPage />} />
+            <Route path="/leaderboard" element={<Navigate to="/" replace />} />
             <Route path="/feedback" element={<FeedbackPage />} />
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/legal" element={<LegalPage documentId="overview" />} />

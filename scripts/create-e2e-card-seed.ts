@@ -14,6 +14,7 @@ const TUTORIAL_IDS: Array<{ id: string; type: CardType }> = [
   { id: '1st_2', type: 'Character' },
   { id: '1st_34', type: 'Character' },
   { id: '1st_35', type: 'Character' },
+  { id: '1st_46', type: 'Character' },
   { id: '1st_66', type: 'Character' },
   { id: '1st_67', type: 'Character' },
   { id: '1st_68', type: 'Character' },
@@ -21,17 +22,37 @@ const TUTORIAL_IDS: Array<{ id: string; type: CardType }> = [
   { id: '1st_98', type: 'Enchant' },
   { id: '2nd_86', type: 'Area Enchant' },
   { id: '2nd_92', type: 'Character' },
+  { id: '2nd_98', type: 'Area Enchant' },
 ];
 
 // Preserve only the mechanics required by the deterministic tutorial. The rest of the
 // E2E fixture remains synthetic and must not be mistaken for production card data.
 const TUTORIAL_OVERRIDES: Record<string, Partial<CardDef>> = {
   '1st_2': { clock: 1, attack: { night: 60, day: 60 }, powerCost: 7, sendToPower: 1 },
-  '1st_34': { clock: 1, attack: { night: 70, day: 70 }, powerCost: 1, sendToPower: 1 },
-  '1st_67': { clock: 1, attack: { night: 50, day: 50 }, powerCost: 0, sendToPower: 1 },
-  '1st_70': { clock: 2, attack: { night: 30, day: 30 }, powerCost: 0, sendToPower: 2 },
-  '1st_98': { clock: 4, sendToPower: 0, effect: '攻撃力+30', enEffectOfficial: 'Attack +30' },
-  '2nd_86': { clock: 2, sendToPower: 0, effect: '攻撃力+20', enEffectOfficial: 'Attack +20' },
+  '1st_34': { clock: 1, attack: { night: 70, day: 30 }, powerCost: 1, sendToPower: 0 },
+  '1st_46': { clock: 1, attack: { night: 40, day: 80 }, powerCost: 2, sendToPower: 0 },
+  '1st_67': { clock: 1, attack: { night: 50, day: 30 }, powerCost: 0, sendToPower: 0 },
+  '1st_70': { clock: 2, attack: { night: 30, day: 10 }, powerCost: 0, sendToPower: 2 },
+  '1st_98': {
+    clock: 4,
+    sendToPower: 0,
+    effect: '相手のキャラクターカードのパワーコストが★０か★１なら攻撃力+30',
+    enEffectOfficial: "Attack +30 if the opponent's character card has a power cost of 0 or 1★.",
+  },
+  '2nd_86': {
+    clock: 2,
+    powerCost: 1,
+    sendToPower: 1,
+    effect: '夜なら攻撃力+20。夜じゃなくなったらパワーチャージャーに置く',
+    enEffectOfficial: "Attack +20 if it's night, if it's not night, place it on the Power charger.",
+  },
+  '2nd_98': {
+    clock: 2,
+    powerCost: 1,
+    sendToPower: 1,
+    effect: '昼なら攻撃力+20。昼じゃなくなったらパワーチャージャーに置く',
+    enEffectOfficial: "Attack +20 if it's daytime, if it's not daytime, place it on the Power charger.",
+  },
 };
 
 function syntheticCard(id: string, element: Element, type: CardType, index: number): CardDef {

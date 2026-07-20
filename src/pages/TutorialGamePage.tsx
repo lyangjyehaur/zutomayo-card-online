@@ -1,11 +1,19 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AIGame } from '../components/AIGame';
+import type { TutorialBoardAction } from '../components/Board';
 import { GameTutorialOverlay } from '../components/GameTutorialOverlay';
+import { markTutorialChapterComplete, TutorialChapterHub } from '../components/TutorialChapterHub';
 import { Alert, Button, Dialog, LoadingState, PageShell } from '../ui';
 import { useTutorialState } from '../hooks/useTutorialState';
 import { TUTORIAL_STEPS } from '../data/tutorialSteps';
 import { TUTORIAL_DECK0_IDS, TUTORIAL_DECK1_IDS, TUTORIAL_AI_SCRIPT } from '../data/tutorialScenario';
+import {
+  buildTutorialPresentationState,
+  captureTutorialPresentationSnapshots,
+  EMPTY_TUTORIAL_PRESENTATION_SNAPSHOTS,
+  type TutorialPresentationSnapshots,
+} from '../data/tutorialPresentation';
 import type { GameState } from '../game/types';
 import { t } from '../i18n';
 import { trackFunnelEvent } from '../funnelAnalytics';
@@ -17,15 +25,114 @@ interface TutorialGamePageProps {
   onRetryCards?: () => void | Promise<void>;
 }
 
-export function TutorialGamePage({ cardsReady, cardsLoadError, onRetryCards }: TutorialGamePageProps) {
+type TutorialCheckpoint = 'preparation' | 'flow' | 'turn2' | 'effects';
+
+const TUTORIAL_CHECKPOINT_STEP_INDEXES: Record<TutorialCheckpoint, number> = {
+  preparation: TUTORIAL_STEPS.findIndex((step) => step.phase === 'janken'),
+  flow: TUTORIAL_STEPS.findIndex((step) => step.phase === 'flow-recap'),
+  turn2: TUTORIAL_STEPS.findIndex((step) => step.phase === 'turnSet-character-select'),
+  effects: TUTORIAL_STEPS.findIndex((step) => step.phase === 'effectOrder-action'),
+};
+
+const SECOND_HP_CALC_STEP_INDEX = TUTORIAL_STEPS.map((step) => step.phase).lastIndexOf('hp-calc');
+
+export function TutorialGamePage(props: TutorialGamePageProps) {
   const navigate = useNavigate();
+  const nextSessionIdRef = useRef(1);
+  const [view, setView] = useState<'hub' | 'battle'>('hub');
+  const [battleSession, setBattleSession] = useState<{
+    id: number;
+    preparationReady: boolean;
+    stopAfterPreparation: boolean;
+    startAtFlow: boolean;
+  } | null>(null);
+
+  const startBattle = (chapter: 'preparation' | 'flow') => {
+    if (chapter === 'flow' && battleSession?.preparationReady) {
+      setBattleSession((current) => (current ? { ...current, stopAfterPreparation: false } : current));
+      setView('battle');
+      return;
+    }
+    setBattleSession({
+      id: nextSessionIdRef.current++,
+      preparationReady: false,
+      stopAfterPreparation: chapter === 'preparation',
+      startAtFlow: chapter === 'flow',
+    });
+    setView('battle');
+  };
+
+  return (
+    <>
+      {view === 'hub' && (
+        <TutorialChapterHub
+          initialChapter={battleSession?.preparationReady ? 'flow' : undefined}
+          onStartBattle={startBattle}
+          onExit={() => navigate('/')}
+        />
+      )}
+      {battleSession && (
+        <div className={view === 'battle' ? 'contents' : 'hidden'} aria-hidden={view !== 'battle' || undefined}>
+          <TutorialBattle
+            key={battleSession.id}
+            {...props}
+            stopAfterPreparation={battleSession.stopAfterPreparation}
+            startAtFlow={battleSession.startAtFlow}
+            onPreparationReturn={() => {
+              setBattleSession((current) => (current ? { ...current, preparationReady: true } : current));
+              setView('hub');
+            }}
+            onExit={() => {
+              setBattleSession(null);
+              setView('hub');
+            }}
+            onComplete={() => {
+              markTutorialChapterComplete('flow');
+              setBattleSession(null);
+              setView('hub');
+            }}
+          />
+        </div>
+      )}
+    </>
+  );
+}
+
+function TutorialBattle({
+  cardsReady,
+  cardsLoadError,
+  onRetryCards,
+  stopAfterPreparation,
+  startAtFlow,
+  onPreparationReturn,
+  onExit,
+  onComplete,
+}: TutorialGamePageProps & {
+  stopAfterPreparation: boolean;
+  startAtFlow: boolean;
+  onPreparationReturn: () => void;
+  onExit: () => void;
+  onComplete: () => void;
+}) {
   const [gameState, setGameState] = useState<GameState | null>(null);
+  const [presentationSnapshots, setPresentationSnapshots] = useState<TutorialPresentationSnapshots>(
+    EMPTY_TUTORIAL_PRESENTATION_SNAPSHOTS,
+  );
+  const [gameSessionId, setGameSessionId] = useState(0);
+  const [replayTarget, setReplayTarget] = useState<Exclude<TutorialCheckpoint, 'preparation'> | null>(
+    startAtFlow ? 'flow' : null,
+  );
+  const [replayReady, setReplayReady] = useState(!startAtFlow);
   const [skipPromptOpen, setSkipPromptOpen] = useState(false);
+  const [preparationPromptOpen, setPreparationPromptOpen] = useState(false);
+  const [rewindCheckpoint, setRewindCheckpoint] = useState<TutorialCheckpoint | null>(null);
+  const [tutorialFinished, setTutorialFinished] = useState(false);
   const tutorialStartedAtRef = useRef(Date.now());
   const tutorialOutcomeRef = useRef<'active' | 'complete' | 'exit'>('active');
   const firstActionTrackedRef = useRef(false);
+  const flowStartStepIndex = TUTORIAL_STEPS.findIndex((step) => step.chapter === 'flow');
 
-  const completeTutorial = useCallback(() => {
+  const recordTutorialCompletion = useCallback(() => {
     if (tutorialOutcomeRef.current !== 'complete') {
       tutorialOutcomeRef.current = 'complete';
       trackFunnelEvent('F_Tutorial_Complete', {
@@ -33,14 +140,58 @@ export function TutorialGamePage({ cardsReady, cardsLoadError, onRetryCards }: T
         total_steps: TUTORIAL_STEPS.length,
       });
     }
-    navigate('/');
-  }, [navigate]);
+  }, []);
 
-  const { currentStep, goNext } = useTutorialState({
+  const completeTutorial = useCallback(() => {
+    recordTutorialCompletion();
+    onComplete();
+  }, [onComplete, recordTutorialCompletion]);
+
+  const continueTutorialBattle = useCallback(() => {
+    recordTutorialCompletion();
+    markTutorialChapterComplete('flow');
+    setTutorialFinished(true);
+  }, [recordTutorialCompletion]);
+
+  const { currentStep, goNext, goPrevious, resetToStep } = useTutorialState({
     steps: TUTORIAL_STEPS,
     gameState,
     onComplete: completeTutorial,
+    initialStep: startAtFlow && flowStartStepIndex >= 0 ? flowStartStepIndex : 0,
   });
+
+  const initialSetStepIndex = TUTORIAL_STEPS.findIndex((step) => step.phase === 'initialSet-confirm');
+  const preparationCompletedRef = useRef(false);
+
+  useEffect(() => {
+    if (!replayTarget || !gameState) return;
+    const ready =
+      replayTarget === 'effects'
+        ? gameState.step === 'effectOrder' &&
+          gameState.pendingEffectPlayer === 0 &&
+          gameState.pendingEffects[0].length > 0
+        : gameState.step === 'turnSet' && gameState.turnNumber >= 2;
+    if (!ready) return;
+    const targetStep = TUTORIAL_CHECKPOINT_STEP_INDEXES[replayTarget];
+    if (targetStep >= 0) resetToStep(targetStep);
+    setReplayReady(true);
+    setReplayTarget(null);
+  }, [gameState, replayTarget, resetToStep]);
+
+  useEffect(() => {
+    if (
+      preparationCompletedRef.current ||
+      initialSetStepIndex === -1 ||
+      currentStep < initialSetStepIndex ||
+      !gameState ||
+      !['turnSet', 'effectOrder', 'gameOver'].includes(gameState.step)
+    ) {
+      return;
+    }
+    preparationCompletedRef.current = true;
+    if (!startAtFlow) markTutorialChapterComplete('preparation');
+    if (stopAfterPreparation) setPreparationPromptOpen(true);
+  }, [currentStep, gameState, initialSetStepIndex, startAtFlow, stopAfterPreparation]);
 
   useEffect(() => {
     const startedAt = tutorialStartedAtRef.current;
@@ -74,12 +225,10 @@ export function TutorialGamePage({ cardsReady, cardsLoadError, onRetryCards }: T
     }
   }, [currentStep]);
 
-  // 教學進度在 janken 之前（場地導覽階段）時隱藏 janken/mulligan 浮層，
-  // 等教學進度到了才顯示，避免猜拳面板一開始就彈出。
+  // 教學步驟尚未進入 janken 時隱藏遊戲自己的 setup 浮層，避免與引導遮罩搶先出現。
   const jankenStepIndex = TUTORIAL_STEPS.findIndex((s) => s.phase === 'janken');
   const hideSetupOverlay = jankenStepIndex === -1 || currentStep < jankenStepIndex;
-  // AI 在 janken 之前（場地導覽階段）仍暫停，避免使用者還在讀文案時 AI 就出拳；
-  // 進到 janken 步驟才恢復 AI 讓使用者實際操作（completeWhen 等玩家出拳後推進）。
+  // 進到 janken 步驟才恢復 AI，讓 completeWhen 以玩家的真實操作推進。
   const aiPaused = jankenStepIndex === -1 || currentStep < jankenStepIndex;
 
   // 猜拳結果彈窗的確認按鈕點擊時，若教學正在 janken-result 步驟，自動推進到下一步
@@ -99,8 +248,53 @@ export function TutorialGamePage({ cardsReady, cardsLoadError, onRetryCards }: T
     }
   }, [currentStep, goNext]);
 
+  const handleTutorialAction = useCallback(
+    (action: TutorialBoardAction, cardDefId: string) => {
+      const phase = TUTORIAL_STEPS[currentStep]?.phase;
+      const expected =
+        (phase === 'opening-hand' && action === 'mulligan-select' && cardDefId === '1st_2') ||
+        (phase === 'initialSet-select' && action === 'set-select' && cardDefId === '1st_70') ||
+        (phase === 'initialSet-place' && action === 'set-play' && cardDefId === '1st_70') ||
+        (phase === 'turnSet-character-select' && action === 'set-select' && cardDefId === '1st_46') ||
+        (phase === 'turnSet-character-place' && action === 'set-play' && cardDefId === '1st_46') ||
+        (phase === 'turnSet-area-select' && action === 'set-select' && cardDefId === '2nd_98') ||
+        (phase === 'turnSet-area-place' && action === 'set-play' && cardDefId === '2nd_98');
+      if (expected) goNext();
+    },
+    [currentStep, goNext],
+  );
+
+  const handleGameStateChange = useCallback((state: GameState) => {
+    setGameState(state);
+    setPresentationSnapshots((current) => captureTutorialPresentationSnapshots(current, state));
+  }, []);
+
   const handleSkip = () => {
     setSkipPromptOpen(true);
+  };
+
+  const restartAtCheckpoint = (checkpoint: TutorialCheckpoint) => {
+    const targetStep = TUTORIAL_CHECKPOINT_STEP_INDEXES[checkpoint];
+    if (targetStep < 0) return;
+    setRewindCheckpoint(null);
+    setPreparationPromptOpen(false);
+    if (checkpoint === 'preparation') preparationCompletedRef.current = false;
+    setGameState(null);
+    setPresentationSnapshots(EMPTY_TUTORIAL_PRESENTATION_SNAPSHOTS);
+    resetToStep(targetStep);
+    setReplayReady(checkpoint === 'preparation');
+    setReplayTarget(checkpoint === 'preparation' ? null : checkpoint);
+    setGameSessionId((session) => session + 1);
+  };
+
+  const handlePrevious = () => {
+    const behavior = TUTORIAL_STEPS[currentStep]?.backBehavior;
+    if (!behavior) return;
+    if (behavior.type === 'direct') {
+      goPrevious();
+      return;
+    }
+    setRewindCheckpoint(behavior.checkpoint);
   };
 
   const exitTutorial = (reason: 'route_exit' | 'back' | 'skip') => {
@@ -111,13 +305,36 @@ export function TutorialGamePage({ cardsReady, cardsLoadError, onRetryCards }: T
         elapsed_s: Math.round((Date.now() - tutorialStartedAtRef.current) / 1_000),
       });
     }
-    navigate('/');
+    onExit();
   };
 
   const activeStep = TUTORIAL_STEPS[currentStep];
-  const tutorialSetCards =
-    gameState?.step === 'initialSet' ? ['1st_70'] : gameState?.step === 'turnSet' ? ['1st_34', '2nd_86'] : undefined;
-  const tutorialSetInteractionEnabled = activeStep?.phase === 'initialSet' || activeStep?.phase === 'turnSet';
+  const activePhase = activeStep?.phase ?? '';
+  const tutorialPresentationState = useMemo(
+    () =>
+      buildTutorialPresentationState({
+        authoritative: gameState,
+        snapshots: presentationSnapshots,
+        phase: activePhase,
+        secondHpCalculation: currentStep === SECOND_HP_CALC_STEP_INDEX,
+      }),
+    [activePhase, currentStep, gameState, presentationSnapshots],
+  );
+  const autoPreparing = Boolean(replayTarget) && !replayReady;
+  const tutorialAllowedSetCards = activePhase.startsWith('initialSet')
+    ? activePhase === 'initialSet-confirm'
+      ? []
+      : ['1st_70']
+    : activePhase.startsWith('turnSet-character')
+      ? ['1st_46']
+      : activePhase.startsWith('turnSet-area')
+        ? ['2nd_98']
+        : activePhase === 'turnSet-confirm'
+          ? []
+          : undefined;
+  const tutorialRequiredSetCards =
+    gameState?.step === 'initialSet' ? ['1st_70'] : gameState?.step === 'turnSet' ? ['1st_46', '2nd_98'] : undefined;
+  const tutorialSetInteractionEnabled = activePhase.startsWith('initialSet') || activePhase.startsWith('turnSet-');
 
   // 卡牌未載入時顯示 loading，避免 AIGame 用空牌組崩潰
   if (!cardsReady) {
@@ -141,39 +358,99 @@ export function TutorialGamePage({ cardsReady, cardsLoadError, onRetryCards }: T
 
   return (
     <>
-      <AIGame
-        difficulty="easy"
-        deck0Ids={TUTORIAL_DECK0_IDS}
-        deck1Ids={TUTORIAL_DECK1_IDS}
-        skipShuffle
-        aiScript={TUTORIAL_AI_SCRIPT}
-        onBack={() => exitTutorial('back')}
-        onGameStateChange={setGameState}
-        tutorialMode
-        hideSetupOverlay={hideSetupOverlay}
-        aiPaused={aiPaused}
-        onSetupFeedbackDismiss={handleSetupFeedbackDismiss}
-        onNoticeDismiss={handleNoticeDismiss}
-        tutorialAllowedSetCardDefIds={tutorialSetCards}
-        tutorialRequiredSetCardDefIds={tutorialSetCards}
-        tutorialSetInteractionEnabled={tutorialSetInteractionEnabled}
-      />
+      <div className={autoPreparing ? 'hidden' : 'contents'} aria-hidden={autoPreparing || undefined}>
+        <AIGame
+          key={gameSessionId}
+          difficulty="easy"
+          deck0Ids={TUTORIAL_DECK0_IDS}
+          deck1Ids={TUTORIAL_DECK1_IDS}
+          skipShuffle
+          aiScript={tutorialFinished ? undefined : TUTORIAL_AI_SCRIPT}
+          onBack={() => exitTutorial('back')}
+          onGameStateChange={handleGameStateChange}
+          tutorialMode={!tutorialFinished}
+          hideSetupOverlay={!tutorialFinished && (autoPreparing || hideSetupOverlay)}
+          aiPaused={!tutorialFinished && aiPaused}
+          onSetupFeedbackDismiss={tutorialFinished ? undefined : handleSetupFeedbackDismiss}
+          onNoticeDismiss={tutorialFinished ? undefined : handleNoticeDismiss}
+          onTutorialAction={tutorialFinished ? undefined : handleTutorialAction}
+          tutorialAllowedSetCardDefIds={tutorialFinished ? undefined : tutorialAllowedSetCards}
+          tutorialRequiredSetCardDefIds={tutorialFinished ? undefined : tutorialRequiredSetCards}
+          tutorialSetInteractionEnabled={tutorialFinished || tutorialSetInteractionEnabled}
+          tutorialAutoReplay={!tutorialFinished ? (replayTarget ?? undefined) : undefined}
+          tutorialSuppressNotices={!tutorialFinished && (replayTarget === 'turn2' || replayTarget === 'effects')}
+          tutorialEffectOverlayVisible={tutorialFinished ? undefined : activePhase === 'effectOrder-action'}
+          tutorialPresentationState={tutorialFinished ? undefined : tutorialPresentationState}
+        />
+      </div>
 
-      <GameTutorialOverlay
-        steps={TUTORIAL_STEPS}
-        currentStep={currentStep}
-        gameState={gameState}
-        onNext={goNext}
-        onComplete={completeTutorial}
-        onSkip={handleSkip}
-        suspendFocusManagement={skipPromptOpen}
+      {autoPreparing && (
+        <PageShell className="grid place-items-center px-4">
+          <LoadingState label={t('game.loading')} className="w-full max-w-sm" />
+        </PageShell>
+      )}
+
+      {!autoPreparing && !preparationPromptOpen && !tutorialFinished && (
+        <GameTutorialOverlay
+          steps={TUTORIAL_STEPS}
+          currentStep={currentStep}
+          gameState={gameState}
+          onNext={goNext}
+          onPrevious={handlePrevious}
+          onComplete={completeTutorial}
+          onContinueBattle={continueTutorialBattle}
+          onSkip={handleSkip}
+          suspendFocusManagement={skipPromptOpen || Boolean(rewindCheckpoint)}
+        />
+      )}
+      <Dialog
+        open={preparationPromptOpen}
+        dismissible={false}
+        overlayClassName="tutorial-skip-dialog-overlay"
+        title={t('tutorial.game.preparationComplete.title')}
+        description={t('tutorial.game.preparationComplete.body')}
+        footer={
+          <Button
+            variant="primary"
+            onClick={() => {
+              setPreparationPromptOpen(false);
+              onPreparationReturn();
+            }}
+          >
+            {t('tutorial.game.preparationComplete.action')}
+          </Button>
+        }
+      />
+      <Dialog
+        open={Boolean(rewindCheckpoint)}
+        onOpenChange={(open) => {
+          if (!open) setRewindCheckpoint(null);
+        }}
+        overlayClassName="tutorial-skip-dialog-overlay"
+        title={t('tutorial.game.rewind.title')}
+        description={t('tutorial.game.rewind.body')}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setRewindCheckpoint(null)}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              variant="primary"
+              onClick={() => {
+                if (rewindCheckpoint) restartAtCheckpoint(rewindCheckpoint);
+              }}
+            >
+              {t('tutorial.game.rewind.action')}
+            </Button>
+          </>
+        }
       />
       <Dialog
         open={skipPromptOpen}
         onOpenChange={setSkipPromptOpen}
         overlayClassName="tutorial-skip-dialog-overlay"
         title={t('common.confirm')}
-        description={t('tutorial.skipConfirm')}
+        description={t('tutorial.battle.exitConfirm')}
         footer={
           <>
             <Button variant="secondary" onClick={() => setSkipPromptOpen(false)}>

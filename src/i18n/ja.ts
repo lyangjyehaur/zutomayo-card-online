@@ -823,8 +823,8 @@ export const ja: Record<TranslationKey, string> = {
   'deckEditor.removeCard': '削除',
   'deckEditor.emptySlot': '空き',
   'deckEditor.ruleSize': '20枚必要',
-  'deckEditor.ruleCharacters': 'キャラクター10枚以上',
-  'deckEditor.ruleCopies': '同名カードは最大2枚',
+  'deckEditor.ruleCharacters': '推奨：キャラクター50%以上',
+  'deckEditor.ruleCopies': '同じ収録パック・カード番号は2枚まで',
 
   'history.title': '対戦履歴',
   'history.total': '総試合数',
@@ -865,32 +865,207 @@ export const ja: Record<TranslationKey, string> = {
 
   // Tutorial Game Mode
   'tutorial.skipConfirm': 'チュートリアルを閉じてロビーに戻りますか？',
+  'tutorial.battle.exitConfirm': '実戦チュートリアルを終了して章一覧に戻りますか？',
+  'tutorial.hub.title': '初心者チュートリアル',
+  'tutorial.hub.subtitle': 'カードの見方から最初の対戦まで',
+  'tutorial.hub.body':
+    '勝敗、ターン、デッキ構築を先に理解し、カードとフィールドを確認した後、操作できる実戦チュートリアルで最初の対戦を完了します。',
+  'tutorial.hub.progress': 'チャプター進行度',
+  'tutorial.hub.completed': '完了',
+  'tutorial.hub.notCompleted': '未完了',
+  'tutorial.hub.officialGuide': '公式スタートガイドを見る',
+  'tutorial.hub.startBattle': '実戦チュートリアルを開始',
+  'tutorial.hub.startPreparation': '対戦準備を始める',
+  'tutorial.hub.nextChapter': '完了して次へ',
+  'tutorial.hub.cardsRemaining': 'この章の完了まで：カード種類 / 主要項目',
+  'tutorial.hub.fieldRemaining': 'まだ確認していないフィールド：',
+  'tutorial.game.actionHint': '画面で強調されている操作を行ってください。',
+  'tutorial.game.scrollHint': '下へスクロールして説明をすべて読む',
+  'tutorial.chapter.overview.title': 'ゲーム概要',
+  'tutorial.chapter.overview.subtitle': 'ゲームの目的とデッキ準備を知る',
+  'tutorial.chapter.overview.objective.title': '2人用の対戦カードゲーム',
+  'tutorial.chapter.overview.objective.body':
+    'ZUTOMAYO CARDは2人用の対戦型トレーディングカードゲームです。自分と相手がそれぞれデッキを準備して対戦します。',
+  'tutorial.chapter.overview.turn.title': 'ゲームの目的',
+  'tutorial.chapter.overview.turn.body':
+    '手札からカードを出してバトルし、相手にダメージを与えます。先に相手のHPを0にしたプレイヤーが勝者です。',
+  'tutorial.chapter.overview.nightDay.title': '夜と昼の特徴',
+  'tutorial.chapter.overview.nightDay.body':
+    'フィールドのクロノスはゲーム内の時間を示します。時間が夜と昼の間で変わると、カードの攻撃力や効果も変化します。具体的な仕組みは後のチャプターで説明します。',
+  'tutorial.chapter.overview.catchup.title': '敗者側の追い上げ',
+  'tutorial.chapter.overview.catchup.body':
+    '前のバトルで攻撃力が低く負けた側は次のターンに2枚、勝者は1枚をセットします。引き分けなら双方1枚となり、負けた側に追い上げの機会が生まれます。',
+  'tutorial.chapter.cards.title': 'カード紹介',
+  'tutorial.chapter.cards.subtitle': 'カードの種類とカード上の項目を理解する',
+  'tutorial.chapter.cards.interaction':
+    'カードの種類を選び、カード上の枠を押してこの例と一緒に各項目を確認しましょう。',
+  'tutorial.chapter.cards.hotspotsLabel': 'カードに印刷されたルール項目',
+  'tutorial.chapter.cards.fact.type.title': 'カードの種類／番号',
+  'tutorial.chapter.cards.fact.type.body':
+    'キャラクター、エンチャント、エリアエンチャントは入るゾーンと公開後の処理が異なります。',
+  'tutorial.chapter.cards.fact.type.example':
+    'このカードの表記は「{printedType}」、つまり{type}です。{typeRule} 番号は {number}、収録パックは {pack} で、収録パックと番号が同じカードはデッキに2枚までです。',
+  'tutorial.chapter.cards.fact.name.title': 'カード名',
+  'tutorial.chapter.cards.fact.name.body':
+    'カード名、収録パック、カード番号で1枚を識別します。同じ収録パック、同じカード番号はデッキに2枚までです。',
+  'tutorial.chapter.cards.fact.name.example':
+    'このカード名は「{name}」です。同じ名称のカードもあるため、特定のカードを確認する時は収録パックと番号を一緒に見ます。',
+  'tutorial.chapter.cards.fact.element.title': '属性',
+  'tutorial.chapter.cards.fact.element.body':
+    'カードの属性は闇、炎、電気、風、カオスの5種類です。一部の効果は属性でカードを選択・集計し、属性ごとに数値やプレイスタイルの傾向もあります。',
+  'tutorial.chapter.cards.fact.element.example':
+    'このカードは「{element}」属性です。属性は一部の効果の指定や判定に使われ、現在のカードプールでは属性ごとに数値やプレイスタイルの傾向があります。',
+  'tutorial.chapter.cards.fact.element.profilesLabel': '5属性に見られる特徴',
+  'tutorial.chapter.cards.fact.element.profilesNote':
+    '以下は現在のカードプール全体の傾向であり、すべてのカードに当てはまる固定ルールではありません。',
+  'tutorial.chapter.cards.fact.element.profile.dark': '全体的に夜に強い属性です。',
+  'tutorial.chapter.cards.fact.element.profile.flame': '攻撃的な一方、パワーコストも高めです。',
+  'tutorial.chapter.cards.fact.element.profile.electric': '全体的に昼に強い属性です。',
+  'tutorial.chapter.cards.fact.element.profile.wind': 'パワーコストが低めで、序盤から動きやすい属性です。',
+  'tutorial.chapter.cards.fact.element.profile.chaos':
+    'アビスを軸に、そこにあるカードをデッキへ戻して強力な効果を発動します。',
+  'tutorial.chapter.cards.fact.clock.title': '時計',
+  'tutorial.chapter.cards.fact.clock.body':
+    '時計はクロノスの時間を進める数値です。カード公開後、このターンに双方が出したカードの時計を合計し、その数だけクロノスを時計回りに進めます。',
+  'tutorial.chapter.cards.fact.clock.example':
+    'このカードの時計は {clock} です。時計はバトル中のゲーム内時間を進める数値で、具体的な計算は後の対戦フローで説明します。',
+  'tutorial.chapter.cards.fact.attack.title': '攻撃力',
+  'tutorial.chapter.cards.fact.attack.body':
+    'キャラクターには夜／昼の攻撃力があります。現在のクロノス時間の数値を使い、低い側が差分のダメージを受けます。',
+  'tutorial.chapter.cards.fact.attack.example':
+    'このキャラクターは夜の攻撃力が {night}、昼が {day} です。バトルが夜か昼かに応じて、対応する攻撃力を使います。',
+  'tutorial.chapter.cards.fact.effect.title': '効果',
+  'tutorial.chapter.cards.fact.effect.body':
+    'カードの公開時または条件を満たした時に処理され、HP、攻撃力、リソース、場のカードを変化させます。',
+  'tutorial.chapter.cards.fact.effect.example':
+    'すべてのキャラクターに効果テキストがあるわけではありません。効果が印刷されているキャラクターは、カード公開後の効果処理で、条件を満たし必要なパワーがある時に発動します。効果がないキャラクターも攻撃力で通常どおりバトルします。',
+  'tutorial.chapter.cards.fact.effect.enchantExample':
+    'エンチャントは、手札から出して公開したターンの効果処理で発動し、通常はその後のバトルに影響します。パワーが足りないと発動せず、バトル後のターン終了時に場を離れます。',
+  'tutorial.chapter.cards.fact.effect.areaExample':
+    'エリアエンチャントは公開後も場に残り、1回だけでなくターンをまたいで効果を発揮します。以後のターンでも、カードの条件と使えるパワーに応じて効果が適用され、入れ替えられるか自身の効果で場を離れるまで続きます。',
+  'tutorial.chapter.cards.fact.effect.empty':
+    'このカードに追加効果はありません。効果を持つカードでは同じルール欄に文章が印刷されます。',
+  'tutorial.chapter.cards.fact.powerCost.title': 'パワーコスト',
+  'tutorial.chapter.cards.fact.powerCost.body':
+    'パワーコストは、効果やキャラクターの攻撃力を有効にするためのパワー条件です。パワーは「パワーチャージャー」のカードから得られ、パワーコストの確認では合計を比べるだけで消費しません。',
+  'tutorial.chapter.cards.fact.powerCost.characterExample':
+    '対戦中、パワーは「パワーチャージャー」に蓄積され、そこにあるカードの SEND TO POWER の合計が使えるパワーになります。このキャラクターのパワーコストは {cost}。使えるパワーが {cost} 未満なら効果は発動せず、攻撃力は 0 として扱います。条件を満たしてもパワーは減りません。',
+  'tutorial.chapter.cards.fact.powerCost.otherExample':
+    '対戦中、パワーは「パワーチャージャー」に蓄積され、そこにあるカードの SEND TO POWER の合計が使えるパワーになります。このカードのパワーコストは {cost}。使えるパワーが {cost} 未満なら効果は発動しません。条件を満たしてもパワーは減りません。',
+  'tutorial.chapter.cards.fact.powerCost.zeroExample':
+    '対戦中、パワーは「パワーチャージャー」に蓄積され、そこにあるカードの SEND TO POWER の合計が使えるパワーになります。このカードのパワーコストは 0 なので、先にパワーを蓄えなくても通常どおり効果を使えます。',
+  'tutorial.chapter.cards.fact.sendToPower.title': 'SEND TO POWER',
+  'tutorial.chapter.cards.fact.sendToPower.body':
+    'SEND TO POWER は、カードが場を離れた後にパワーチャージャーへ加えるパワーの数です。0 より大きいカードはそこへ入り、同じ数のパワーを提供し続けます。0 のカードは代わりにアビスへ送られます。',
+  'tutorial.chapter.cards.fact.sendToPower.example':
+    'SEND TO POWER は、このカードが場を離れた後にパワーチャージャーへ加えるパワーの数です。このカードの数値は {power} なので、パワーチャージャーに入り、{power} パワーを提供し続けます。すべてのカードがパワーを提供するわけではなく、SEND TO POWER が 0 のカードはパワーチャージャーに入らず「アビス」へ送られます。アビスは次の章で紹介します。',
+  'tutorial.chapter.cards.elementsLabel': '5種類のカード属性',
+  'tutorial.chapter.cards.fact.sendToPower.zeroExample':
+    'このカードの SEND TO POWER は 0 なので、場を離れた時はパワーチャージャーに入らず「アビス」へ送られ、パワーを提供しません。',
+  'tutorial.chapter.cards.character.title': 'キャラクター',
+  'tutorial.chapter.cards.character.body':
+    'キャラクターは夜／昼の2種類の攻撃力で相手キャラクターと戦います。効果テキストを持つカードも、効果を持たないカードもあります。',
+  'tutorial.chapter.cards.enchant.title': 'エンチャント',
+  'tutorial.chapter.cards.enchant.body':
+    'エンチャントはそのターン限りの強化、妨害、リソース効果を与え、通常はその後のバトルに影響し、ターン終了時に場を離れます。',
+  'tutorial.chapter.cards.area.title': 'エリアエンチャント',
+  'tutorial.chapter.cards.area.body':
+    'エンチャントと異なり、エリアエンチャントは処理後すぐに場を離れず、場に残ってターンをまたいで効果を発揮します。',
+  'tutorial.chapter.field.title': 'フィールド紹介',
+  'tutorial.chapter.field.subtitle': 'バトル、セット、パワー、アビス、デッキ、HP、クロノスを理解する',
+  'tutorial.chapter.field.interaction':
+    'フィールド上のゾーンを押して役割を確認しましょう。確認済みのゾーンには印が残ります。',
+  'tutorial.chapter.field.deck': 'デッキゾーン',
+  'tutorial.chapter.deckPreparation.title': 'デッキ構成',
+  'tutorial.chapter.deckPreparation.subtitle': '20枚デッキの基本構成を知る',
+  'tutorial.chapter.deckPreparation.interaction':
+    'デッキは20枚のカードで構成します。同じ収録パック・カード番号は2枚までで、公式ガイドではキャラクターをデッキの半分以上にすることを推奨しています。',
+  'tutorial.chapter.deckPreparation.deckPreview': 'デッキ構成例',
+  'tutorial.chapter.deckPreparation.ruleSize.body': 'デッキはちょうど20枚です。',
+  'tutorial.chapter.deckPreparation.ruleCharacters.body':
+    '公式ガイドでは、毎ターンキャラクターを出しやすくするため、キャラクターを50%以上にすることを推奨しています。',
+  'tutorial.chapter.deckPreparation.ruleCopies.body': '同じ収録パック、同じカード番号は2枚までです。',
+  'tutorial.chapter.preparation.title': '対戦準備',
+  'tutorial.chapter.preparation.subtitle': 'じゃんけん、初期手札、引き直し、最初のキャラクターを準備する',
+  'tutorial.chapter.preparation.deck':
+    '20枚でデッキを組みます。同じ収録パックかつ同じカードナンバーのカードは2枚までです。',
+  'tutorial.chapter.preparation.side':
+    'じゃんけんで夜側プレイヤーを決めます。クロノスを真夜中に置き、双方のHPを100にします。オンライン対戦ではデッキのシャッフルと交換は自動です。',
+  'tutorial.chapter.preparation.opening': 'デッキをシャッフルした後、双方が上から5枚を引いて最初の手札にします。',
+  'tutorial.chapter.preparation.mulligan':
+    '最初に一度だけ引き直せます。任意の枚数を宣言して選び、同じ枚数を引いた後、元のカードを裏向きのままデッキへ戻して再度シャッフルします。',
+  'tutorial.chapter.preparation.initial':
+    '双方が1枚をバトルゾーンに裏向きで置き、同時に公開します。キャラクターを推奨します。キャラクター以外なら、SEND TO POWERの有無に応じて直ちにパワーチャージャー／アビスへ置きます。',
+  'tutorial.chapter.flow.title': '対戦の流れ',
+  'tutorial.chapter.flow.subtitle': 'セット、公開、時計、効果、バトル、ドローを順番に体験する',
+  'tutorial.chapter.flow.firstTurn.title': '第1ターン：対戦準備から続ける',
+  'tutorial.chapter.flow.firstTurn.body':
+    '対戦準備が終わると、双方の最初のカードは同時に公開されています。第1ターンはA／Bへ改めてセットせず、双方の最初のカードの時計を合計してクロノスを進めます。最初のカードがキャラクター以外なら、公開後にSEND TO POWERに応じてパワー／アビスへ送られますが、その時計はこのターンに含まれます。その後、効果処理、バトルゾーンの攻撃力比較、HPダメージを順に行い、ターン終了時に双方が1枚ずつ引きます。',
+  'tutorial.chapter.flow.followingTurns.title': '第2ターン以降：次の流れを繰り返す',
+  'tutorial.chapter.flow.set':
+    '2ターン目以降、前のバトルの勝者は1枚、敗者は2枚をセットします。引き分けなら双方1枚をA／Bに裏向きで置きます。',
+  'tutorial.chapter.flow.reveal':
+    '双方がセットしたカードを同時に公開します。キャラクターはバトルゾーンへ、エリアエンチャントは効果処理後にCへ移り、入れ替わるカードはSEND TO POWERに応じてパワー／アビスへ送られます。',
+  'tutorial.chapter.flow.clock':
+    'このターンに双方が手札から出したカードの時計を合計してクロノスを進め、夜か昼かを確認します。',
+  'tutorial.chapter.flow.effects':
+    'クロノスのメダルがある側からキャラクター、エンチャント、エリアエンチャントの効果を処理します。パワーコストが足りない効果は発動しません。',
+  'tutorial.chapter.flow.battle':
+    '現在の夜／昼攻撃力でバトルゾーンのキャラクターを比較し、低い側が差分のダメージを受けます。パワー不足のキャラクターは攻撃力0として計算します。',
+  'tutorial.chapter.flow.draw':
+    'ターン終了時、A／Bに残るカードをSEND TO POWERに応じてパワー／アビスへ送り、出した枚数だけ引きます。必要な枚数を引けないプレイヤーは敗北です。',
   'tutorial.game.intro.title': 'ZUTOMAYO CARD ONLINEへようこそ',
   'tutorial.game.intro.body': 'これから実際の対戦を通じて、ゲームの全ての仕組みを順番に案内します。',
-  'tutorial.game.janken.intro.title': 'じゃんけんで先攻・後攻を決める',
+  'tutorial.game.janken.intro.title': 'じゃんけんで夜側・昼側を決める',
   'tutorial.game.janken.intro.body':
-    'ゲーム開始前、じゃんけんで夜側プレイヤーを決めます。勝者が夜側、敗者が昼側となります。手を選んでクリックします。じゃんけんの結果があなたの初期位置と効果処理の優先権を決定します。',
+    '対戦前のじゃんけんで、勝者が夜側、敗者が昼側になります。通常の先攻・後攻を決めるものではなく、クロノスが夜／昼にあるとき、どちらが先に効果を処理するかを決めます。\n\nハイライトされた「グー」をクリックして始めてください。',
   'tutorial.game.janken.action.title': '手を選択してください',
   'tutorial.game.janken.action.body':
     'グー、チョキ、パーをクリックして選びます。じゃんけんの結果があなたの初期位置を決定します。',
   'tutorial.game.janken.result.title': 'じゃんけんの結果',
   'tutorial.game.janken.result.body':
-    '結果が出ました！夜側プレイヤーは夜時間に先に効果を処理し、昼側プレイヤーは昼時間に先に効果を処理します。',
+    'あなたが勝ったため夜側、相手は昼側です。双方のHPは100から始まり、クロノスは真夜中の起点である0にあります。\n\n夜ではあなた、昼では相手が先に効果を処理します。ハイライトされた確認ボタンを押して、最初の手札へ進んでください。',
+  'tutorial.game.openingHand.title': '最初の手札を確認',
+  'tutorial.game.openingHand.body':
+    '双方は最初の手札を5枚引き、1度だけ任意の枚数を引き直せます。引き直しは任意で、序盤に使いにくいカードを交換するためのものです。\n\nハイライトされたキャラクターはPower Cost 7ですが、チャージゾーンが空なのでPowerは0、つまり0 < 7です。今出すと攻撃力は0として扱われ、効果も発動しません。そのため、この教材の初手には向きません。\n\nカードをクリックして引き直し対象にしてください。',
+  'tutorial.game.mulligan.confirm.title': '引き直しを確定',
+  'tutorial.game.mulligan.confirm.body':
+    '選んだ1枚をデッキに戻して新しい1枚を引くため、引き直し後も手札は5枚です。これで、この対戦で1度だけの引き直しを使用します。\n\nハイライトされた「1枚引き直す」をクリックして確定してください。',
   'tutorial.game.mulligan.intro.title': '手札引き直しフェーズ',
   'tutorial.game.mulligan.intro.body':
-    '最初の手札に高パワーコストのキャラクターカードがあります。チャージゾーンの総パワーがパワーコストに満たない場合、そのキャラクターの攻撃力は0になり、ダメージを与えられません。入れ替えたいカードをクリックして裏向きに（任意の枚数を選択可）、「引き直す」を押すとデッキから同枚数の新しいカードを引き、古いカードはデッキに戻ります。手札に満足なら「手札をキープ」でスキップできます。各対戦で引き直しは1回のみです。',
+    '引き直しは各対戦で1度だけ、任意の枚数を同じ枚数の新しいカードと交換できます。今回はハイライトされたPower Cost 7のキャラクターを選びます。Powerが不足していると攻撃力は0として扱われます。引き直しに指定して確定してください。',
   'tutorial.game.mulligan.action.title': '引き直すカードを選択',
   'tutorial.game.mulligan.action.body':
     '入れ替えたいカードをクリックして裏向きにし（例：高いパワーコストのキャラクターカード）、「確認」を押してデッキから同数の新しいカードを引きます。手札に満足なら「手札を保持」でスキップできます。',
   'tutorial.game.initialSet.intro.title': '初期配置フェーズ',
   'tutorial.game.initialSet.intro.body':
-    '手札からキャラクターカードを1枚選び、バトルゾーンに裏向きで配置します。必ずキャラクターカードを選んでください：キャラクター以外のカードは公開されるとすぐにパワーチャージャーまたは深淵に送られ、バトルゾーンが空の状態では直接ダメージを受けます。',
+    '双方が手札から1枚をバトルゾーンに裏向きで置き、同時に公開します。通常はキャラクターを選びます。キャラクター以外は公開後、SEND TO POWERに従ってパワーチャージャーまたはアビスへ送られ、バトルゾーンが空なら直接ダメージを受けます。ハイライトされたキャラクターを選んで確定してください。',
   'tutorial.game.initialSet.action.title': 'カードを1枚配置',
   'tutorial.game.initialSet.action.body':
     '手札から1枚を選んでバトルゾーンに配置します。選んだら「確認」を押してください。',
+  'tutorial.game.initialSet.select.title': '最初のカードを選択',
+  'tutorial.game.initialSet.select.body':
+    '準備の最後に、双方が手札1枚をバトルゾーンへ直接裏向きで置きます。キャラクター以外を公開するとSEND TO POWERに従ってすぐ離場し、バトルゾーンにキャラクターが残らない場合があります。\n\nハイライトされたキャラクターはPower Cost 0なので、チャージゾーンが空でも攻撃力を使えます。またSEND TO POWER 2を持ち、後で入れ替わると次のキャラクターにPowerを供給します。\n\nこのキャラクターをクリックしてください。',
+  'tutorial.game.initialSet.place.title': 'バトルゾーンに置く',
+  'tutorial.game.initialSet.place.body':
+    '先ほどはカードを選んで確認しただけで、まだ出していません。初期カードはA／Bゾーンを通らず、バトルゾーンへ直接裏向きで置かれ、双方が確定するまで相手には見えません。\n\nハイライトされた「このカードをセット」をクリックしてください。',
+  'tutorial.game.initialSet.confirm.title': '初期配置を確定',
+  'tutorial.game.initialSet.confirm.body':
+    'カードはバトルゾーンに裏向きで置かれました。確定すると変更できません。双方が確定した後、2枚を同時に公開し、それからクロノス進行、効果処理、攻撃力比較を行います。\n\nハイライトされた「配置を確定」をクリックしてください。',
+  'tutorial.game.preparationComplete.title': 'バトル準備完了',
+  'tutorial.game.preparationComplete.body':
+    'じゃんけん、最初の手札の引き直し、初期配置が完了しました。チュートリアル進捗に戻り、「対戦の流れ」からこの対戦を続けてください。',
+  'tutorial.game.preparationComplete.action': 'チュートリアル進捗に戻る',
+  'tutorial.game.rewind.title': '前の説明に戻りますか？',
+  'tutorial.game.rewind.body':
+    'この手順以降で対戦状態が変化しています。戻る場合は直前の安全なチェックポイントからこの区間を再構築し、その後の操作をもう一度行います。',
+  'tutorial.game.rewind.action': '戻って再構築',
   'tutorial.game.zone.battle.title': 'バトルゾーン',
   'tutorial.game.zone.battle.body':
     '中央のバトルゾーンは現在のキャラクターが対決する場所です。双方がキャラクターカードを1枚ずつ置き、Chronosの時間帯で攻撃力を決定し、攻撃力が低い方が差額分のダメージを受けます。',
+  'tutorial.game.zone.hp.title': 'HPメーター',
+  'tutorial.game.zone.hp.body':
+    '各プレイヤーの残りHPを示し、双方とも100から始まります。キャラクターのバトル後、攻撃力が低い側は双方の攻撃力の差分だけHPを減らします。HPが0になった時点で敗北です。',
   'tutorial.game.zone.hand.title': '手札',
   'tutorial.game.zone.hand.body':
     'あなたの手札です。カードをクリックしてバトルゾーンまたはセットゾーンに配置し、カード効果で相手を倒しましょう。',
@@ -900,12 +1075,14 @@ export const ja: Record<TranslationKey, string> = {
   'tutorial.game.zone.abyss.title': 'アビス',
   'tutorial.game.zone.abyss.body':
     'SEND TO POWER を持たないカードが場を離れるとここに入ります。一部のカード効果はアビスと相互作用する場合があります。',
+  'tutorial.game.zone.deck.body':
+    'デッキゾーンには20枚のカードを裏向きで置きます。ターン終了時、そのターンに出した枚数と同じ枚数を引き、必要な枚数を引き切れない場合は敗北します。',
   'tutorial.game.chronos.title': 'Chronos時計システム',
   'tutorial.game.chronos.body':
-    'Chronosは昼夜時計です。真夜中から時計回りに進み、推進量は双方の出したカードの時計値の合計です。夜側では夜攻撃力、昼側では昼攻撃力を使用します。',
+    'Chronosは昼夜時計です。真夜中から始まり、毎ターン双方が出したカードの時計値の合計だけ時計回りに進みます。青は夜、赤は昼を表し、現在の時間帯によってカードの攻撃力と効果が決まります。効果処理はChronosマーカーがある側のプレイヤーから行います。',
   'tutorial.game.resources.title': 'パワーチャージャー',
   'tutorial.game.resources.body':
-    'SEND TO POWER を持つカードが場を離れるとパワーチャージャーに入り、溜まったパワーは効果発動のパワーコスト支払いに使われます。',
+    'SEND TO POWER が1以上のカードは場を離れるとパワーチャージャーに入り、その数値の合計が現在のPowerになります。Power Costは合計が基準を満たすかだけを確認し、効果の発動や攻撃力の使用後もPowerは減りません。',
   'tutorial.game.catchup.title': '追い上げメカニズム',
   'tutorial.game.catchup.body':
     '前ターンの戦闘で敗北した側は、次のターンで2枚のカードを配置できます；勝った側は通常1枚しか配置できません。これにより双方が拮抗し、一方的な展開を避けます。',
@@ -920,7 +1097,7 @@ export const ja: Record<TranslationKey, string> = {
     '前ターンは引き分けで、追い上げメカニズムは発動しません。双方とも今ターンは1枚しか配置できません。',
   'tutorial.game.victory.title': '勝利条件',
   'tutorial.game.victory.body':
-    'どちらかのHPが0になるか、カードを出し続けられなくなったらゲーム終了です。カード効果を適切に使い、相手のHPを減らせば勝利できます。',
+    'どちらかのHPが0になるか、デッキ不足でそのターンに必要な枚数を引けなくなったらゲーム終了です。カード効果を適切に使い、相手のHPを減らせば勝利できます。',
   'tutorial.game.turnSet.intro.title': 'ターン配置フェーズ',
   'tutorial.game.turnSet.intro.body':
     '新しいターン開始！前ターンの勝敗により配置枚数が決まります。1枚目はセットゾーンA、2枚目はセットゾーンBに入ります。',
@@ -944,18 +1121,36 @@ export const ja: Record<TranslationKey, string> = {
     '手札から1枚をセットゾーンAに配置します。1枚しか配置できないので慎重に選んでください。',
   'tutorial.game.turnSet.action.draw.title': '今ターンのカードを配置',
   'tutorial.game.turnSet.action.draw.body': '手札から1枚をセットゾーンAに配置します。',
+  'tutorial.game.turnSet.characterSelect.title': '追い上げターン：キャラクターを選ぶ',
+  'tutorial.game.turnSet.characterSelect.body':
+    '第1ターンにダメージを受けて敗者になったため、今ターンは最大2枚出せます。勝者は最大1枚、引き分けなら双方1枚です。1枚目はセットゾーンAへ入ります。\n\nハイライトされたキャラクターは昼攻撃力80、Power Cost 2です。前のキャラクターがちょうど2 Powerを供給し、今ターンはクロノスも昼へ進むため、十分に力を発揮できます。クリックしてください。',
+  'tutorial.game.turnSet.characterPlace.title': '1枚目をAゾーンへ',
+  'tutorial.game.turnSet.characterPlace.body':
+    '新しいキャラクターを選びました。ハイライトされたボタンを押し、セットゾーンAへ裏向きで置いてください。双方が確定するまで公開されません。\n\n公開後、Aゾーンのキャラクターが優先してバトルゾーンへ入り、以前のキャラクターと入れ替わります。',
+  'tutorial.game.turnSet.areaSelect.title': '追い上げターン：エリアエンチャントを選ぶ',
+  'tutorial.game.turnSet.areaSelect.body':
+    '2枚目はセットゾーンBへ出せます。ハイライトされたエリアエンチャントは、公開後Cゾーンへ入り、昼にキャラクターの攻撃力を+20します。\n\n先ほどのキャラクターの昼攻撃力を80から100へ上げます。このカードをクリックしてください。',
+  'tutorial.game.turnSet.areaPlace.title': '2枚目をBゾーンへ',
+  'tutorial.game.turnSet.areaPlace.body':
+    'ハイライトされたボタンを押して、エリアエンチャントをセットゾーンBへ裏向きで置いてください。まだCゾーンには入っておらず、双方が確定して公開するまで効果も有効になりません。',
+  'tutorial.game.turnSet.confirm.title': '今ターンのセットを確定',
+  'tutorial.game.turnSet.confirm.body':
+    'Aゾーンには新しいキャラクター、Bゾーンにはエリアエンチャントが裏向きで置かれています。確定すると変更できず、相手も確定した時点で今ターンのカードを同時に公開します。\n\nハイライトされた「カードを確定」をクリックしてください。',
   'tutorial.game.effectOrder.intro.title': '効果順序フェーズ',
   'tutorial.game.effectOrder.intro.body':
     '効果処理時、クロノスのメダルがある時間帯のプレイヤー（優先プレイヤー）が自分のすべての効果を先に処理し、その後もう一方のプレイヤーが処理します。パワーコストは「効果処理時点」で再確認し、不足なら発動しません。手札やアビスなどの枚数も処理時点のものを数えます。キャラクターの効果は、発動タイミングの指定がない限り、手札から使用したターンの効果処理時に発動します。効果処理フェーズ以外のタイミングで発動した効果（カードがゾーンに入るなど）は即座に処理され、優先プレイヤーの順序には従いません。',
   'tutorial.game.effectOrder.action.title': '効果解決順序を選択',
   'tutorial.game.effectOrder.action.body':
-    '効果カードをクリックして解決順序を選びます。先に解決される効果が先に発動し、後続の効果の結果に影響を与える可能性があります。',
+    'クロノスは昼にあるため、昼側の相手が先に処理します。相手のエンチャントは、あなたのキャラクターのPower Costが0か1のときだけ攻撃力を上げます。今回は2なので条件不成立です。\n\n次はあなたの効果です。同じ側に複数の効果があれば順序を選び、各効果は処理時にPower Costと効果文の条件を再確認します。パネルで唯一ハイライトされたエリアエンチャント効果をクリックしてください。',
   'tutorial.game.pendingChoice.intro.title': 'カード指定効果',
   'tutorial.game.pendingChoice.intro.body':
     '一部のカード効果は、手札・深淵・デッキの中から対象カードを指定しないと解決を完了できません。',
   'tutorial.game.pendingChoice.action.title': '対象カードを選ぶ',
   'tutorial.game.pendingChoice.action.body':
     'リスト内のカードをクリックして選択します。必要枚数を選んだら「選択を送信」を押して解決を完了します。必要枚数はヒントで確認できます。',
+  'tutorial.game.choiceMechanics.title': '対象を指定する効果',
+  'tutorial.game.choiceMechanics.body':
+    '今の効果は直接解決するため、今回は対象を選びません。他のカードでは処理が一時停止し、手札・デッキ・バトルゾーン・アビスのカードやクロノス位置を指定する場合があります。\n\n操作できるのは適正な対象だけです。パネルの最小／最大枚数に従って選び、確定すると処理が続きます。「次へ」で戦闘結果を確認してください。',
   'tutorial.game.battle.intro.title': '戦闘解決',
   'tutorial.game.battle.intro.body':
     '双方のカードが公開されると、戦闘解決に入ります。キャラクターカードは互いに攻撃し、エンチャントカードは効果を発動し、最終的にHP変化を計算します。',
@@ -973,22 +1168,39 @@ export const ja: Record<TranslationKey, string> = {
     '双方の攻撃力が同じで、ダメージはありません。戦略を調整して次のターンの勝利を目指しましょう。',
   'tutorial.game.turnEndDraw.title': 'ターン終了ドロー',
   'tutorial.game.turnEndDraw.body':
-    'ターン終了時、このターンに手札から出したカードの枚数分だけデッキからカードを引きます。1枚出したら1枚引き、2枚出したら2枚引き、手札枚数を保ちます。デッキが尽きて引けない場合は敗北条件が発動します。',
+    '第1ターンは双方が5枚の手札から1枚ずつ出したため、1枚ずつ引いて手札を5枚に戻します。デッキはそれぞれ1枚減ります。以後も「手札から出した枚数だけ、ターン終了時に引く」が基本です。\n\n必要枚数を引けないプレイヤーは即座に敗北します。「次へ」で第2ターンを開始してください。',
   'tutorial.game.complete.title': 'チュートリアル完了おめでとうございます！',
   'tutorial.game.complete.body':
-    'ZUTOMAYO CARDの全ての基本メカニズムを習得しました。さあ、AIに挑戦するか、他のプレイヤーと対戦しましょう！',
+    '2ターンを完了しました。第1ターンに敗れたことで第2ターンは2枚出せるようになり、キャラクター、Power、エリアエンチャントを組み合わせて反撃しました。\n\n実際の対戦では「セット→公開→時間進行→入れ替え→効果→バトル→離場とドロー」を繰り返し、HPが0になるか必要枚数を引けなくなるまで続きます。チュートリアル画面へ戻るか、現在の盤面を引き継いでこの対戦を最後まで続けられます。',
+  'tutorial.game.complete.return': 'チュートリアルに戻る',
+  'tutorial.game.complete.continue': 'チュートリアル対戦を続ける',
+  'tutorial.game.flowRecap.title': 'バトル準備から第1ターンへ',
+  'tutorial.game.flowRecap.body':
+    '前の章で準備が完了しました。あなたは夜側、双方のHPは100、クロノスは0（真夜中）から開始します。双方が初期カード1枚をバトルゾーンへ裏向きで置き、今は同時に公開されてキャラクターになっています。\n\nここで準備は終了です。まだ次のカードは出さず、「クロノス進行→効果と攻撃力比較→HP減少→ターン終了ドロー」の順で第1ターンを処理します。「次へ」でクロノス進行を確認してください。',
   'tutorial.game.clockAdvance.title': '時計推進',
   'tutorial.game.clockAdvance.body':
-    '双方のカードが公開された後、2枚のカードの時計値の合計でクロノスが進みます。メダルが新しい位置に移動し、現在が夜か昼かが決まります——これによりキャラクターが夜攻撃力か昼攻撃力かを使うかが決まります。最初のターンのクロノス推移には、準備フェーズでチャージゾーン/アビスに置かれたカードの時計値も含まれます。',
+    'ハイライトされた通知が今回の計算です。あなたの初期キャラクターの時計は2、相手は1です。準備中に非キャラクターを公開していないので追加分はなく、2 + 1 = 3です。\n\nクロノスは0から3へ進み、位置3は夜です。双方は夜攻撃力を使い、夜側のあなたが効果を先に処理します。通知の「確認」をクリックしてください。',
+  'tutorial.game.revealClock.title': '同時公開と時計の進行',
+  'tutorial.game.revealClock.body':
+    '双方が確定するとカードを同時に公開します。あなたのキャラクターは時計1、エリアエンチャントは2、相手のエンチャントは4なので、1 + 2 + 4 = 7です。\n\nクロノスは3から3 + 7 = 10へ進み、位置10は昼です。新キャラクターは昼攻撃力を使い、エリアエンチャントの昼条件も成立します。通知の「確認」をクリックしてください。',
+  'tutorial.game.characterReplacement.title': 'キャラクターの入れ替え',
+  'tutorial.game.characterReplacement.body':
+    'ハイライトされたバトルゾーンには新しいキャラクターが入りました。セットゾーンAから移動して以前のキャラクターと入れ替わります。同じターンに2枚出した場合も、Aゾーンのキャラクターだけが優先されます。\n\n以前のキャラクターはSEND TO POWER 2のため、次に示すチャージゾーンへ送られます。',
   'tutorial.game.hpCalc.title': 'HP計算',
   'tutorial.game.hpCalc.body':
-    '効果の処理が終わった後、双方のキャラクターの攻撃力を比較し、攻撃力が低い方が差額分のダメージを受けます。パワーコストが不足している場合、攻撃力は0として扱われ、効果は発動しません。',
+    '通知の「-20」はダメージであり、カードの費用でもPower消費でもありません。現在は夜で、あなたの夜攻撃力は30、相手は50です。双方ともPower Cost 0なので攻撃力は有効です。\n\n低い側が差分を受けるため、50 - 30 = 20。あなたのHPは100 - 20 = 80です。敗者になったため次のターンは最大2枚出せます。「確認」をクリックしてください。',
+  'tutorial.game.hpCalc.turn2.title': '効果条件とHP計算',
+  'tutorial.game.hpCalc.turn2.body':
+    '現在は昼です。あなたの昼攻撃力80にCゾーンのエリアエンチャントが20を加え、80 + 20 = 100です。相手のエンチャントはあなたのPower Costが0か1のときだけ有効ですが、今回は2なので相手は30のままです。\n\n100 - 30 = 70ダメージとなり、相手HPは100 - 70 = 30です。Power Cost達成と効果文の条件達成は別々に確認します。「確認」をクリックしてください。',
   'tutorial.game.powerCharging.title': 'チャージゾーン',
   'tutorial.game.powerCharging.body':
-    'SEND TO POWERを持つキャラクターカードは、バトルゾーンを離れる時にチャージゾーンに入り、パワーを蓄積します。蓄積したパワーは他のカードのパワーコスト支払いに使用します。総パワーは効果処理時点で再確認されます。次ターンでキャラクターを交代すると、古いカードがチャージゾーンに送られます。',
+    'ハイライトされたチャージゾーンに、入れ替わったキャラクターが入りました。SEND TO POWERは2なので、現在のPower合計は2です。\n\n新しいキャラクターのPower Costも2で、2 ≥ 2を満たします。Power Costは条件確認だけで、攻撃や効果発動で2 Powerを消費しません。',
   'tutorial.game.areaEnchant.title': 'エリアエンチャント',
   'tutorial.game.areaEnchant.body':
-    'エリアエンチャントは手札から出す時、まずセットゾーンAまたはBに裏向きで配置されます。カードが公開されて効果が発動した後、セットゾーンCに移動し、フィールド全体に継続して影響します。あなたが出した2nd_86は夜側の時、キャラクターに+20攻撃力を付与します。',
+    'ハイライトされたCゾーンに、今ターン公開したエリアエンチャントが入りました。ターンをまたいで残り、現在は昼なので新キャラクターの攻撃力を80から100へ上げます。\n\nCに既存カードがあればSEND TO POWERに従って離場します。同じターンに2枚出した場合はAゾーンのカードだけが優先してCへ入ります。',
+  'tutorial.game.turnEndCleanup.title': '離場・アビス・ターン終了',
+  'tutorial.game.turnEndCleanup.body':
+    'ハイライトされた相手のアビスには、今ターンの使い切りエンチャントが入りました。処理後もセットゾーンに残り、SEND TO POWERがないためです。あなたのエリアエンチャントはCゾーンに残ります。\n\n最後に、あなたは出した2枚分を2枚、相手は1枚分を1枚引きます。必要枚数を引けない側は即座に敗北します。「次へ」で完了してください。',
   'tutorial.game.abyss.title': 'アビス',
   'tutorial.game.abyss.body':
     '効果が処理されたエンチャントカードはアビスに送られます。アビスのカードはもう効果を発揮しませんが、一部のカード効果でアビスからカードを取り出して再利用できます。',

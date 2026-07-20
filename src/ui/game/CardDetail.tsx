@@ -4,6 +4,7 @@ import { getBaseAttack, getEffectiveAttack, isAttackPowerInsufficient } from '..
 import { getLocalizedCardEffect, getLocalizedCardName } from '../../game/cards/i18n';
 import { t, useLocale } from '../../i18n';
 import { CardImage } from '../../components/CardImage';
+import { getCardElementTranslationKey, getCardTypeTranslationKey } from '../../game/cards/taxonomy';
 
 /**
  * CardDetail — 卡牌詳情的唯一內容實作。
@@ -50,7 +51,7 @@ export function CardDetailBody({ focus, G, ownerName }: { focus: FocusedCard; G:
         </a>
       )}
       <div className="carddetail-taxonomy">
-        {t(`card.element.${def.element}` as never)} · {t(`card.type.${def.type}` as never)}
+        {t(getCardElementTranslationKey(def.element))} · {t(getCardTypeTranslationKey(def.type))}
       </div>
       <dl className="carddetail-stats">
         <div>

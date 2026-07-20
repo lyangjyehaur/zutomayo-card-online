@@ -78,6 +78,26 @@ export interface Season {
   placementMatches: number;
 }
 
+export interface AdminTranslationSettings {
+  enabled: boolean;
+  endpoint: string;
+  provider: string;
+  model: string;
+  timeoutMs: number;
+  source: 'environment' | 'admin';
+  apiKeyConfigured: boolean;
+  apiKeySource: 'stored' | 'environment' | 'none';
+  apiKeySuffix: string;
+  updatedAt: string | null;
+}
+
+export interface AdminTranslationTestResult {
+  translatedContent: string;
+  provider: string;
+  model: string;
+  latencyMs: number;
+}
+
 export interface SeasonRating {
   seasonId: string;
   name: string;
@@ -1747,6 +1767,44 @@ export async function adminUpdateConfig(key: string, value: unknown): Promise<vo
     body: JSON.stringify({ value }),
   });
   configCache = null;
+}
+
+export async function adminGetTranslationSettings(token: string): Promise<AdminTranslationSettings> {
+  const result = await request<{ settings: AdminTranslationSettings }>('/admin/translation-settings', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return result.settings;
+}
+
+export async function adminUpdateTranslationSettings(
+  token: string,
+  input: {
+    enabled: boolean;
+    endpoint: string;
+    provider: string;
+    model: string;
+    timeoutMs: number;
+    apiKeyAction: 'keep' | 'replace' | 'clear' | 'environment';
+    apiKey?: string;
+  },
+): Promise<AdminTranslationSettings> {
+  const result = await request<{ settings: AdminTranslationSettings }>('/admin/translation-settings', {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(input),
+  });
+  return result.settings;
+}
+
+export async function adminTestTranslationSettings(
+  token: string,
+  input: { text: string; sourceLanguage: string; targetLanguage: string },
+): Promise<AdminTranslationTestResult> {
+  return request<AdminTranslationTestResult>('/admin/translation-settings/test', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(input),
+  });
 }
 
 export async function adminUpdateAboutPage(value: AboutPageI18nConfig): Promise<void> {

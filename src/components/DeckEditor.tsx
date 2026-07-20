@@ -324,11 +324,7 @@ export function DeckEditor({
 
   const characterCount = deckCards.filter((card) => card.type === 'Character').length;
   const copyLimitValid = [...deckCounts.values()].every((count) => count <= MAX_COPIES);
-  const isValid =
-    deck.length === DECK_SIZE &&
-    deckCards.length === deck.length &&
-    characterCount >= Math.ceil(DECK_SIZE * 0.5) &&
-    copyLimitValid;
+  const isValid = deck.length === DECK_SIZE && deckCards.length === deck.length && copyLimitValid;
 
   const totalPages = Math.max(1, Math.ceil(filteredCards.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages - 1);
@@ -562,7 +558,7 @@ export function DeckEditor({
       <div className="mb-3 space-y-1 font-mono text-caption uppercase tracking-normal text-content-muted">
         <div className="flex items-center justify-between">
           <span>{t('deckEditor.ruleCharacters')}</span>
-          <span className={characterCount >= Math.ceil(DECK_SIZE * 0.5) ? 'text-accent-primary' : 'text-accent-action'}>
+          <span className={characterCount >= Math.ceil(DECK_SIZE * 0.5) ? 'text-accent-primary' : 'text-content-dim'}>
             {characterCount}
           </span>
         </div>

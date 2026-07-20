@@ -49,7 +49,6 @@ import {
   adminRevokeChatUserSanction,
   adminReviewChatMessageModeration,
   adminReviewChatReport,
-  adminResetElo,
   adminUpdateUserRole,
   adminUpdateAboutPage,
   adminUpdateCard,
@@ -94,6 +93,7 @@ import {
 import { CardImage } from '../components/CardImage';
 import { AdminOperationsPanel } from '../components/AdminOperationsPanel';
 import { AdminAnnouncementsPanel } from '../components/AdminAnnouncementsPanel';
+import { AdminTranslationSettingsPanel } from '../components/AdminTranslationSettingsPanel';
 import '../components/AdminPanel.css';
 
 const ADMIN_TOKEN_KEY = 'zutomayo_admin_token';
@@ -152,7 +152,16 @@ const ABOUT_LANGS: Array<{ code: AboutPageLocale; label: string }> = I18N_LANGS.
   label: lang.label,
 }));
 
-type AdminTab = 'cards' | 'songs' | 'users' | 'matches' | 'chat' | 'operations' | 'about' | 'announcements';
+type AdminTab =
+  | 'cards'
+  | 'songs'
+  | 'users'
+  | 'matches'
+  | 'chat'
+  | 'operations'
+  | 'about'
+  | 'announcements'
+  | 'translation';
 type CardEditorTab = 'overview' | 'official' | 'i18n' | 'engine';
 type ParsedCardMeta = {
   card: CardDef;
@@ -1322,8 +1331,6 @@ export function AdminPage() {
   } | null>(null);
   const [adminLoading, setAdminLoading] = useState(false);
   const [adminError, setAdminError] = useState('');
-  const [eloEdits, setEloEdits] = useState<Record<string, string>>({});
-  const [eloSavingId, setEloSavingId] = useState<string | null>(null);
   const [filterElement, setFilterElement] = useState<Element | 'all'>('all');
   const [filterType, setFilterType] = useState<CardType | 'all'>('all');
   const [filterPack, setFilterPack] = useState('all');
@@ -1841,6 +1848,7 @@ export function AdminPage() {
         { value: 'songs', label: '歌名翻譯', icon: Music2 },
         { value: 'about', label: 'About 設定', icon: Info },
         { value: 'announcements', label: '公告', icon: Megaphone },
+        { value: 'translation', label: '翻譯服務', icon: Languages },
       ],
     },
     {
@@ -2336,11 +2344,9 @@ export function AdminPage() {
                       <th className="px-3 py-2">ID</th>
                       <th className="px-3 py-2">Email</th>
                       <th className="px-3 py-2">暱稱</th>
-                      <th className="px-3 py-2">ELO</th>
                       <th className="px-3 py-2">場次</th>
                       <th className="px-3 py-2">勝率</th>
                       {currentAdminRole === 'admin' && <th className="px-3 py-2">管理權限</th>}
-                      <th className="px-3 py-2">操作</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2351,17 +2357,6 @@ export function AdminPage() {
                         </DataListCell>
                         <DataListCell label="Email">{u.email}</DataListCell>
                         <DataListCell label="暱稱">{u.nickname}</DataListCell>
-                        <DataListCell label="ELO">
-                          <div className="admin-elo-field flex items-center gap-2">
-                            {eloEdits[u.id] ?? u.elo}
-                            <Input
-                              className="w-20"
-                              value={eloEdits[u.id] ?? ''}
-                              placeholder={String(u.elo)}
-                              onChange={(e) => setEloEdits((prev) => ({ ...prev, [u.id]: e.target.value }))}
-                            />
-                          </div>
-                        </DataListCell>
                         <DataListCell label="場次">{u.matchCount}</DataListCell>
                         <DataListCell label="勝率">{u.winRate}%</DataListCell>
                         {currentAdminRole === 'admin' && (
@@ -2404,30 +2399,6 @@ export function AdminPage() {
                             </div>
                           </DataListCell>
                         )}
-                        <DataListCell label="操作">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            disabled={eloSavingId === u.id}
-                            onClick={() => {
-                              const v = Number(eloEdits[u.id]);
-                              if (!Number.isFinite(v)) return;
-                              void adminResetElo(token, u.id, Math.trunc(v))
-                                .then(() => refreshUsers(userSearch))
-                                .then(() =>
-                                  setEloEdits((p) => {
-                                    const n = { ...p };
-                                    delete n[u.id];
-                                    return n;
-                                  }),
-                                );
-                              setEloSavingId(u.id);
-                              setTimeout(() => setEloSavingId(null), 1500);
-                            }}
-                          >
-                            {eloSavingId === u.id ? '已更新' : '更新 ELO'}
-                          </Button>
-                        </DataListCell>
                       </tr>
                     ))}
                   </tbody>
@@ -2450,7 +2421,6 @@ export function AdminPage() {
                     <th className="px-3 py-2">ID</th>
                     <th className="px-3 py-2">勝者</th>
                     <th className="px-3 py-2">敗者</th>
-                    <th className="px-3 py-2">ELO Δ</th>
                     <th className="px-3 py-2">回合</th>
                     <th className="px-3 py-2">時長</th>
                     <th className="px-3 py-2">時間</th>
@@ -2464,10 +2434,6 @@ export function AdminPage() {
                       </DataListCell>
                       <DataListCell label="勝者">{m.winnerNickname ?? m.winnerId}</DataListCell>
                       <DataListCell label="敗者">{m.loserNickname ?? m.loserId}</DataListCell>
-                      <DataListCell label="ELO Δ">
-                        {m.winnerEloChange >= 0 ? '+' : ''}
-                        {m.winnerEloChange} / {m.loserEloChange}
-                      </DataListCell>
                       <DataListCell label="回合">{m.turns ?? '—'}</DataListCell>
                       <DataListCell label="時長">
                         {m.duration != null ? `${Math.round(m.duration / 60)}m` : '—'}
@@ -2732,6 +2698,12 @@ export function AdminPage() {
           {activeTab === 'announcements' && (
             <section className="admin-main flex-1 overflow-y-auto p-4">
               <AdminAnnouncementsPanel />
+            </section>
+          )}
+
+          {activeTab === 'translation' && (
+            <section className="admin-main flex-1 overflow-y-auto p-4">
+              <AdminTranslationSettingsPanel token={token} />
             </section>
           )}
 

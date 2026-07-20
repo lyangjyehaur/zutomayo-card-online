@@ -223,6 +223,7 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
     const card = extraction.cards.find((entry) => entry.id === imageMatch[1]);
     const fallback = card?.imageUrl || derivedImageUrl(imageMatch[1]);
     if (fallback) {
+      // CARD_IMAGE_POLICY_EXCEPTION: standalone localhost-only review tool; it has no app/imgproxy runtime and must inspect the canonical source image.
       res.writeHead(302, { Location: fallback });
       res.end();
       return;

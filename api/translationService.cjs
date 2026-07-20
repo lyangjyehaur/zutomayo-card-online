@@ -31,8 +31,7 @@ function translationConfig(env) {
   };
 }
 
-function createTranslationServiceFromEnv(env = process.env, fetchImpl = globalThis.fetch) {
-  const config = translationConfig(env);
+function createTranslationService(config, fetchImpl = globalThis.fetch) {
   if (!config.endpoint || typeof fetchImpl !== 'function') return undefined;
 
   return async function translateText(input) {
@@ -76,7 +75,12 @@ function createTranslationServiceFromEnv(env = process.env, fetchImpl = globalTh
   };
 }
 
+function createTranslationServiceFromEnv(env = process.env, fetchImpl = globalThis.fetch) {
+  return createTranslationService(translationConfig(env), fetchImpl);
+}
+
 module.exports = {
+  createTranslationService,
   createTranslationServiceFromEnv,
   readTranslatedContent,
   translationConfig,

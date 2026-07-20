@@ -8,8 +8,8 @@ import type { TutorialStep } from '../components/GameTutorialOverlay';
  * - T2（turnSet）：玩家為敗者可出 2 張卡（角色+Area Enchant），透過效果逆轉獲勝
  *
  * 流程順序：
- * 1. 歡迎後立即進入猜拳，第一個操作發生在第 2 步。
- * 2. 重抽與 T1 初始放置。
+ * 1. 從 CH.04 直接進入猜拳，第一步就是實際操作。
+ * 2. 查看五張起手牌後，完成重抽與 T1 初始放置。
  * 3. 透過實際通知說明時計推進與 HP 計算。
  * 4. T2 追趕回合放置角色卡與 Area Enchant。
  * 5. 有效果或待選卡牌時直接操作，不再先顯示重複的說明頁。
@@ -21,19 +21,13 @@ import type { TutorialStep } from '../components/GameTutorialOverlay';
  * - 有 advanceOnNoticeDismiss：由 GameNotice 彈窗確認按鈕推進（如時鐘/HP 彈窗）。
  */
 export const TUTORIAL_STEPS: TutorialStep[] = [
-  // 1. 歡迎
+  // === CH.04 戰鬥準備：每一步只開放劇本指定的操作 ===
+  // 1. 猜拳（AI 劇本保證玩家選石頭時獲勝）
   {
-    phase: 'intro',
-    target: null,
-    title: 'tutorial.game.intro.title',
-    body: 'tutorial.game.intro.body',
-    placement: 'center',
-  },
-
-  // 2. 猜拳（歡迎後立即操作，教學模式下 AI 必出會輸的拳）
-  {
+    chapter: 'preparation',
     phase: 'janken',
     target: '[data-tut="janken-panel"]',
+    interactionTarget: '[data-tut="janken-rock"]',
     title: 'tutorial.game.janken.intro.title',
     body: 'tutorial.game.janken.intro.body',
     placement: 'bottom',
@@ -41,8 +35,11 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     completeWhen: (G) => G.jankenChoices[0] !== null,
   },
   {
+    chapter: 'preparation',
     phase: 'janken-result',
+    backBehavior: { type: 'restart', checkpoint: 'preparation' },
     target: '[data-tut="setup-feedback"]',
+    interactionTarget: '[data-tut="setup-feedback"] button',
     title: 'tutorial.game.janken.result.title',
     body: 'tutorial.game.janken.result.body',
     placement: 'top',
@@ -51,29 +48,71 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     hideNext: true,
   },
 
-  // 3. 重抽（高亮高費卡與重抽/保留按鈕，操作後自動推進）
+  // 3. 檢視起手牌後，只允許選擇劇本指定的高費卡。
   {
-    phase: 'mulligan',
-    target: [
-      '[data-tut-mulligan-card="1st_2"]',
-      '[data-tut="mulligan-toggle-redraw"]',
-      '[data-tut="mulligan-redraw"]',
-      '[data-tut="mulligan-keep"]',
-    ],
-    title: 'tutorial.game.mulligan.intro.title',
-    body: 'tutorial.game.mulligan.intro.body',
+    chapter: 'preparation',
+    phase: 'opening-hand',
+    backBehavior: { type: 'restart', checkpoint: 'preparation' },
+    target: '.mulligan-hand',
+    interactionTarget: '[data-tut-mulligan-card="1st_2"]',
+    title: 'tutorial.game.openingHand.title',
+    body: 'tutorial.game.openingHand.body',
+    placement: 'bottom',
+    padding: 8,
+    actionOnly: true,
+  },
+
+  // 4. 確認重抽；「保留手牌」與其他卡都不放行。
+  {
+    chapter: 'preparation',
+    phase: 'mulligan-confirm',
+    backBehavior: { type: 'restart', checkpoint: 'preparation' },
+    target: '[data-tut="mulligan-redraw"]',
+    interactionTarget: '[data-tut="mulligan-redraw"]',
+    title: 'tutorial.game.mulligan.confirm.title',
+    body: 'tutorial.game.mulligan.confirm.body',
     placement: 'bottom',
     padding: 16,
     completeWhen: (G) => G.mulliganUsed[0],
   },
 
-  // === T1（initialSet，無效果卡）===
-  // 4. T1 初始放置（高亮劇本指定卡與確認按鈕，操作後自動推進）
+  // 5. 選擇劇本指定的初始角色卡。
   {
-    phase: 'initialSet',
-    target: ['[data-tut-card="1st_70"]', '[data-tut="set-selected-card"]', '[data-tut="confirm-set"]'],
-    title: 'tutorial.game.initialSet.intro.title',
-    body: 'tutorial.game.initialSet.intro.body',
+    chapter: 'preparation',
+    phase: 'initialSet-select',
+    backBehavior: { type: 'restart', checkpoint: 'preparation' },
+    target: '[data-tut-card="1st_70"]',
+    interactionTarget: '[data-tut-card="1st_70"]',
+    title: 'tutorial.game.initialSet.select.title',
+    body: 'tutorial.game.initialSet.select.body',
+    placement: 'top',
+    padding: 12,
+    actionOnly: true,
+  },
+
+  // 6. 將已選中的卡放入戰鬥區。
+  {
+    chapter: 'preparation',
+    phase: 'initialSet-place',
+    backBehavior: { type: 'restart', checkpoint: 'preparation' },
+    target: '[data-tut="set-selected-card"]',
+    interactionTarget: '[data-tut="set-selected-card"]',
+    title: 'tutorial.game.initialSet.place.title',
+    body: 'tutorial.game.initialSet.place.body',
+    placement: 'top',
+    padding: 12,
+    actionOnly: true,
+  },
+
+  // 7. 確認初始放置，完成 CH.04。
+  {
+    chapter: 'preparation',
+    phase: 'initialSet-confirm',
+    backBehavior: { type: 'restart', checkpoint: 'preparation' },
+    target: '[data-tut="confirm-set"]',
+    interactionTarget: '[data-tut="confirm-set"]',
+    title: 'tutorial.game.initialSet.confirm.title',
+    body: 'tutorial.game.initialSet.confirm.body',
     placement: 'top',
     padding: 12,
     // 只接受 initialSet 之後的合法階段，避免教學 UI 比遊戲狀態先進入本步驟時，
@@ -81,10 +120,21 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     completeWhen: (G) => G.step === 'turnSet' || G.step === 'effectOrder' || G.step === 'gameOver',
   },
 
-  // 5b. T1 時鐘推進說明（高亮時鐘推進彈窗，點彈窗確認按鈕推進）
+  // === CH.05 對戰流程：先銜接 CH.04，再對照真實結算 ===
   {
+    chapter: 'flow',
+    phase: 'flow-recap',
+    target: null,
+    title: 'tutorial.game.flowRecap.title',
+    body: 'tutorial.game.flowRecap.body',
+    placement: 'center',
+  },
+  {
+    chapter: 'flow',
     phase: 'clock-advance',
+    backBehavior: { type: 'direct' },
     target: '[data-tut="game-notice-panel"]',
+    interactionTarget: '[data-tut="game-notice-panel"] button',
     title: 'tutorial.game.clockAdvance.title',
     body: 'tutorial.game.clockAdvance.body',
     placement: 'bottom',
@@ -92,11 +142,12 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     hideNext: true,
     advanceOnNoticeDismiss: true,
   },
-
-  // 5c. T1 HP 計算說明（高亮 HP 計算彈窗，點彈窗確認按鈕推進）
   {
+    chapter: 'flow',
     phase: 'hp-calc',
+    backBehavior: { type: 'restart', checkpoint: 'flow' },
     target: '[data-tut="game-notice-panel"]',
+    interactionTarget: '[data-tut="game-notice-panel"] button',
     title: 'tutorial.game.hpCalc.title',
     body: 'tutorial.game.hpCalc.body',
     placement: 'bottom',
@@ -104,135 +155,170 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     hideNext: true,
     advanceOnNoticeDismiss: true,
   },
-
-  // === T2（turnSet，有效果卡：2nd_86 Area Enchant + 1st_98 Enchant）===
-  // 5. T2 追趕回合放置（動態文案直接說明敗者可放置兩張卡）
-  //    依上回合勝負分支：敗者出 2 張（1st_34 + 2nd_86），勝者出 1 張
   {
-    phase: 'turnSet',
-    target: [
-      '[data-tut-card="1st_34"]',
-      '[data-tut-card="2nd_86"]',
-      '[data-tut="set-selected-card"]',
-      '[data-tut="confirm-set"]',
-    ],
-    title: 'tutorial.game.turnSet.intro.title',
-    body: 'tutorial.game.turnSet.intro.body',
+    chapter: 'flow',
+    phase: 'turn-end-draw-t1',
+    backBehavior: { type: 'restart', checkpoint: 'flow' },
+    target: '[data-tut="player-hand"]',
+    title: 'tutorial.game.turnEndDraw.title',
+    body: 'tutorial.game.turnEndDraw.body',
+    placement: 'top',
+    padding: 10,
+  },
+
+  // 第二回合：敗者依序將角色與區域附魔放入 A／B。
+  {
+    chapter: 'flow',
+    phase: 'turnSet-character-select',
+    backBehavior: { type: 'direct' },
+    target: '[data-tut-card="1st_46"]',
+    interactionTarget: '[data-tut-card="1st_46"]',
+    title: 'tutorial.game.turnSet.characterSelect.title',
+    body: 'tutorial.game.turnSet.characterSelect.body',
+    placement: 'top',
+    padding: 12,
+    actionOnly: true,
+  },
+  {
+    chapter: 'flow',
+    phase: 'turnSet-character-place',
+    backBehavior: { type: 'restart', checkpoint: 'turn2' },
+    target: '[data-tut="set-selected-card"]',
+    interactionTarget: '[data-tut="set-selected-card"]',
+    title: 'tutorial.game.turnSet.characterPlace.title',
+    body: 'tutorial.game.turnSet.characterPlace.body',
+    placement: 'top',
+    padding: 12,
+    actionOnly: true,
+  },
+  {
+    chapter: 'flow',
+    phase: 'turnSet-area-select',
+    backBehavior: { type: 'restart', checkpoint: 'turn2' },
+    target: '[data-tut-card="2nd_98"]',
+    interactionTarget: '[data-tut-card="2nd_98"]',
+    title: 'tutorial.game.turnSet.areaSelect.title',
+    body: 'tutorial.game.turnSet.areaSelect.body',
+    placement: 'top',
+    padding: 12,
+    actionOnly: true,
+  },
+  {
+    chapter: 'flow',
+    phase: 'turnSet-area-place',
+    backBehavior: { type: 'restart', checkpoint: 'turn2' },
+    target: '[data-tut="set-selected-card"]',
+    interactionTarget: '[data-tut="set-selected-card"]',
+    title: 'tutorial.game.turnSet.areaPlace.title',
+    body: 'tutorial.game.turnSet.areaPlace.body',
+    placement: 'top',
+    padding: 12,
+    actionOnly: true,
+  },
+  {
+    chapter: 'flow',
+    phase: 'turnSet-confirm',
+    backBehavior: { type: 'restart', checkpoint: 'turn2' },
+    target: '[data-tut="confirm-set"]',
+    interactionTarget: '[data-tut="confirm-set"]',
+    title: 'tutorial.game.turnSet.confirm.title',
+    body: 'tutorial.game.turnSet.confirm.body',
     placement: 'top',
     padding: 12,
     completeWhen: (G) => G.step === 'effectOrder' || G.step === 'gameOver',
-    resolveKeys: (G) => {
-      const winner = G.lastBattleResult.winner;
-      if (winner === null) {
-        return {
-          title: 'tutorial.game.turnSet.intro.draw.title',
-          body: 'tutorial.game.turnSet.intro.draw.body',
-        };
-      }
-      if (winner === 1) {
-        return {
-          title: 'tutorial.game.turnSet.intro.loser.title',
-          body: 'tutorial.game.turnSet.intro.loser.body',
-        };
-      }
-      return {
-        title: 'tutorial.game.turnSet.intro.winner.title',
-        body: 'tutorial.game.turnSet.intro.winner.body',
-      };
-    },
   },
-
-  // 8b. T2 時鐘推進說明（高亮時鐘推進彈窗，點彈窗確認按鈕推進）
   {
-    phase: 'clock-advance',
+    chapter: 'flow',
+    phase: 'reveal-clock',
+    backBehavior: { type: 'restart', checkpoint: 'turn2' },
     target: '[data-tut="game-notice-panel"]',
-    title: 'tutorial.game.clockAdvance.title',
-    body: 'tutorial.game.clockAdvance.body',
+    interactionTarget: '[data-tut="game-notice-panel"] button',
+    title: 'tutorial.game.revealClock.title',
+    body: 'tutorial.game.revealClock.body',
     placement: 'bottom',
     padding: 12,
     hideNext: true,
     advanceOnNoticeDismiss: true,
   },
-
-  // 8c. 區域附魔教學（T2 卡牌翻開後，說明 Area Enchant 機制）
   {
+    chapter: 'flow',
+    phase: 'character-replacement',
+    backBehavior: { type: 'restart', checkpoint: 'turn2' },
+    target: '[data-tut="player-battle-zone"]',
+    title: 'tutorial.game.characterReplacement.title',
+    body: 'tutorial.game.characterReplacement.body',
+    placement: 'right',
+    padding: 10,
+  },
+  {
+    chapter: 'flow',
+    phase: 'power-charging',
+    backBehavior: { type: 'direct' },
+    target: '[data-tut="player-power"]',
+    title: 'tutorial.game.powerCharging.title',
+    body: 'tutorial.game.powerCharging.body',
+    placement: 'right',
+    padding: 10,
+  },
+  {
+    chapter: 'flow',
     phase: 'area-enchant',
-    target: '[data-tut="player-set-zones"]',
+    backBehavior: { type: 'direct' },
+    target: '[data-tut="player-area-enchant"]',
     title: 'tutorial.game.areaEnchant.title',
     body: 'tutorial.game.areaEnchant.body',
-    placement: 'top',
-    padding: 12,
+    placement: 'left',
+    padding: 10,
   },
-
-  // 6. 效果順序（條件式：直接進入操作，不再顯示重複的 intro 頁）
   {
+    chapter: 'flow',
     phase: 'effectOrder-action',
+    backBehavior: { type: 'direct' },
     target: '.effect-order-panel',
+    interactionTarget: '[data-tut-effect-card="2nd_98"]',
     title: 'tutorial.game.effectOrder.action.title',
     body: 'tutorial.game.effectOrder.action.body',
     placement: 'center',
     padding: 16,
     skipWhen: (G) => G.step !== 'effectOrder',
-    // 用戶結算完所有待處理效果後，遊戲離開 effectOrder
     completeWhen: (G, entry) => entry?.step === 'effectOrder' && G.step !== 'effectOrder',
   },
-
-  // 7. 待選卡牌提交（條件式：直接進入操作）
   {
-    phase: 'pendingChoice-action',
-    target: '.pending-choice-panel',
-    title: 'tutorial.game.pendingChoice.action.title',
-    body: 'tutorial.game.pendingChoice.action.body',
+    chapter: 'flow',
+    phase: 'choice-mechanics',
+    backBehavior: { type: 'restart', checkpoint: 'effects' },
+    target: null,
+    title: 'tutorial.game.choiceMechanics.title',
+    body: 'tutorial.game.choiceMechanics.body',
     placement: 'center',
-    padding: 16,
-    skipWhen: (G) => !G.pendingChoice,
-    // pendingChoice 被清空（用戶提交選擇）後推進
-    completeWhen: (G) => !G.pendingChoice,
   },
-
-  // 9c. T2 HP 計算說明（高亮 HP 計算彈窗，點彈窗確認按鈕推進）
   {
+    chapter: 'flow',
     phase: 'hp-calc',
+    backBehavior: { type: 'direct' },
     target: '[data-tut="game-notice-panel"]',
-    title: 'tutorial.game.hpCalc.title',
-    body: 'tutorial.game.hpCalc.body',
+    interactionTarget: '[data-tut="game-notice-panel"] button',
+    title: 'tutorial.game.hpCalc.turn2.title',
+    body: 'tutorial.game.hpCalc.turn2.body',
     placement: 'bottom',
     padding: 12,
     hideNext: true,
     advanceOnNoticeDismiss: true,
   },
-
-  // 10. T2 戰鬥結算結果（依勝負分支：T2 玩家贏）
   {
-    phase: 'battle-result',
-    target: null,
-    title: 'tutorial.game.battle.result.title',
-    body: 'tutorial.game.battle.result.body',
-    placement: 'center',
-    resolveKeys: (G) => {
-      const winner = G.lastBattleResult.winner;
-      if (winner === null) {
-        return {
-          title: 'tutorial.game.battle.result.draw.title',
-          body: 'tutorial.game.battle.result.draw.body',
-        };
-      }
-      if (winner === 1) {
-        return {
-          title: 'tutorial.game.battle.result.lose.title',
-          body: 'tutorial.game.battle.result.lose.body',
-        };
-      }
-      return {
-        title: 'tutorial.game.battle.result.win.title',
-        body: 'tutorial.game.battle.result.win.body',
-      };
-    },
+    chapter: 'flow',
+    phase: 'turn-end-cleanup',
+    backBehavior: { type: 'restart', checkpoint: 'effects' },
+    target: '[data-tut="opponent-abyss"]',
+    title: 'tutorial.game.turnEndCleanup.title',
+    body: 'tutorial.game.turnEndCleanup.body',
+    placement: 'left',
+    padding: 10,
   },
-
-  // 9. 完成
   {
+    chapter: 'flow',
     phase: 'complete',
+    backBehavior: { type: 'direct' },
     target: null,
     title: 'tutorial.game.complete.title',
     body: 'tutorial.game.complete.body',

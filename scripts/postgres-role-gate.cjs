@@ -14,6 +14,7 @@ const APPLICATION_TABLES = Object.freeze([
   'card_texts_i18n',
   'card_official_errata',
   'game_config',
+  'service_integrations',
   'preset_decks',
   'admin_audit_log',
   'feedback_posts',

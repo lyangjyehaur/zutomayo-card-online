@@ -123,10 +123,15 @@ try {
           const visibleCardImages = [...document.images].filter((image) => {
             const rect = image.getBoundingClientRect();
             const source = image.currentSrc || image.src;
+            const delivery = image.dataset.cardImageDelivery;
+            const directOriginal = source.includes('r2.dan.tw/cards/') && !source.includes('/api/imgproxy/');
             return (
               rect.width > 0 &&
               rect.height > 0 &&
-              (source.includes('/api/imgproxy/') || source.includes('/card-back.jpg'))
+              (Boolean(delivery) ||
+                source.includes('/api/imgproxy/') ||
+                source.includes('/card-back.jpg') ||
+                directOriginal)
             );
           });
           return visibleCardImages.every((image) => image.complete);
@@ -144,10 +149,14 @@ try {
         .map((image) => {
           const rect = image.getBoundingClientRect();
           const source = image.currentSrc || image.src;
+          const delivery = image.dataset.cardImageDelivery || null;
+          const directOriginal = source.includes('r2.dan.tw/cards/') && !source.includes('/api/imgproxy/');
           const requestedWidthMatch = source.match(/\/rs:fit:(\d+):0\//);
           const requestedWidth = requestedWidthMatch ? Number(requestedWidthMatch[1]) : null;
           return {
             source,
+            delivery,
+            directOriginal,
             loading: image.loading,
             complete: image.complete,
             naturalWidth: image.naturalWidth,
@@ -158,7 +167,13 @@ try {
               requestedWidth && rect.width > 0 ? Number((requestedWidth / rect.width).toFixed(2)) : null,
           };
         })
-        .filter((image) => image.source.includes('/api/imgproxy/') || image.source.includes('/card-back.jpg'));
+        .filter(
+          (image) =>
+            Boolean(image.delivery) ||
+            image.source.includes('/api/imgproxy/') ||
+            image.source.includes('/card-back.jpg') ||
+            image.directOriginal,
+        );
       const visibleCardImages = cardImages.filter((image) => image.visible);
       const imageResources = resources
         .filter((resource) => resource.initiatorType === 'img')
@@ -214,6 +229,7 @@ try {
           visibleBroken: visibleCardImages.filter((image) => image.complete && image.naturalWidth === 0).length,
           lazy: cardImages.filter((image) => image.loading === 'lazy').length,
           imgproxy: cardImages.filter((image) => image.source.includes('/api/imgproxy/')).length,
+          directOriginal: cardImages.filter((image) => image.directOriginal).length,
           maxRequestedToRenderedRatio: Math.max(
             0,
             ...visibleCardImages.map((image) => image.requestedToRenderedRatio ?? 0),
@@ -237,6 +253,9 @@ try {
     }
     if (metrics.cardImages.visibleBroken > 0) {
       failures.push(`${metrics.cardImages.visibleBroken} visible card images failed`);
+    }
+    if (metrics.cardImages.directOriginal > 0) {
+      failures.push(`${metrics.cardImages.directOriginal} card images bypassed imgproxy`);
     }
     if (metrics.cardImages.maxRequestedToRenderedRatio > 4) {
       failures.push(`card image overfetch ratio ${metrics.cardImages.maxRequestedToRenderedRatio} exceeds 4x`);

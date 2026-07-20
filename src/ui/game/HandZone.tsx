@@ -18,6 +18,7 @@ export interface HandZoneProps {
   canAct: boolean;
   /** 教學劇本可操作的卡牌定義；未提供時所有合法手牌皆可操作。 */
   allowedCardDefIds?: string[];
+  tutId?: string;
   onCardTap?: (index: number) => void;
   onCardHover?: (index: number | null) => void;
 }
@@ -28,6 +29,7 @@ export function HandZone({
   selectedIndex,
   canAct,
   allowedCardDefIds,
+  tutId,
   onCardTap,
   onCardHover,
 }: HandZoneProps) {
@@ -36,6 +38,7 @@ export function HandZone({
     <div
       className={`handzone handzone-${variant}`}
       data-zone="hand"
+      data-tut={tutId}
       role="group"
       aria-label={`${t('board.hand')} (${cards.length})`}
     >
