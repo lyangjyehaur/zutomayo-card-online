@@ -43,7 +43,7 @@ export function OfficialErrataPage() {
       <div className="relative mx-auto grid w-full max-w-6xl gap-5 px-4 pb-12 pt-24 md:px-6 md:pt-28">
         <RulesTabs />
         <Panel className="bg-surface-panel/70 backdrop-blur" size="lg">
-          <p className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-action/80">
+          <p className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-action">
             {t('officialRules.databaseKicker')}
           </p>
           <h1 className="mt-1 font-display text-title-lg font-bold">{t('officialRules.errataHeading')}</h1>
