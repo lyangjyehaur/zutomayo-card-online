@@ -1,12 +1,10 @@
 # 卡組分享與分享大廳實作計畫
 
-更新日期：2026-07-20
+更新日期：2026-07-21
 
-狀態：已完成實作與驗證，待合併
+狀態：已完成實作與驗證，並合併至 `master`、納入 `0.2.2`
 
-工作目錄：`/Users/danersaka/Projects/zutomayo-card-online-deck-sharing-lobby`
-
-工作分支：`codex/deck-sharing-lobby`
+交付 commit：`e195dfcc`（#18）
 
 需求基準：[deck-sharing-lobby-spec.md](./deck-sharing-lobby-spec.md)
 
@@ -18,7 +16,9 @@
 - Phase 8 已補齊 service、route、client、純狀態函式、Playwright、responsive 與 axe 驗證。
 - 原計畫中的 `DeckShareFilters.tsx` 與 `DeckShareDeckList.tsx` 為預計拆分；實作保留在單一大廳頁並將 query、合併與驗證邏輯抽至 `src/deckShareUi.ts`，避免為拆檔而拆檔。
 - 正式環境仍預設關閉 `DECK_SHARING_ENABLED`，不視為實作缺口；啟用屬於 release 決策。
-- `000038_deck_sharing.js` 合併前必須確認目標分支已含使用者所有的 `000037_service_integrations.js`。
+- `000038_deck_sharing.js` 已接續 `000037_service_integrations.js` 合併，migration 順序已由 schema gate 驗證。
+
+以下階段內容保留原實作決策與驗收依據；不再代表尚待執行的工作。
 
 ## 1. 執行策略
 
@@ -29,7 +29,7 @@
 3. 再接卡組編輯器的發布管理與複製流程。
 4. 最後加入社交互動、管理審核、資料生命週期與完整驗證。
 
-功能必須保留在獨立 worktree；目前 Public Beta 功能凍結仍有文件紀錄，因此預設以 release guard 關閉正式環境入口，待解除凍結後再啟用。
+功能開發期間保留在獨立 worktree，完成後透過 PR #18 合併。正式環境入口仍預設由 release guard 關閉，待 release 決策核准後再啟用。
 
 ## 2. Phase 0：基線與契約鎖定
 

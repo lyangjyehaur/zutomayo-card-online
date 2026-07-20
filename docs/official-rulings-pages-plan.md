@@ -1,5 +1,9 @@
 # 官方 Q&A 與勘誤頁面實作計畫
 
+更新日期：2026-07-21
+
+狀態：Phase 1–3 已於 `0.2.2` 完成並合併；部署與日常維護以 [official-rulings.md](./official-rulings.md) 為準。
+
 ## 目標
 
 在站內提供可搜尋、可深連結、支援既有六種語言的官方規則資料庫，整合：
@@ -9,18 +13,18 @@
 
 玩家不需要離開本站即可查看內容，但每筆資料都必須保留日文原文、官方來源連結、同步時間與翻譯狀態。翻譯不得標示為官方翻譯。
 
-## 現況與限制
+## 交付現況與限制
 
-- 官方來源目前公開 74 筆 Q&A；初始匯入應直接寫入 PostgreSQL，不使用 Git 追蹤 JSON 作為執行期或部署 fallback。
-- `data/card-official-errata.json` 已包含目前 12 筆官方勘誤；現有 PostgreSQL schema 與卡片 API 也已保存勘誤的核心欄位。
+- 官方來源目前公開 74 筆 Q&A；來源同步與初始匯入直接寫入 PostgreSQL，不使用 Git 追蹤 JSON 作為執行期或部署 fallback。
+- 12 筆官方勘誤已保存於 PostgreSQL；本機 `data/card-official-errata.json` 只供未追蹤的卡牌文本維護流程使用，不是玩家端或部署時的資料來源。
 - Q&A 的關聯卡牌 ID 與目前卡牌資料 ID 相容，可直接連到卡片預覽或牌組編輯器。
 - 固定 UI 文案已有 `zh-TW`、`zh-HK`、`zh-CN`、`ja`、`en`、`ko` 六種 locale。
-- 本 worktree 從 `master` 的 `a98acfe6` 建立，不包含原工作目錄尚未提交的翻譯設定相關修改。此功能先保持獨立；該批修改落地後再整合共用翻譯 provider。
+- 初始五語翻譯由本機受控來源直接匯入 PostgreSQL，不需要 translation provider；共用 provider 只用於未來新增或變更內容的補譯。
 - 官方 Q&A 的原始資料可能包含尚未公開的紀錄。同步時只能接受明確標記為 `公開` 的項目，不可使用「不是非公開就視為公開」的寬鬆條件。
 
 ## 範圍
 
-### MVP 必須完成
+### MVP 已完成
 
 - `/rules/qa` Q&A 清單與搜尋頁。
 - `/rules/qa/:number` Q&A 詳情頁。
@@ -33,7 +37,7 @@
 - 官方來源、翻譯狀態及最後同步時間。
 - 行動裝置、鍵盤操作、螢幕閱讀器與 PWA build 驗證。
 
-### 後續階段
+### `0.2.2` 已完成的延伸範圍
 
 - 其餘四種衍生語言翻譯與審核。
 - 管理端的同步差異預覽、翻譯重試及人工核准。
@@ -161,7 +165,7 @@
 
 快取：`Cache-Control: public, max-age=300, stale-while-revalidate=1800`，並以 locale 與資料版本產生 ETag。
 
-### 管理 API（第二階段）
+### 管理 API（`0.2.2` 已完成）
 
 - `POST /api/admin/official-content/sync`
 - `GET /api/admin/official-content/sync-status`
@@ -173,7 +177,7 @@
 
 ## 官方資料同步
 
-新增 `scripts/sync-official-rulings.ts`，支援：
+已實作 `scripts/sync-official-rulings.ts`，支援：
 
 - `--check`：抓取並驗證，只輸出 diff，不寫資料庫。
 - `--apply`：在 transaction 中套用經驗證內容。
@@ -294,9 +298,9 @@
 - 切換 `zh-TW`／`ja` 並驗證原文和翻譯狀態。
 - 行動版 drawer 與主要搜尋流程。
 
-## 分階段交付
+## 交付結果
 
-### Phase 1：可查看的日文資料庫
+### Phase 1：可查看的日文資料庫（已完成）
 
 - migration 與 seed/import。
 - 公開 Q&A／勘誤 API。
@@ -306,7 +310,7 @@
 
 驗收：玩家可在桌面與行動版完成查詢，不依賴官方網站即時可用性。
 
-### Phase 2：繁中與翻譯狀態
+### Phase 2：繁中與翻譯狀態（已完成）
 
 - 翻譯表、fallback 與繁中內容。
 - 原文切換與非官方翻譯標示。
@@ -315,7 +319,7 @@
 
 驗收：繁中使用者能閱讀完整內容，且可清楚區分官方日文與本站翻譯。
 
-### Phase 3：六語系與同步維運
+### Phase 3：六語系與同步維運（已完成）
 
 - 其餘 locale。
 - 翻譯 provider 整合與背景生成。
@@ -324,7 +328,7 @@
 
 驗收：官方新增或修改內容可被偵測、版本化、翻譯並安全發布。
 
-## 預計修改範圍
+## 實際修改範圍
 
 - `migrations/`：Q&A、翻譯及勘誤擴充 schema。
 - `api/server.cjs`、`api/schemas.cjs`：公開與管理路由。

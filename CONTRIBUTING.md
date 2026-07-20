@@ -41,26 +41,26 @@ cd api && npm ci && npm start
 
 ### 常用指令
 
-| 指令                           | 說明                                                 |
-| ------------------------------ | ---------------------------------------------------- |
-| `npm run dev`                  | 啟動 Vite 前端開發伺服器                             |
-| `npm run server`               | 啟動 boardgame.io game server                        |
-| `npm run platform`             | 啟動 Colyseus platform server                        |
-| `npm run build`                | 型別檢查 + 生產打包                                  |
-| `npm test`                     | 執行 vitest 單元測試                                 |
-| `npm run test:watch`           | 測試監聽模式                                         |
-| `npm run lint`                 | ESLint 檢查                                          |
-| `npm run lint:fix`             | ESLint 自動修復                                      |
-| `npm run format`               | Prettier 格式化                                      |
-| `npm run format:check:tracked` | 檢查 Git 追蹤檔的 Prettier 格式                      |
-| `npm run version:check`        | 驗證 root / api package 版本與 managed fallback      |
-| `npm run typecheck`            | TypeScript 型別檢查（app）                           |
-| `npm run typecheck:scripts`    | TypeScript 型別檢查（scripts 目錄）                  |
-| `npm run verify`               | 完整驗證（format/version/lint/typecheck/test/build） |
-| `npm run db:migrate`           | 執行 PostgreSQL schema migration                     |
-| `npm run e2e`                  | 執行 Playwright 端到端測試                           |
-| `npm run e2e:ui`               | 啟動 Playwright 互動測試 UI                          |
-| `npm run load:api`             | 執行 k6 API 負載測試（需另行安裝 k6）                |
+| 指令                           | 說明                                                           |
+| ------------------------------ | -------------------------------------------------------------- |
+| `npm run dev`                  | 啟動 Vite 前端開發伺服器                                       |
+| `npm run server`               | 啟動 boardgame.io game server                                  |
+| `npm run platform`             | 啟動 Colyseus platform server                                  |
+| `npm run build`                | 型別檢查 + 生產打包                                            |
+| `npm test`                     | 執行 vitest 單元測試                                           |
+| `npm run test:watch`           | 測試監聽模式                                                   |
+| `npm run lint`                 | ESLint 檢查                                                    |
+| `npm run lint:fix`             | ESLint 自動修復                                                |
+| `npm run format`               | Prettier 格式化                                                |
+| `npm run format:check:tracked` | 檢查 Git 追蹤檔的 Prettier 格式                                |
+| `npm run version:check`        | 驗證 root / api package 版本與 managed fallback                |
+| `npm run typecheck`            | TypeScript 型別檢查（app）                                     |
+| `npm run typecheck:scripts`    | TypeScript 型別檢查（scripts 目錄）                            |
+| `npm run verify`               | 完整驗證（format/policy/config/lint/typecheck/coverage/build） |
+| `npm run db:migrate`           | 執行 PostgreSQL schema migration                               |
+| `npm run e2e`                  | 執行 Playwright 端到端測試                                     |
+| `npm run e2e:ui`               | 啟動 Playwright 互動測試 UI                                    |
+| `npm run load:api`             | 執行 k6 API 負載測試（需另行安裝 k6）                          |
 
 ## 程式碼風格規範
 
@@ -114,6 +114,26 @@ style(format): 修正 Prettier 格式
 - description 請以繁體中文撰寫，避免中英混雜造成閱讀困難。
 - 單一 commit 只處理一件事；若涉及多個面向，請拆分為多個 commit。
 
+## 版本與文件同步
+
+任何 release version 升級都必須在同一個 PR 同步修訂相關專案文件，不能只修改 `package.json`。版本變更至少需要完成以下檢查：
+
+- 同步 root 與 `api/` 的 `package.json`、`package-lock.json` 版本。
+- 在 `CHANGELOG.md` 新增當前版本章節、日期、顯著變更與 release tag 連結。
+- 同步 `README.md`、`README.en.md`、`README.ja.md` 的目前版本。
+- 依實際變更檢查 `docs/API.md`、`docs/ARCHITECTURE.md`、`docs/DEPLOYMENT.md`、`docs/PLAN.md`、release／runbook 文件及環境變數範例。
+- 文件不只更新版本號，也要同步新增功能、相容性、migration、部署步驟、環境變數與操作限制。
+- 歷史稽核、既有 release evidence 與已完成 baseline 中的舊版本屬於事實紀錄，不應機械式取代。
+
+完成版本升級前，使用 `rg` 搜尋舊版本並逐項判斷，最後執行：
+
+```bash
+npm run version:check
+npm run verify
+```
+
+`version:check` 會自動驗證 manifests、lockfiles、三語 README、`CHANGELOG.md` 最新 release 與 `docs/PLAN.md` 當前版本；API、架構、部署、runbook 與其他專題文件仍需依版本實際內容人工審查。
+
 ## 分支策略
 
 - **`master`** 為主分支，永遠保持可部署狀態。所有發布皆以 `master` 為準。
@@ -143,7 +163,7 @@ style(format): 修正 Prettier 格式
    - 關聯 issue（若有）
    - 測試方式（如何驗證此變更有效）
    - 是否影響部署或環境變數
-5. PR 需通過 GitHub Actions CI（format:check:tracked、version:check、lint、typecheck、typecheck:scripts、test、build、Playwright E2E）全數綠燈。
+5. PR 需通過 GitHub Actions CI（format、data/image/version policy、lint、typecheck、i18n、coverage、build、Playwright E2E）全數綠燈。
 6. 經 review 通過後合併至 `master`。
 
 ## 部署流程

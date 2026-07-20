@@ -33,16 +33,19 @@ jobs:
       E2E_BROWSER_MATRIX: full
 
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: '22'
           cache: npm
       - run: npm ci
       - name: Run browser-specific E2E stack
         run: |
+          mkdir -p playwright-report test-results
           export EXPECTED_SCHEMA_MIGRATION="$(find migrations -maxdepth 1 -type f -name '*.js' -printf '%f\n' | sort | tail -n 1 | sed 's/\.js$//')"
           export EXPECTED_SCHEMA_CHECKSUM="$(sha256sum "migrations/${EXPECTED_SCHEMA_MIGRATION}.js" | awk '{print $1}')"
+          echo "EXPECTED_SCHEMA_MIGRATION=$EXPECTED_SCHEMA_MIGRATION" >> "$GITHUB_ENV"
+          echo "EXPECTED_SCHEMA_CHECKSUM=$EXPECTED_SCHEMA_CHECKSUM" >> "$GITHUB_ENV"
           docker compose \
             -f docker-compose.yml \
             -f docker-compose.e2e.yml \
@@ -52,7 +55,7 @@ jobs:
         timeout-minutes: 30
       - name: Upload Playwright report
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: playwright-${{ matrix.browser }}
           path: playwright-report/

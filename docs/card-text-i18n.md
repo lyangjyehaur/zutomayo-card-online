@@ -224,7 +224,7 @@ npm run audit:card-official-texts
 
 官方來源為 <https://zutomayocard.net/errata/>。新增或修改勘誤時：
 
-1. 更新 `data/card-official-errata.json`，保留官方編號、日期、受影響欄位、錯誤文本、修正後日文和來源網址。
+1. 先依 [官方 Q&A 與勘誤資料庫指南](./official-rulings.md) 執行官方來源 diff 與 PostgreSQL 同步。若卡牌官方文本匯入也需要相同勘誤證據，再更新本機未追蹤的 `data/card-official-errata.json`；該檔不得提交 GitHub，也不是 runtime fallback。
 2. 確認 `correctedJapaneseText` 與 `cards.name` 或 `cards.effect` 中的官方修正後日文完全一致。
 3. 逐欄判斷英文來源類型。能沿用卡面英文語序時作最小修正，不要無理由整段重寫；官方日文刪除 `すべて` 等語義時，英文也必須刪除對應的 `all`。
 4. 卡面使用英文數字單詞時，修正文本延續官方風格，例如 `one card`，不要擅自改成 `1 card` 或 `a card`。

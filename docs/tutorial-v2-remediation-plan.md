@@ -1,10 +1,10 @@
 # Tutorial V2 Remediation Plan
 
-Last updated: 2026-07-20
+Last updated: 2026-07-21
 
 Owner: Frontend / Game UX / QA
 
-Status: Implemented in working tree; release verification in progress
+Status: Implemented and locally release-verified for `0.2.2`; external staging and moderated first-player evidence remain pending
 
 Implementation log (2026-07-20): TV2-01 tooltip sizing, fixed action instruction,
 scroll affordance, keyboard-focusable scroll region, and compact Previous action are
@@ -14,8 +14,9 @@ JPEG/WebP/AVIF browser coverage and deployment smoke validation; fixed CH.02 exa
 always use reviewed showcase definitions. TV2-04/05 add mobile contextual field
 feedback, card-detail reveal, versioned exploration persistence, completion gating, and
 chapter-heading scroll landing. TV2-06 fixes localized card taxonomy labels, completion
-semantics, and victory copy. Remaining release gate: run the repository-wide verify
-and staging deployment smoke against the target environment.
+semantics, and victory copy. The repository-wide `npm run verify` passes for `0.2.2`;
+the remaining release evidence requires the target staging environment and moderated
+first-player validation.
 
 Release policy: Public Beta tutorial remediation is not complete until every P0 item in this document has executable evidence. The plan does not authorize changes to the production rules engine.
 

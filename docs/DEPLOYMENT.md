@@ -147,6 +147,7 @@ Frontend build-time variables (baked into the bundle at `vite build`):
 | `APP_VERSION`                           | `package.json` version              | App release version returned by `/api/version` and `/api/app-version`. Leave empty to use the package version.                                                                                                 |
 | `APP_BUILD_ID`                          | `APP_VERSION`                       | Build identifier; keep it aligned with the `game` service.                                                                                                                                                     |
 | `GAME_RULES_VERSION`                    | `APP_VERSION`                       | Rules/calculation compatibility version; keep it aligned with the `game` service.                                                                                                                              |
+| `DECK_SHARING_ENABLED`                  | `false`                             | Feature flag for public/unlisted deck publishing, lobby discovery, likes, copying, reports, and moderation. Enable only after migration `000038_deck_sharing` is applied.                                      |
 | `LOG_LEVEL`                             | `info`                              | pino log level (`trace`/`debug`/`info`/`warn`/`error`/`fatal`).                                                                                                                                                |
 | `CHAT_TRANSLATION_ENDPOINT`             | empty                               | Optional HTTP LLM translation gateway. When empty, chat translation requests are persisted as `pending` rows instead of calling a provider.                                                                    |
 | `CHAT_TRANSLATION_API_KEY`              | empty                               | Optional bearer token sent to `CHAT_TRANSLATION_ENDPOINT`.                                                                                                                                                     |
@@ -627,20 +628,19 @@ GitHub Actions workflow: [.github/workflows/ci.yml](../.github/workflows/ci.yml)
 
 Runner: `ubuntu-latest`, Node 22, with `npm` caching.
 
-Pipeline steps, in order:
+The `Lint & Test` job runs these gates in order:
 
-1. `actions/checkout@v4`
-2. `actions/setup-node@v4` (Node 22, npm cache)
-3. `npm ci` — install dependencies from the lockfile.
+1. Node 24-runtime `actions/checkout` and `actions/setup-node`, pinned to full commit SHAs; project Node remains 22 with npm cache.
+2. `npm ci` — install dependencies from the lockfile.
+3. Release/operations configuration validation and both E2E/server4 Compose config checks.
 4. `npm run format:check:tracked` — Prettier check for Git-tracked files.
-5. `npm run version:check` — root/API version synchronization and managed fallback check.
-6. `npm run lint` — ESLint.
-7. `npm run typecheck` — `tsc --noEmit` for the app.
-8. `npm run typecheck:scripts` — `tsc --noEmit -p tsconfig.scripts.json`.
-9. `npm test` — vitest unit tests.
-10. `npm run build` — full production build (repeats both typechecks before `vite build`).
+5. `npm run data:policy` and `npm run image:policy` — reject tracked source JSON and player card-image delivery bypasses.
+6. `npm run version:check` — manifests, lockfiles, current-version README, CHANGELOG, plan marker, and managed fallback synchronization.
+7. `npm run lint`, both TypeScript typechecks, and `npm run i18n:check`.
+8. `npm run test:coverage` — the full Vitest suite plus coverage thresholds.
+9. `npm run build` — typechecks and the production/PWA bundle.
 
-A failing step blocks the merge. The `smoke:*` scripts are intentionally not part of CI because they require a running API/boardgame.io server.
+After `Lint & Test`, the required `E2E Tests` job builds the isolated PostgreSQL/Redis/game/API/platform stack, applies migrations and deterministic card seed, then runs Chromium Playwright. Both jobs are protected `master` status checks. The five-browser Playwright matrix runs separately on schedule; service-backed `smoke:*` and production evidence drills remain explicit local/staging operations.
 
 ### Local pre-push checklist / 本機推送前檢查
 

@@ -2,7 +2,7 @@
 
 **Languages:** [繁體中文](README.md) | [日本語](README.ja.md) | [English](README.en.md)
 
-Current version: **0.2.0**
+Current version: **0.2.2**
 
 > An unofficial digital battle platform for ZUTOMAYO CARD, the official TCG from ZUTOMAYO.
 > Supports local two-player games, AI practice, an interactive tutorial, and real-time online play.
@@ -10,6 +10,8 @@ Current version: **0.2.0**
 ## Project Status
 
 Version 0.2.0 expands the project from a standalone battle app into a multiplayer platform. `boardgame.io` remains authoritative for card state, Colyseus owns lobby, matchmaking, room, invite, and spectator presence flows, and ChatService owns durable chat, unread state, translation, reports, and moderation.
+
+Version 0.2.2 adds the shared-deck lobby plus PostgreSQL-backed official Japanese Q&A and errata, localized pages, admin review, and source synchronization workflows.
 
 ### Game and Battle
 
@@ -38,7 +40,8 @@ Version 0.2.0 expands the project from a standalone battle app into a multiplaye
 ### Other Product Features
 
 - Six UI languages: Traditional Chinese, Cantonese, Simplified Chinese, Japanese, English, and Korean.
-- Deck editor, leaderboard, cross-device match history, profile, OAuth identities, and feedback board.
+- Deck editor, shared-deck lobby, leaderboard, cross-device match history, profile, OAuth identities, and feedback board.
+- Official Japanese Q&A and errata, localized reading pages, admin review, and source synchronization.
 - PWA install/update prompts plus app, build, and rules compatibility checks.
 - Admin tooling for cards, translations, users, ELO, chat evidence, sanctions, and feedback.
 - Playwright core E2E, k6 API/WebSocket/auth/matchmaking load tests, and staging/production CD pipelines.
@@ -105,26 +108,29 @@ To run the real boardgame.io server, start Compose's `game` service or run `npm 
 
 ### Common Commands
 
-| Command                             | Purpose                                                                  |
-| ----------------------------------- | ------------------------------------------------------------------------ |
-| `npm run verify`                    | Format, version, lint, both typechecks, unit tests, and production build |
-| `npm test` / `npm run test:watch`   | Run Vitest once / in watch mode                                          |
-| `npm run typecheck`                 | Check application and server TypeScript                                  |
-| `npm run typecheck:scripts`         | Check scripts TypeScript                                                 |
-| `npm run lint`                      | Run ESLint                                                               |
-| `npm run format:check:tracked`      | Check Prettier formatting for Git-tracked files only                     |
-| `npm run build`                     | Typecheck and create the production frontend bundle                      |
-| `npm run server`                    | Start the game / boardgame.io server                                     |
-| `npm run platform`                  | Start the Colyseus platform service                                      |
-| `npm run db:migrate`                | Apply PostgreSQL migrations                                              |
-| `npm run smoke`                     | Core game-flow smoke test                                                |
-| `npm run smoke:api`                 | REST API integration smoke test                                          |
-| `npm run smoke:online`              | boardgame.io online-match smoke test                                     |
-| `npm run smoke:platform-deployment` | Verify platform health and a real lobby WebSocket join/leave             |
-| `npm run smoke:responsive`          | All responsive browser smoke tests                                       |
-| `npm run rule:audit`                | Card-effect parser coverage audit                                        |
-| `npm run e2e` / `npm run e2e:ui`    | Full Playwright E2E / interactive UI                                     |
-| `npm run load:api` / `load:ws`      | k6 API / WebSocket load tests (k6 installed separately)                  |
+| Command                                        | Purpose                                                                        |
+| ---------------------------------------------- | ------------------------------------------------------------------------------ |
+| `npm run verify`                               | Formatting, policies, config, lint, typechecks, coverage, and production build |
+| `npm test` / `npm run test:watch`              | Run Vitest once / in watch mode                                                |
+| `npm run typecheck`                            | Check application and server TypeScript                                        |
+| `npm run typecheck:scripts`                    | Check scripts TypeScript                                                       |
+| `npm run lint`                                 | Run ESLint                                                                     |
+| `npm run format:check:tracked`                 | Check Prettier formatting for Git-tracked files only                           |
+| `npm run build`                                | Typecheck and create the production frontend bundle                            |
+| `npm run server`                               | Start the game / boardgame.io server                                           |
+| `npm run platform`                             | Start the Colyseus platform service                                            |
+| `npm run db:migrate`                           | Apply PostgreSQL migrations                                                    |
+| `npm run import:official-rulings-translations` | Import untracked official-rulings translations into PostgreSQL                 |
+| `npm run sync:official-rulings`                | Read-only comparison of the official Q&A and errata sources                    |
+| `npm run translate:official-rulings`           | Generate missing derived official-rulings translations                         |
+| `npm run smoke`                                | Core game-flow smoke test                                                      |
+| `npm run smoke:api`                            | REST API integration smoke test                                                |
+| `npm run smoke:online`                         | boardgame.io online-match smoke test                                           |
+| `npm run smoke:platform-deployment`            | Verify platform health and a real lobby WebSocket join/leave                   |
+| `npm run smoke:responsive`                     | All responsive browser smoke tests                                             |
+| `npm run rule:audit`                           | Card-effect parser coverage audit                                              |
+| `npm run e2e` / `npm run e2e:ui`               | Full Playwright E2E / interactive UI                                           |
+| `npm run load:api` / `load:ws`                 | k6 API / WebSocket load tests (k6 installed separately)                        |
 
 ## Docker Deployment
 
@@ -137,7 +143,7 @@ docker compose ps
 
 Compose contains six units: `postgres`, `redis`, one-shot `migrate`, `game`, `api`, and `platform`.
 
-The repository also provides `docker-compose.e2e.yml`, `docker-compose.load-test.yml`, and an isolated-port/database `docker-compose.staging.yml`. CD builds GHCR staging images on master updates and production images on version tags; SSH deployment is explicitly triggered with `workflow_dispatch`.
+The repository also provides `docker-compose.e2e.yml`, `docker-compose.load-test.yml`, and an isolated-port/database `docker-compose.staging.yml`. Production-hardening CD is currently isolated on `codex/deferred-production-hardening`; staging and production SSH deployment is explicitly triggered with `workflow_dispatch` using verified artifacts.
 
 | Port   | Service  | Purpose                                           |
 | ------ | -------- | ------------------------------------------------- |
@@ -145,7 +151,7 @@ The repository also provides `docker-compose.e2e.yml`, `docker-compose.load-test
 | `3001` | api      | REST API, ChatService, accounts, and admin        |
 | `3002` | platform | Colyseus WebSocket rooms, `/health`, and `/ready` |
 
-See the [deployment guide](docs/DEPLOYMENT.md) for production, external PostgreSQL/Redis, backup, migration, and horizontal-scaling details.
+See the [deployment guide](docs/DEPLOYMENT.md) for production, external PostgreSQL/Redis, backup, migration, and horizontal-scaling details. Official Q&A/errata synchronization, import, and translation are documented in the [official rulings database guide](docs/official-rulings.md).
 
 ## Repository Map
 
@@ -165,7 +171,7 @@ load-tests/           k6 API, WebSocket, auth, and matchmaking load tests
 docs/                 architecture, API, deployment, multiplayer, and UI/UX docs
 ```
 
-Primary pages include `/online`, `/ai`, `/tutorial`, `/deck-builder`, `/history`, `/leaderboard`, `/feedback`, `/profile`, and `/admin`.
+Primary pages include `/online`, `/ai`, `/tutorial`, `/deck-builder`, `/deck-shares`, `/history`, `/leaderboard`, `/feedback`, `/profile`, `/rules/qa`, `/rules/errata`, and `/admin`.
 
 ## Security and Operations
 
@@ -181,13 +187,14 @@ Primary pages include `/online`, `/ai`, `/tutorial`, `/deck-builder`, `/history`
 - [Full architecture](docs/ARCHITECTURE.md)
 - [REST API](docs/API.md)
 - [Card-text i18n maintenance guide (Traditional Chinese)](docs/card-text-i18n.md)
+- [Official rulings database guide](docs/official-rulings.md)
 - [Deployment guide](docs/DEPLOYMENT.md)
 - [Multiplayer platform architecture](docs/MULTIPLAYER_PLATFORM_ARCHITECTURE.md)
 - [Multiplayer alignment audit](docs/MULTIPLAYER_PLATFORM_ALIGNMENT_AUDIT.md)
 - [Contributing guide](CONTRIBUTING.md)
 - [Changelog](CHANGELOG.md)
 - [Load testing](load-tests/README.md)
-- [Game rules](rules.md) / [Official Q&A](qa.json)
+- [Game rules](rules.md) / [Official Q&A](https://battle.zutomayocard.online/rules/qa) / [Official errata](https://battle.zutomayocard.online/rules/errata)
 
 ## License
 
