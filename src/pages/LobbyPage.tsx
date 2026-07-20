@@ -12,6 +12,7 @@ import {
   Palette,
   ScrollText,
   Send,
+  Share2,
   Swords,
   UserRound,
   Users,
@@ -50,6 +51,7 @@ export {
 
 interface LobbyPageProps {
   onAuthChanged: () => void | Promise<void>;
+  deckSharingEnabled: boolean;
 }
 
 /**
@@ -187,7 +189,7 @@ function HomeAnnouncements({
   );
 }
 
-export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
+export function LobbyPage({ onAuthChanged, deckSharingEnabled }: LobbyPageProps) {
   const navigate = useNavigate();
   const locale = useLocale();
   const [showDeckIntro, setShowDeckIntro] = useState(false);
@@ -266,6 +268,18 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
       { labelKey: 'lobby.projectDiscord', href: aboutConfig.community.discordUrl, Icon: MessageCircle },
     ] satisfies Array<{ labelKey: TranslationKey; href: string; Icon: typeof Users }>
   ).filter(({ href }) => isActionableCommunityUrl(href));
+  const channels: Channel[] = deckSharingEnabled
+    ? [
+        ...CHANNELS,
+        {
+          to: '/deck-shares',
+          no: '06',
+          titleKey: 'deckShare.lobbyTitle',
+          captionKey: 'deckShare.lobbyDescription',
+          Icon: Share2,
+        },
+      ]
+    : CHANNELS;
 
   return (
     <PageShell>
@@ -474,8 +488,10 @@ export function LobbyPage({ onAuthChanged }: LobbyPageProps) {
             </span>
             <span className="h-px flex-1 bg-border-soft" aria-hidden="true" />
           </div>
-          <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5 lg:gap-3">
-            {CHANNELS.map(({ to, no, titleKey, captionKey, Icon }) => (
+          <ul
+            className={`grid grid-cols-1 gap-2 sm:grid-cols-2 ${deckSharingEnabled ? 'lg:grid-cols-6' : 'lg:grid-cols-5'} lg:gap-3`}
+          >
+            {channels.map(({ to, no, titleKey, captionKey, Icon }) => (
               <li key={to} className="min-w-0">
                 <button
                   type="button"

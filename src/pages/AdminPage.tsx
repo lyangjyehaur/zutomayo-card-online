@@ -16,6 +16,7 @@ import {
   Music2,
   Save,
   Search,
+  Share2,
   Settings2,
   ShieldCheck,
   SlidersHorizontal,
@@ -94,6 +95,7 @@ import { CardImage } from '../components/CardImage';
 import { AdminOperationsPanel } from '../components/AdminOperationsPanel';
 import { AdminAnnouncementsPanel } from '../components/AdminAnnouncementsPanel';
 import { AdminTranslationSettingsPanel } from '../components/AdminTranslationSettingsPanel';
+import { AdminDeckShareReportsPanel } from '../components/AdminDeckShareReportsPanel';
 import '../components/AdminPanel.css';
 
 const ADMIN_TOKEN_KEY = 'zutomayo_admin_token';
@@ -158,6 +160,7 @@ type AdminTab =
   | 'users'
   | 'matches'
   | 'chat'
+  | 'deck-shares'
   | 'operations'
   | 'about'
   | 'announcements'
@@ -1857,6 +1860,7 @@ export function AdminPage() {
         { value: 'users', label: '使用者', icon: Users },
         { value: 'matches', label: '對戰紀錄', icon: Swords },
         { value: 'chat', label: '聊天審核', icon: MessageSquareWarning },
+        { value: 'deck-shares', label: '牌組分享', icon: Share2 },
       ],
     },
     {
@@ -2686,6 +2690,12 @@ export function AdminPage() {
                   )}
                 </>
               )}
+            </section>
+          )}
+
+          {activeTab === 'deck-shares' && (
+            <section className="admin-main flex-1 overflow-y-auto p-4">
+              <AdminDeckShareReportsPanel token={token} />
             </section>
           )}
 

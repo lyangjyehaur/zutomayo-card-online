@@ -541,6 +541,122 @@ const REQUIRED_RUNTIME_INDEXES = Object.freeze([
   },
 ]);
 
+const DECK_SHARING_RUNTIME_TABLES = Object.freeze([
+  'deck_shares',
+  'deck_share_likes',
+  'deck_share_copy_events',
+  'deck_share_reports',
+]);
+
+const DECK_SHARING_RUNTIME_COLUMNS = Object.freeze({
+  deck_shares: [
+    'id',
+    'owner_user_id',
+    'source_deck_id',
+    'name',
+    'card_ids',
+    'visibility',
+    'publication_status',
+    'moderation_status',
+    'published_rules_version',
+    'published_at',
+    'updated_at',
+    'unpublished_at',
+  ],
+  deck_share_likes: ['share_id', 'user_id', 'created_at'],
+  deck_share_copy_events: ['id', 'share_id', 'user_id', 'copied_deck_id', 'idempotency_key', 'created_at'],
+  deck_share_reports: ['id', 'share_id', 'reporter_user_id', 'reason', 'note', 'status', 'created_at', 'updated_at'],
+});
+
+const DECK_SHARING_RUNTIME_COLUMN_CONTRACTS = Object.freeze([
+  {
+    tableName: 'deck_shares',
+    columnName: 'card_ids',
+    udtName: 'jsonb',
+    nullable: false,
+    defaultToken: null,
+  },
+  {
+    tableName: 'deck_shares',
+    columnName: 'visibility',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: "'public'",
+  },
+  {
+    tableName: 'deck_shares',
+    columnName: 'publication_status',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: "'published'",
+  },
+  {
+    tableName: 'deck_shares',
+    columnName: 'moderation_status',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: "'visible'",
+  },
+]);
+
+const DECK_SHARING_RUNTIME_CONSTRAINTS = Object.freeze([
+  { tableName: 'deck_shares', constraintType: 'p', fragments: ['primary key (id)'] },
+  {
+    tableName: 'deck_shares',
+    constraintType: 'f',
+    fragments: ['foreign key (owner_user_id)', 'references users(id)', 'on delete cascade'],
+  },
+  {
+    tableName: 'deck_shares',
+    constraintType: 'f',
+    fragments: ['foreign key (source_deck_id)', 'references decks(id)', 'on delete set null'],
+  },
+  {
+    tableName: 'deck_shares',
+    constraintType: 'c',
+    fragments: ['public', 'unlisted'],
+  },
+  {
+    tableName: 'deck_shares',
+    constraintType: 'c',
+    fragments: ['published', 'unpublished'],
+  },
+  {
+    tableName: 'deck_shares',
+    constraintType: 'c',
+    fragments: ['visible', 'hidden', 'pending_review'],
+  },
+  { tableName: 'deck_share_likes', constraintType: 'p', fragments: ['primary key (share_id, user_id)'] },
+  {
+    tableName: 'deck_share_reports',
+    constraintType: 'c',
+    fragments: ['inappropriate_name', 'impersonation_or_harassment', 'spam', 'other'],
+  },
+]);
+
+const DECK_SHARING_RUNTIME_INDEXES = Object.freeze([
+  {
+    tableName: 'deck_shares',
+    indexName: 'uq_deck_shares_source_deck',
+    fragments: ['unique index', 'source_deck_id', 'source_deck_id is not null'],
+  },
+  {
+    tableName: 'deck_shares',
+    indexName: 'idx_deck_shares_public_lobby',
+    fragments: ['publication_status', 'moderation_status', 'visibility', 'updated_at', 'id'],
+  },
+  {
+    tableName: 'deck_share_copy_events',
+    indexName: 'uq_deck_share_copy_events_idempotency',
+    fragments: ['unique index', 'share_id', 'user_id', 'idempotency_key', 'idempotency_key is not null'],
+  },
+  {
+    tableName: 'deck_share_reports',
+    indexName: 'uq_deck_share_reports_active_reporter',
+    fragments: ['unique index', 'share_id', 'reporter_user_id', 'pending', 'reviewing'],
+  },
+]);
+
 function normalizeExpectedMigration(value) {
   const migration = String(value || '').trim();
   if (!/^\d{6,}_[a-z0-9_]+$/i.test(migration)) {
@@ -607,9 +723,24 @@ function indexMatches(row, contract) {
   );
 }
 
-async function assertRuntimeSchema({ pool, expectedMigration, expectedChecksum }) {
+async function assertRuntimeSchema({ pool, expectedMigration, expectedChecksum, requireDeckSharing = false }) {
   const migration = normalizeExpectedMigration(expectedMigration);
   const checksum = normalizeExpectedChecksum(expectedChecksum);
+  const requiredTables = requireDeckSharing
+    ? [...REQUIRED_RUNTIME_TABLES, ...DECK_SHARING_RUNTIME_TABLES]
+    : REQUIRED_RUNTIME_TABLES;
+  const requiredColumns = requireDeckSharing
+    ? { ...REQUIRED_RUNTIME_COLUMNS, ...DECK_SHARING_RUNTIME_COLUMNS }
+    : REQUIRED_RUNTIME_COLUMNS;
+  const requiredColumnContracts = requireDeckSharing
+    ? [...REQUIRED_RUNTIME_COLUMN_CONTRACTS, ...DECK_SHARING_RUNTIME_COLUMN_CONTRACTS]
+    : REQUIRED_RUNTIME_COLUMN_CONTRACTS;
+  const requiredConstraints = requireDeckSharing
+    ? [...REQUIRED_RUNTIME_CONSTRAINTS, ...DECK_SHARING_RUNTIME_CONSTRAINTS]
+    : REQUIRED_RUNTIME_CONSTRAINTS;
+  const requiredIndexes = requireDeckSharing
+    ? [...REQUIRED_RUNTIME_INDEXES, ...DECK_SHARING_RUNTIME_INDEXES]
+    : REQUIRED_RUNTIME_INDEXES;
   let applied;
   try {
     applied = await pool.query('SELECT 1 FROM public.schema_migrations WHERE name = $1 LIMIT 1', [migration]);
@@ -629,14 +760,14 @@ async function assertRuntimeSchema({ pool, expectedMigration, expectedChecksum }
     `SELECT required.table_name,
             to_regclass('public.' || required.table_name) IS NOT NULL AS present
        FROM unnest($1::text[]) AS required(table_name)`,
-    [REQUIRED_RUNTIME_TABLES],
+    [requiredTables],
   );
   const missing = tableCheck.rows.filter((row) => row.present !== true).map((row) => row.table_name);
   if (missing.length > 0) throw new Error(`Required runtime tables are missing: ${missing.join(', ')}`);
 
   const requiredTableNames = [];
   const requiredColumnNames = [];
-  for (const [tableName, columns] of Object.entries(REQUIRED_RUNTIME_COLUMNS)) {
+  for (const [tableName, columns] of Object.entries(requiredColumns)) {
     for (const columnName of columns) {
       requiredTableNames.push(tableName);
       requiredColumnNames.push(columnName);
@@ -660,8 +791,8 @@ async function assertRuntimeSchema({ pool, expectedMigration, expectedChecksum }
     .map((row) => `${row.table_name}.${row.column_name}`);
   if (missingColumns.length > 0) throw new Error(`Required runtime columns are missing: ${missingColumns.join(', ')}`);
 
-  const contractTableNames = REQUIRED_RUNTIME_COLUMN_CONTRACTS.map(({ tableName }) => tableName);
-  const contractColumnNames = REQUIRED_RUNTIME_COLUMN_CONTRACTS.map(({ columnName }) => columnName);
+  const contractTableNames = requiredColumnContracts.map(({ tableName }) => tableName);
+  const contractColumnNames = requiredColumnContracts.map(({ columnName }) => columnName);
   const contractCheck = await pool.query(
     `SELECT required.table_name,
             required.column_name,
@@ -676,17 +807,19 @@ async function assertRuntimeSchema({ pool, expectedMigration, expectedChecksum }
         AND columns.column_name = required.column_name`,
     [contractTableNames, contractColumnNames],
   );
-  const invalidColumns = REQUIRED_RUNTIME_COLUMN_CONTRACTS.filter((contract) => {
-    const row = contractCheck.rows.find(
-      (candidate) => candidate.table_name === contract.tableName && candidate.column_name === contract.columnName,
-    );
-    return !row || !contractMatches(row, contract);
-  }).map((contract) => `${contract.tableName}.${contract.columnName}`);
+  const invalidColumns = requiredColumnContracts
+    .filter((contract) => {
+      const row = contractCheck.rows.find(
+        (candidate) => candidate.table_name === contract.tableName && candidate.column_name === contract.columnName,
+      );
+      return !row || !contractMatches(row, contract);
+    })
+    .map((contract) => `${contract.tableName}.${contract.columnName}`);
   if (invalidColumns.length > 0) {
     throw new Error(`Runtime column contracts are invalid: ${invalidColumns.join(', ')}`);
   }
 
-  const constraintTableNames = [...new Set(REQUIRED_RUNTIME_CONSTRAINTS.map(({ tableName }) => tableName))];
+  const constraintTableNames = [...new Set(requiredConstraints.map(({ tableName }) => tableName))];
   const constraintCheck = await pool.query(
     `SELECT tables.relname AS table_name,
             constraints.conname AS constraint_name,
@@ -699,14 +832,14 @@ async function assertRuntimeSchema({ pool, expectedMigration, expectedChecksum }
         AND tables.relname = ANY($1::text[])`,
     [constraintTableNames],
   );
-  const missingConstraints = REQUIRED_RUNTIME_CONSTRAINTS.filter(
-    (contract) => !constraintCheck.rows.some((row) => constraintMatches(row, contract)),
-  ).map((contract) => `${contract.tableName}:${contract.constraintName || contract.constraintType}`);
+  const missingConstraints = requiredConstraints
+    .filter((contract) => !constraintCheck.rows.some((row) => constraintMatches(row, contract)))
+    .map((contract) => `${contract.tableName}:${contract.constraintName || contract.constraintType}`);
   if (missingConstraints.length > 0) {
     throw new Error(`Runtime constraints are missing or invalid: ${missingConstraints.join(', ')}`);
   }
 
-  const indexTableNames = [...new Set(REQUIRED_RUNTIME_INDEXES.map(({ tableName }) => tableName))];
+  const indexTableNames = [...new Set(requiredIndexes.map(({ tableName }) => tableName))];
   const indexCheck = await pool.query(
     `SELECT tablename AS table_name,
             indexname AS index_name,
@@ -716,9 +849,9 @@ async function assertRuntimeSchema({ pool, expectedMigration, expectedChecksum }
         AND tablename = ANY($1::text[])`,
     [indexTableNames],
   );
-  const missingIndexes = REQUIRED_RUNTIME_INDEXES.filter(
-    (contract) => !indexCheck.rows.some((row) => indexMatches(row, contract)),
-  ).map((contract) => `${contract.tableName}.${contract.indexName}`);
+  const missingIndexes = requiredIndexes
+    .filter((contract) => !indexCheck.rows.some((row) => indexMatches(row, contract)))
+    .map((contract) => `${contract.tableName}.${contract.indexName}`);
   if (missingIndexes.length > 0) {
     throw new Error(`Runtime indexes are missing or invalid: ${missingIndexes.join(', ')}`);
   }
@@ -726,6 +859,11 @@ async function assertRuntimeSchema({ pool, expectedMigration, expectedChecksum }
 }
 
 module.exports = {
+  DECK_SHARING_RUNTIME_TABLES,
+  DECK_SHARING_RUNTIME_COLUMNS,
+  DECK_SHARING_RUNTIME_COLUMN_CONTRACTS,
+  DECK_SHARING_RUNTIME_CONSTRAINTS,
+  DECK_SHARING_RUNTIME_INDEXES,
   REQUIRED_RUNTIME_TABLES,
   REQUIRED_RUNTIME_COLUMNS,
   REQUIRED_RUNTIME_COLUMN_CONTRACTS,

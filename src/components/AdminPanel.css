@@ -59,7 +59,7 @@
   font-family: var(--font-mono);
   font-size: var(--type-minutia);
   text-transform: uppercase;
-  color: color-mix(in oklch, var(--content-primary) 42%, transparent);
+  color: color-mix(in oklch, var(--content-primary) 58%, transparent);
 }
 
 .admin-sidebar-logout {
@@ -86,7 +86,7 @@
   font-size: var(--type-minutia);
   letter-spacing: 0;
   text-transform: uppercase;
-  color: color-mix(in oklch, var(--content-primary) 40%, transparent);
+  color: color-mix(in oklch, var(--content-primary) 58%, transparent);
 }
 
 .admin-nav-items {

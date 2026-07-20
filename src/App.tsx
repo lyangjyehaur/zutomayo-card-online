@@ -11,6 +11,7 @@ import { PwaStatusPrompt } from './components/PwaStatusPrompt';
 import { Sentry } from './sentry';
 import { Button, IconButton } from './ui';
 import { hasStoredCustomDeck } from './game/cards/customDeck';
+import { getGameConfig as getLoadedGameConfig } from './game/cards/loader';
 import type { ZutomayoSetupData } from './game/types';
 import type { AIDifficulty } from './game/ai';
 import {
@@ -44,6 +45,12 @@ const TutorialGamePage = lazy(() =>
 );
 const DeckEditorPage = lazy(() =>
   import('./pages/DeckEditorPage').then((module) => ({ default: module.DeckEditorPage })),
+);
+const DeckShareLobbyPage = lazy(() =>
+  import('./pages/DeckShareLobbyPage').then((module) => ({ default: module.DeckShareLobbyPage })),
+);
+const DeckShareDetailPage = lazy(() =>
+  import('./pages/DeckShareDetailPage').then((module) => ({ default: module.DeckShareDetailPage })),
 );
 const MatchHistoryPage = lazy(() =>
   import('./pages/MatchHistoryPage').then((module) => ({ default: module.MatchHistoryPage })),
@@ -88,6 +95,8 @@ function isFullscreenRoute(pathname: string): boolean {
     pathname === '/community' ||
     pathname === '/ai' ||
     pathname === '/deck-builder' ||
+    pathname === '/deck-shares' ||
+    pathname.startsWith('/deck-shares/') ||
     pathname === '/feedback' ||
     pathname === '/tutorial' ||
     pathname === '/history' ||
@@ -188,7 +197,7 @@ async function joinMatch(
   };
 }
 
-function NavBar() {
+function NavBar({ deckSharingEnabled }: { deckSharingEnabled: boolean }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [open, setOpen] = useState(false);
@@ -204,6 +213,7 @@ function NavBar() {
     { path: '/community', label: t('community.title') },
     { path: '/ai', label: t('lobby.aiBattle') },
     { path: '/deck-builder', label: t('nav.deckBuilder') },
+    ...(deckSharingEnabled ? [{ path: '/deck-shares', label: t('deckShare.lobbyTitle') }] : []),
     { path: '/feedback', label: t('nav.feedback') },
     { path: '/profile', label: t('nav.profile') },
     { path: '/tutorial', label: t('nav.tutorial') },
@@ -429,6 +439,7 @@ function RouterShell() {
   const [appResourcesReady, setAppResourcesReady] = useState(false);
   // 卡牌資料載入狀態；失敗時保留可恢復的錯誤狀態，絕不把空卡池當成 ready。
   const [cardResourceState, setCardResourceState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [deckSharingEnabled, setDeckSharingEnabled] = useState(false);
   // 預設不選中任何牌組，玩家每次必須主動選擇才能開始遊戲。
   const [deck0Name, setDeck0Name] = useState('');
   const [deck1Name, setDeck1Name] = useState('');
@@ -517,6 +528,7 @@ function RouterShell() {
         withBootTimeout(waitForFonts(), 2500),
       ]);
       if (cancelled) return;
+      setDeckSharingEnabled(getLoadedGameConfig().deck_sharing_enabled === true);
       setAppResourcesReady(true);
     };
     void boot().catch(() => {
@@ -628,11 +640,14 @@ function RouterShell() {
 
   return (
     <div className={`app-shell ${hideNav ? 'play-shell' : 'has-nav'}`} data-locale={locale}>
-      {!hideNav && <NavBar />}
+      {!hideNav && <NavBar deckSharingEnabled={deckSharingEnabled} />}
       <div className="route-content">
         <Suspense fallback={<RouteFallback />}>
           <Routes>
-            <Route path="/" element={<LobbyPage onAuthChanged={refreshServerDecks} />} />
+            <Route
+              path="/"
+              element={<LobbyPage onAuthChanged={refreshServerDecks} deckSharingEnabled={deckSharingEnabled} />}
+            />
             <Route path="/community" element={<CommunityPage onAuthChanged={refreshServerDecks} />} />
             <Route
               path="/online"
@@ -706,6 +721,7 @@ function RouterShell() {
               element={
                 <DeckEditorPage
                   serverDecks={serverDecks}
+                  deckSharingEnabled={deckSharingEnabled}
                   onServerDecksLoaded={setServerDecks}
                   onDeckSaved={(deck) => {
                     setCustomDeckAvailable(hasStoredCustomDeck());
@@ -717,6 +733,19 @@ function RouterShell() {
                 />
               }
             />
+            {deckSharingEnabled && <Route path="/deck-shares" element={<DeckShareLobbyPage />} />}
+            {deckSharingEnabled && (
+              <Route
+                path="/deck-shares/:shareId"
+                element={
+                  <DeckShareDetailPage
+                    onServerDeckCopied={(deck) =>
+                      setServerDecks((current) => [deck, ...current.filter((item) => item.id !== deck.id)])
+                    }
+                  />
+                }
+              />
+            )}
             <Route path="/history" element={<MatchHistoryPage />} />
             <Route path="/leaderboard" element={<Navigate to="/" replace />} />
             <Route path="/feedback" element={<FeedbackPage />} />

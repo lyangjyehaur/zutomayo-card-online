@@ -11,6 +11,7 @@ const {
   REQUIRED_RUNTIME_COLUMN_CONTRACTS,
   REQUIRED_RUNTIME_CONSTRAINTS,
   REQUIRED_RUNTIME_INDEXES,
+  DECK_SHARING_RUNTIME_TABLES,
 } = require('../schemaGate.cjs') as {
   normalizeExpectedChecksum: (value: unknown) => string;
   normalizeExpectedMigration: (value: unknown) => string;
@@ -30,10 +31,12 @@ const {
     fragments: string[];
   }>;
   REQUIRED_RUNTIME_INDEXES: Array<{ tableName: string; indexName: string; fragments: string[] }>;
+  DECK_SHARING_RUNTIME_TABLES: string[];
   assertRuntimeSchema: (options: {
     pool: { query: ReturnType<typeof vi.fn> };
     expectedMigration: string;
     expectedChecksum: string;
+    requireDeckSharing?: boolean;
   }) => Promise<{ expectedMigration: string; expectedChecksum: string }>;
 };
 
@@ -126,6 +129,31 @@ describe('production schema gate', () => {
         expectedChecksum: CHECKSUM,
       }),
     ).rejects.toThrow('bjg_matches');
+  });
+
+  it('requires deck-sharing tables only when the guarded feature is enabled', async () => {
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({ rows: [{ '?column?': 1 }] })
+      .mockResolvedValueOnce({ rows: [{ sha256: CHECKSUM }] })
+      .mockResolvedValueOnce({
+        rows: [
+          ...allTablesPresent(),
+          ...DECK_SHARING_RUNTIME_TABLES.map((table_name) => ({
+            table_name,
+            present: table_name !== 'deck_shares',
+          })),
+        ],
+      });
+
+    await expect(
+      assertRuntimeSchema({
+        pool: { query },
+        expectedMigration: '000038_deck_sharing',
+        expectedChecksum: CHECKSUM,
+        requireDeckSharing: true,
+      }),
+    ).rejects.toThrow('deck_shares');
   });
 
   it('accepts a fully migrated runtime schema without issuing DDL', async () => {

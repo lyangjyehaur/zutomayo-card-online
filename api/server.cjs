@@ -107,6 +107,21 @@ const {
   sendChatMessage,
 } = require('./chatService.cjs');
 const { createUserDeck, deleteUserDeck, listUserDecks, reserveUserDeck, updateUserDeck } = require('./deckService.cjs');
+const { deckSharingEnabled } = require('./deckSharingConfig.cjs');
+const {
+  copyDeckShare,
+  getDeckShare,
+  getOwnedDeckShare,
+  likeDeckShare,
+  listAdminDeckShareReports,
+  listDeckShares,
+  moderateDeckShare,
+  publishDeckShare,
+  reportDeckShare,
+  unpublishDeckShare,
+  unlikeDeckShare,
+  updateDeckShare,
+} = require('./deckShareService.cjs');
 const { countOnlinePresence, heartbeatOnlinePresence } = require('./presenceService.cjs');
 const { getAdminMatches, getLeaderboard, getMatchActionLog, getUserMatches } = require('./matchQueries.cjs');
 const { submitMatchResult } = require('./matchSubmission.cjs');
@@ -197,6 +212,7 @@ const GAME_RULES_VERSION = process.env.GAME_RULES_VERSION || APP_VERSION;
 // Ranked writes are fail-closed. Production must explicitly opt in after the
 // seat-identity trust chain has been verified.
 const RANKED_MATCHES_ENABLED = process.env.RANKED_MATCHES_ENABLED === 'true';
+const DECK_SHARING_ENABLED = deckSharingEnabled(process.env);
 const IMGPROXY_INTERNAL_BASE_URL = process.env.IMGPROXY_INTERNAL_BASE_URL || process.env.IMGPROXY_BASE_URL || '';
 const IMGPROXY_KEY = process.env.IMGPROXY_KEY || '';
 const IMGPROXY_SALT = process.env.IMGPROXY_SALT || '';
@@ -450,6 +466,73 @@ async function initSchema() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )`,
     `CREATE INDEX IF NOT EXISTS idx_decks_user ON decks(user_id)`,
+
+    `CREATE TABLE IF NOT EXISTS deck_shares (
+      id TEXT PRIMARY KEY CHECK (id ~ '^ds_[A-Za-z0-9_-]{8,128}$'),
+      owner_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      source_deck_id TEXT REFERENCES decks(id) ON DELETE SET NULL,
+      name TEXT NOT NULL,
+      card_ids JSONB NOT NULL CHECK (jsonb_typeof(card_ids) = 'array'),
+      visibility TEXT NOT NULL DEFAULT 'public' CHECK (visibility IN ('public', 'unlisted')),
+      publication_status TEXT NOT NULL DEFAULT 'published'
+        CHECK (publication_status IN ('published', 'unpublished')),
+      moderation_status TEXT NOT NULL DEFAULT 'visible'
+        CHECK (moderation_status IN ('visible', 'hidden', 'pending_review')),
+      moderation_reason TEXT NOT NULL DEFAULT '',
+      published_rules_version TEXT NOT NULL DEFAULT 'legacy',
+      published_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      unpublished_at TIMESTAMPTZ,
+      moderated_at TIMESTAMPTZ,
+      moderated_by_admin_user_id TEXT
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS uq_deck_shares_source_deck
+      ON deck_shares(source_deck_id) WHERE source_deck_id IS NOT NULL`,
+    `CREATE INDEX IF NOT EXISTS idx_deck_shares_owner_updated
+      ON deck_shares(owner_user_id, updated_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_deck_shares_public_lobby
+      ON deck_shares(publication_status, moderation_status, visibility, updated_at DESC, id)`,
+    `CREATE TABLE IF NOT EXISTS deck_share_likes (
+      share_id TEXT NOT NULL REFERENCES deck_shares(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (share_id, user_id)
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_deck_share_likes_user_created
+      ON deck_share_likes(user_id, created_at DESC)`,
+    `CREATE TABLE IF NOT EXISTS deck_share_copy_events (
+      id BIGSERIAL PRIMARY KEY,
+      share_id TEXT NOT NULL REFERENCES deck_shares(id) ON DELETE CASCADE,
+      user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+      copied_deck_id TEXT REFERENCES decks(id) ON DELETE SET NULL,
+      idempotency_key TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_deck_share_copy_events_share_created
+      ON deck_share_copy_events(share_id, created_at DESC)`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS uq_deck_share_copy_events_idempotency
+      ON deck_share_copy_events(share_id, user_id, idempotency_key)
+      WHERE user_id IS NOT NULL AND idempotency_key IS NOT NULL`,
+    `CREATE TABLE IF NOT EXISTS deck_share_reports (
+      id TEXT PRIMARY KEY CHECK (id ~ '^dsr_[A-Za-z0-9_-]{8,128}$'),
+      share_id TEXT NOT NULL REFERENCES deck_shares(id) ON DELETE CASCADE,
+      reporter_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+      reason TEXT NOT NULL
+        CHECK (reason IN ('inappropriate_name', 'impersonation_or_harassment', 'spam', 'other')),
+      note TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'reviewing', 'resolved', 'dismissed')),
+      resolution_note TEXT NOT NULL DEFAULT '',
+      reviewed_by_admin_user_id TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      resolved_at TIMESTAMPTZ
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_deck_share_reports_status_created
+      ON deck_share_reports(status, created_at DESC)`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS uq_deck_share_reports_active_reporter
+      ON deck_share_reports(share_id, reporter_user_id)
+      WHERE reporter_user_id IS NOT NULL AND status IN ('pending', 'reviewing')`,
 
     `CREATE TABLE IF NOT EXISTS user_friends (
       user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -968,6 +1051,7 @@ async function runMigrations() {
       pool,
       expectedMigration: process.env.EXPECTED_SCHEMA_MIGRATION,
       expectedChecksum: process.env.EXPECTED_SCHEMA_CHECKSUM,
+      requireDeckSharing: DECK_SHARING_ENABLED,
     });
   }
   let runner;
@@ -3896,6 +3980,107 @@ function handleRequest(req, res) {
 
     // ===== Deck Routes =====
 
+    const ownedDeckShareRoute = pathname.match(/^\/api\/decks\/(d_[A-Za-z0-9_-]{4,128})\/share$/);
+    const publicDeckShareRoute = pathname.match(/^\/api\/deck-shares\/(ds_[A-Za-z0-9_-]{8,128})$/);
+    const deckShareCopyRoute = pathname.match(/^\/api\/deck-shares\/(ds_[A-Za-z0-9_-]{8,128})\/copy$/);
+    const deckShareLikeRoute = pathname.match(/^\/api\/deck-shares\/(ds_[A-Za-z0-9_-]{8,128})\/like$/);
+    const deckShareReportRoute = pathname.match(/^\/api\/deck-shares\/(ds_[A-Za-z0-9_-]{8,128})\/reports$/);
+    const isDeckShareRequest = pathname.startsWith('/api/deck-shares') || Boolean(ownedDeckShareRoute);
+    if (isDeckShareRequest && !DECK_SHARING_ENABLED) {
+      return json({ error: 'Deck sharing is not available' }, 404);
+    }
+
+    if (pathname === '/api/deck-shares' && method === 'GET') {
+      const parsed = validateBody(S.deckShareListQuerySchema, {
+        sort: url.searchParams.get('sort') || undefined,
+        q: url.searchParams.get('q') || undefined,
+        element: url.searchParams.get('element') || undefined,
+        cursor: url.searchParams.get('cursor') || undefined,
+        limit: url.searchParams.get('limit') || undefined,
+      });
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      const viewerUserId = await getAuthUserId(req);
+      serviceJson(await listDeckShares(pool, viewerUserId, parsed.data));
+      return;
+    }
+
+    if (pathname === '/api/deck-shares' && method === 'POST') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const body = await readBody(32 * 1024);
+      const parsed = validateBody(S.deckShareCreateSchema, body);
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      serviceJson(
+        await publishDeckShare(pool, userId, parsed.data.deckId, parsed.data.visibility, GAME_RULES_VERSION),
+        201,
+      );
+      return;
+    }
+
+    if (ownedDeckShareRoute && method === 'GET') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      serviceJson(await getOwnedDeckShare(pool, userId, ownedDeckShareRoute[1]));
+      return;
+    }
+
+    if (publicDeckShareRoute && method === 'GET') {
+      const viewerUserId = await getAuthUserId(req);
+      serviceJson(await getDeckShare(pool, viewerUserId, publicDeckShareRoute[1]));
+      return;
+    }
+
+    if (publicDeckShareRoute && method === 'PUT') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const body = await readBody(32 * 1024);
+      const parsed = validateBody(S.deckShareUpdateSchema, body);
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      serviceJson(await updateDeckShare(pool, userId, publicDeckShareRoute[1], parsed.data, GAME_RULES_VERSION));
+      return;
+    }
+
+    if (publicDeckShareRoute && method === 'DELETE') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      serviceJson(await unpublishDeckShare(pool, userId, publicDeckShareRoute[1]));
+      return;
+    }
+
+    if (deckShareCopyRoute && method === 'POST') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const body = await readBody(32 * 1024);
+      const parsed = validateBody(S.deckShareCopySchema, body);
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      serviceJson(await copyDeckShare(pool, userId, deckShareCopyRoute[1], parsed.data), 201);
+      return;
+    }
+
+    if (deckShareLikeRoute && method === 'PUT') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      serviceJson(await likeDeckShare(pool, userId, deckShareLikeRoute[1]));
+      return;
+    }
+
+    if (deckShareLikeRoute && method === 'DELETE') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      serviceJson(await unlikeDeckShare(pool, userId, deckShareLikeRoute[1]));
+      return;
+    }
+
+    if (deckShareReportRoute && method === 'POST') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const body = await readBody(32 * 1024);
+      const parsed = validateBody(S.deckShareReportCreateSchema, body);
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      serviceJson(await reportDeckShare(pool, userId, deckShareReportRoute[1], parsed.data), 201);
+      return;
+    }
+
     // List user's decks
     if (pathname === '/api/decks' && method === 'GET') {
       const userId = await getAuthUserId(req);
@@ -4602,6 +4787,33 @@ function handleRequest(req, res) {
       return;
     }
 
+    if (pathname === '/api/admin/deck-share-reports' && method === 'GET') {
+      if (!DECK_SHARING_ENABLED) return json({ error: 'Deck sharing is not available' }, 404);
+      const admin = await authorizeAdmin(req, 'feedback:moderate');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
+      const parsed = validateBody(S.adminDeckShareReportListSchema, {
+        status: url.searchParams.get('status') || undefined,
+        limit: url.searchParams.get('limit') || undefined,
+      });
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      serviceJson(await listAdminDeckShareReports(pool, parsed.data));
+      return;
+    }
+
+    const adminDeckShareModerationRoute = pathname.match(
+      /^\/api\/admin\/deck-shares\/(ds_[A-Za-z0-9_-]{8,128})\/moderation$/,
+    );
+    if (adminDeckShareModerationRoute && method === 'PUT') {
+      if (!DECK_SHARING_ENABLED) return json({ error: 'Deck sharing is not available' }, 404);
+      const admin = await authorizeAdmin(req, 'feedback:moderate');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
+      const body = await readBody(32 * 1024);
+      const parsed = validateBody(S.adminDeckShareModerationSchema, body);
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      serviceJson(await moderateDeckShare(pool, admin.adminUserId, adminDeckShareModerationRoute[1], parsed.data));
+      return;
+    }
+
     // ===== Card Data Routes =====
 
     // Public: list card definitions from PostgreSQL.
@@ -4637,7 +4849,7 @@ function handleRequest(req, res) {
 
     if (pathname === '/api/config' && method === 'GET') {
       res.setHeader('Cache-Control', 'no-store');
-      json(await getGameConfig(pool));
+      json({ ...(await getGameConfig(pool)), deck_sharing_enabled: DECK_SHARING_ENABLED });
       return;
     }
 

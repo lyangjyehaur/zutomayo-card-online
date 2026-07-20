@@ -91,6 +91,29 @@ describe('schema migrations', () => {
     expect(schemaGate).toContain("'announcement_translations'");
   });
 
+  it('keeps guarded deck-sharing schema aligned with the development fallback', () => {
+    const migration = readRepoFile('migrations/000038_deck_sharing.js');
+    const initSchema = readRepoFile('api/server.cjs');
+    const schemaGate = readRepoFile('api/schemaGate.cjs');
+    for (const artifact of [
+      'deck_shares',
+      'deck_share_likes',
+      'deck_share_copy_events',
+      'deck_share_reports',
+      'uq_deck_shares_source_deck',
+      'idx_deck_shares_public_lobby',
+      'uq_deck_share_copy_events_idempotency',
+      'uq_deck_share_reports_active_reporter',
+    ]) {
+      expect(migration, `migration missing ${artifact}`).toContain(artifact);
+      expect(initSchema, `initSchema fallback missing ${artifact}`).toContain(artifact);
+      expect(schemaGate, `schema gate missing ${artifact}`).toContain(artifact);
+    }
+    expect(migration).toContain("onDelete: 'SET NULL'");
+    expect(migration).toContain("visibility IN ('public', 'unlisted')");
+    expect(initSchema).toContain('requireDeckSharing: DECK_SHARING_ENABLED');
+  });
+
   it('backfills the reward entitlement ledger for every existing grant', () => {
     const consistencyMigration = readRepoFile('migrations/000021_season_result_consistency.js');
     expect(consistencyMigration).toContain('SELECT season_id, user_id, reward_tier, reward_payload, granted_at');
