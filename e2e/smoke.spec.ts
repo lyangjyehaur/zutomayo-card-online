@@ -44,9 +44,10 @@ test.describe('首頁煙霧測試', () => {
     await page.goto('/');
     await expect(page.getByText('Channels', { exact: true })).toBeVisible({ timeout: 30_000 });
 
-    // 五個頻道入口（CH.01 ~ CH.05）
-    for (const no of ['01', '02', '03', '04', '05']) {
+    // 七個頻道入口（CH.01 ~ CH.07），編號不可重複。
+    for (const no of ['01', '02', '03', '04', '05', '06', '07']) {
       await expect(page.getByText(`CH.${no}`, { exact: true })).toBeVisible();
+      await expect(page.getByText(`CH.${no}`, { exact: true })).toHaveCount(1);
     }
   });
 

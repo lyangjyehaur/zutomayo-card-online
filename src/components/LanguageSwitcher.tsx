@@ -29,7 +29,7 @@ export function LanguageSwitcher({
     >
       <span
         className={cn(
-          'text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40',
+          'text-caption uppercase tracking-[var(--tracking-kicker)] text-content-muted',
           labelMode === 'responsive' && 'hidden md:inline',
           labelClassName,
         )}

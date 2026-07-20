@@ -87,10 +87,18 @@ describe('production schema gate', () => {
     expect(REQUIRED_RUNTIME_TABLES).not.toContain('card_effects_i18n');
     expect(REQUIRED_RUNTIME_TABLES).toContain('card_texts_i18n');
     expect(REQUIRED_RUNTIME_TABLES).toContain('card_official_errata');
+    expect(REQUIRED_RUNTIME_TABLES).toContain('official_qa_items');
+    expect(REQUIRED_RUNTIME_TABLES).toContain('official_qa_translations');
+    expect(REQUIRED_RUNTIME_TABLES).toContain('card_official_errata_translations');
+    expect(REQUIRED_RUNTIME_TABLES).toContain('official_rulings_sync_runs');
     expect(REQUIRED_RUNTIME_COLUMNS.cards).toContain('en_name_official');
     expect(REQUIRED_RUNTIME_COLUMNS.cards).toContain('has_official_errata');
     expect(REQUIRED_RUNTIME_COLUMNS.card_texts_i18n).toContain('review_status');
     expect(REQUIRED_RUNTIME_COLUMNS.card_official_errata).toContain('corrected_english_source');
+    expect(REQUIRED_RUNTIME_COLUMNS.card_official_errata).toContain('content_version');
+    expect(REQUIRED_RUNTIME_COLUMNS.official_qa_items).toContain('question_ja');
+    expect(REQUIRED_RUNTIME_COLUMNS.official_qa_translations).toContain('question_text');
+    expect(REQUIRED_RUNTIME_COLUMNS.official_rulings_sync_runs).toContain('diff');
     expect(REQUIRED_RUNTIME_COLUMNS.card_official_errata).not.toContain('corrected_japanese_text');
     expect(REQUIRED_RUNTIME_COLUMNS.card_official_errata).not.toContain('corrected_english_text');
     expect(REQUIRED_RUNTIME_CONSTRAINTS).toContainEqual(

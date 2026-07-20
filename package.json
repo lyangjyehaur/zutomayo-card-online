@@ -1,7 +1,7 @@
 {
   "name": "zutomayo-card-online",
   "private": true,
-  "version": "0.2.1",
+  "version": "0.2.2",
   "type": "module",
   "overrides": {
     "boardgame.io": {
@@ -54,6 +54,9 @@
     "import:card-official-texts": "npm run audit:card-official-texts && node --import tsx scripts/import-card-official-texts-pg.ts",
     "import:card-derived-effects": "npm run audit:card-derived-effects && node --import tsx scripts/import-card-derived-effects-pg.ts",
     "import:card-derived-names": "npm run audit:card-derived-names && node --import tsx scripts/import-card-derived-names-pg.ts",
+    "import:official-rulings-translations": "node --import tsx scripts/import-official-rulings-pg.ts",
+    "sync:official-rulings": "node --import tsx scripts/sync-official-rulings.ts --check",
+    "translate:official-rulings": "node --import tsx scripts/translate-official-rulings-pg.ts",
     "preview": "vite preview",
     "server": "node --import tsx src/server.ts",
     "platform": "node --import tsx src/platform/server.ts",
@@ -98,6 +101,7 @@
     "relationship:outbox:pg-smoke": "node scripts/relationship-outbox-pg-smoke.cjs",
     "prepare": "husky",
     "e2e": "playwright test",
+    "e2e:pwa": "npm run build && E2E_PWA_OFFLINE=1 playwright test --config=playwright.pwa.config.ts",
     "e2e:ui": "playwright test --ui",
     "e2e:report": "playwright show-report",
     "e2e:smoke": "playwright test smoke"

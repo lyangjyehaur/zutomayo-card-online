@@ -366,6 +366,168 @@ describe('server routes', () => {
     mockRedisMget.mockResolvedValue([]);
   });
 
+  describe('official rulings', () => {
+    it('serves the localized public Q&A list with cache headers', async () => {
+      mockQuery.mockImplementation(async (sql: string, params?: unknown[]) => {
+        if (sql.includes('FROM official_qa_items')) {
+          expect(params).toEqual(['zh-TW']);
+          return {
+            rows: [
+              {
+                id: 'qa_1',
+                number: 1,
+                published_at: '2026-02-17',
+                question_ja: '質問',
+                answer_ja: '回答',
+                tags: ['基本ルール'],
+                related_card_ids: ['1st_1'],
+                source_url: 'https://zutomayocard.net/qa/',
+                content_version: 1,
+                last_seen_at: '2026-07-20T00:00:00.000Z',
+                translated_question: '問題',
+                translated_answer: '答案',
+                translation_status: 'verified',
+              },
+            ],
+            rowCount: 1,
+          };
+        }
+        return { rows: [], rowCount: 0 };
+      });
+
+      const res = await sendRequest('GET', '/api/official/qa?lang=zh-TW');
+      expect(res.statusCode).toBe(200);
+      expect(parseBody(res)).toMatchObject({
+        total: 1,
+        items: [{ number: 1, localized: { question: '問題', answer: '答案' } }],
+      });
+      expect(res.headers['cache-control']).toContain('max-age=300');
+      expect(res.headers.etag).toMatch(/^"[A-Za-z0-9_-]+"$/);
+
+      const cached = await sendRequest('GET', '/api/official/qa?lang=zh-TW', undefined, {
+        'if-none-match': String(res.headers.etag),
+      });
+      expect(cached.statusCode).toBe(304);
+      expect(cached._body).toBe('');
+    });
+
+    it('returns a public errata detail with the canonical corrected card text', async () => {
+      mockQuery.mockImplementation(async (sql: string, params?: unknown[]) => {
+        if (sql.includes('FROM card_official_errata AS errata')) {
+          expect(params).toEqual(['en', '001']);
+          return {
+            rows: [
+              {
+                errata_id: '001',
+                card_id: '1st_6',
+                published_at: '2026-02-17',
+                affects_name: false,
+                affects_effect: true,
+                incorrect_text: 'old',
+                corrected_japanese_text: '新しい',
+                corrected_english_text: 'Corrected',
+                card_name_ja: 'カード',
+                card_name_en: 'Card',
+                pack: 'Pack',
+                rarity: 'UR',
+                card_number: '006/104',
+                reason_ja: '理由',
+                replacement_policy_ja: '交換',
+                usage_policy_ja: '使用',
+                source_url: 'https://zutomayocard.net/errata/001/',
+                content_version: 1,
+                last_seen_at: '2026-07-20T00:00:00.000Z',
+              },
+            ],
+            rowCount: 1,
+          };
+        }
+        return { rows: [], rowCount: 0 };
+      });
+
+      const res = await sendRequest('GET', '/api/official/errata/001?lang=en');
+      expect(res.statusCode).toBe(200);
+      expect(parseBody(res)).toMatchObject({
+        item: { errataId: '001', localized: { correctedText: 'Corrected' } },
+      });
+    });
+
+    it('lists official translation coverage for authorized administrators', async () => {
+      mockQuery.mockImplementation(async (sql: string) => {
+        if (sql.includes('FROM admin_sessions')) {
+          return { rows: [{ admin_user_id: 'admin_test', role: 'admin' }], rowCount: 1 };
+        }
+        if (sql.includes('FROM official_qa_items qa')) {
+          return {
+            rows: [
+              {
+                id: 'qa_1',
+                number: 1,
+                content_version: 1,
+                question_ja: '質問',
+                answer_ja: '回答',
+                question_text: '問題',
+                answer_text: '答案',
+                translation_status: 'verified',
+              },
+            ],
+          };
+        }
+        if (sql.includes('FROM card_official_errata errata')) return { rows: [] };
+        return { rows: [], rowCount: 0 };
+      });
+      const res = await sendRequest(
+        'GET',
+        '/api/admin/official-content/translations?locale=zh-TW&resourceType=all&status=&query=',
+        undefined,
+        adminHeaders(),
+      );
+      expect(res.statusCode).toBe(200);
+      expect(parseBody(res)).toMatchObject({ coverage: { total: 1, verified: 1 } });
+    });
+
+    it('returns persisted official source-check status', async () => {
+      mockQuery.mockImplementation(async (sql: string) => {
+        if (sql.includes('FROM admin_sessions')) {
+          return { rows: [{ admin_user_id: 'admin_test', role: 'admin' }], rowCount: 1 };
+        }
+        if (sql.includes('FROM official_rulings_sync_runs')) {
+          return {
+            rows: [
+              {
+                id: 'official_sync_1',
+                trigger_source: 'admin',
+                status: 'no_change',
+                qa_local_count: 74,
+                qa_remote_count: 74,
+                errata_local_count: 12,
+                errata_remote_count: 12,
+                diff: {},
+              },
+            ],
+          };
+        }
+        return { rows: [], rowCount: 0 };
+      });
+      const res = await sendRequest('GET', '/api/admin/official-content/sync-status', undefined, adminHeaders());
+      expect(res.statusCode).toBe(200);
+      expect(parseBody(res)).toMatchObject({ runs: [{ qaLocalCount: 74, errataRemoteCount: 12 }] });
+    });
+
+    it('fails an admin source check closed when the official site is unavailable', async () => {
+      mockFetch.mockResolvedValue({ ok: false, status: 503, text: async () => '' });
+      mockQuery.mockImplementation(async (sql: string) => {
+        if (sql.includes('FROM admin_sessions')) {
+          return { rows: [{ admin_user_id: 'admin_test', role: 'admin' }], rowCount: 1 };
+        }
+        return { rows: [], rowCount: 1 };
+      });
+      const res = await sendRequest('POST', '/api/admin/official-content/sync', {}, adminUnsafeHeaders());
+      expect(res.statusCode).toBe(502);
+      expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining("SET status = 'failed'"), expect.any(Array));
+    });
+  });
+
   describe('admin card errata', () => {
     it('returns the structured official errata comparison to authorized card maintainers', async () => {
       mockQuery.mockImplementation(async (sql: string, params?: unknown[]) => {

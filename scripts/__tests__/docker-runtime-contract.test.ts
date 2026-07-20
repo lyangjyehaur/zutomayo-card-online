@@ -55,6 +55,9 @@ describe('game runtime image contract', () => {
     expect(dockerfile).toContain('COPY api/schemaGate.cjs ./api/schemaGate.cjs');
     expect(dockerfile).toContain('COPY api/deckSharingConfig.cjs ./api/deckSharingConfig.cjs');
     expect(dockerignore).toContain('!api/deckSharingConfig.cjs');
+    expect(dockerfile).not.toContain('official-rulings-translations.json');
+    expect(dockerfile).not.toContain('COPY qa.json');
+    expect(dockerignore).toContain('data/official-rulings-*.json');
     expect(dockerfile).toContain('COPY api/runtimeSecurityConfig.cjs ./api/runtimeSecurityConfig.cjs');
     expect(dockerignore).toContain('!api/runtimeSecurityConfig.cjs');
     expect(dockerfile).toContain('COPY api/relationshipEvents.cjs ./api/relationshipEvents.cjs');
@@ -106,5 +109,6 @@ describe('API runtime image contract', () => {
     const chmod = 'RUN chmod 0444 package.json package-lock.json ./*.cjs';
     expect(dockerfile).toContain(chmod);
     expect(dockerfile.indexOf(chmod)).toBeLessThan(dockerfile.indexOf('USER node'));
+    expect(dockerfile).not.toContain('COPY qa.json');
   });
 });

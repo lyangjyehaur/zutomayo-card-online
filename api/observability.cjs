@@ -74,6 +74,34 @@ const relationshipOutboxMetricsLastSuccess = new promClient.Gauge({
   registers: [register],
 });
 
+const officialRulingsSyncRunsTotal = new promClient.Counter({
+  name: 'official_rulings_sync_runs_total',
+  help: 'Official rulings source check results',
+  labelNames: ['status', 'trigger_source'],
+  registers: [register],
+});
+
+const officialRulingsSyncChangesTotal = new promClient.Counter({
+  name: 'official_rulings_sync_changes_total',
+  help: 'Official rulings source changes detected by resource and change type',
+  labelNames: ['resource_type', 'change_type'],
+  registers: [register],
+});
+
+const officialRulingsTranslationWritesTotal = new promClient.Counter({
+  name: 'official_rulings_translation_writes_total',
+  help: 'Official rulings translation rows successfully written',
+  labelNames: ['resource_type', 'locale', 'status', 'operation'],
+  registers: [register],
+});
+
+const officialRulingsTranslationFailuresTotal = new promClient.Counter({
+  name: 'official_rulings_translation_failures_total',
+  help: 'Official rulings translation generation failures',
+  labelNames: ['resource_type', 'locale', 'operation'],
+  registers: [register],
+});
+
 function normalizePath(path) {
   return path
     .replace(/\/api\/imgproxy\/.+/i, '/api/imgproxy/:path')
@@ -85,6 +113,11 @@ function normalizePath(path) {
     .replace(/\/api\/admin\/cards\/[^/]+/i, '/api/admin/cards/:id')
     .replace(/\/api\/admin\/users\/[^/]+/i, '/api/admin/users/:id')
     .replace(/\/api\/admin\/config\/[^/]+/i, '/api/admin/config/:id')
+    .replace(
+      /\/api\/admin\/official-content\/translations\/(qa|errata)\/[^/]+\/[^/]+(?:\/generate)?/i,
+      '/api/admin/official-content/translations/:type/:id/:locale',
+    )
+    .replace(/\/api\/official\/(qa|errata)\/[^/]+/i, '/api/official/:type/:id')
     .replace(/\/api\/feedback\/admin\/posts\/[^/]+/i, '/api/feedback/admin/posts/:id');
 }
 
@@ -130,6 +163,10 @@ module.exports = {
   relationshipOutboxProcessedTotal,
   relationshipOutboxMetricsRefreshSuccess,
   relationshipOutboxMetricsLastSuccess,
+  officialRulingsSyncRunsTotal,
+  officialRulingsSyncChangesTotal,
+  officialRulingsTranslationWritesTotal,
+  officialRulingsTranslationFailuresTotal,
   rateLimitedTotal,
   attachRequestObservability,
   metricsResponse,

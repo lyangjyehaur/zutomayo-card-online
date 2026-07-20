@@ -1,0 +1,64 @@
+name: Official Rulings Source Check
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '15 3 * * *'
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: official-rulings-source-check
+  cancel-in-progress: false
+
+jobs:
+  source-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Compare official sources
+        id: sync
+        env:
+          OFFICIAL_RULINGS_BASELINE_API_URL: ${{ vars.OFFICIAL_RULINGS_BASELINE_API_URL || 'https://battle.zutomayocard.online/api/' }}
+        shell: bash
+        run: |
+          set +e
+          npm run sync:official-rulings -- --report=official-rulings-sync-report.json
+          status=$?
+          set -e
+          if [ "$status" -eq 2 ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          elif [ "$status" -ne 0 ]; then
+            exit "$status"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Notify maintainers through a GitHub issue
+        if: steps.sync.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          title="官方 Q&A／勘誤來源有更新"
+          existing="$(gh issue list --state open --search "$title in:title" --json number --jq '.[0].number // empty')"
+          body="$(jq -r '"檢查時間：\(.checkedAt)\n\nQ&A：新增 \(.qa.added | join(", "))；修改 \(.qa.updated | join(", "))；移除 \(.qa.removed | join(", "))\n\n勘誤：新增 \(.errata.added | join(", "))；修改 \(.errata.updated | join(", "))；移除 \(.errata.removed | join(", "))\n\n請先人工核對官方內容，再以 `npm run sync:official-rulings -- --apply` 寫入 PostgreSQL。"' official-rulings-sync-report.json)"
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi
+      - name: Upload source diff report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: official-rulings-sync-report
+          path: official-rulings-sync-report.json
+          if-no-files-found: error
+          retention-days: 30

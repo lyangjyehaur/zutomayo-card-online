@@ -105,26 +105,29 @@ npm run dev
 
 ### 常用命令
 
-| 命令                                | 用途                                                       |
-| ----------------------------------- | ---------------------------------------------------------- |
-| `npm run verify`                    | 依序執行格式、版本、Lint、兩套型別檢查、單元測試與生產建置 |
-| `npm test` / `npm run test:watch`   | Vitest 單次／監看模式                                      |
-| `npm run typecheck`                 | 檢查應用與伺服器 TypeScript                                |
-| `npm run typecheck:scripts`         | 檢查 scripts TypeScript                                    |
-| `npm run lint`                      | ESLint                                                     |
-| `npm run format:check:tracked`      | 只檢查 Git 追蹤檔案的 Prettier 格式                        |
-| `npm run build`                     | 型別檢查後建立正式前端 bundle                              |
-| `npm run server`                    | 啟動 game／boardgame.io 伺服器                             |
-| `npm run platform`                  | 啟動 Colyseus 平台服務                                     |
-| `npm run db:migrate`                | 套用 PostgreSQL migrations                                 |
-| `npm run smoke`                     | 核心遊戲流程 smoke                                         |
-| `npm run smoke:api`                 | REST API 整合 smoke                                        |
-| `npm run smoke:online`              | boardgame.io 線上對戰 smoke                                |
-| `npm run smoke:platform-deployment` | 驗證 platform 健康度與真實 lobby WebSocket join/leave      |
-| `npm run smoke:responsive`          | 全部響應式瀏覽器 smoke                                     |
-| `npm run rule:audit`                | 卡牌效果解析覆蓋審計                                       |
-| `npm run e2e` / `npm run e2e:ui`    | Playwright 完整 E2E／互動 UI                               |
-| `npm run load:api` / `load:ws`      | k6 API／WebSocket 負載測試（需另行安裝 k6）                |
+| 命令                                           | 用途                                                       |
+| ---------------------------------------------- | ---------------------------------------------------------- |
+| `npm run verify`                               | 依序執行格式、版本、Lint、兩套型別檢查、單元測試與生產建置 |
+| `npm test` / `npm run test:watch`              | Vitest 單次／監看模式                                      |
+| `npm run typecheck`                            | 檢查應用與伺服器 TypeScript                                |
+| `npm run typecheck:scripts`                    | 檢查 scripts TypeScript                                    |
+| `npm run lint`                                 | ESLint                                                     |
+| `npm run format:check:tracked`                 | 只檢查 Git 追蹤檔案的 Prettier 格式                        |
+| `npm run build`                                | 型別檢查後建立正式前端 bundle                              |
+| `npm run server`                               | 啟動 game／boardgame.io 伺服器                             |
+| `npm run platform`                             | 啟動 Colyseus 平台服務                                     |
+| `npm run db:migrate`                           | 套用 PostgreSQL migrations                                 |
+| `npm run import:official-rulings-translations` | 從本機未追蹤來源匯入官方裁定翻譯至 PostgreSQL              |
+| `npm run sync:official-rulings`                | 唯讀檢查官方 Q&A／勘誤是否有差異                           |
+| `npm run translate:official-rulings`           | 產生缺少的官方規則衍生語言翻譯                             |
+| `npm run smoke`                                | 核心遊戲流程 smoke                                         |
+| `npm run smoke:api`                            | REST API 整合 smoke                                        |
+| `npm run smoke:online`                         | boardgame.io 線上對戰 smoke                                |
+| `npm run smoke:platform-deployment`            | 驗證 platform 健康度與真實 lobby WebSocket join/leave      |
+| `npm run smoke:responsive`                     | 全部響應式瀏覽器 smoke                                     |
+| `npm run rule:audit`                           | 卡牌效果解析覆蓋審計                                       |
+| `npm run e2e` / `npm run e2e:ui`               | Playwright 完整 E2E／互動 UI                               |
+| `npm run load:api` / `load:ws`                 | k6 API／WebSocket 負載測試（需另行安裝 k6）                |
 
 ## Docker 部署
 
@@ -145,7 +148,7 @@ Compose 包含六個單元：`postgres`、`redis`、一次性的 `migrate`、`ga
 | `3001` | api      | REST API、ChatService、帳號與管理               |
 | `3002` | platform | Colyseus WebSocket rooms、`/health`、`/ready`   |
 
-生產環境、外部 PostgreSQL／Redis、備份、migration 與水平擴展說明見 [部署指南](docs/DEPLOYMENT.md)。
+生產環境、外部 PostgreSQL／Redis、備份、migration 與水平擴展說明見 [部署指南](docs/DEPLOYMENT.md)；官方 Q&A／勘誤的同步、匯入與翻譯流程見 [官方規則資料庫指南](docs/official-rulings.md)。
 
 ## 目錄導覽
 
@@ -165,7 +168,7 @@ load-tests/           k6 API、WebSocket、認證與配對壓測
 docs/                 架構、API、部署、多人平台與 UI/UX 文檔
 ```
 
-主要頁面包括 `/online`、`/ai`、`/tutorial`、`/deck-builder`、`/history`、`/leaderboard`、`/feedback`、`/profile` 與 `/admin`。
+主要頁面包括 `/online`、`/ai`、`/tutorial`、`/deck-builder`、`/history`、`/leaderboard`、`/feedback`、`/profile`、`/rules/qa`、`/rules/errata` 與 `/admin`。
 
 ## 安全與運維
 
@@ -187,7 +190,7 @@ docs/                 架構、API、部署、多人平台與 UI/UX 文檔
 - [貢獻指南](CONTRIBUTING.md)
 - [版本紀錄](CHANGELOG.md)
 - [負載測試](load-tests/README.md)
-- [遊戲規則](rules.md) / [官方 Q&A](qa.json)
+- [遊戲規則](rules.md) / [官方 Q&A](https://battle.zutomayocard.online/rules/qa)
 
 ## 授權
 

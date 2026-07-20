@@ -103,6 +103,19 @@ export default defineConfig({
         navigateFallbackDenylist: [/^\/api/],
         runtimeCaching: [
           {
+            urlPattern: /\/api\/official\/(?:qa|errata)(?:\/[^/?]+)?(?:\?.*)?$/i,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'official-rulings-api',
+              networkTimeoutSeconds: 4,
+              cacheableResponse: { statuses: [0, 200] },
+              expiration: {
+                maxEntries: 200,
+                maxAgeSeconds: 7 * 24 * 60 * 60,
+              },
+            },
+          },
+          {
             urlPattern: /\/fonts\/(?:uoq-mun-then-khung-regular|jiangcheng-jiexing-v1\.3)\.woff2$/i,
             handler: 'CacheFirst',
             options: {

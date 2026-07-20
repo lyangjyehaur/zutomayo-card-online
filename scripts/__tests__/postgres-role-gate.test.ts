@@ -95,6 +95,11 @@ function successfulQuery(users: Record<string, string> = roleUsers, override?: Q
 }
 
 describe('PostgreSQL runtime role gate', () => {
+  it('includes official source-check history in the application role matrix', () => {
+    expect(APPLICATION_TABLES).toContain('official_rulings_sync_runs');
+    expect(REQUIRED_RUNTIME_TABLES).toContain('official_rulings_sync_runs');
+  });
+
   it('quotes identifiers and rejects empty role names', () => {
     expect(quoteIdentifier('app"role')).toBe('"app""role"');
     expect(() => quoteIdentifier('')).toThrow('identifier is required');
@@ -121,6 +126,10 @@ describe('PostgreSQL runtime role gate', () => {
     expect(statements).toContain('GRANT SELECT ON TABLE public."users" TO "z_backup"');
     expect(statements).toContain('GRANT SELECT ON TABLE public."card_texts_i18n" TO "z_game"');
     expect(statements).toContain('GRANT SELECT ON TABLE public."card_official_errata" TO "z_game"');
+    expect(statements).toContain('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public."official_qa_items" TO "z_api"');
+    expect(statements).toContain(
+      'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public."official_qa_translations" TO "z_api"',
+    );
     expect(statements).toContain('GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO "z_backup"');
     expect(statements).not.toContain('GRANT USAGE ON SCHEMA public TO "z_monitor"');
     expect(statements).not.toContain('GRANT CONNECT ON DATABASE "zutomayo" TO "z_wal"');

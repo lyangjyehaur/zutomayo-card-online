@@ -1,6 +1,6 @@
 FROM node:22.22.2-alpine@sha256:8ea2348b068a9544dae7317b4f3aafcdc032df1647bb7d768a05a5cad1a7683f AS builder
 WORKDIR /app
-COPY package.json package-lock.json ./
+COPY api/package.json api/package-lock.json ./
 RUN npm ci
 
 FROM node:22.22.2-alpine@sha256:8ea2348b068a9544dae7317b4f3aafcdc032df1647bb7d768a05a5cad1a7683f
@@ -14,9 +14,9 @@ RUN apk upgrade --no-cache \
     && ln -s /opt/npm/bin/npm /usr/local/bin/npm \
     && ln -s /opt/npm/bin/npx /usr/local/bin/npx \
     && npm cache clean --force
-COPY package.json package-lock.json ./
+COPY api/package.json api/package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
-COPY ./*.cjs ./
+COPY api/*.cjs ./
 # server4 checks out source with a restrictive umask. Docker COPY preserves
 # those modes, so normalize runtime inputs before dropping privileges.
 RUN chmod 0444 package.json package-lock.json ./*.cjs

@@ -31,6 +31,64 @@ test.describe('核心頁面無障礙 @a11y', () => {
       localStorage.setItem('zutomayo_deck_intro_seen', 'true');
       localStorage.setItem('zutomayo_locale', 'zh-TW');
     });
+    await page.route('**/api/official/**', async (route) => {
+      const url = new URL(route.request().url());
+      const qa = {
+        id: 'qa_1',
+        number: 1,
+        publishedAt: '2026-02-17',
+        tags: ['基本ルール'],
+        relatedCardIds: [],
+        source: { question: '質問', answer: '回答' },
+        localized: { question: '問題', answer: '答案' },
+        requestedLocale: 'zh-TW',
+        effectiveLocale: 'zh-TW',
+        translationStatus: 'verified',
+        sourceUrl: 'https://zutomayocard.net/qa/',
+        lastSyncedAt: '2026-07-20T00:00:00.000Z',
+        contentVersion: 1,
+      };
+      const errata = {
+        errataId: '001',
+        cardId: '1st_6',
+        cardName: '測試卡牌',
+        cardNameJa: 'カード',
+        pack: 'THE WORLD IS CHANGING',
+        rarity: 'UR',
+        cardNumber: '006/104',
+        publishedAt: '2026-02-17',
+        affectsName: false,
+        affectsEffect: true,
+        source: {
+          incorrectText: '誤り',
+          correctedText: '修正',
+          reason: '理由',
+          replacementPolicy: '交換',
+          usagePolicy: '使用',
+        },
+        localized: {
+          incorrectText: '錯誤',
+          correctedText: '修正',
+          reason: '原因',
+          replacementPolicy: '交換政策',
+          usagePolicy: '使用方式',
+        },
+        requestedLocale: 'zh-TW',
+        effectiveLocale: 'zh-TW',
+        translationStatus: 'machine',
+        sourceUrl: 'https://zutomayocard.net/errata/001/',
+        lastSyncedAt: '2026-07-20T00:00:00.000Z',
+        contentVersion: 1,
+      };
+      const body = url.pathname.endsWith('/qa/1')
+        ? { item: qa }
+        : url.pathname.endsWith('/qa')
+          ? { items: [qa], total: 1 }
+          : url.pathname.endsWith('/errata/001')
+            ? { item: errata }
+            : { items: [errata], total: 1 };
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    });
   });
 
   for (const route of [
@@ -44,6 +102,10 @@ test.describe('核心頁面無障礙 @a11y', () => {
     '/legal/privacy',
     '/legal/terms',
     '/legal/contact',
+    '/rules/qa',
+    '/rules/qa/1',
+    '/rules/errata',
+    '/rules/errata/001',
   ]) {
     test(`沒有 serious/critical axe violations: ${route}`, async ({ page }) => {
       await page.goto(route, { waitUntil: 'domcontentloaded' });
@@ -154,8 +216,8 @@ test.describe('線上 Battle/Result 無障礙 @a11y @requires-backend', () => {
       await expect(guestPage.locator('[data-game-step="initialSet"]')).toBeVisible({ timeout: 20_000 });
 
       await Promise.all([
-        page.locator('[data-zone="hand"] button').first().click(),
-        guestPage.locator('[data-zone="hand"] button').first().click(),
+        page.locator('[data-zone="hand"] [data-tut-card^="e2e_"]').first().click(),
+        guestPage.locator('[data-zone="hand"] [data-tut-card^="e2e_"]').first().click(),
       ]);
       await Promise.all([
         page.getByRole('button', { name: /打出檢視中的牌/ }).click(),
