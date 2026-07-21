@@ -77,6 +77,7 @@ describe('game runtime image contract', () => {
     expect(dockerfile).not.toContain('official-rulings-translations.json');
     expect(dockerfile).not.toContain('COPY qa.json');
     expect(dockerfile).toContain('COPY scripts/release-official-rulings.ts');
+    expect(dockerfile).toContain('COPY scripts/release-official-rule-documents.ts');
     expect(dockerfile).toContain('COPY scripts/officialRulingsData.ts');
     expect(dockerfile).toContain('COPY scripts/cardDerivedEffects.ts');
     expect(dockerfile).toContain('COPY scripts/import-card-derived-effects-pg.ts');
