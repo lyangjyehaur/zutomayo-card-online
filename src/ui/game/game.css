@@ -401,6 +401,8 @@
   --bf-night-border: rgb(255 255 255 / 0.2);
   --bf-night-shadow: 0 1px 10px rgb(0 0 0 / 0.32);
   --bf-night-dot: rgb(255 255 255 / 0.05);
+  --bf-night-action-bg: var(--bf-night-accent);
+  --bf-night-action-text: var(--bf-night-bg);
   --bf-day-text: #15101e;
   --bf-day-muted: rgb(21 16 30 / 0.86);
   --bf-day-accent: #5a4214;
@@ -408,6 +410,8 @@
   --bf-day-border: rgb(23 19 31 / 0.16);
   --bf-day-shadow: 0 1px 8px rgb(255 255 255 / 0.22);
   --bf-day-dot: rgb(62 49 121 / 0.052);
+  --bf-day-action-bg: #c3a65f;
+  --bf-day-action-text: #2f2412;
 
   position: relative;
   display: flex;
@@ -446,6 +450,8 @@
   --bf-player-border: var(--bf-day-border);
   --bf-player-shadow: var(--bf-day-shadow);
   --bf-player-dot: var(--bf-day-dot);
+  --bf-player-action-bg: var(--bf-day-action-bg);
+  --bf-player-action-text: var(--bf-day-action-text);
   --bf-player-character-art: url('/battle/set-zone-tvchany.svg');
 }
 
@@ -470,6 +476,8 @@
   --bf-player-border: var(--bf-night-border);
   --bf-player-shadow: var(--bf-night-shadow);
   --bf-player-dot: var(--bf-night-dot);
+  --bf-player-action-bg: var(--bf-night-action-bg);
+  --bf-player-action-text: var(--bf-night-action-text);
   --bf-player-character-art: url('/battle/set-zone-acane.svg');
 }
 
@@ -1309,6 +1317,34 @@
   border-color: var(--color-border-subtle);
   background: transparent;
   color: var(--color-text-secondary);
+}
+
+.bf-player .actiondock-btn-set {
+  border-color: color-mix(in srgb, var(--bf-player-action-text) 36%, var(--bf-player-action-bg));
+  background: var(--bf-player-action-bg);
+  color: var(--bf-player-action-text);
+  font-weight: var(--font-weight-bold);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--bf-side-accent) 24%, transparent);
+}
+
+.bf-player .actiondock-btn-set:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--bf-player-action-bg) 88%, var(--bf-side-text) 12%);
+}
+
+.bf-player .actiondock-btn-detail,
+.bf-player .actiondock-btn-waiting {
+  border-color: color-mix(in srgb, var(--bf-side-text) 36%, var(--bf-player-bg));
+  background: color-mix(in srgb, var(--bf-side-text) 10%, var(--bf-player-bg));
+  color: var(--bf-side-text);
+}
+
+.bf-player .actiondock-btn-detail:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--bf-side-text) 16%, var(--bf-player-bg));
+}
+
+.bf-player .actiondock-btn:focus-visible {
+  outline: 2px solid var(--bf-side-text);
+  outline-offset: 2px;
 }
 
 /* ---------------------------------------------------------------- 卡牌 */
@@ -2344,6 +2380,18 @@ button.cardstack:focus-visible {
 
   .actiondock-hint {
     display: none;
+  }
+
+  .actiondock {
+    align-items: stretch;
+  }
+
+  .actiondock-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    padding-inline: var(--space-2);
+    line-height: var(--line-height-tight);
+    white-space: normal;
   }
 }
 

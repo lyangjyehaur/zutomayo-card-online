@@ -25,6 +25,32 @@ async function topOf(locator: import('@playwright/test').Locator): Promise<numbe
   return box!.y;
 }
 
+async function textContrastRatio(locator: import('@playwright/test').Locator): Promise<number> {
+  return locator.evaluate((element) => {
+    const parseColor = (value: string): [number, number, number] => {
+      const components = value.match(/-?\d*\.?\d+/g)?.map(Number) ?? [];
+      if (value.startsWith('color(srgb') && components.length >= 3) {
+        return [components[0] * 255, components[1] * 255, components[2] * 255];
+      }
+      if (value.startsWith('rgb') && components.length >= 3) {
+        return [components[0], components[1], components[2]];
+      }
+      throw new Error(`Unsupported computed color: ${value}`);
+    };
+    const luminance = (rgb: [number, number, number]) => {
+      const [red, green, blue] = rgb.map((channel) => {
+        const normalized = channel / 255;
+        return normalized <= 0.04045 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4;
+      });
+      return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+    };
+    const style = getComputedStyle(element);
+    const foreground = luminance(parseColor(style.color));
+    const background = luminance(parseColor(style.backgroundColor));
+    return (Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05);
+  });
+}
+
 test.describe('首次造訪流程回歸', () => {
   test.beforeEach(async ({ page }) => {
     await prepareGuest(page);
@@ -92,4 +118,38 @@ test.describe('首次造訪流程回歸', () => {
       await expect(page.getByRole('button', { name: '登入 / 註冊', exact: true }).last()).toBeVisible();
     });
   }
+});
+
+test.describe('對戰操作辨識度回歸', () => {
+  test('晝側選牌後的出牌與檢視按鈕符合文字對比標準', async ({ page }) => {
+    await prepareGuest(page);
+    for (const viewport of [
+      { width: 390, height: 844 },
+      { width: 360, height: 740 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await page.goto('/qa/battle?state=initial-select&side=day&time=day&controls=0');
+      await page.locator('[data-zone="hand"] .cardview[data-state="playable"]').first().click();
+
+      const dock = page.locator('.actiondock');
+      const setButton = page.getByRole('button', { name: '打出檢視中的牌', exact: true });
+      const detailButton = page.getByRole('button', { name: '檢視手牌', exact: true });
+      await expect(setButton).toBeVisible();
+      await expect(detailButton).toBeVisible();
+      expect(await textContrastRatio(setButton)).toBeGreaterThanOrEqual(4.5);
+      expect(await textContrastRatio(detailButton)).toBeGreaterThanOrEqual(4.5);
+      expect(await dock.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1);
+
+      for (const button of [setButton, detailButton]) {
+        const size = await button.boundingBox();
+        expect(size).not.toBeNull();
+        expect(size!.height).toBeGreaterThanOrEqual(44);
+        expect(
+          await button.evaluate(
+            (element) => element.scrollWidth <= element.clientWidth && element.scrollHeight <= element.clientHeight,
+          ),
+        ).toBe(true);
+      }
+    }
+  });
 });

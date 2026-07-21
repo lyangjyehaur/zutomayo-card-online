@@ -29,6 +29,7 @@ type BoardComponentProps = ComponentProps<typeof Board>;
 const BATTLE_QA_STATES = [
   { id: 'janken', label: 'Janken' },
   { id: 'mulligan', label: 'Mulligan' },
+  { id: 'initial-select', label: 'Initial Select' },
   { id: 'initial-set', label: 'Initial Set' },
   { id: 'turn-set', label: 'Turn Set' },
   { id: 'effect-order', label: 'Effect Order' },
@@ -510,15 +511,17 @@ function createBattleQaState(id: BattleQaStateId, side: BattleQaSideId, time: Ba
       ? createTutorialGame()
       : id === 'mulligan'
         ? createMulliganState(side)
-        : id === 'initial-set'
-          ? createInitialSetState(side)
-          : id === 'turn-set'
-            ? createTurnSetState(parsedEffects, side)
-            : id === 'effect-order'
-              ? createEffectOrderState(parsedEffects, side)
-              : id === 'pending-choice'
-                ? createPendingChoiceState(parsedEffects, side)
-                : createGameOverState(parsedEffects, side);
+        : id === 'initial-select'
+          ? createInitialSetBase(side)
+          : id === 'initial-set'
+            ? createInitialSetState(side)
+            : id === 'turn-set'
+              ? createTurnSetState(parsedEffects, side)
+              : id === 'effect-order'
+                ? createEffectOrderState(parsedEffects, side)
+                : id === 'pending-choice'
+                  ? createPendingChoiceState(parsedEffects, side)
+                  : createGameOverState(parsedEffects, side);
   applyQaChronosTime(G, time);
   return G;
 }
