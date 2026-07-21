@@ -57,6 +57,11 @@ describe('game runtime image contract', () => {
     expect(dockerignore).toContain('!api/deckSharingConfig.cjs');
     expect(dockerfile).not.toContain('official-rulings-translations.json');
     expect(dockerfile).not.toContain('COPY qa.json');
+    expect(dockerfile).toContain('COPY scripts/release-official-rulings.ts');
+    expect(dockerfile).toContain('COPY scripts/officialRulingsData.ts');
+    expect(dockerfile).toContain('COPY scripts/cardDerivedEffects.ts');
+    expect(dockerfile).toContain('COPY scripts/import-card-derived-effects-pg.ts');
+    expect(dockerfile).toContain('COPY src/rulesTerminology.ts');
     expect(dockerignore).toContain('data/official-rulings-*.json');
     expect(dockerfile).toContain('COPY api/runtimeSecurityConfig.cjs ./api/runtimeSecurityConfig.cjs');
     expect(dockerignore).toContain('!api/runtimeSecurityConfig.cjs');

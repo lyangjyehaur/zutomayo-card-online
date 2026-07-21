@@ -24,6 +24,7 @@ export interface PanelProps extends HTMLAttributes<HTMLDivElement> {
 export function Panel({ as: Component = 'div', size = 'md', variant = 'solid', className, ...props }: PanelProps) {
   return (
     <Component
+      data-ui-panel
       className={cn('rounded-sm ring-1 ring-border-soft', variantClass[variant], sizeClass[size], className)}
       {...props}
     />

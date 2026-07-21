@@ -143,6 +143,71 @@ describe('official rulings admin service', () => {
     );
   });
 
+  it('restores reviewed PostgreSQL card names after machine translation', async () => {
+    const card = {
+      id: '1st_1',
+      name: 'テストカード',
+      en_name_official: 'Test Card',
+      localized_name_text: '校對卡名',
+      localized_review_status: 'verified',
+    };
+    const pool = {
+      query: vi.fn(async (sql: string) => {
+        if (sql.startsWith('SELECT * FROM official_qa_items')) {
+          return {
+            rows: [
+              {
+                id: 'qa_1',
+                content_version: 1,
+                question_ja: '「テストカード」を使えますか？',
+                answer_ja: '「テストカード」を使えます。',
+                related_card_ids: [],
+              },
+            ],
+          };
+        }
+        if (sql.includes('FROM cards card')) return { rows: [card] };
+        if (sql.includes('JOIN cards card ON card.id = ANY')) {
+          return {
+            rows: [{ ...card, question_ja: 'テストカードを使えますか？', answer_ja: 'テストカードを使えます。' }],
+          };
+        }
+        if (sql.includes('INSERT INTO official_qa_translations')) {
+          return { rows: [{ qa_id: 'qa_1', content_version: 1, locale: 'zh-TW', status: 'machine' }] };
+        }
+        return { rows: [], rowCount: 1 };
+      }),
+    };
+    const translateText = vi.fn().mockResolvedValue({
+      translatedContent: JSON.stringify({
+        question: '可以使用 [[CARD:1st_1]] 嗎？',
+        answer: '可以使用 [[CARD:1st_1]]。',
+      }),
+      provider: 'test',
+      model: 'model',
+    });
+
+    const result = await generateOfficialTranslation({
+      pool,
+      resourceType: 'qa',
+      resourceId: 'qa_1',
+      language: 'zh-TW',
+      adminUserId: 'admin_1',
+      translateText,
+    });
+
+    expect(result).toMatchObject({ ok: true });
+    const request = JSON.parse(translateText.mock.calls[0][0].text);
+    expect(request).toMatchObject({
+      question: '「[[CARD:1st_1]]」を使えますか？',
+      canonicalCardNames: { '1st_1': '校對卡名' },
+    });
+    expect(pool.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO official_qa_translations'),
+      expect.arrayContaining(['可以使用 校對卡名 嗎？', '可以使用 校對卡名。']),
+    );
+  });
+
   it('rejects generated translations that alter protected rules tokens', () => {
     expect(() => validateProtectedTranslation('１枚 SEND TO POWER★★', '1 張 SEND TO POWER★')).toThrow(/protected/);
   });

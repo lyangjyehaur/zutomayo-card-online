@@ -2,7 +2,7 @@
 
 本文件描述卡牌名稱與效果文本的資料來源、PostgreSQL 結構、前端顯示規則，以及英文 OCR、人工複核、勘誤與衍生翻譯的維護流程。
 
-這套資料流與一般介面文案 i18n 不同。介面文案位於 `src/i18n/*.ts`；卡牌名稱和效果由 PostgreSQL 提供，不應加入介面文案檔案。
+這套資料流與一般介面文案 i18n 不同。介面文案位於 `src/i18n/*.ts`；卡牌名稱和效果由 PostgreSQL 提供，不應加入介面文案檔案。兩條資料流的規則專有名詞都必須遵守[規則術語 i18n 字典](./rules-terminology.md)。
 
 ## 不可破壞的資料契約
 
@@ -275,7 +275,7 @@ npm run audit:card-derived-effects
 npm run import:card-derived-effects
 ```
 
-腳本會拒絕來源雜湊、卡牌 ID、官方日文、人工校對卡面英文或勘誤集合不一致的資料，也會拒絕任何已填入但尚未複核的衍生卡名，避免共用的 `review_status` 誤把卡名標記為已複核。匯入成功後會：
+腳本會拒絕來源雜湊、卡牌 ID、官方日文、人工校對卡面英文或勘誤集合不一致的資料，也會拒絕任何已填入但尚未標記為 `verified` 的衍生卡名，避免共用的 `review_status` 誤把卡名標記為已複核；既有 `verified` 卡名會原樣保留。匯入成功後會：
 
 - 寫入 4 種語言共 1,000 條效果並標記為 `verified`。
 - 一般卡使用 `admin_bilingual_translation`；效果勘誤卡使用 `official_japanese_errata_translation`。

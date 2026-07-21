@@ -28,23 +28,23 @@ const TAG_TRANSLATIONS = {
   },
   対戦準備: { 'zh-TW': '對戰準備', 'zh-CN': '对战准备', 'zh-HK': '對戰準備', en: 'Match Setup', ko: '대전 준비' },
   対戦の流れ: { 'zh-TW': '對戰流程', 'zh-CN': '对战流程', 'zh-HK': '對戰流程', en: 'Match Flow', ko: '대전 흐름' },
-  効果処理: { 'zh-TW': '效果處理', 'zh-CN': '效果处理', 'zh-HK': '效果處理', en: 'Effect Resolution', ko: '효과 처리' },
-  カード裁定: { 'zh-TW': '卡牌裁定', 'zh-CN': '卡牌裁定', 'zh-HK': '卡牌裁定', en: 'Card Rulings', ko: '카드 재정' },
-  バトル: { 'zh-TW': 'Battle', 'zh-CN': 'Battle', 'zh-HK': 'Battle', en: 'Battle', ko: 'Battle' },
+  効果処理: { 'zh-TW': '效果結算', 'zh-CN': '效果结算', 'zh-HK': '效果結算', en: 'Effect Resolution', ko: '효과 처리' },
+  カード裁定: { 'zh-TW': '卡牌裁定', 'zh-CN': '卡牌裁定', 'zh-HK': '卡牌裁定', en: 'Card Rulings', ko: '카드 판정' },
+  バトル: { 'zh-TW': '戰鬥', 'zh-CN': '战斗', 'zh-HK': '戰鬥', en: 'Battle', ko: '배틀' },
   キャラクター: {
-    'zh-TW': 'Character',
-    'zh-CN': 'Character',
-    'zh-HK': 'Character',
+    'zh-TW': '角色',
+    'zh-CN': '角色',
+    'zh-HK': '角色',
     en: 'Character',
-    ko: 'Character',
+    ko: '캐릭터',
   },
-  エンチャント: { 'zh-TW': 'Enchant', 'zh-CN': 'Enchant', 'zh-HK': 'Enchant', en: 'Enchant', ko: 'Enchant' },
+  エンチャント: { 'zh-TW': '附魔', 'zh-CN': '附魔', 'zh-HK': '附魔', en: 'Enchant', ko: '인챈트' },
   エリアエンチャント: {
-    'zh-TW': 'Area Enchant',
-    'zh-CN': 'Area Enchant',
-    'zh-HK': 'Area Enchant',
+    'zh-TW': '區域附魔',
+    'zh-CN': '区域附魔',
+    'zh-HK': '區域附魔',
     en: 'Area Enchant',
-    ko: 'Area Enchant',
+    ko: '에리어 인챈트',
   },
 };
 function normalizeOfficialLocale(value) {
@@ -76,6 +76,64 @@ function text(value) {
   return typeof value === 'string' ? value : '';
 }
 
+function normalizedCardName(value) {
+  return text(value).normalize('NFKC').replace(/\s+/g, '');
+}
+
+function reviewedCardName(row, locale) {
+  if (locale === 'en') return text(row.en_name_official).trim();
+  if (row.localized_review_status === 'verified') return text(row.localized_name_text).trim();
+  return '';
+}
+
+async function validateQaTranslationCardNames({ pool, qaId, locale, question, answer }) {
+  const { rows } = await pool.query(
+    `SELECT qa.question_ja, qa.answer_ja,
+            qa.related_card_ids,
+            card.id, card.name, card.en_name_official,
+            localized.name_text AS localized_name_text,
+            localized.review_status AS localized_review_status
+       FROM official_qa_items qa
+       CROSS JOIN cards card
+       LEFT JOIN card_texts_i18n localized
+         ON localized.card_id = card.id AND localized.lang = $2
+      WHERE qa.id = $1
+      ORDER BY card.id`,
+    [qaId, locale],
+  );
+  const sourceText = rows[0] ? `${text(rows[0].question_ja)}\n${text(rows[0].answer_ja)}` : '';
+  const source = normalizedCardName(sourceText);
+  const quotedNames = new Set([...sourceText.matchAll(/「([^」]+)」/gu)].map((match) => normalizedCardName(match[1])));
+  const relatedIds = new Set(Array.isArray(rows[0]?.related_card_ids) ? rows[0].related_card_ids : []);
+  const grouped = new Map();
+  for (const row of rows) {
+    const japaneseName = normalizedCardName(row.name);
+    if (!japaneseName) continue;
+    const group = grouped.get(japaneseName) || [];
+    group.push(row);
+    grouped.set(japaneseName, group);
+  }
+  const translated = normalizedCardName(`${question}\n${answer}`);
+  for (const [japaneseName, group] of [...grouped].sort((left, right) => right[0].length - left[0].length)) {
+    const related = group.find((row) => relatedIds.has(row.id));
+    if (!related && !quotedNames.has(japaneseName)) continue;
+    if (!source.includes(japaneseName)) continue;
+    const row = related || [...group].sort((left, right) => text(left.id).localeCompare(text(right.id)))[0];
+    const canonicalName = reviewedCardName(row, locale);
+    if (!canonicalName) {
+      return { ok: false, status: 409, error: `Reviewed ${locale} card name is unavailable for ${row.id}` };
+    }
+    if (!translated.includes(normalizedCardName(canonicalName))) {
+      return {
+        ok: false,
+        status: 400,
+        error: `Q&A translation must use reviewed card name ${canonicalName} (${row.id})`,
+      };
+    }
+  }
+  return { ok: true };
+}
+
 function stringArray(value) {
   return Array.isArray(value) ? value.filter((item) => typeof item === 'string') : [];
 }
@@ -90,13 +148,15 @@ function localizedQaTags(tags, locale) {
 }
 
 function mapQaRow(row, requestedLocale) {
+  const tagIds = stringArray(row.tags);
   const translated =
     requestedLocale !== 'ja' && hasPublicTranslation(row, ['translated_question', 'translated_answer']);
   return {
     id: text(row.id),
     number: Number(row.number) || 0,
     publishedAt: dateOnly(row.published_at),
-    tags: localizedQaTags(stringArray(row.tags), requestedLocale),
+    tagIds,
+    tags: localizedQaTags(tagIds, requestedLocale),
     relatedCardIds: stringArray(row.related_card_ids),
     source: {
       question: text(row.question_ja),
@@ -116,7 +176,7 @@ function mapQaRow(row, requestedLocale) {
 }
 
 function matchesQa(item, { query, tag, cardId }) {
-  if (tag && !item.tags.includes(tag)) return false;
+  if (tag && !item.tagIds.includes(tag) && !item.tags.includes(tag)) return false;
   if (cardId && !item.relatedCardIds.includes(cardId)) return false;
   if (!query) return true;
   const needle = query.toLocaleLowerCase();
@@ -130,17 +190,18 @@ async function listPublicQa({ pool, language, query = '', tag = '', cardId = '' 
   try {
     const locale = normalizeOfficialLocale(language);
     const { rows } = await pool.query(
-      `SELECT qa.*,
+      `SELECT qa.*, qa.qa_id AS id,
               translation.question_text AS translated_question,
               translation.answer_text AS translated_answer,
               translation.status AS translation_status
-         FROM official_qa_items AS qa
+         FROM official_rulings_active_release AS active
+         JOIN official_rulings_release_qa AS qa ON qa.release_id = active.release_id
          LEFT JOIN official_qa_translations AS translation
-           ON translation.qa_id = qa.id
+           ON translation.qa_id = qa.qa_id
           AND translation.content_version = qa.content_version
           AND translation.locale = $1
           AND translation.status IN ('machine', 'verified')
-        WHERE qa.publication_status = 'published'
+        WHERE active.key = 'active'
         ORDER BY qa.number ASC`,
       [locale],
     );
@@ -149,7 +210,11 @@ async function listPublicQa({ pool, language, query = '', tag = '', cardId = '' 
       tag: text(tag).trim(),
       cardId: text(cardId).trim(),
     };
-    const items = rows.map((row) => mapQaRow(row, locale)).filter((item) => matchesQa(item, filters));
+    const localizedItems = rows.map((row) => mapQaRow(row, locale));
+    if (locale !== 'ja' && localizedItems.some((item) => item.effectiveLocale !== locale)) {
+      return { ok: false, status: 503, error: 'Official Q&A translation release is incomplete' };
+    }
+    const items = localizedItems.filter((item) => matchesQa(item, filters));
     return { ok: true, body: { items, total: items.length, locale } };
   } catch {
     return { ok: false, status: 503, error: 'Official Q&A unavailable' };
@@ -165,23 +230,27 @@ async function getPublicQa({ pool, language, number }) {
     }
     const row = (
       await pool.query(
-        `SELECT qa.*,
+        `SELECT qa.*, qa.qa_id AS id,
                 translation.question_text AS translated_question,
                 translation.answer_text AS translated_answer,
                 translation.status AS translation_status
-           FROM official_qa_items AS qa
+           FROM official_rulings_active_release AS active
+           JOIN official_rulings_release_qa AS qa ON qa.release_id = active.release_id
            LEFT JOIN official_qa_translations AS translation
-             ON translation.qa_id = qa.id
+             ON translation.qa_id = qa.qa_id
             AND translation.content_version = qa.content_version
             AND translation.locale = $1
             AND translation.status IN ('machine', 'verified')
-          WHERE qa.publication_status = 'published'
-            AND qa.number = $2`,
+          WHERE active.key = 'active' AND qa.number = $2`,
         [locale, numericNumber],
       )
     ).rows[0];
     if (!row) return { ok: false, status: 404, error: 'Official Q&A not found' };
-    return { ok: true, body: { item: mapQaRow(row, locale) } };
+    const item = mapQaRow(row, locale);
+    if (locale !== 'ja' && item.effectiveLocale !== locale) {
+      return { ok: false, status: 503, error: 'Official Q&A translation release is incomplete' };
+    }
+    return { ok: true, body: { item } };
   } catch {
     return { ok: false, status: 503, error: 'Official Q&A unavailable' };
   }
@@ -267,7 +336,7 @@ const ERRATA_SELECT = `SELECT errata.*,
                               card.en_name_official AS card_name_en,
                               card.pack,
                               card.rarity,
-                              CASE WHEN errata.affects_name THEN card.name ELSE card.effect END AS corrected_japanese_text,
+                              errata.corrected_japanese_text,
                               CASE WHEN errata.affects_name THEN card.en_name_official ELSE card.en_effect_official END
                                 AS corrected_english_text,
                               translation.incorrect_text AS translated_incorrect_text,
@@ -278,7 +347,8 @@ const ERRATA_SELECT = `SELECT errata.*,
                               localized.name_text AS localized_name_text,
                               localized.effect_text AS localized_effect_text,
                               localized.review_status AS localized_review_status
-                         FROM card_official_errata AS errata
+                         FROM official_rulings_active_release AS active
+                         JOIN official_rulings_release_errata AS errata ON errata.release_id = active.release_id
                          JOIN cards AS card ON card.id = errata.card_id
                          LEFT JOIN card_official_errata_translations AS translation
                            ON translation.errata_id = errata.errata_id
@@ -301,12 +371,15 @@ async function listPublicErrata({ pool, language, cardId = '' }) {
     }
     const { rows } = await pool.query(
       `${ERRATA_SELECT}
-        WHERE errata.publication_status = 'published'
+        WHERE active.key = 'active'
           ${cardFilter}
         ORDER BY errata.published_at DESC, errata.errata_id DESC`,
       values,
     );
     const items = rows.map((row) => mapErrataRow(row, locale));
+    if (locale !== 'ja' && items.some((item) => item.effectiveLocale !== locale)) {
+      return { ok: false, status: 503, error: 'Official errata translation release is incomplete' };
+    }
     return { ok: true, body: { items, total: items.length, locale } };
   } catch {
     return { ok: false, status: 503, error: 'Official errata unavailable' };
@@ -321,13 +394,16 @@ async function getPublicErrata({ pool, language, errataId }) {
     const row = (
       await pool.query(
         `${ERRATA_SELECT}
-          WHERE errata.publication_status = 'published'
-            AND errata.errata_id = $2`,
+          WHERE active.key = 'active' AND errata.errata_id = $2`,
         [locale, cleanId],
       )
     ).rows[0];
     if (!row) return { ok: false, status: 404, error: 'Official errata not found' };
-    return { ok: true, body: { item: mapErrataRow(row, locale) } };
+    const item = mapErrataRow(row, locale);
+    if (locale !== 'ja' && item.effectiveLocale !== locale) {
+      return { ok: false, status: 503, error: 'Official errata translation release is incomplete' };
+    }
+    return { ok: true, body: { item } };
   } catch {
     return { ok: false, status: 503, error: 'Official errata unavailable' };
   }
@@ -351,6 +427,16 @@ async function upsertOfficialQaTranslation({ pool, qaId, body, reviewerUserId, o
   const answer = text(body.answer).trim().slice(0, 20_000);
   if (['machine', 'verified'].includes(input.status) && (!question || !answer)) {
     return { ok: false, status: 400, error: 'Published translations require question and answer' };
+  }
+  if (['machine', 'verified'].includes(input.status)) {
+    const validation = await validateQaTranslationCardNames({
+      pool,
+      qaId,
+      locale: input.locale,
+      question,
+      answer,
+    });
+    if (!validation.ok) return validation;
   }
   const row = (
     await pool.query(
@@ -450,11 +536,48 @@ async function upsertOfficialErrataTranslation({ pool, errataId, body, reviewerU
   return { ok: true, body: { translation: row } };
 }
 
+async function getOfficialRulingsReleaseStatus({ pool }) {
+  try {
+    const row = (
+      await pool.query(
+        `SELECT release.id AS release_id, release.source_hash, release.translation_hash,
+                release.card_dataset_hash, release.qa_count, release.errata_count,
+                release.locales, release.app_version, release.build_id,
+                release.source_checked_at, active.activated_at
+           FROM official_rulings_active_release active
+           JOIN official_rulings_releases release ON release.id=active.release_id
+          WHERE active.key='active' AND release.status='active'`,
+      )
+    ).rows[0];
+    if (!row) return { ok: false, status: 503, error: 'Official rulings release unavailable' };
+    return {
+      ok: true,
+      body: {
+        releaseId: text(row.release_id),
+        sourceHash: text(row.source_hash),
+        translationHash: text(row.translation_hash),
+        cardDatasetHash: text(row.card_dataset_hash),
+        qaCount: Number(row.qa_count),
+        errataCount: Number(row.errata_count),
+        locales: stringArray(row.locales),
+        appVersion: text(row.app_version),
+        buildId: text(row.build_id),
+        sourceCheckedAt: isoDate(row.source_checked_at),
+        activatedAt: isoDate(row.activated_at),
+      },
+    };
+  } catch {
+    return { ok: false, status: 503, error: 'Official rulings release unavailable' };
+  }
+}
+
 module.exports = {
   getPublicErrata,
   getPublicQa,
+  getOfficialRulingsReleaseStatus,
   listPublicErrata,
   listPublicQa,
+  localizedQaTags,
   mapErrataRow,
   mapQaRow,
   normalizeOfficialLocale,

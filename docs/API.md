@@ -269,7 +269,7 @@ Copy requests require a new deck name and idempotency key. The API revalidates t
 
 ## Official Rulings / 官方裁定
 
-Official Japanese Q&A and errata are read from PostgreSQL. `lang` accepts `ja`, `zh-TW`, `zh-HK`, `zh-CN`, `en`, or `ko`; responses always include the Japanese `source`, displayed `localized` content, requested/effective locale, translation status, source URL, sync time, and content version.
+Official Japanese Q&A and errata are read from the active PostgreSQL content-release snapshot. `lang` accepts `ja`, `zh-TW`, `zh-HK`, `zh-CN`, `en`, or `ko`; responses always include the Japanese `source`, displayed `localized` content, requested/effective locale, translation status, source URL, sync time, and content version. Q&A items expose source-language `tagIds` beside localized `tags`; clients must use `tagIds` for filter state and `tags` for display. The `tag` query accepts a stable source tag ID and retains localized-label compatibility for older URLs.
 
 | Method | Path                             | Query                            | Description                                |
 | ------ | -------------------------------- | -------------------------------- | ------------------------------------------ |
@@ -277,8 +277,9 @@ Official Japanese Q&A and errata are read from PostgreSQL. `lang` accepts `ja`, 
 | `GET`  | `/api/official/qa/:number`       | `lang`                           | Read one Q&A item by official number.      |
 | `GET`  | `/api/official/errata`           | `lang`, `cardId`                 | List published official errata.            |
 | `GET`  | `/api/official/errata/:errataId` | `lang`                           | Read one three-digit official errata item. |
+| `GET`  | `/api/official/status`           |                                  | Read active content/build/hash metadata.   |
 
-Public responses use five-minute cache headers, stale-while-revalidate, and content ETags. Missing public translations fall back to Japanese rather than repository JSON. Source synchronization and translation operations are documented in [official-rulings.md](official-rulings.md).
+Public responses use five-minute cache headers, stale-while-revalidate, and content ETags. Activation requires all five reviewed translations for every current source version, so a published non-Japanese release never relies on fallback. Repository JSON is never a runtime source. Source synchronization and release operations are documented in [official-rulings.md](official-rulings.md).
 
 ## Matches / 對戰
 

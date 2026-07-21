@@ -789,6 +789,7 @@ export interface OfficialQaItem {
   id: string;
   number: number;
   publishedAt: string;
+  tagIds: string[];
   tags: string[];
   relatedCardIds: string[];
   source: { question: string; answer: string };

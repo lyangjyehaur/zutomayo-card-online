@@ -121,6 +121,7 @@ npm run dev
 | `npm run platform`                             | 啟動 Colyseus 平台服務                                      |
 | `npm run db:migrate`                           | 套用 PostgreSQL migrations                                  |
 | `npm run import:official-rulings-translations` | 從本機未追蹤來源匯入官方裁定翻譯至 PostgreSQL               |
+| `npm run release:official-rulings`             | 原子發布最新官方日文與五語靜態翻譯                          |
 | `npm run sync:official-rulings`                | 唯讀檢查官方 Q&A／勘誤是否有差異                            |
 | `npm run translate:official-rulings`           | 產生缺少的官方規則衍生語言翻譯                              |
 | `npm run smoke`                                | 核心遊戲流程 smoke                                          |

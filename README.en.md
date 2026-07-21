@@ -121,6 +121,7 @@ To run the real boardgame.io server, start Compose's `game` service or run `npm 
 | `npm run platform`                             | Start the Colyseus platform service                                            |
 | `npm run db:migrate`                           | Apply PostgreSQL migrations                                                    |
 | `npm run import:official-rulings-translations` | Import untracked official-rulings translations into PostgreSQL                 |
+| `npm run release:official-rulings`             | Atomically release current official sources and five static translations       |
 | `npm run sync:official-rulings`                | Read-only comparison of the official Q&A and errata sources                    |
 | `npm run translate:official-rulings`           | Generate missing derived official-rulings translations                         |
 | `npm run smoke`                                | Core game-flow smoke test                                                      |

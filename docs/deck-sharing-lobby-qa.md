@@ -10,8 +10,10 @@
 - Service/API：public、unlisted、unpublished、hidden、雙向 block、cursor、複製交易、idempotency、按讚、檢舉與管理審核。
 - Client：URL/query encoding、JSON body、credentials、CSRF 與 admin session refresh。
 - UI 純狀態：query parse/serialize、非法篩選清理、cursor append 去重、複製規則問題與 optimistic like rollback。
-- Playwright：8 條 Chromium 流程通過：
+- Playwright：10 條 Chromium 流程通過：
   - 鍵盤進入大廳詳情與卡牌 Sheet。
+  - 登入玩家從分享大廳選擇帳號牌組並發布。
+  - 牌組編輯器手機版名稱、分享入口、草稿提示與牌組抽屜。
   - 登入按讚、檢舉與伺服器複製。
   - 擁有者不顯示自讚與自我檢舉。
   - unlisted 不出現在大廳，訪客可透過直接連結複製到本機。
@@ -27,6 +29,9 @@
 使用本機 mock API 與實際開發版前端檢查：
 
 - 大廳卡牌、元素、角色卡數、讚與複製數正常呈現。
+- 大廳依手機、平板、桌面與寬螢幕使用 1／2／3／4 欄等高網格，大量牌組不會因首筆放大而降低空間利用率。
+- 登入玩家可在大廳選擇已儲存牌組並完成發布；訪客不顯示發布入口，沒有伺服器牌組時引導至牌組編輯器。
+- 牌組編輯器手機頁首不再放置名稱輸入框；分享與儲存維持可達，名稱、同步狀態及帶文字的分享動作可在牌組庫／牌組抽屜操作。
 - 詳情頁顯示發布／更新時間、完整牌組與互動控制。
 - 點擊卡牌後開啟卡牌詳情 Sheet，焦點落在關閉鍵，背景處於 modal 隔離狀態。
 - Sheet 顯示充能、攻擊、時計、效果與歌曲資訊，且無水平溢出。

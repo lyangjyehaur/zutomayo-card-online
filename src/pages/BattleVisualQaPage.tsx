@@ -106,6 +106,23 @@ const BATTLE_QA_FALLBACK_CARDS: CardDef[] = [
     errata: '',
   },
   {
+    id: '1st_46',
+    name: 'QA Day Attacker',
+    pack: 'QA',
+    song: 'Fixture',
+    illustrator: 'QA',
+    rarity: 'N',
+    element: '電気',
+    type: 'Character',
+    clock: 1,
+    attack: { night: 40, day: 80 },
+    powerCost: 2,
+    sendToPower: 0,
+    effect: '',
+    image: '/card-back.jpg',
+    errata: '',
+  },
+  {
     id: '1st_66',
     name: 'QA Filler Character',
     pack: 'QA',
@@ -224,6 +241,23 @@ const BATTLE_QA_FALLBACK_CARDS: CardDef[] = [
     image: '/card-back.jpg',
     errata: '',
   },
+  {
+    id: '2nd_98',
+    name: 'QA Day Area Enchant',
+    pack: 'QA',
+    song: 'Fixture',
+    illustrator: 'QA',
+    rarity: 'R',
+    element: '電気',
+    type: 'Area Enchant',
+    clock: 2,
+    attack: null,
+    powerCost: 1,
+    sendToPower: 1,
+    effect: '昼なら攻撃力+20。昼じゃなくなったらパワーチャージャーに置く',
+    image: '/card-back.jpg',
+    errata: '',
+  },
 ];
 
 function hasRequiredQaCards(): boolean {
@@ -309,8 +343,8 @@ function createTurnOneResolvedState(parsedEffects: Map<string, ParsedEffect[]>, 
 function createTurnSetState(parsedEffects: Map<string, ParsedEffect[]>, side: BattleQaSideId): GameState {
   const G = createTurnOneResolvedState(parsedEffects, side);
   clearTransientQaOverlays(G);
-  setTurnCardFromHand(G, 0, '1st_34', 'A');
-  setTurnCardFromHand(G, 0, '2nd_86', 'B');
+  setTurnCardFromHand(G, 0, '1st_46', 'A');
+  setTurnCardFromHand(G, 0, '2nd_98', 'B');
   setTurnCardFromHand(G, 1, '1st_98', 'A');
   addQaZonePreviewStacks(G);
   return G;
@@ -397,7 +431,7 @@ function createEffectOrderState(parsedEffects: Map<string, ParsedEffect[]>, side
   const opponentEnchant = G.players[1].setZoneA;
   if (!playerArea || !opponentEnchant) throw new Error('Unable to prepare QA pending effects');
   G.pendingEffects = [
-    [createQaEffect(0, playerArea, 20, '夜なら攻撃力+20', 'setZoneC')],
+    [createQaEffect(0, playerArea, 20, '昼なら攻撃力+20', 'setZoneC')],
     [createQaEffect(1, opponentEnchant, 30, '相手のキャラクターカードが1コスト以下なら攻撃力+30', 'played')],
   ];
   G.pendingEffectPlayer = 0;

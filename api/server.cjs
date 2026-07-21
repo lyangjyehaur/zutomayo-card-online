@@ -184,6 +184,7 @@ const {
 const {
   getPublicErrata,
   getPublicQa,
+  getOfficialRulingsReleaseStatus,
   listPublicErrata,
   listPublicQa,
   upsertOfficialErrataTranslation,
@@ -761,6 +762,62 @@ async function initSchema() {
     )`,
     `CREATE INDEX IF NOT EXISTS idx_official_rulings_sync_runs_started
       ON official_rulings_sync_runs(started_at DESC)`,
+    `CREATE TABLE IF NOT EXISTS official_rulings_releases (
+      id TEXT PRIMARY KEY,
+      source_hash TEXT NOT NULL CHECK (source_hash ~ '^[a-f0-9]{64}$'),
+      translation_hash TEXT NOT NULL CHECK (translation_hash ~ '^[a-f0-9]{64}$'),
+      card_dataset_hash TEXT NOT NULL CHECK (card_dataset_hash ~ '^[a-f0-9]{64}$'),
+      qa_count INTEGER NOT NULL CHECK (qa_count > 0),
+      errata_count INTEGER NOT NULL CHECK (errata_count > 0),
+      locale_count INTEGER NOT NULL CHECK (locale_count = 5),
+      locales TEXT[] NOT NULL CHECK (cardinality(locales) = 5),
+      app_version TEXT NOT NULL,
+      build_id TEXT NOT NULL,
+      translation_source_generated_at TIMESTAMPTZ NOT NULL,
+      source_checked_at TIMESTAMPTZ NOT NULL,
+      status TEXT NOT NULL DEFAULT 'candidate' CHECK (status IN ('candidate', 'active', 'superseded')),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      activated_at TIMESTAMPTZ
+    )`,
+    `CREATE TABLE IF NOT EXISTS official_rulings_release_qa (
+      release_id TEXT NOT NULL REFERENCES official_rulings_releases(id) ON DELETE CASCADE,
+      qa_id TEXT NOT NULL REFERENCES official_qa_items(id) ON DELETE RESTRICT,
+      content_version INTEGER NOT NULL,
+      content_hash TEXT NOT NULL,
+      number INTEGER NOT NULL,
+      published_at DATE NOT NULL,
+      question_ja TEXT NOT NULL,
+      answer_ja TEXT NOT NULL,
+      tags TEXT[] NOT NULL,
+      related_card_ids TEXT[] NOT NULL,
+      source_url TEXT NOT NULL,
+      last_seen_at TIMESTAMPTZ NOT NULL,
+      PRIMARY KEY (release_id, qa_id)
+    )`,
+    `CREATE TABLE IF NOT EXISTS official_rulings_release_errata (
+      release_id TEXT NOT NULL REFERENCES official_rulings_releases(id) ON DELETE CASCADE,
+      errata_id TEXT NOT NULL REFERENCES card_official_errata(errata_id) ON DELETE RESTRICT,
+      content_version INTEGER NOT NULL,
+      content_hash TEXT NOT NULL,
+      card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE RESTRICT,
+      published_at DATE NOT NULL,
+      card_number TEXT NOT NULL,
+      incorrect_text TEXT NOT NULL,
+      corrected_japanese_text TEXT NOT NULL,
+      reason_ja TEXT NOT NULL,
+      replacement_policy_ja TEXT NOT NULL,
+      usage_policy_ja TEXT NOT NULL,
+      affects_name BOOLEAN NOT NULL,
+      affects_effect BOOLEAN NOT NULL,
+      source_url TEXT NOT NULL,
+      last_seen_at TIMESTAMPTZ NOT NULL,
+      PRIMARY KEY (release_id, errata_id)
+    )`,
+    `CREATE TABLE IF NOT EXISTS official_rulings_active_release (
+      key TEXT PRIMARY KEY DEFAULT 'active' CHECK (key = 'active'),
+      release_id TEXT NOT NULL REFERENCES official_rulings_releases(id) ON DELETE RESTRICT,
+      activated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
 
     `CREATE TABLE IF NOT EXISTS card_texts_i18n (
       card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
@@ -4353,6 +4410,12 @@ function handleRequest(req, res) {
           cardId: url.searchParams.get('cardId'),
         }),
       );
+      return;
+    }
+
+    if (pathname === '/api/official/status' && method === 'GET') {
+      res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+      publicServiceJson(await getOfficialRulingsReleaseStatus({ pool }));
       return;
     }
 

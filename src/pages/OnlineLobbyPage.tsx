@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Flag, Languages, MessageCircle, Pencil, Radio, Send, X } from 'lucide-react';
+import { Check, Flag, Languages, MessageCircle, Pencil, Plus, Radio, Send, X } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   ANONYMOUS_PLAYER_DEFAULT_NAME,
@@ -39,7 +39,7 @@ import {
   serverDeckIdFromOption,
   type DeckOptionGroup,
 } from '../components/lobby/shared';
-import { Alert, AppHeader, Button, Input, PageShell, Panel } from '../ui';
+import { Alert, AppHeader, Button, IconButton, Input, PageShell, Panel } from '../ui';
 import { useOnlinePresence } from '../hooks/useOnlinePresence';
 import {
   buildPlatformFriendInviteId,
@@ -165,6 +165,7 @@ export function OnlineLobbyPage({
   const [roomChatDraft, setRoomChatDraft] = useState('');
   const [roomChatStatus, setRoomChatStatus] = useState<DirectChatStatus>('idle');
   const [reportedRoomMessageIds, setReportedRoomMessageIds] = useState<Set<string>>(() => new Set());
+  const quickMatchPanelRef = useRef<HTMLDivElement | null>(null);
   const customRoomPanelRef = useRef<HTMLDivElement | null>(null);
   const platformCustomRoomRef = useRef<PlatformCustomRoom | null>(null);
   const roomChatMessagesRef = useRef<HTMLDivElement | null>(null);
@@ -297,6 +298,14 @@ export function OnlineLobbyPage({
   const handleDeckChange = (newDeck: string) => {
     const isFirstSelection = !deck0Name && newDeck;
     setDeck0Name(newDeck);
+    if (window.matchMedia('(max-width: 1023px)').matches) {
+      window.requestAnimationFrame(() =>
+        quickMatchPanelRef.current?.scrollIntoView({
+          behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+          block: 'start',
+        }),
+      );
+    }
 
     if (isFirstSelection) {
       const hasShownToast = sessionStorage.getItem('zutomayo_deck_selected_toast');
@@ -1178,184 +1187,180 @@ export function OnlineLobbyPage({
       <main className="relative z-[var(--z-dropdown)] h-full overflow-y-auto px-4 pb-10 pt-20 md:pt-24">
         <div className="mx-auto grid w-full max-w-5xl items-start gap-4 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
           {/* 左：快速配對操作台 */}
-          <RoomPanel mode="quick">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">
-                  {t('lobby.quickMatch')}
+          <div ref={quickMatchPanelRef} className="order-2 min-w-0 scroll-mt-24 lg:order-1 lg:row-span-3">
+            <RoomPanel mode="quick">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">
+                    {t('lobby.quickMatch')}
+                  </div>
+                  <h2 className="mt-1 font-display text-3xl font-bold">{t('lobby.onlineTitle')}</h2>
                 </div>
-                <h2 className="mt-1 font-display text-3xl font-bold">{t('lobby.onlineTitle')}</h2>
+                <OnlinePresenceBadge onlineCount={onlineCount} variant="panel" className="w-full sm:w-auto" />
               </div>
-              <OnlinePresenceBadge onlineCount={onlineCount} variant="panel" className="w-full sm:w-auto" />
-            </div>
 
-            {/* 匿名身份 */}
-            <Panel variant="ghost">
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">
-                    {t('anonymous.identity')}
+              {/* 匿名身份 */}
+              <Panel variant="ghost">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">
+                      {t('anonymous.identity')}
+                    </div>
+                    <div className="mt-1 truncate font-mono text-sm text-accent-primary">
+                      {profile ? profile.nickname : editingAnonymousName ? draftPreview : anonymousDisplayName}
+                    </div>
                   </div>
-                  <div className="mt-1 truncate font-mono text-sm text-accent-primary">
-                    {profile ? profile.nickname : editingAnonymousName ? draftPreview : anonymousDisplayName}
-                  </div>
+                  {!profile && (
+                    <IconButton
+                      variant="secondary"
+                      type="button"
+                      onClick={startEditingAnonymousName}
+                      label={t('anonymous.editName')}
+                      title={t('anonymous.editName')}
+                      icon={<Pencil strokeWidth={1.25} className="size-3.5" aria-hidden="true" />}
+                    />
+                  )}
                 </div>
-                {!profile && (
-                  <Button
-                    className="size-11 shrink-0 p-0 tracking-normal"
-                    variant="secondary"
-                    type="button"
-                    onClick={startEditingAnonymousName}
-                    aria-label={t('anonymous.editName')}
-                    title={t('anonymous.editName')}
-                  >
-                    <Pencil strokeWidth={1.25} className="size-3.5" />
-                  </Button>
+                {!profile && editingAnonymousName && (
+                  <div className="mt-3 flex gap-2">
+                    <Input
+                      className="min-h-11 min-w-0 flex-1"
+                      value={anonymousNameDraft}
+                      maxLength={30}
+                      onChange={(event) => setAnonymousNameDraft(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') saveAnonymousName();
+                        if (event.key === 'Escape') cancelAnonymousNameEdit();
+                      }}
+                      aria-label={t('anonymous.nameInput')}
+                    />
+                    <IconButton
+                      variant="primary"
+                      type="button"
+                      onClick={saveAnonymousName}
+                      label={t('common.save')}
+                      title={t('common.save')}
+                      icon={<Check strokeWidth={1.25} className="size-4" aria-hidden="true" />}
+                    />
+                    <IconButton
+                      variant="secondary"
+                      type="button"
+                      onClick={cancelAnonymousNameEdit}
+                      label={t('common.cancel')}
+                      title={t('common.cancel')}
+                      icon={<X strokeWidth={1.25} className="size-4" aria-hidden="true" />}
+                    />
+                  </div>
+                )}
+                {!profile && showAnonymousNamePrompt && (
+                  <p className="mt-3 text-caption leading-relaxed text-accent-primary/70">
+                    {t('anonymous.firstStartPrompt')}
+                  </p>
+                )}
+                {!profile && !editingAnonymousName && (
+                  <p className="mt-2 text-caption leading-relaxed text-content-primary/40">
+                    {t('anonymous.registerHint')}
+                  </p>
+                )}
+              </Panel>
+
+              {!profile && (
+                <Panel variant="ghost">
+                  <div className="mb-3 text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">
+                    {t('auth.login')} / {t('auth.register')}
+                  </div>
+                  <AuthSection onAuthChanged={handleAuthChanged} />
+                </Panel>
+              )}
+
+              {/* 當前牌組摘要 */}
+              <Panel variant="ghost">
+                <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">
+                  {t('lobby.currentDeck')}
+                </div>
+                <div className="mt-1 truncate font-display text-lg font-bold">
+                  {deck0Name ? resolveDeckLabel(deck0Name, deckOptions) : t('lobby.noDeckSelected')}
+                </div>
+              </Panel>
+
+              {/* 開始匹配 */}
+              <div className="grid gap-2">
+                <Button
+                  className="w-full bg-gradient-to-r from-accent-action to-accent-primary py-4 font-display text-lg font-bold tracking-normal text-surface-canvas transition hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:brightness-100"
+                  type="button"
+                  onClick={handleQuickMatch}
+                  disabled={matchmakingActive || !canStart}
+                  aria-describedby={!canStart ? 'online-quick-match-helper' : undefined}
+                >
+                  {t('lobby.beginMatch')}
+                </Button>
+
+                {!canStart && (
+                  <p id="online-quick-match-helper" className="text-caption leading-relaxed text-accent-action/70">
+                    {startDisabledReason}
+                  </p>
                 )}
               </div>
-              {!profile && editingAnonymousName && (
-                <div className="mt-3 flex gap-2">
-                  <Input
-                    className="min-h-11 min-w-0 flex-1"
-                    value={anonymousNameDraft}
-                    maxLength={30}
-                    onChange={(event) => setAnonymousNameDraft(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') saveAnonymousName();
-                      if (event.key === 'Escape') cancelAnonymousNameEdit();
-                    }}
-                    aria-label={t('anonymous.nameInput')}
-                  />
-                  <Button
-                    className="size-11 shrink-0 p-0 tracking-normal"
-                    variant="primary"
-                    type="button"
-                    onClick={saveAnonymousName}
-                    aria-label={t('common.save')}
-                    title={t('common.save')}
-                  >
-                    <Check strokeWidth={1.25} className="size-4" />
-                  </Button>
-                  <Button
-                    className="size-11 shrink-0 p-0 tracking-normal"
-                    variant="secondary"
-                    type="button"
-                    onClick={cancelAnonymousNameEdit}
-                    aria-label={t('common.cancel')}
-                    title={t('common.cancel')}
-                  >
-                    <X strokeWidth={1.25} className="size-4" />
-                  </Button>
-                </div>
-              )}
-              {!profile && showAnonymousNamePrompt && (
-                <p className="mt-3 text-caption leading-relaxed text-accent-primary/70">
-                  {t('anonymous.firstStartPrompt')}
-                </p>
-              )}
-              {!profile && !editingAnonymousName && (
-                <p className="mt-2 text-caption leading-relaxed text-content-primary/40">
-                  {t('anonymous.registerHint')}
-                </p>
-              )}
-            </Panel>
 
-            {!profile && (
-              <Panel variant="ghost">
-                <div className="mb-3 text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">
-                  {t('auth.login')} / {t('auth.register')}
-                </div>
-                <AuthSection onAuthChanged={handleAuthChanged} />
-              </Panel>
-            )}
+              {matchmakingActive && (
+                <div className="grid gap-3" aria-live="polite">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="flex items-center gap-2 text-caption text-accent-primary/70">
+                      <span className="size-1.5 animate-pulse rounded-full bg-accent-action" />
+                      {t('lobby.matchmakingSearching')} {formatQuickMatchWait(matchmakingElapsedSeconds)}
+                    </span>
+                    {matchmakingCancellable && (
+                      <Button
+                        className="min-h-11"
+                        variant="ghost"
+                        size="sm"
+                        type="button"
+                        onClick={handleCancelMatchmaking}
+                      >
+                        {t('lobby.matchmakingCancel')}
+                      </Button>
+                    )}
+                  </div>
 
-            {/* 當前牌組摘要 */}
-            <Panel variant="ghost">
-              <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">
-                {t('lobby.currentDeck')}
-              </div>
-              <div className="mt-1 truncate font-display text-lg font-bold">
-                {deck0Name ? resolveDeckLabel(deck0Name, deckOptions) : t('lobby.noDeckSelected')}
-              </div>
-            </Panel>
-
-            {/* 開始匹配 */}
-            <div className="grid gap-2">
-              <Button
-                className="w-full bg-gradient-to-r from-accent-action to-accent-primary py-4 font-display text-lg font-bold tracking-normal text-surface-canvas transition hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:brightness-100"
-                type="button"
-                onClick={handleQuickMatch}
-                disabled={matchmakingActive || !canStart}
-                aria-describedby={!canStart ? 'online-quick-match-helper' : undefined}
-              >
-                {t('lobby.beginMatch')}
-              </Button>
-
-              {!canStart && (
-                <p id="online-quick-match-helper" className="text-caption leading-relaxed text-accent-action/70">
-                  {startDisabledReason}
-                </p>
-              )}
-            </div>
-
-            {matchmakingActive && (
-              <div className="grid gap-3" aria-live="polite">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="flex items-center gap-2 text-caption text-accent-primary/70">
-                    <span className="size-1.5 animate-pulse rounded-full bg-accent-action" />
-                    {t('lobby.matchmakingSearching')} {formatQuickMatchWait(matchmakingElapsedSeconds)}
-                  </span>
-                  {matchmakingCancellable && (
-                    <Button
-                      className="min-h-11"
-                      variant="ghost"
-                      size="sm"
-                      type="button"
-                      onClick={handleCancelMatchmaking}
-                    >
-                      {t('lobby.matchmakingCancel')}
-                    </Button>
-                  )}
-                </div>
-
-                {matchmakingCancellable &&
-                  !longWaitDismissed &&
-                  shouldOfferQuickMatchFallback(matchmakingElapsedSeconds) && (
-                    <Alert tone="info" role="status">
-                      <div className="grid gap-3">
-                        <div>
-                          <strong className="block text-sm">{t('lobby.matchmakingLongWaitTitle')}</strong>
-                          <p className="mt-1 text-caption leading-relaxed">{t('lobby.matchmakingLongWaitBody')}</p>
-                        </div>
-                        <div className="grid gap-2 sm:grid-cols-2">
-                          <Button variant="secondary" type="button" onClick={handleContinueWaiting}>
-                            {t('lobby.matchmakingKeepWaiting')}
-                          </Button>
-                          <Button variant="primary" type="button" onClick={handleUseCustomRoom}>
-                            {t('lobby.matchmakingUseCustomRoom')}
-                          </Button>
-                          {profile && friends.length > 0 && (
-                            <Button
-                              className="sm:col-span-2"
-                              variant="ghost"
-                              type="button"
-                              onClick={handleUseFriendInvite}
-                            >
-                              {t('lobby.matchmakingUseFriendInvite')}
+                  {matchmakingCancellable &&
+                    !longWaitDismissed &&
+                    shouldOfferQuickMatchFallback(matchmakingElapsedSeconds) && (
+                      <Alert tone="info" role="status">
+                        <div className="grid gap-3">
+                          <div>
+                            <strong className="block text-sm">{t('lobby.matchmakingLongWaitTitle')}</strong>
+                            <p className="mt-1 text-caption leading-relaxed">{t('lobby.matchmakingLongWaitBody')}</p>
+                          </div>
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            <Button variant="secondary" type="button" onClick={handleContinueWaiting}>
+                              {t('lobby.matchmakingKeepWaiting')}
                             </Button>
-                          )}
+                            <Button variant="primary" type="button" onClick={handleUseCustomRoom}>
+                              {t('lobby.matchmakingUseCustomRoom')}
+                            </Button>
+                            {profile && friends.length > 0 && (
+                              <Button
+                                className="sm:col-span-2"
+                                variant="ghost"
+                                type="button"
+                                onClick={handleUseFriendInvite}
+                              >
+                                {t('lobby.matchmakingUseFriendInvite')}
+                              </Button>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    </Alert>
-                  )}
-              </div>
-            )}
-          </RoomPanel>
+                      </Alert>
+                    )}
+                </div>
+              )}
+            </RoomPanel>
+          </div>
 
-          {/* 右：牌組選擇 + 自訂房間 */}
-          <section className="flex min-w-0 flex-col gap-4">
+          {/* 手機先選牌組再顯示配對；桌面維持左側快速配對、右側設定。 */}
+          <>
             {/* 牌組選擇 */}
-            <RoomPanel mode="deck">
+            <RoomPanel mode="deck" className="order-1 min-w-0 lg:order-2">
               <DeckSelector
                 label={t('lobby.myDeck')}
                 value={deck0Name}
@@ -1365,7 +1370,7 @@ export function OnlineLobbyPage({
             </RoomPanel>
 
             {/* 自訂房間 */}
-            <div ref={customRoomPanelRef}>
+            <div ref={customRoomPanelRef} className="order-3 min-w-0 lg:order-3">
               <RoomPanel mode="custom">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
@@ -1384,7 +1389,8 @@ export function OnlineLobbyPage({
                       disabled={matchmakingActive || !canStart}
                       aria-describedby={!canStart ? 'online-create-room-helper' : undefined}
                     >
-                      + {t('lobby.createRoom')}
+                      <Plus className="size-3.5 shrink-0" aria-hidden="true" />
+                      {t('lobby.createRoom')}
                     </Button>
 
                     {!canStart && (
@@ -1526,33 +1532,31 @@ export function OnlineLobbyPage({
                             <div className="px-1 pb-1 font-mono text-minutia uppercase tracking-[var(--tracking-label)] text-content-primary/35">
                               <span>{message.authorDisplayName || message.authorUserId || t('auth.guest')}</span>
                               <span className="ml-2 inline-flex items-center gap-1">
-                                <Button
-                                  className="size-7 p-0 tracking-normal"
+                                <IconButton
+                                  className="!size-7"
                                   variant="ghost"
                                   type="button"
                                   onClick={() => void handleRoomChatTranslate(message)}
                                   disabled={message.translation?.status === 'loading'}
-                                  aria-label={t('chat.translate')}
+                                  label={t('chat.translate')}
                                   title={t('chat.translate')}
-                                >
-                                  <Languages className="size-3" strokeWidth={1.25} />
-                                </Button>
+                                  icon={<Languages className="size-3" strokeWidth={1.25} aria-hidden="true" />}
+                                />
                                 {!self && (
-                                  <Button
-                                    className="size-7 p-0 tracking-normal"
+                                  <IconButton
+                                    className="!size-7"
                                     variant="ghost"
                                     type="button"
                                     onClick={() => void handleRoomChatReport(message)}
                                     disabled={reportedRoomMessageIds.has(message.id)}
-                                    aria-label={
+                                    label={
                                       reportedRoomMessageIds.has(message.id) ? t('chat.reported') : t('chat.report')
                                     }
                                     title={
                                       reportedRoomMessageIds.has(message.id) ? t('chat.reported') : t('chat.report')
                                     }
-                                  >
-                                    <Flag className="size-3" strokeWidth={1.25} />
-                                  </Button>
+                                    icon={<Flag className="size-3" strokeWidth={1.25} aria-hidden="true" />}
+                                  />
                                 )}
                               </span>
                             </div>
@@ -1604,8 +1608,7 @@ export function OnlineLobbyPage({
                           !roomChatSubjectId || roomChatStatus === 'sending' || roomChatStatus === 'unavailable'
                         }
                       />
-                      <Button
-                        className="size-11 p-0 tracking-normal"
+                      <IconButton
                         variant="primary"
                         type="submit"
                         disabled={
@@ -1614,11 +1617,10 @@ export function OnlineLobbyPage({
                           roomChatStatus === 'sending' ||
                           roomChatStatus === 'unavailable'
                         }
-                        aria-label={t('chat.send')}
+                        label={t('chat.send')}
                         title={t('chat.send')}
-                      >
-                        <Send className="size-4" strokeWidth={1.25} />
-                      </Button>
+                        icon={<Send className="size-4" strokeWidth={1.25} aria-hidden="true" />}
+                      />
                     </form>
                   </div>
                 )}
@@ -1632,7 +1634,7 @@ export function OnlineLobbyPage({
             </div>
 
             {profile && (
-              <RoomPanel mode="custom" data-friend-invites>
+              <RoomPanel mode="custom" className="order-4 min-w-0 lg:order-4" data-friend-invites>
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">
@@ -1640,15 +1642,13 @@ export function OnlineLobbyPage({
                     </div>
                     <h2 className="font-display text-2xl font-bold">{t('friend.invite')}</h2>
                   </div>
-                  <Button
-                    className="size-11 p-0"
+                  <IconButton
                     variant="ghost"
                     type="button"
                     onClick={refreshFriends}
-                    aria-label={t('friend.refresh')}
-                  >
-                    <Radio className="size-3.5" strokeWidth={1.25} />
-                  </Button>
+                    label={t('friend.refresh')}
+                    icon={<Radio className="size-3.5" strokeWidth={1.25} aria-hidden="true" />}
+                  />
                 </div>
                 <div className="grid gap-2 sm:grid-cols-2">
                   {friends.map((friend) => (
@@ -1661,8 +1661,7 @@ export function OnlineLobbyPage({
                         <strong className="block truncate text-body">{friend.nickname || friend.userId}</strong>
                         <span className="block truncate text-minutia text-content-dim">{friend.userId}</span>
                       </div>
-                      <Button
-                        className="size-touch p-0"
+                      <IconButton
                         variant="ghost"
                         type="button"
                         data-friend-invite-action="send"
@@ -1671,12 +1670,10 @@ export function OnlineLobbyPage({
                         disabled={
                           friendInviteActionId !== null || friendInvitePeerId !== null || matchmakingActive || !canStart
                         }
-                        aria-label={t('friend.invite')}
-                      >
-                        <Send className="size-3.5" strokeWidth={1.25} />
-                      </Button>
-                      <Button
-                        className="size-touch p-0"
+                        label={t('friend.invite')}
+                        icon={<Send className="size-3.5" strokeWidth={1.25} aria-hidden="true" />}
+                      />
+                      <IconButton
                         variant="ghost"
                         type="button"
                         data-friend-invite-action="accept"
@@ -1687,10 +1684,9 @@ export function OnlineLobbyPage({
                           matchmakingActive ||
                           (friendInvitePeerId !== null && friendInvitePeerId !== friend.userId)
                         }
-                        aria-label={t('friend.acceptInvite')}
-                      >
-                        <Check className="size-3.5" strokeWidth={1.25} />
-                      </Button>
+                        label={t('friend.acceptInvite')}
+                        icon={<Check className="size-3.5" strokeWidth={1.25} aria-hidden="true" />}
+                      />
                     </div>
                   ))}
                   {friendStatus !== 'loading' && friends.length === 0 && (
@@ -1699,7 +1695,7 @@ export function OnlineLobbyPage({
                 </div>
               </RoomPanel>
             )}
-          </section>
+          </>
         </div>
       </main>
     </PageShell>

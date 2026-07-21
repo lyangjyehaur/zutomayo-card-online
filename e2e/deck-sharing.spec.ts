@@ -76,6 +76,7 @@ test.describe('牌組分享大廳', () => {
     await page.addInitScript(() => {
       localStorage.setItem('zutomayo_deck_intro_seen', 'true');
       localStorage.setItem('zutomayo_locale', 'zh-TW');
+      localStorage.setItem('zutomayo_deck_share_demo_disabled', 'true');
     });
     await page.route('**/api/config', (route) => route.fulfill({ json: { deck_sharing_enabled: true } }));
     await page.route('**/api/cards', (route) => route.fulfill({ json: cards }));
@@ -111,6 +112,7 @@ test.describe('牌組分享大廳', () => {
   test('訪客可用鍵盤從大廳開啟詳情與卡牌 Sheet', async ({ page }) => {
     await page.goto('/deck-shares');
     await expect(page.getByRole('heading', { name: '探索玩家分享的牌組' })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole('button', { name: '分享牌組' })).toHaveCount(0);
 
     const shareCard = page.getByRole('link', { name: '真夜中炎風牌組 · 夜行玩家' });
     await shareCard.focus();
@@ -126,6 +128,57 @@ test.describe('牌組分享大廳', () => {
     await sheet.getByRole('button', { name: '關閉' }).click();
     await page.getByRole('button', { name: '分享連結' }).first().click();
     await expect(page.getByText('分享連結已複製', { exact: true })).toBeVisible();
+  });
+
+  test('登入玩家可直接從分享大廳選擇並發布牌組', async ({ page }) => {
+    await enableLoggedInSession(page, 'u_owner');
+    await page.unroute('**/api/decks');
+    await page.route('**/api/decks', (route) => route.fulfill({ json: { decks: [serverDeck] } }));
+    await page.unroute('**/api/deck-shares**');
+    await page.route('**/api/deck-shares**', (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname === '/api/deck-shares' && route.request().method() === 'POST') {
+        return route.fulfill({ status: 201, json: ownedShare() });
+      }
+      if (url.pathname === '/api/deck-shares') {
+        return route.fulfill({ json: { shares: [share], nextCursor: null } });
+      }
+      return route.fulfill({ json: detail });
+    });
+
+    await page.goto('/deck-shares');
+    await page.getByRole('button', { name: '分享牌組' }).click();
+    const chooser = page.getByRole('dialog', { name: '選擇要分享的牌組' });
+    await expect(chooser.getByRole('combobox', { name: '已儲存的牌組' })).toHaveValue(serverDeck.id);
+    await chooser.getByRole('button', { name: '繼續' }).click();
+
+    const publishRequest = page.waitForRequest(
+      (request) => request.url().endsWith('/api/deck-shares') && request.method() === 'POST',
+    );
+    const manager = page.getByRole('dialog', { name: '發布牌組分享' });
+    await manager.getByRole('button', { name: '發布牌組' }).click();
+    const request = await publishRequest;
+
+    expect(request.postDataJSON()).toEqual({ deckId: serverDeck.id, visibility: 'public' });
+    await expect(page.getByText('牌組已發布', { exact: true })).toBeVisible();
+    await expect(page.getByRole('dialog', { name: '管理牌組分享' })).toBeVisible();
+  });
+
+  test('牌組編輯器手機版提供可理解的分享入口與草稿提示', async ({ page }) => {
+    await enableLoggedInSession(page, 'u_owner');
+    await page.setViewportSize({ width: 360, height: 800 });
+    await page.goto('/deck-builder');
+
+    const deckName = page.getByRole('textbox', { name: '牌組名稱' });
+    await expect(deckName).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole('button', { name: '分享' })).toBeEnabled();
+    await page.getByRole('button', { name: '分享' }).click();
+    await expect(page.getByText('請先將牌組儲存到帳號', { exact: true })).toBeVisible();
+
+    await page.locator('[data-deck-editor-control="active-deck"]').click();
+    const deckSheet = page.getByRole('dialog', { name: '自訂牌組' });
+    await expect(deckSheet.getByRole('button', { name: '分享' })).toBeVisible();
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   });
 
   test('登入玩家可按讚、檢舉與複製到伺服器牌組', async ({ page }) => {

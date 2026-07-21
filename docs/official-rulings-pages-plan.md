@@ -2,7 +2,7 @@
 
 更新日期：2026-07-21
 
-狀態：Phase 1–3 已於 `0.2.2` 完成並合併；部署與日常維護以 [official-rulings.md](./official-rulings.md) 為準。
+狀態：Phase 1–3 與公開頁面 UI/UX 重整已於 `0.2.2` 完成；部署與日常維護以 [official-rulings.md](./official-rulings.md) 為準。
 
 ## 目標
 
@@ -43,6 +43,9 @@
 - 管理端的同步差異預覽、翻譯重試及人工核准。
 - 每日自動同步與異常通知。
 - 規則術語表與跨 Q&A 搜尋強化。
+- Q&A 官方標籤計數、官方編號／最新發布排序與分批載入。
+- 勘誤卡名／編號／卡包／修正文字搜尋、修正範圍與卡包篩選。
+- 列表直接顯示 Q&A 分類脈絡與勘誤修正前後摘要；詳情返回時保留原搜尋條件。
 
 ### 不在本次範圍
 
@@ -224,19 +227,25 @@
 - `src/pages/OfficialQaDetailPage.tsx`
 - `src/pages/OfficialErrataPage.tsx`
 - `src/pages/OfficialErrataDetailPage.tsx`
-- `src/components/rules/RulesPageHeader.tsx`
-- `src/components/rules/TranslationStatusBadge.tsx`
-- `src/components/rules/SourceTextToggle.tsx`
-- `src/components/rules/RelatedCardLinks.tsx`
+- `src/components/rules/OfficialRulesComponents.tsx`
+- `src/lib/officialQaTags.ts`
+- `src/lib/officialRulesView.ts`
 
 清單頁：
 
-- Q&A／勘誤 tab。
-- 關鍵字搜尋。
-- 分類 chip。
-- 卡牌篩選與清除條件。
+- Q&A／勘誤分段導覽。
+- 可清除的關鍵字搜尋；Q&A 搜尋同時涵蓋問題、答案、分類、卡牌 ID 與已校對卡名。
+- 桌面 sticky 篩選側欄與手機橫向篩選列；Q&A 保留完整官方標籤及各標籤筆數。
+- Q&A 支援官方編號／最新發布排序、每次 18 筆分批載入、關聯卡牌篩選與清除全部條件。
+- 勘誤支援影響名稱／效果、卡包篩選，列表直接顯示修正前與修正後摘要。
 - URL search params 保存搜尋狀態，方便分享與返回。
 - loading、empty、error、offline fallback 狀態。
+
+詳情頁：
+
+- Q&A 以問題、官方分類與答案為主層級，關聯卡牌、翻譯狀態、日文原文與同步時間依序退到次要區域。
+- 勘誤以卡牌身分、發布日期與修正前後對照為主層級，提供一鍵複製修正後有效文字。
+- 從清單進入詳情時透過 navigation state 保留原本搜尋 URL；外部深連結仍返回對應清單首頁。
 
 詳情頁：
 
@@ -334,6 +343,7 @@
 - `api/server.cjs`、`api/schemas.cjs`：公開與管理路由。
 - `api/officialRulingsService.cjs`：查詢、fallback、mapping。
 - `scripts/sync-official-rulings.ts`：同步與差異偵測。
+- `scripts/release-official-rulings.ts`：單一交易驗證即時來源、卡牌資料集與五語翻譯，建立 snapshot／manifest 並切換 active pointer。
 - `src/api/client.ts`：公開資料型別與請求函式。
 - `src/App.tsx`：lazy routes 與 fullscreen route 判定。
 - `src/pages/Official*Page.tsx`：清單與詳情頁。
@@ -349,6 +359,7 @@
 - 日文原文永遠可查看，翻譯狀態與來源清楚。
 - 不會匯入未明確標記公開的 Q&A。
 - 前端不直接呼叫官方來源或翻譯 provider。
+- 正式部署只讀 active PostgreSQL release，缺少或過期的任一五語翻譯都會阻止新版服務啟動。
 - 同步與 parser 有 fixtures、schema 驗證與 fail-closed 測試。
 - 桌面／行動／鍵盤／螢幕閱讀器主要流程通過。
 - `npm run verify` 與額外的 `npm run build` 通過後才可提交或推送。

@@ -56,7 +56,7 @@ async function expectTooltipContentUsable(page: import('@playwright/test').Page,
     };
   });
   expect(geometry).not.toBeNull();
-  expect(geometry!.bodyHeight).toBeGreaterThanOrEqual(requireInstruction ? 16 : 72);
+  expect(geometry!.bodyHeight).toBeGreaterThanOrEqual(requireInstruction ? 48 : 72);
   expect(geometry!.headingTop).toBeGreaterThanOrEqual(geometry!.tooltipTop);
   expect(geometry!.headingBottom).toBeLessThanOrEqual(geometry!.tooltipBottom);
   expect(geometry!.tooltipTop).toBeGreaterThanOrEqual(0);

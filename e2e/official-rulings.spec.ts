@@ -37,19 +37,30 @@ const officialErrataCard = {
 
 function qaItem(lang: string) {
   const japanese = lang === 'ja';
+  const tagByLanguage: Record<string, string> = {
+    ja: 'キャラクター',
+    'zh-TW': '角色',
+    'zh-CN': '角色',
+    'zh-HK': '角色',
+    en: 'Character',
+    ko: '캐릭터',
+  };
+  const localizedByLanguage: Record<string, typeof sourceQa> = {
+    'zh-TW': { question: '這張卡可以在什麼時候使用？', answer: '可以在自己的回合使用。' },
+    'zh-CN': { question: '这张卡可以在什么时候使用？', answer: '可以在自己的回合使用。' },
+    'zh-HK': { question: '呢張卡可以喺咩時候使用？', answer: '可以喺自己嘅回合使用。' },
+    en: { question: 'When can this card be used?', answer: 'It can be used during your turn.' },
+    ko: { question: '이 카드는 언제 사용할 수 있나요?', answer: '자신의 턴에 사용할 수 있습니다.' },
+  };
   return {
     id: 'qa_74',
     number: 74,
     publishedAt: '2026-04-04',
-    tags: ['カード効果'],
+    tagIds: ['キャラクター'],
+    tags: [tagByLanguage[lang] ?? tagByLanguage['zh-TW']],
     relatedCardIds: ['1st_6'],
     source: sourceQa,
-    localized: japanese
-      ? sourceQa
-      : {
-          question: '這張卡可以在什麼時候使用？',
-          answer: '可以在自己的回合使用。',
-        },
+    localized: japanese ? sourceQa : (localizedByLanguage[lang] ?? localizedByLanguage['zh-TW']),
     requestedLocale: lang,
     effectiveLocale: japanese ? 'ja' : lang,
     translationStatus: japanese ? 'source' : 'verified',
@@ -121,8 +132,9 @@ test.describe('官方規則資料庫', () => {
 
   test('可從首頁搜尋 Q&A、查看詳情並切回日文原文', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByText('Channels', { exact: true })).toBeVisible({ timeout: 30_000 });
-    await page.getByText('CH.07', { exact: true }).click();
+    const rulesChannel = page.getByRole('button', { name: /CH\.05 規則資料庫/ });
+    await expect(rulesChannel).toBeVisible({ timeout: 30_000 });
+    await rulesChannel.click();
 
     await expect(page).toHaveURL(/\/rules\/qa$/);
     await expect(page.getByRole('heading', { name: '官方規則 Q&A' })).toBeVisible();
@@ -146,6 +158,33 @@ test.describe('官方規則資料庫', () => {
     await expect(page.getByRole('heading', { name: sourceQa.question })).toBeVisible();
     await expect(page.getByText('查看日文原文')).toHaveCount(0);
     await expect(page.locator('html')).toHaveAttribute('lang', 'ja');
+  });
+
+  test('Q&A 標籤使用本地化名稱且切換語言後保留篩選', async ({ page }) => {
+    await page.goto('/rules/qa');
+    await page.getByRole('button', { name: '角色', exact: true }).click();
+    await expect(page).toHaveURL(/tag=%E3%82%AD%E3%83%A3%E3%83%A9%E3%82%AF%E3%82%BF%E3%83%BC/);
+    await expect(page.getByText('這張卡可以在什麼時候使用？')).toBeVisible();
+
+    await page.locator('select').first().selectOption('ko');
+    await expect(page.getByRole('button', { name: '캐릭터', exact: true })).toHaveClass(/border-accent-primary/);
+    await expect(page.getByRole('link', { name: /이 카드는 언제 사용할 수 있나요/ })).toBeVisible();
+  });
+
+  test('勘誤可依修正範圍、卡包與全文搜尋', async ({ page }) => {
+    await page.goto('/rules/errata');
+
+    await page.getByRole('button', { name: '影響效果', exact: true }).click();
+    await expect(page).toHaveURL(/change=effect/);
+    await page.getByRole('combobox', { name: '卡包', exact: true }).selectOption('THE WORLD IS CHANGING');
+    await expect(page).toHaveURL(/pack=THE\+WORLD\+IS\+CHANGING/);
+    await expect(page.getByRole('link', { name: /測試卡牌/ })).toBeVisible();
+
+    const search = page.getByRole('searchbox', { name: '搜尋卡名、編號、卡包或修正文字' });
+    await search.fill('不存在的修正');
+    await expect(page.getByText('沒有符合條件的內容')).toBeVisible();
+    await page.getByRole('button', { name: '清除搜尋' }).click();
+    await expect(page.getByRole('link', { name: /測試卡牌/ })).toBeVisible();
   });
 
   test('勘誤詳情顯示修正對照、翻譯警示與關聯 Q&A', async ({ page }) => {

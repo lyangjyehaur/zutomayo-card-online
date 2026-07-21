@@ -8,20 +8,20 @@ This document tracks product and architecture progress for ZUTOMAYO CARD Online.
 
 ## Phase Status / 階段狀態
 
-| Phase | Area                       | Status | Current evidence                                                                                                 |
-| ----- | -------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------- |
-| 0     | Rules and data baseline    | Done   | Official [rules](../rules.md), PostgreSQL-backed Q&A, 422 cards, 4 packs, PostgreSQL-backed card API.            |
-| 1     | Deterministic game state   | Done   | Explicit `GameState.step`: janken, mulligan, initial set, turn set, effect order, pending choices, game over.    |
-| 2     | Effect engine              | Done   | 267/267 effect lines parsed; parser, executor, prompted choices, runtime audit, and semantic regression tests.   |
-| 3     | Local product              | Done   | Local battle, AI, tutorial, deck editor/sharing, official rulings, history, leaderboard, PWA, six-language UI.   |
-| 4     | Authoritative online match | Done   | boardgame.io state sync, `playerView`, PostgreSQL adapter, Redis Pub/Sub, version guard, seat resume.            |
-| 5     | Accounts and security      | Done   | Cookie/JWT auth, refresh blacklist, CSRF, local and OAuth identities, encrypted provider tokens, admin audit.    |
-| 6     | Durable product data       | Done   | PostgreSQL users, decks/shares, matches, chat, feedback, cards, official rulings, configuration, and migrations. |
-| 7     | Multiplayer platform       | Done   | Colyseus lobby, quick match, custom room, invite, match shell, spectators, Redis production mode.                |
-| 8     | Social and ChatService     | Done   | Friend presence, direct/global/room/match chat, unread, translation, reports, evidence, moderation, sanctions.   |
-| 9     | Battle reliability and UX  | Done   | Authoritative timeouts, disconnect recovery, battle animation, responsive UI, result retry and idempotency.      |
-| 10    | Operations                 | Done   | Six-unit Compose topology, migration gate, health/readiness, protected metrics, Pino, Sentry/GlitchTip.          |
-| 11    | Quality gates              | Done   | `npm run verify`, Playwright E2E, k6 load suites, GitHub Actions CI/CD, commit hooks, responsive smoke suites.   |
+| Phase | Area                       | Status | Current evidence                                                                                                                     |
+| ----- | -------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| 0     | Rules and data baseline    | Done   | Official [rules](../rules.md), PostgreSQL-backed Q&A, 422 cards, 4 packs, PostgreSQL-backed card API.                                |
+| 1     | Deterministic game state   | Done   | Explicit `GameState.step`: janken, mulligan, initial set, turn set, effect order, pending choices, game over.                        |
+| 2     | Effect engine              | Done   | 267/267 effect lines parsed; parser, executor, prompted choices, runtime audit, and semantic regression tests.                       |
+| 3     | Local product              | Done   | Local battle, AI, tutorial, deck editor/sharing, official rulings, history, leaderboard, PWA, six-language UI.                       |
+| 4     | Authoritative online match | Done   | boardgame.io state sync, `playerView`, PostgreSQL adapter, Redis Pub/Sub, version guard, seat resume.                                |
+| 5     | Accounts and security      | Done   | Cookie/JWT auth, refresh blacklist, CSRF, local and OAuth identities, encrypted provider tokens, admin audit.                        |
+| 6     | Durable product data       | Done   | PostgreSQL users, decks/shares, matches, chat, feedback, cards, atomically released official rulings, configuration, and migrations. |
+| 7     | Multiplayer platform       | Done   | Colyseus lobby, quick match, custom room, invite, match shell, spectators, Redis production mode.                                    |
+| 8     | Social and ChatService     | Done   | Friend presence, direct/global/room/match chat, unread, translation, reports, evidence, moderation, sanctions.                       |
+| 9     | Battle reliability and UX  | Done   | Authoritative timeouts, disconnect recovery, battle animation, responsive UI, result retry and idempotency.                          |
+| 10    | Operations                 | Done   | Six-unit Compose topology, migration gate, health/readiness, protected metrics, Pino, Sentry/GlitchTip.                              |
+| 11    | Quality gates              | Done   | `npm run verify`, Playwright E2E, k6 load suites, GitHub Actions CI/CD, commit hooks, responsive smoke suites.                       |
 
 ## Current Architecture Baseline / 目前架構基準
 

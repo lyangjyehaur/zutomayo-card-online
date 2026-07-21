@@ -218,6 +218,18 @@ if (expectedBuildId && buildIds[0] !== expectedBuildId) {
 }
 console.log(`smoke ok: buildId=${buildIds[0]}`);
 
+const officialRelease = await requestWithRetry('api', '/api/official/status');
+if (
+  officialRelease?.buildId !== buildIds[0] ||
+  Number(officialRelease?.qaCount) <= 0 ||
+  Number(officialRelease?.errataCount) <= 0 ||
+  !Array.isArray(officialRelease?.locales) ||
+  officialRelease.locales.length !== 5
+) {
+  throw new Error(`official-rulings release does not match the deployed build: ${JSON.stringify(officialRelease)}`);
+}
+console.log(`smoke ok: official-rulings release=${officialRelease.releaseId}`);
+
 const representativeCard = encodeURI('https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_40.jpg')
   .replace(/@/g, '%40')
   .replace(/\?/g, '%3F')

@@ -31,6 +31,13 @@ test.describe('核心頁面無障礙 @a11y', () => {
       localStorage.setItem('zutomayo_deck_intro_seen', 'true');
       localStorage.setItem('zutomayo_locale', 'zh-TW');
     });
+    await page.route('**/api/config', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ deck_sharing_enabled: true }),
+      }),
+    );
     await page.route('**/api/official/**', async (route) => {
       const url = new URL(route.request().url());
       const qa = {
@@ -93,9 +100,14 @@ test.describe('核心頁面無障礙 @a11y', () => {
 
   for (const route of [
     '/',
+    '/ai',
     '/online',
+    '/community',
     '/deck-builder',
+    '/deck-shares',
     '/feedback',
+    '/history',
+    '/leaderboard',
     '/profile',
     '/tutorial',
     '/legal',
@@ -130,7 +142,7 @@ test.describe('登入 dialog 無障礙 @a11y', () => {
       });
     });
     await page.goto('/');
-    await expect(page.getByText('Channels', { exact: true })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('ZUTOMAYO', { timeout: 30_000 });
 
     const trigger = page.getByRole('button', { name: /^登入$/ }).first();
     await trigger.focus();

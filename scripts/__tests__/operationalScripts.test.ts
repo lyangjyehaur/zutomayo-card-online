@@ -92,6 +92,11 @@ describe('operational shell scripts', () => {
     expect(deploy).toContain('up -d --wait');
     expect(deploy).toContain('battle-assets.sha256');
     expect(deploy).toContain('sync_battle_assets');
+    expect(deploy).toContain('release_official_rulings');
+    expect(deploy).toContain('release_card_derived_effects');
+    expect(deploy).toContain('CARD_DERIVED_EFFECTS_REVIEW_SOURCE');
+    expect(deploy).toContain('import-card-derived-effects-pg.ts');
+    expect(deploy).toContain('--translations=-');
     expect(deploy).toContain('COPYFILE_DISABLE=1 tar');
     expect(deploy).toContain("-name '._*' -delete");
     expect(deploy).toContain('sha256sum --check');
@@ -104,6 +109,7 @@ describe('operational shell scripts', () => {
     expect(smoke).toContain('/battle/chronos.svg');
     expect(smoke).toContain('/battle/medal.png');
     expect(smoke).toContain('if (checkBattleAssets)');
+    expect(smoke).toContain('/api/official/status');
     expect(assetChecksums).toHaveLength(22);
     expect(assetChecksums.every((line) => /^[a-f0-9]{64} {2}[A-Za-z0-9._/-]+\.(png|svg)$/.test(line))).toBe(true);
     expect(deploy).not.toContain('--manifest');

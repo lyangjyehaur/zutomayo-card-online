@@ -97,7 +97,7 @@
 .admin-nav-item {
   display: flex;
   width: 100%;
-  min-height: 2.6rem;
+  min-height: 2.75rem;
   align-items: center;
   gap: 0.65rem;
   border: var(--border-width-hairline) solid transparent;
@@ -230,13 +230,14 @@
 }
 
 .admin-filter-row > button {
-  min-height: 2rem;
+  min-height: 2.75rem;
+  min-width: 2.75rem;
   flex: 0 0 auto;
   padding-inline: 0.55rem;
 }
 
 .admin-filter-row input {
-  min-height: 2.25rem;
+  min-height: 2.75rem;
 }
 
 .admin-filter-label {
@@ -750,7 +751,7 @@
   }
 }
 
-@media (max-width: 899px) {
+@media (max-width: 1099px) {
   .card-admin-page.admin-page {
     overflow: hidden;
   }
@@ -779,7 +780,7 @@
   .admin-mobile-logout {
     display: inline-flex;
     width: 2.75rem;
-    min-height: 2.6rem;
+    min-height: 2.75rem;
     flex: 0 0 2.75rem;
     align-items: center;
     justify-content: center;
@@ -802,7 +803,7 @@
 
   .admin-nav-item {
     width: auto;
-    min-height: 2.6rem;
+    min-height: 2.75rem;
     flex: 0 0 auto;
     padding-inline: 0.65rem;
   }

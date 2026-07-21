@@ -80,7 +80,7 @@ const iconSizeClass: Record<IconButtonSize, string> = {
 export interface IconButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'aria-label' | 'children'> {
   label: string;
   icon: ReactNode;
-  variant?: Extract<ButtonVariant, 'secondary' | 'ghost' | 'danger'>;
+  variant?: ButtonVariant;
   size?: IconButtonSize;
 }
 
