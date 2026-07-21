@@ -68,7 +68,7 @@ describe('Umami same-origin proxy', () => {
     expect(ctx.responseHeaders.has('x-upstream-secret')).toBe(false);
   });
 
-  it('proxies events without trusting a client supplied forwarding chain', async () => {
+  it('proxies events with the trusted client IP in both the header and Umami payload', async () => {
     const fetchImpl = vi.fn<typeof fetch>(
       async () => new Response('{"ok":true}', { headers: { 'content-type': 'application/json' } }),
     );
@@ -86,8 +86,57 @@ describe('Umami same-origin proxy', () => {
     const [url, init] = fetchImpl.mock.calls[0];
     expect(String(url)).toBe('https://u.example.test/api/send');
     expect((init?.headers as Headers).get('x-forwarded-for')).toBe('198.51.100.12');
-    expect(Buffer.from(init?.body as Uint8Array).toString()).toBe(payload);
+    expect(JSON.parse(Buffer.from(init?.body as Uint8Array).toString())).toEqual({
+      type: 'event',
+      payload: { website: 'site-id', ip: '198.51.100.12' },
+    });
     expect(ctx.status).toBe(200);
+  });
+
+  it('overrides a client supplied payload IP and leaves malformed JSON for Umami to reject', async () => {
+    const forwardedBodies: string[] = [];
+    const fetchImpl = vi.fn<typeof fetch>(async (_url, init) => {
+      forwardedBodies.push(Buffer.from(init?.body as Uint8Array).toString());
+      return new Response(null, { status: 204 });
+    });
+    const middleware = createUmamiProxyMiddleware({
+      upstreamUrl: 'https://u.example.test',
+      fetchImpl,
+      clientIp: () => '198.51.100.12',
+    });
+    const spoofed = context(
+      '/analytics/api/send',
+      'POST',
+      '{"type":"event","payload":{"website":"site-id","ip":"192.0.2.99"}}',
+    );
+    const malformed = context('/analytics/api/send', 'POST', '{not-json');
+
+    await middleware(spoofed as never, vi.fn());
+    await middleware(malformed as never, vi.fn());
+
+    expect(JSON.parse(forwardedBodies[0]).payload.ip).toBe('198.51.100.12');
+    expect(forwardedBodies[1]).toBe('{not-json');
+  });
+
+  it('removes a client supplied payload IP when no valid canonical IP is available', async () => {
+    let forwardedBody = '';
+    const middleware = createUmamiProxyMiddleware({
+      upstreamUrl: 'https://u.example.test',
+      fetchImpl: vi.fn<typeof fetch>(async (_url, init) => {
+        forwardedBody = Buffer.from(init?.body as Uint8Array).toString();
+        return new Response(null, { status: 204 });
+      }),
+      clientIp: () => 'not-an-ip',
+    });
+    const ctx = context(
+      '/analytics/api/send',
+      'POST',
+      '{"type":"event","payload":{"website":"site-id","ip":"192.0.2.99"}}',
+    );
+
+    await middleware(ctx as never, vi.fn());
+
+    expect(JSON.parse(forwardedBody).payload).toEqual({ website: 'site-id' });
   });
 
   it('fails closed for missing configuration, unsupported methods, oversized events, and upstream errors', async () => {

@@ -1,4 +1,5 @@
 import type { IncomingHttpHeaders, IncomingMessage } from 'node:http';
+import { isIP } from 'node:net';
 import type { Next, ParameterizedContext } from 'koa';
 
 export const UMAMI_PROXY_BASE_PATH = '/analytics';
@@ -119,6 +120,28 @@ function copyResponseHeaders(ctx: UmamiProxyContext, response: Response): void {
   }
 }
 
+function injectUmamiClientIp(body: Buffer, clientIp: string): Buffer {
+  if (!body.length) return body;
+
+  try {
+    const event = JSON.parse(body.toString('utf8')) as unknown;
+    if (!event || typeof event !== 'object' || Array.isArray(event)) return body;
+    const payload = (event as Record<string, unknown>).payload;
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return body;
+    const canonicalPayload = { ...(payload as Record<string, unknown>) };
+    if (isIP(clientIp) === 0) delete canonicalPayload.ip;
+    else canonicalPayload.ip = clientIp;
+    return Buffer.from(
+      JSON.stringify({
+        ...(event as Record<string, unknown>),
+        payload: canonicalPayload,
+      }),
+    );
+  } catch {
+    return body;
+  }
+}
+
 export function createUmamiProxyMiddleware(options: UmamiProxyOptions = {}) {
   const upstream = parseUmamiUpstreamUrl(options.upstreamUrl);
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -143,6 +166,7 @@ export function createUmamiProxyMiddleware(options: UmamiProxyOptions = {}) {
     }
 
     const headers = new Headers();
+    let clientIp = '';
     for (const name of ['accept', 'accept-language', 'user-agent']) {
       copyRequestHeader(headers, ctx.request.headers, name);
     }
@@ -151,7 +175,8 @@ export function createUmamiProxyMiddleware(options: UmamiProxyOptions = {}) {
       copyRequestHeader(headers, ctx.request.headers, 'if-modified-since');
     } else {
       copyRequestHeader(headers, ctx.request.headers, 'content-type');
-      headers.set('x-forwarded-for', options.clientIp?.(ctx) || ctx.ip);
+      clientIp = options.clientIp?.(ctx) || ctx.ip;
+      headers.set('x-forwarded-for', clientIp);
       headers.set('x-forwarded-host', firstHeaderValue(ctx.request.headers.host) || ctx.host);
       headers.set('x-forwarded-proto', ctx.protocol);
     }
@@ -159,7 +184,8 @@ export function createUmamiProxyMiddleware(options: UmamiProxyOptions = {}) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const body = route.method === 'POST' ? await readRequestBody(ctx.req, MAX_EVENT_BYTES) : undefined;
+      const requestBody = route.method === 'POST' ? await readRequestBody(ctx.req, MAX_EVENT_BYTES) : undefined;
+      const body = requestBody ? injectUmamiClientIp(requestBody, clientIp) : undefined;
       const response = await fetchImpl(new URL(route.upstreamPath, upstream), {
         method: route.method,
         headers,

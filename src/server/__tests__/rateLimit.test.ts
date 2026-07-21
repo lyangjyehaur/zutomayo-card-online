@@ -30,4 +30,12 @@ describe('rate-limit client IP canonicalization', () => {
     const { getClientIpFromRequest } = await import('../rateLimit');
     expect(getClientIpFromRequest(request('10.0.0.8', '203.0.113.40, 10.0.0.8'))).toBe('203.0.113.40');
   });
+
+  it('walks through a configured CDN range without trusting a spoofed left side', async () => {
+    process.env.TRUSTED_PROXY = '10.0.0.0/8,173.245.48.0/20';
+    vi.resetModules();
+    const { getClientIpFromRequest } = await import('../rateLimit');
+
+    expect(getClientIpFromRequest(request('10.0.0.8', '192.0.2.99, 203.0.113.40, 173.245.48.7'))).toBe('203.0.113.40');
+  });
 });
