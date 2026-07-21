@@ -30,6 +30,7 @@ COPY scripts/relationship-outbox-pg-smoke.cjs ./scripts/relationship-outbox-pg-s
 COPY scripts/redrive-relationship-outbox.cjs ./scripts/redrive-relationship-outbox.cjs
 COPY scripts/officialRulingsData.ts ./scripts/officialRulingsData.ts
 COPY scripts/release-official-rulings.ts ./scripts/release-official-rulings.ts
+COPY scripts/release-official-rule-documents.ts ./scripts/release-official-rule-documents.ts
 COPY scripts/cardDerivedEffects.ts ./scripts/cardDerivedEffects.ts
 COPY scripts/import-card-derived-effects-pg.ts ./scripts/import-card-derived-effects-pg.ts
 COPY src/rulesTerminology.ts ./src/rulesTerminology.ts
