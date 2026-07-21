@@ -38,7 +38,7 @@ ZUTOMAYO CARD Online 的系統架構文檔。本文說明前端 SPA、boardgame.
 │              Game Server (port 3000, Koa)                 │
 │  boardgame.io Server · Socket.IO + @socket.io/redis-adapter│
 │  RedisPubSub (應用層廣播) · PostgresAdapter (state 持久化) │
-│  /health · /metrics · /games/* rate limit · /api/* 代理    │
+│ /health · /metrics · /games/* 限流 · /api/*、/analytics 代理│
 │  Helmet CSP · per-IP Socket connection limit              │
 └───────────────┬──────────────────────────┬───────────────┘
                 │                            │
@@ -86,6 +86,8 @@ ZUTOMAYO CARD Online 的系統架構文檔。本文說明前端 SPA、boardgame.
 flowchart LR
     Browser[瀏覽器 SPA] -->|HTTP /api/*| Game[Game Server]
     Game -->|反向代理| Api[API Server]
+    Browser -->|同源 /analytics/*| Game
+    Game -->|固定端點代理| Umami[Umami]
     Browser -->|WebSocket| Game
     Browser -->|Colyseus matchmake/ws| Platform[Platform Server]
     Browser -->|HTTP（直接，少見）| Api
@@ -151,6 +153,8 @@ flowchart LR
 ## 3. Game Server 架構
 
 入口：`src/server.ts`。以 boardgame.io 的 `Server({ games, db, transport, origins, authenticateCredentials })` 為核心，外層包 Koa 中間件。
+
+前端分析固定使用同源 `/analytics/script.js` 與 `/analytics/api/send`。Game Server 僅將這兩個端點代理至 runtime `UMAMI_UPSTREAM_URL`，並套用獨立 Redis/IP 限流、請求與回應大小上限及上游逾時；瀏覽器不取得上游地址，Helmet CSP 亦無須放行第三方腳本來源。
 
 ### boardgame.io Server 配置
 
