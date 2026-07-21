@@ -41,6 +41,11 @@ const pages = [
   { pageId: 'deck-shares', path: '/deck-shares', waitForText: '分享大廳' },
   { pageId: 'official-qa', path: '/rules/qa', waitForText: '官方規則 Q&A' },
   { pageId: 'official-errata', path: '/rules/errata', waitForText: '官方卡牌勘誤' },
+  {
+    pageId: 'battle-initial-select-day',
+    path: '/qa/battle?state=initial-select&side=day&time=day&controls=0',
+    waitFor: '.bf-root',
+  },
   { pageId: 'battle-turn-set', path: '/qa/battle?state=turn-set&controls=0', waitFor: '.bf-root' },
   { pageId: 'feedback', path: '/feedback', waitFor: '.feedback-toolbar' },
   { pageId: 'legal-privacy', path: '/legal/privacy', waitForText: '隱私政策' },
