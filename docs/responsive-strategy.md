@@ -1,6 +1,6 @@
 # Responsive Strategy — ZUTOMAYO CARD Online
 
-Date: 2026-07-02
+Last audited: 2026-07-21
 
 Scope: 根據 `docs/responsive-audit.md` 與 `docs/responsive-visual-qa.md` 制定全項目 responsive 策略。本文件是實作準則，不修改程式碼。
 
@@ -81,7 +81,7 @@ Rules:
 - Mobile action text floor: 12px for metadata, 14px for primary controls where possible.
 - `text-[9px]` may remain only for non-decision badges/counters.
 - `text-[10px] uppercase tracking-[0.3em]` must reduce tracking on small screens or be hidden behind icons/menus.
-- Interactive targets should be at least 40px high/wide on touch layouts.
+- Interactive targets should be at least 44px high/wide on touch layouts.
 - Hover effects are decorative only. Any preview, tooltip, reaction picker, card details, or disabled explanation needs tap/click fallback.
 
 ### Overflow And Height
@@ -405,7 +405,7 @@ Affected surfaces:
 Use multi-column layout only when:
 
 - Container is wide enough, not just viewport.
-- Both columns remain usable at 40px tap targets.
+- Both columns remain usable at 44px tap targets.
 - The page height still allows primary actions without excessive scroll.
 
 Delay or gate these:
@@ -480,7 +480,7 @@ Phone strategy:
 
 Completed in the current responsive pass:
 
-- `TutorialGamePage`: tutorial tooltip uses a mobile sheet at `<=768px`; when the highlighted target is in the lower half of the viewport, the sheet moves to the top so the target remains visible and tappable.
+- `TutorialGamePage`: tutorial tooltip uses a mobile sheet at `<=768px`; placement prioritizes the actual interaction target over the wider visual highlight, so confirmation controls remain visible and tappable after forward/back navigation.
 - `DeckEditor`: filters collapse into a sheet below `lg`; active deck moves into a sheet below `xl`; desktop keeps the original inline filters and right-side active deck panel.
 - `Sheet`: shared sheet surface now uses a stable modal layer and opaque panel sections so sheet content remains visually separated from the underlying page.
 - `LobbyPage`: low-height desktop uses compact entry cards and footer spacing so the first screen no longer crowds the primary entry cards.
@@ -504,6 +504,7 @@ Completed in the current responsive pass:
 - `Board`: tablet portrait battle actions, side panel toggles, and pause control now share the 44px touch target floor.
 - `Board`: low-height desktop battle actions, side panel toggles, sheet close, and pause control now meet the compact 40px target floor.
 - `OnlineLobbyPage`: back navigation, anonymous identity editing, custom room inputs, create/join/copy actions, and matchmaking cancel now meet the shared 44px touch target floor on phone/tablet layouts.
+- `OnlineLobbyPage`: fixed-size edit, confirm, cancel, chat, and friend controls use the shared `IconButton` primitive so Button padding cannot collapse inline SVG icons.
 - `LobbyPage`: phone header now keeps language/account settings behind a shared Drawer trigger, while tablet/desktop keep inline settings; `AppDrawer` also caps to `100dvh` with internal scrolling for small screens.
 - `AILobbyPage`: back navigation now meets the shared 44px touch target floor across phone and tablet lobby layouts.
 - `LobbyPage`: desktop footer version, feedback, and external-link controls now expose 40px click areas without changing the footer information hierarchy.
@@ -545,6 +546,18 @@ Completed in the current responsive pass:
   acceptance gate.
 - `Board`: deterministic battle responsive smoke now has a repo script (`npm run smoke:battle-responsive`) covering low-height desktop,
   tablet portrait/landscape, phone, small phone, setup/effect/game-over states, and side sheet panels.
+- `Release UX audit`: mobile Online Lobby now presents deck selection before quick match and scrolls to the next decision after selection;
+  AI Lobby likewise advances from player deck to opponent deck and difficulty without moving desktop viewports.
+- `Release UX audit`: tutorial action sheets preserve a readable instruction body; Match History removes empty clear/pagination controls;
+  Community and Profile show an actionable authentication state instead of disabled or empty application shells.
+- `Touch controls`: shared form controls, deck-card errata links, deck-share/Q&A sort controls, and errata pack filters now keep the 44px
+  touch floor through tablet portrait and phone layouts.
+- `Admin release audit`: management navigation and filters keep the 44px touch floor, while responsive data tables switch to card rows
+  through `1099px` so `1024x768` does not compress a desktop table beside the management sidebar.
+- `Responsive QA`: `smoke:ui-responsive` now covers Landing, AI, Online, Tutorial, Community, Profile, Match History, Deck Builder,
+  Deck Shares, official Q&A, official errata, Battle, Feedback, and Legal across 12 viewports from `360x740` to `1920x1080`.
+- `First-visit regression`: Playwright verifies mobile Online/AI progression, Match History empty controls, and actionable logged-out
+  Community/Profile states; axe coverage includes AI, Community, Deck Shares, and Match History.
 
 ## Acceptance Criteria
 
@@ -556,5 +569,5 @@ For each changed surface:
 - Primary action is visible or reachable without hunting.
 - Touch layouts have no hover-only required action.
 - Dialog/sheet content fits `100dvh` with sticky action/header when needed.
-- Interactive targets are at least 40px on touch layouts.
+- Interactive targets are at least 44px on touch layouts.
 - No page-specific mobile duplication unless listed as allowed above.

@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   normalizeOfficialText,
+  officialCorrectedNameMatches,
   normalizeQaRows,
   officialContentHash,
   type OfficialErrataSnapshotRow,
@@ -156,13 +157,13 @@ function stableJson(value: unknown): string {
   return `${JSON.stringify(value, null, 2)}\n`;
 }
 
-function contentChanges<T extends { id?: string; errataId?: string }>(
+export function contentChanges<T extends { id?: string; errataId?: string; contentHash?: string }>(
   localRows: T[],
   remoteRows: T[],
   normalize: (row: T) => unknown,
 ) {
   const key = (row: T) => row.id || row.errataId || '';
-  const local = new Map(localRows.map((row) => [key(row), officialContentHash(normalize(row))]));
+  const local = new Map(localRows.map((row) => [key(row), row.contentHash || officialContentHash(normalize(row))]));
   const remote = new Map(remoteRows.map((row) => [key(row), officialContentHash(normalize(row))]));
   return {
     added: [...remote.keys()].filter((id) => !local.has(id)),
@@ -206,7 +207,7 @@ function createPool() {
 async function loadPostgresSnapshot(client: import('pg').PoolClient) {
   const [qaResult, errataResult] = await Promise.all([
     client.query(
-      `SELECT id, number, published_at, question_ja, answer_ja, tags, related_card_ids
+      `SELECT id, number, published_at, question_ja, answer_ja, tags, related_card_ids, content_hash
          FROM official_qa_items
         WHERE publication_status = 'published'
         ORDER BY number`,
@@ -217,7 +218,7 @@ async function loadPostgresSnapshot(client: import('pg').PoolClient) {
               errata.incorrect_text,
               CASE WHEN errata.affects_name THEN card.name ELSE card.effect END AS corrected_text,
               errata.reason_ja, errata.replacement_policy_ja, errata.usage_policy_ja,
-              errata.source_url
+              errata.source_url, errata.content_hash
          FROM card_official_errata errata
          JOIN cards card ON card.id = errata.card_id
         WHERE errata.publication_status = 'published'
@@ -233,6 +234,7 @@ async function loadPostgresSnapshot(client: import('pg').PoolClient) {
       answer: row.answer_ja,
       tags: row.tags || [],
       relatedCards: row.related_card_ids || [],
+      contentHash: row.content_hash,
     })) as OfficialQaSnapshotRow[],
     errata: errataResult.rows.map((row) => ({
       errataId: row.errata_id,
@@ -248,6 +250,7 @@ async function loadPostgresSnapshot(client: import('pg').PoolClient) {
       replacementPolicy: row.replacement_policy_ja,
       usagePolicy: row.usage_policy_ja,
       sourceUrl: row.source_url,
+      contentHash: row.content_hash,
     })) as OfficialErrataSnapshotRow[],
   };
 }
@@ -396,7 +399,7 @@ async function applySnapshots(
       const card = cards.get(row.cardId);
       if (!card) throw new Error(`Official errata references unknown card ${row.cardId}`);
       const affectsName = NAME_ERRATA_IDS.has(row.errataId);
-      if (affectsName && !row.correctedText.includes(card.name)) {
+      if (affectsName && !officialCorrectedNameMatches(row.correctedText, card.name)) {
         throw new Error(`Official errata ${row.errataId} corrected name does not match card ${row.cardId}`);
       }
       if (!affectsName && /[ぁ-んァ-ヶ一-龠]/.test(row.correctedText) && card.effect !== row.correctedText) {

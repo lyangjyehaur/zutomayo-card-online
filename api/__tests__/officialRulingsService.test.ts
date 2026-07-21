@@ -1,8 +1,9 @@
 import { createRequire } from 'node:module';
 import { describe, expect, it, vi } from 'vitest';
+import { RULES_TERMINOLOGY, type RulesTerminologyLocale } from '../../src/rulesTerminology';
 
 const require = createRequire(import.meta.url);
-const { listPublicQa, mapErrataRow, mapQaRow, normalizeOfficialLocale, upsertOfficialQaTranslation } =
+const { listPublicQa, localizedQaTags, mapErrataRow, mapQaRow, normalizeOfficialLocale, upsertOfficialQaTranslation } =
   require('../officialRulingsService.cjs') as {
     normalizeOfficialLocale: (value: unknown) => string;
     mapQaRow: (row: Record<string, unknown>, locale: string) => Record<string, unknown>;
@@ -14,6 +15,7 @@ const { listPublicQa, mapErrataRow, mapQaRow, normalizeOfficialLocale, upsertOff
       tag?: string;
       cardId?: string;
     }) => Promise<{ ok: boolean; body: { items: Array<Record<string, unknown>> } }>;
+    localizedQaTags: (tags: string[], locale: RulesTerminologyLocale) => string[];
     upsertOfficialQaTranslation: (options: {
       pool: { query: ReturnType<typeof vi.fn> };
       qaId: string;
@@ -55,12 +57,44 @@ describe('official rulings service', () => {
         'zh-TW',
       ),
     ).toMatchObject({
+      tagIds: ['基本ルール'],
       tags: ['基本規則'],
       source: { question: '質問', answer: '回答' },
       localized: { question: '問題', answer: '答案' },
       effectiveLocale: 'zh-TW',
       translationStatus: 'verified',
     });
+  });
+
+  it('localizes every Q&A filter tag with the canonical rules glossary', () => {
+    const sourceTags = [
+      '基本ルール',
+      '対戦準備',
+      '対戦の流れ',
+      '効果処理',
+      'カード裁定',
+      'バトル',
+      'キャラクター',
+      'エンチャント',
+      'エリアエンチャント',
+    ];
+    const glossaryKeys = [
+      'basicRules',
+      'matchSetup',
+      'matchFlow',
+      'effectResolution',
+      'cardRulings',
+      'battle',
+      'character',
+      'enchant',
+      'areaEnchant',
+    ] as const;
+
+    for (const locale of Object.keys(RULES_TERMINOLOGY) as RulesTerminologyLocale[]) {
+      expect(localizedQaTags(sourceTags, locale), locale).toEqual(
+        glossaryKeys.map((key) => RULES_TERMINOLOGY[locale][key]),
+      );
+    }
   });
 
   it('preserves PostgreSQL date values in the server local timezone', () => {
@@ -99,8 +133,32 @@ describe('official rulings service', () => {
       cardId: '1st_1',
     });
     expect(result.ok).toBe(true);
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('translation.qa_id = qa.qa_id'), ['ja']);
     expect(result.body.items).toHaveLength(1);
     expect(result.body.items[0]).toMatchObject({ id: 'qa_1' });
+  });
+
+  it('filters localized Q&A with a stable Japanese tag ID', async () => {
+    const pool = {
+      query: vi.fn().mockResolvedValue({
+        rows: [
+          { ...qaRow, translated_question: '問題', translated_answer: '答案', translation_status: 'verified' },
+          {
+            ...qaRow,
+            id: 'qa_2',
+            number: 2,
+            tags: ['バトル'],
+            translated_question: '其他問題',
+            translated_answer: '其他答案',
+            translation_status: 'verified',
+          },
+        ],
+      }),
+    };
+    const result = await listPublicQa({ pool, language: 'zh-TW', tag: '基本ルール' });
+    expect(result.ok).toBe(true);
+    expect(result.body.items).toHaveLength(1);
+    expect(result.body.items[0]).toMatchObject({ id: 'qa_1', tagIds: ['基本ルール'], tags: ['基本規則'] });
   });
 
   it('does not fall back to repository JSON when PostgreSQL has no Q&A rows', async () => {
@@ -108,6 +166,12 @@ describe('official rulings service', () => {
     const result = await listPublicQa({ pool, language: 'ja' });
     expect(result.ok).toBe(true);
     expect(result.body.items).toEqual([]);
+  });
+
+  it('fails closed instead of serving Japanese from an incomplete active translation release', async () => {
+    const pool = { query: vi.fn().mockResolvedValue({ rows: [qaRow] }) };
+    const result = await listPublicQa({ pool, language: 'zh-TW' });
+    expect(result).toMatchObject({ ok: false, status: 503 });
   });
 
   it('uses reviewed card text for a localized corrected errata effect', () => {
@@ -157,5 +221,35 @@ describe('official rulings service', () => {
       }),
     ).resolves.toMatchObject({ ok: false, status: 400 });
     expect(pool.query).not.toHaveBeenCalled();
+  });
+
+  it('rejects a published Q&A translation that re-translates a reviewed card name', async () => {
+    const pool = {
+      query: vi.fn().mockResolvedValue({
+        rows: [
+          {
+            id: '1st_1',
+            name: 'テストカード',
+            en_name_official: 'Test Card',
+            localized_name_text: '校對卡名',
+            localized_review_status: 'verified',
+            related_card_ids: [],
+            question_ja: '「テストカード」を使えますか？',
+            answer_ja: '使えます。',
+          },
+        ],
+      }),
+    };
+
+    await expect(
+      upsertOfficialQaTranslation({
+        pool,
+        qaId: 'qa_1',
+        body: { locale: 'zh-TW', question: '可以使用重新翻譯的卡名嗎？', answer: '可以。', status: 'verified' },
+        reviewerUserId: 'admin_1',
+      }),
+    ).resolves.toMatchObject({ ok: false, status: 400, error: expect.stringContaining('校對卡名') });
+    expect(pool.query).toHaveBeenCalledTimes(1);
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('CROSS JOIN cards card'), ['qa_1', 'zh-TW']);
   });
 });

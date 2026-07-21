@@ -50,6 +50,7 @@ import {
   type ProfileResponse,
 } from '../api/client';
 import { UserAvatar } from '../components/UserAvatar';
+import { AuthSection } from '../components/lobby/AuthSection';
 import { t } from '../i18n';
 import {
   Alert,
@@ -126,6 +127,7 @@ export function ProfilePage() {
   const [friendUserId, setFriendUserId] = useState('');
   const [socialLoading, setSocialLoading] = useState(true);
   const [socialActionId, setSocialActionId] = useState('');
+  const [authRevision, setAuthRevision] = useState(0);
 
   // Credential availability belongs to the account, not the deployment. The
   // fallback keeps older API responses usable while the capability fields are
@@ -136,6 +138,7 @@ export function ProfilePage() {
 
   useEffect(() => {
     if (!isLoggedIn()) {
+      setProfile(null);
       setLoading(false);
       return;
     }
@@ -193,7 +196,7 @@ export function ProfilePage() {
     return () => {
       cancelled = true;
     };
-  }, [location.search]);
+  }, [authRevision, location.search]);
 
   const handleProfileSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -394,7 +397,13 @@ export function ProfilePage() {
           <Panel className="grid max-w-md gap-4 text-center" size="lg">
             <h1 className="font-display text-title-md font-bold">{t('profile.loginRequiredTitle')}</h1>
             <p className="text-body-sm text-content-muted">{t('profile.loginRequiredBody')}</p>
-            <Button variant="primary" type="button" onClick={() => navigate('/')}>
+            <AuthSection
+              onAuthChanged={() => {
+                setLoading(true);
+                setAuthRevision((revision) => revision + 1);
+              }}
+            />
+            <Button variant="secondary" type="button" onClick={() => navigate('/')}>
               {t('common.backToLobby')}
             </Button>
           </Panel>

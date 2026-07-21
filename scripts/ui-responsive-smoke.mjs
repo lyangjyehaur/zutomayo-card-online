@@ -33,7 +33,14 @@ const pages = [
   { pageId: 'landing', path: '/', waitFor: 'nav[aria-label] button' },
   { pageId: 'ai-lobby', path: '/ai', waitForText: '與電腦對戰' },
   { pageId: 'online-lobby', path: '/online', waitForText: '線上房間' },
+  { pageId: 'tutorial', path: '/tutorial', waitForText: '新手教學' },
+  { pageId: 'community', path: '/community', waitForText: '登入後進入社群' },
+  { pageId: 'profile', path: '/profile', waitForText: '需要先登入' },
+  { pageId: 'history', path: '/history', waitForText: '對戰紀錄' },
   { pageId: 'deck-builder', path: '/deck-builder', waitForText: '牌組' },
+  { pageId: 'deck-shares', path: '/deck-shares', waitForText: '分享大廳' },
+  { pageId: 'official-qa', path: '/rules/qa', waitForText: '官方規則 Q&A' },
+  { pageId: 'official-errata', path: '/rules/errata', waitForText: '官方卡牌勘誤' },
   { pageId: 'battle-turn-set', path: '/qa/battle?state=turn-set&controls=0', waitFor: '.bf-root' },
   { pageId: 'feedback', path: '/feedback', waitFor: '.feedback-toolbar' },
   { pageId: 'legal-privacy', path: '/legal/privacy', waitForText: '隱私政策' },
@@ -235,7 +242,7 @@ const setup = `
     if (url.includes('/api/decks')) return json({ decks: [] });
     if (url.includes('/api/preset-decks')) return json([]);
     if (url.includes('/api/presence')) return json({ onlineCount: 7, activeWindowSeconds: 90 });
-    if (url.includes('/api/config')) return json({});
+    if (url.includes('/api/config')) return json({ deck_sharing_enabled: true });
     if (url.includes('/api/cards/texts')) return json({});
     if (url.includes('/api/app-version')) {
       return json({ appVersion: smokeVersion, buildId: smokeVersion, rulesVersion: smokeVersion });
@@ -366,6 +373,20 @@ const metricsExpression = `
     };
   };
   const visible = (selector) => [...document.querySelectorAll(selector)].filter(isVisible).map(box);
+  const hasHorizontalScrollAncestor = (element) => {
+    let current = element.parentElement;
+    while (current && current !== document.body) {
+      const style = getComputedStyle(current);
+      if (
+        current.scrollWidth > current.clientWidth + 1 &&
+        (style.overflowX === 'auto' || style.overflowX === 'scroll')
+      ) {
+        return true;
+      }
+      current = current.parentElement;
+    }
+    return false;
+  };
   const targets = [...document.querySelectorAll('button, a[href], input, select, textarea, [role="button"]')]
     .filter((el) => {
       const type = el.getAttribute('type');
@@ -383,11 +404,12 @@ const metricsExpression = `
     },
     shell: visible('[data-page-shell], main, .app-shell, .bf-root').slice(0, 3),
     checkedSurface: visible(
-      'nav[aria-label] button, .bf-main, .feedback-toolbar, .admin-page, .i18n-responsive-table, .deck-editor, .card-browser, [data-room-panel], [aria-label="Card Pool"], article',
+      'nav[aria-label] button, .bf-main, .feedback-toolbar, .admin-page, .i18n-responsive-table, .deck-editor, .card-browser, [data-room-panel], [data-chat-surface], [data-ui-panel], [aria-label="Card Pool"], main > section, article',
     ).slice(0, 8),
     smallTargets: targets.filter((item) => item.width < 44 || item.height < 44).slice(0, 12),
     offscreen: [...document.body.querySelectorAll('*')]
       .filter(isVisible)
+      .filter((element) => !hasHorizontalScrollAncestor(element))
       .map(box)
       .filter((item) => item.offscreenX)
       .slice(0, 20),
@@ -429,6 +451,7 @@ try {
   client = await connect(tab.webSocketDebuggerUrl);
   await client.send('Page.enable');
   await client.send('Runtime.enable');
+  await client.send('Page.addScriptToEvaluateOnNewDocument', { source: setup });
 
   for (const testCase of cases) {
     console.log(`case ${testCase.name}`);
@@ -441,9 +464,6 @@ try {
       screenHeight: testCase.height,
     });
     await navigateTo(client, `${baseUrl}${testCase.path}`);
-    await waitForPage(client, testCase);
-    await evalChecked(client, setup);
-    await reloadPage(client);
     await waitForPage(client, testCase);
     await new Promise((resolve) => setTimeout(resolve, 300));
     let metrics = await evalChecked(client, metricsExpression);

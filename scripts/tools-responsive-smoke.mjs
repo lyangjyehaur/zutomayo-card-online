@@ -256,6 +256,20 @@ const metricsExpression = `
     };
   };
   const visible = (selector) => [...document.querySelectorAll(selector)].filter(isVisible).map(box);
+  const hasHorizontalScrollAncestor = (element) => {
+    let current = element.parentElement;
+    while (current && current !== document.body) {
+      const style = getComputedStyle(current);
+      if (
+        current.scrollWidth > current.clientWidth + 1 &&
+        (style.overflowX === 'auto' || style.overflowX === 'scroll')
+      ) {
+        return true;
+      }
+      current = current.parentElement;
+    }
+    return false;
+  };
   const targetElements = [...document.querySelectorAll('button, a[href], input, select, textarea, [role="button"]')]
     .filter((el) => {
       const type = el.getAttribute('type');
@@ -272,9 +286,10 @@ const metricsExpression = `
     },
     shell: visible('main').slice(0, 1),
     toolbar: visible('.feedback-toolbar, .responsive-data-list, .i18n-responsive-table, article').slice(0, 8),
-    smallTargets: targets.filter((item) => item.width < 40 || item.height < 40).slice(0, 12),
+    smallTargets: targets.filter((item) => item.width < 44 || item.height < 44).slice(0, 12),
     offscreen: [...document.body.querySelectorAll('*')]
       .filter(isVisible)
+      .filter((element) => !hasHorizontalScrollAncestor(element))
       .map(box)
       .filter((item) => item.offscreenX)
       .slice(0, 20),

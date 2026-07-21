@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { AlertCircle, LogOut, User } from 'lucide-react';
+import { AlertCircle, LogIn, LogOut, User } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   ApiError,
@@ -494,9 +494,10 @@ export function AuthSection({
     return (
       <>
         <Button
-          variant="secondary"
+          variant="ghost"
           size="sm"
           type="button"
+          leftIcon={<LogIn strokeWidth={1.5} className="size-4" aria-hidden="true" />}
           onClick={() => {
             if (useDirectAccountLogin && primaryOAuthProvider) {
               handleOAuthLogin(primaryOAuthProvider);
@@ -508,7 +509,7 @@ export function AuthSection({
             !PUBLIC_AUTH_ENTRYPOINTS_ENABLED ||
             (useDirectAccountLogin && (!primaryOAuthProvider || !primaryOAuthProvider.enabled))
           }
-          className="h-8 whitespace-nowrap"
+          className="min-h-9 whitespace-nowrap px-3 text-content-muted hover:bg-surface-raised hover:text-content-primary"
         >
           {useDirectAccountLogin ? t('auth.accountContinue') : t('auth.login')}
         </Button>

@@ -149,7 +149,7 @@
   }
 
   .tutorial-tooltip--action {
-    max-height: min(27dvh, 16rem);
+    max-height: min(40dvh, 22rem);
   }
 
   .tutorial-tooltip--mobile-top {
@@ -157,7 +157,7 @@
   }
 
   .tutorial-tooltip--mobile-top.tutorial-tooltip--action {
-    max-height: min(27dvh, 16rem);
+    max-height: min(40dvh, 22rem);
   }
 
   .tutorial-tooltip--centered {

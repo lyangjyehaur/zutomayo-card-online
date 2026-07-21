@@ -246,6 +246,20 @@ const pageMetrics = `
     };
   };
   const visible = (selector) => [...document.querySelectorAll(selector)].filter(isVisible).map(box);
+  const hasHorizontalScrollAncestor = (element) => {
+    let current = element.parentElement;
+    while (current && current !== document.body) {
+      const style = getComputedStyle(current);
+      if (
+        current.scrollWidth > current.clientWidth + 1 &&
+        (style.overflowX === 'auto' || style.overflowX === 'scroll')
+      ) {
+        return true;
+      }
+      current = current.parentElement;
+    }
+    return false;
+  };
   const buttons = visible('button, a[href], [role="button"]');
   return {
     viewport: { width: innerWidth, height: innerHeight },
@@ -257,13 +271,14 @@ const pageMetrics = `
     },
     header: visible('.admin-header'),
     tabs: visible('.admin-tablist'),
-    summary: visible('.admin-mobile-filter-summary'),
+    summary: visible('.admin-card-browser-actions'),
     advanced: visible('.admin-filter-advanced'),
     filterRows: visible('.admin-filter-row'),
     cards: visible('.admin-card-list > button').slice(0, 10),
-    smallTargets: buttons.filter((item) => item.width < 40 || item.height < 40),
+    smallTargets: buttons.filter((item) => item.width < 44 || item.height < 44),
     offscreen: [...document.body.querySelectorAll('*')]
       .filter((el) => !el.closest('.admin-filter-row, .admin-tablist, .admin-card-modal-tabs'))
+      .filter((element) => !hasHorizontalScrollAncestor(element))
       .map(box)
       .filter((item) => item.visible && item.offscreenX)
       .slice(0, 20),
@@ -306,7 +321,7 @@ const tableMetrics = `
     rows: visible('.admin-responsive-table tbody tr').slice(0, 5),
     cells: visible('.admin-responsive-table td').slice(0, 14),
     controls: targets,
-    smallTargets: targets.filter((item) => item.width < 40 || item.height < 40),
+    smallTargets: targets.filter((item) => item.width < 44 || item.height < 44),
     offscreen: [...document.querySelectorAll('.admin-responsive-table, .admin-responsive-table *')]
       .filter(isVisible)
       .map(box)
@@ -392,7 +407,7 @@ try {
       await waitForSelector(client, '.admin-card-list');
       await new Promise((resolve) => setTimeout(resolve, 700));
       if (testCase.openFilters) {
-        await evalChecked(client, `document.querySelector('.admin-mobile-filter-summary button')?.click()`);
+        await evalChecked(client, `document.querySelector('.admin-card-browser-actions button')?.click()`);
         await new Promise((resolve) => setTimeout(resolve, 400));
       }
     }

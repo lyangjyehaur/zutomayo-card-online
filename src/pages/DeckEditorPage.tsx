@@ -229,6 +229,36 @@ export function DeckEditorPage({
     }
   };
 
+  const shareActionLabel = ownedDeckShare?.sourceChanged ? t('deckShare.updateSnapshot') : t('deckShare.shareAction');
+  const shareUnavailableReason = !selectedServerDeckId
+    ? t('deckShare.saveServerFirst')
+    : hasUnsavedChanges
+      ? t('deckShare.saveChangesFirst')
+      : '';
+  const openShareDialog = () => {
+    if (shareUnavailableReason) {
+      showToast({ title: shareUnavailableReason, kind: 'info' });
+      return;
+    }
+    setShareDialogOpen(true);
+  };
+
+  const renderShareButton = (placement: 'header' | 'sheet') => (
+    <Button
+      type="button"
+      size="sm"
+      variant="secondary"
+      className={placement === 'header' ? 'size-touch shrink-0 px-0 sm:w-auto sm:px-3' : 'min-h-11 w-full'}
+      disabled={saving || shareSaving}
+      title={shareUnavailableReason || undefined}
+      aria-label={shareActionLabel}
+      onClick={openShareDialog}
+    >
+      <Share2 className="size-4" aria-hidden="true" />
+      <span className={placement === 'header' ? 'hidden sm:inline' : undefined}>{shareActionLabel}</span>
+    </Button>
+  );
+
   const deckLibraryOptions = useMemo(() => {
     const draftOption =
       selectedDeckLibraryId === ''
@@ -448,30 +478,8 @@ export function DeckEditorPage({
         syncLabel={
           hasUnsavedChanges ? t('deckEditor.unsavedChanges') : loggedIn && syncedDeckId ? t('deck.synced') : undefined
         }
-        headerActions={
-          deckSharingEnabled && loggedIn ? (
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              className="size-touch shrink-0 px-0 sm:w-auto sm:px-3"
-              disabled={!selectedServerDeckId || hasUnsavedChanges || saving}
-              title={
-                !selectedServerDeckId
-                  ? t('deckShare.saveServerFirst')
-                  : hasUnsavedChanges
-                    ? t('deckShare.saveChangesFirst')
-                    : undefined
-              }
-              onClick={() => setShareDialogOpen(true)}
-            >
-              <Share2 className="size-4" aria-hidden="true" />
-              <span className="hidden sm:inline">
-                {ownedDeckShare?.sourceChanged ? t('deckShare.updateSnapshot') : t('deckShare.shareAction')}
-              </span>
-            </Button>
-          ) : undefined
-        }
+        headerActions={deckSharingEnabled && loggedIn ? renderShareButton('header') : undefined}
+        deckSheetActions={deckSharingEnabled && loggedIn ? renderShareButton('sheet') : undefined}
         errorMessage={saveError || loadError}
         notice={
           loggedIn && unlinkedLocalDecks.length > 0 ? (

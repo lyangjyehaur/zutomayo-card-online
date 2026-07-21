@@ -28,7 +28,14 @@ PLATFORM_PORT="${PLATFORM_PORT:-3002}"
 SMOKE_LOCAL_GAME_PORT="${SMOKE_LOCAL_GAME_PORT:-13000}"
 SMOKE_LOCAL_API_PORT="${SMOKE_LOCAL_API_PORT:-13001}"
 SMOKE_LOCAL_PLATFORM_PORT="${SMOKE_LOCAL_PLATFORM_PORT:-13002}"
-EXPECTED_SCHEMA_MIGRATION="000036_harden_card_i18n_contract"
+OFFICIAL_TRANSLATIONS_SOURCE="${OFFICIAL_TRANSLATIONS_SOURCE:-$PROJECT_DIR/data/official-rulings-translations.json}"
+CARD_DERIVED_EFFECTS_DIR="${CARD_DERIVED_EFFECTS_DIR:-$PROJECT_DIR/data}"
+CARD_DERIVED_EFFECT_FILES=(
+  card-effects-i18n.json
+  card-derived-effects-review.json
+  card-english-extraction.json
+  card-official-errata.json
+)
 
 CONFIRM=false
 DRY_RUN=false
@@ -112,11 +119,22 @@ load_local_release() {
   TARGET_SHORT="$(git rev-parse --short=12 "$TARGET_SHA")"
   PACKAGE_VERSION="$(node -p "require('./package.json').version")"
   [[ "$PACKAGE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]] || die 'package version is invalid'
+  EXPECTED_SCHEMA_MIGRATION="$(find migrations -maxdepth 1 -type f -name '*.js' -print | sort | tail -n 1 | sed 's#^.*/##; s/\.js$//')"
+  [[ "$EXPECTED_SCHEMA_MIGRATION" =~ ^[0-9]{6,}_[a-z0-9_]+$ ]] || die 'could not resolve the latest migration'
   local migration_file="migrations/${EXPECTED_SCHEMA_MIGRATION}.js"
   [[ -f "$migration_file" ]] || die "expected migration is missing: $migration_file"
   EXPECTED_SCHEMA_CHECKSUM="$(sha256_file "$migration_file")"
   [[ "$EXPECTED_SCHEMA_CHECKSUM" =~ ^[a-f0-9]{64}$ ]] || die 'migration checksum is invalid'
   verify_local_battle_assets
+  [[ -f "$OFFICIAL_TRANSLATIONS_SOURCE" ]] || \
+    die "reviewed official-rulings translations are missing: $OFFICIAL_TRANSLATIONS_SOURCE"
+  [[ -d "$CARD_DERIVED_EFFECTS_DIR" ]] || \
+    die "reviewed card-derived-effects directory is missing: $CARD_DERIVED_EFFECTS_DIR"
+  local derived_file
+  for derived_file in "${CARD_DERIVED_EFFECT_FILES[@]}"; do
+    [[ -f "$CARD_DERIVED_EFFECTS_DIR/$derived_file" ]] || \
+      die "reviewed card-derived-effects source is missing: $CARD_DERIVED_EFFECTS_DIR/$derived_file"
+  done
 }
 
 remote_predeploy_backup() {
@@ -233,10 +251,41 @@ verify_remote_runtime_config() {
     echo 'Redis eviction policy: noeviction'"
 }
 
-remote_build_and_start() {
+remote_build_and_migrate() {
   ssh_run "set -euo pipefail
     cd '$REMOTE_DIR'
     docker compose -f '$COMPOSE_FILE' build --pull migrate game api platform
+    docker compose -f '$COMPOSE_FILE' run --rm migrate"
+}
+
+release_official_rulings() {
+  ssh -p "$SERVER_PORT" "$SERVER_USER@$SERVER_HOST" "set -euo pipefail
+    cd '$REMOTE_DIR'
+    docker compose -f '$COMPOSE_FILE' run --rm -T migrate \
+      node --import tsx scripts/release-official-rulings.ts \
+      --translations=- --app-version='$PACKAGE_VERSION' --build-id='$TARGET_SHA'" \
+    < "$OFFICIAL_TRANSLATIONS_SOURCE"
+}
+
+release_card_derived_effects() {
+  COPYFILE_DISABLE=1 tar -C "$CARD_DERIVED_EFFECTS_DIR" -cf - "${CARD_DERIVED_EFFECT_FILES[@]}" \
+    | ssh -p "$SERVER_PORT" "$SERVER_USER@$SERVER_HOST" "set -euo pipefail
+      cd '$REMOTE_DIR'
+      docker compose -f '$COMPOSE_FILE' run --rm -T migrate sh -ceu '
+        tmp=\$(mktemp -d)
+        trap \"rm -rf \\\"\$tmp\\\"\" EXIT
+        tar -xf - -C \"\$tmp\"
+        CARD_EFFECT_I18N_SOURCE=\"\$tmp/card-effects-i18n.json\" \\
+        CARD_DERIVED_EFFECTS_REVIEW_SOURCE=\"\$tmp/card-derived-effects-review.json\" \\
+        CARD_ENGLISH_EXTRACTION_SOURCE=\"\$tmp/card-english-extraction.json\" \\
+        CARD_OFFICIAL_ERRATA_SOURCE=\"\$tmp/card-official-errata.json\" \\
+          node --import tsx scripts/import-card-derived-effects-pg.ts
+      '"
+}
+
+remote_start() {
+  ssh_run "set -euo pipefail
+    cd '$REMOTE_DIR'
     docker compose -f '$COMPOSE_FILE' up -d --wait --wait-timeout '$DEPLOY_WAIT_SECONDS'
     docker compose -f '$COMPOSE_FILE' ps"
 }
@@ -274,6 +323,8 @@ confirm_action "deploy origin/master $TARGET_SHORT"
 if [[ "$DRY_RUN" == true ]]; then
   log "[dry-run] would back up PostgreSQL and deploy origin/master $TARGET_SHORT"
   log "[dry-run] schema=$EXPECTED_SCHEMA_MIGRATION checksum=$EXPECTED_SCHEMA_CHECKSUM"
+  log "[dry-run] would stream the reviewed official-rulings translations and require an atomic active release"
+  log "[dry-run] would stream and transactionally import reviewed card-derived effects"
   log "[dry-run] would synchronize and verify $BATTLE_ASSET_COUNT private battle assets"
   exit 0
 fi
@@ -291,7 +342,12 @@ verify_remote_runtime_config
 log 'synchronizing private battle assets outside GitHub'
 sync_battle_assets
 
-remote_build_and_start || die 'deployment failed; inspect the server4 Compose logs before retrying'
+remote_build_and_migrate || die 'build or migration failed; the running release was not replaced'
+log 'streaming and transactionally importing reviewed card-derived effects'
+release_card_derived_effects || die 'card-derived-effects release gate failed; the running release was not replaced'
+log 'synchronizing and atomically activating current official Q&A, errata, and five reviewed locales'
+release_official_rulings || die 'official-rulings release gate failed; the running release was not replaced'
+remote_start || die 'deployment failed; inspect the server4 Compose logs before retrying'
 
 run_smoke "$TARGET_SHA" || die 'health verification failed; inspect the deployed release before retrying'
 

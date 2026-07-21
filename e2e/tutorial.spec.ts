@@ -56,7 +56,7 @@ async function expectTooltipContentUsable(page: import('@playwright/test').Page,
     };
   });
   expect(geometry).not.toBeNull();
-  expect(geometry!.bodyHeight).toBeGreaterThanOrEqual(requireInstruction ? 16 : 72);
+  expect(geometry!.bodyHeight).toBeGreaterThanOrEqual(requireInstruction ? 48 : 72);
   expect(geometry!.headingTop).toBeGreaterThanOrEqual(geometry!.tooltipTop);
   expect(geometry!.headingBottom).toBeLessThanOrEqual(geometry!.tooltipBottom);
   expect(geometry!.tooltipTop).toBeGreaterThanOrEqual(0);
@@ -684,8 +684,8 @@ test.describe('教學覆蓋層與互動 @requires-backend', () => {
     await expect(overlay).toContainText('雙方 HP 都是 100');
     await expect(overlay).toContainText('Chronos 從 0');
     await expect(page.locator('.bf-root:visible .bf-hud-turn-value')).toHaveText('01');
-    await expect(page.locator('[data-tut="player-hp"][aria-label="玩家 · 生命 100/100"]')).toBeVisible();
-    await expect(page.locator('[data-tut="opponent-hp"][aria-label="電腦 · 生命 100/100"]')).toBeVisible();
+    await expect(page.locator('[data-tut="player-hp"][aria-label="玩家 · HP 100/100"]')).toBeVisible();
+    await expect(page.locator('[data-tut="opponent-hp"][aria-label="電腦 · HP 100/100"]')).toBeVisible();
     await expect(page.getByRole('img', { name: 'Chronos 時鐘 0/18 · 夜', exact: true })).toBeVisible();
     await expectTooltipContentUsable(page);
     await expect(page.getByRole('dialog', { name: '猜拳決定先後手' })).toHaveCount(0);
@@ -697,19 +697,21 @@ test.describe('教學覆蓋層與互動 @requires-backend', () => {
     await expect(clockOverlay).toContainText('從 0 推進到 3');
     await expect(page.locator('[data-tut="game-notice-panel"]').first()).toBeVisible();
     await expect(page.locator('.bf-root:visible .bf-hud-turn-value')).toHaveText('01');
-    await expect(page.locator('[data-tut="player-hp"][aria-label="玩家 · 生命 100/100"]')).toBeVisible();
+    await expect(page.locator('[data-tut="player-hp"][aria-label="玩家 · HP 100/100"]')).toBeVisible();
     await expect(page.getByRole('img', { name: 'Chronos 時鐘 3/18 · 夜', exact: true })).toBeVisible();
     await expectTooltipContentUsable(page, true);
+    await expectSingleActionHighlight(page);
 
     await clockOverlay.getByRole('button', { name: '上一頁', exact: true }).click();
     await expectTutorialPhase(page, 'flow-recap');
     await page.getByRole('button', { name: '下一頁', exact: true }).click();
     await expectTutorialPhase(page, 'clock-advance');
+    await expectSingleActionHighlight(page);
     await page.locator('[data-tut="game-notice-panel"]').first().getByRole('button', { name: '確認' }).click();
 
     const hpOverlay = await expectTutorialPhase(page, 'hp-calc');
     await expect(page.locator('.bf-root:visible .bf-hud-turn-value')).toHaveText('01');
-    await expect(page.locator('[data-tut="player-hp"][aria-label="玩家 · 生命 80/100"]')).toBeVisible();
+    await expect(page.locator('[data-tut="player-hp"][aria-label="玩家 · HP 80/100"]')).toBeVisible();
     await hpOverlay.getByRole('button', { name: '上一頁', exact: true }).click();
     await confirmTutorialRewind(page);
     const rebuiltFlow = await expectTutorialPhase(page, 'flow-recap');
@@ -841,7 +843,7 @@ test.describe('教學覆蓋層與互動 @requires-backend', () => {
     await confirmTutorialRewind(page);
 
     await expectTutorialPhase(page, 'turnSet-character-select');
-    await expect(page.locator('[data-tut="player-hp"][aria-label="玩家 · 生命 80/100"]')).toBeVisible();
+    await expect(page.locator('[data-tut="player-hp"][aria-label="玩家 · HP 80/100"]')).toBeVisible();
     await expect(page.getByRole('img', { name: 'Chronos 時鐘 3/18 · 夜', exact: true })).toBeVisible();
     await expect(page.locator('[data-tut="confirm-set"]').first()).toBeDisabled();
     await page.locator('[data-tut-card="1st_46"]').first().click();
@@ -895,32 +897,32 @@ test.describe('教學覆蓋層與互動 @requires-backend', () => {
 
     await expectTutorialPhase(page, 'choice-mechanics');
     await expect(page.locator('.bf-root:visible .bf-hud-turn-value')).toHaveText('02');
-    await expect(page.locator('[data-tut="opponent-hp"][aria-label="電腦 · 生命 100/100"]')).toBeVisible();
+    await expect(page.locator('[data-tut="opponent-hp"][aria-label="電腦 · HP 100/100"]')).toBeVisible();
     await page.getByRole('button', { name: '上一頁', exact: true }).click();
     await confirmTutorialRewind(page);
 
     await expectTutorialPhase(page, 'effectOrder-action');
-    await expect(page.locator('[data-tut="player-hp"][aria-label="玩家 · 生命 80/100"]')).toBeVisible();
-    await expect(page.locator('[data-tut="opponent-hp"][aria-label="電腦 · 生命 100/100"]')).toBeVisible();
+    await expect(page.locator('[data-tut="player-hp"][aria-label="玩家 · HP 80/100"]')).toBeVisible();
+    await expect(page.locator('[data-tut="opponent-hp"][aria-label="電腦 · HP 100/100"]')).toBeVisible();
     await expect(page.getByRole('img', { name: 'Chronos 時鐘 10/18 · 晝', exact: true })).toBeVisible();
     await expect(page.locator('.effect-order-panel:visible')).toHaveCount(1);
     await page.locator('[data-tut-effect-card="2nd_98"]').first().click();
 
     await expectTutorialPhase(page, 'choice-mechanics');
     await expect(page.locator('.bf-root:visible .bf-hud-turn-value')).toHaveText('02');
-    await expect(page.locator('[data-tut="opponent-hp"][aria-label="電腦 · 生命 100/100"]')).toBeVisible();
+    await expect(page.locator('[data-tut="opponent-hp"][aria-label="電腦 · HP 100/100"]')).toBeVisible();
     await page.getByRole('button', { name: '下一頁' }).click();
 
     await expectTutorialPhase(page, 'hp-calc');
     await expect(page.locator('.bf-root:visible .bf-hud-turn-value')).toHaveText('02');
-    await expect(page.locator('[data-tut="opponent-hp"][aria-label="電腦 · 生命 30/100"]')).toBeVisible();
+    await expect(page.locator('[data-tut="opponent-hp"][aria-label="電腦 · HP 30/100"]')).toBeVisible();
     await expectSingleActionHighlight(page);
     await page.locator('[data-tut="game-notice-panel"]').first().getByRole('button', { name: '確認' }).click();
 
     await expectTutorialPhase(page, 'turn-end-cleanup');
     await expect(page.locator('.bf-root:visible .bf-hud-turn-value')).toHaveText('02');
     await expectSingleContextHighlight(page);
-    await expect(page.locator('[data-tut="opponent-hp"][aria-label="電腦 · 生命 30/100"]')).toBeVisible();
+    await expect(page.locator('[data-tut="opponent-hp"][aria-label="電腦 · HP 30/100"]')).toBeVisible();
     await page.getByRole('button', { name: '下一頁' }).click();
 
     let completeOverlay = await expectTutorialPhase(page, 'complete');

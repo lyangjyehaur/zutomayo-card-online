@@ -59,6 +59,19 @@ function sameRects(a: Rect[], b: Rect[]): boolean {
   );
 }
 
+function unionRects(rects: Rect[]) {
+  if (rects.length === 0) return null;
+  return rects.reduce(
+    (acc, rect) => ({
+      minX: Math.min(acc.minX, rect.x),
+      minY: Math.min(acc.minY, rect.y),
+      maxX: Math.max(acc.maxX, rect.x + rect.w),
+      maxY: Math.max(acc.maxY, rect.y + rect.h),
+    }),
+    { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity },
+  );
+}
+
 function isVisibleElement(element: HTMLElement): boolean {
   const rect = element.getBoundingClientRect();
   const style = window.getComputedStyle(element);
@@ -270,17 +283,7 @@ export function GameTutorialOverlay({
   const placement = current.placement ?? (hasRects ? 'bottom' : 'center');
 
   // 計算所有 rects 的聯集 bounding box，tooltip 避開此區域
-  const union = hasRects
-    ? rects.reduce(
-        (acc, r) => ({
-          minX: Math.min(acc.minX, r.x),
-          minY: Math.min(acc.minY, r.y),
-          maxX: Math.max(acc.maxX, r.x + r.w),
-          maxY: Math.max(acc.maxY, r.y + r.h),
-        }),
-        { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity },
-      )
-    : null;
+  const union = unionRects(rects);
 
   let tipX: number;
   let tipY: number;
@@ -350,10 +353,11 @@ export function GameTutorialOverlay({
   tipY = Math.min(Math.max(tipY, 8), Math.max(8, vp.h - tipH - 8));
 
   const mobileSheetAtTop = (() => {
-    if (!isMobileViewport || !union) return false;
+    const avoidanceUnion = unionRects(interactionRects) ?? union;
+    if (!isMobileViewport || !avoidanceUnion) return false;
     const edgeGap = 10;
-    const spaceAbove = Math.max(0, union.minY - edgeGap);
-    const spaceBelow = Math.max(0, vp.h - union.maxY - edgeGap);
+    const spaceAbove = Math.max(0, avoidanceUnion.minY - edgeGap);
+    const spaceBelow = Math.max(0, vp.h - avoidanceUnion.maxY - edgeGap);
     const topFits = spaceAbove >= tooltipHeight;
     const bottomFits = spaceBelow >= tooltipHeight;
     if (topFits !== bottomFits) return topFits;

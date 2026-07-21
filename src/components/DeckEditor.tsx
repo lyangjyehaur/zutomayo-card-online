@@ -67,6 +67,7 @@ interface DeckEditorProps {
   syncLabel?: string;
   errorMessage?: string;
   headerActions?: ReactNode;
+  deckSheetActions?: ReactNode;
 }
 
 interface DeckLibraryOption {
@@ -142,6 +143,7 @@ export function DeckEditor({
   syncLabel,
   errorMessage,
   headerActions,
+  deckSheetActions,
 }: DeckEditorProps) {
   const [allCards, setAllCards] = useState<CardDef[]>(() => getAllCardDefs());
   const locale = useLocale();
@@ -367,76 +369,97 @@ export function DeckEditor({
     if (!hasDeckLibraryActions) return null;
 
     return (
-      <div className="mb-3 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2 rounded-sm border border-content-primary/10 bg-surface-base/55 p-2">
-        <label className="grid min-w-0 gap-1">
-          <span className="font-mono text-minutia uppercase tracking-[var(--tracking-control)] text-content-muted">
-            {t('deckEditor.deckLibrary')}
-          </span>
-          <div className="relative min-w-0">
-            <Select
-              value={selectedDeckLibraryId}
-              disabled={!onSelectDeckLibrary || deckLibraryOptions.length === 0}
-              onChange={(event) => onSelectDeckLibrary?.(event.target.value)}
-              aria-label={t('deckEditor.selectDeck')}
-              className="min-h-11 appearance-none truncate border-border-soft bg-surface-canvas py-2 pl-3 pr-10 text-body-sm"
-            >
-              {deckLibraryOptions.length === 0 ? (
-                <option value="">{t('deckEditor.currentDraft')}</option>
-              ) : (
-                deckLibraryOptions.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.name}
-                  </option>
-                ))
+      <div className="mb-3 grid gap-2 rounded-sm border border-content-primary/10 bg-surface-base/55 p-2">
+        {onDeckNameChange && (
+          <label className="grid min-w-0 gap-1 sm:hidden">
+            <span className="flex items-center justify-between gap-2 font-mono text-minutia uppercase tracking-[var(--tracking-control)] text-content-muted">
+              <span>{t('deckEditor.deckName')}</span>
+              {syncLabel && (
+                <span className={synced ? 'text-accent-primary' : 'text-accent-action'} aria-live="polite">
+                  {syncLabel}
+                </span>
               )}
-            </Select>
-            <ChevronDown
-              className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-content-primary/35"
-              aria-hidden="true"
+            </span>
+            <Input
+              value={deckName ?? ''}
+              aria-label={t('deckEditor.deckName')}
+              placeholder={t('deck.custom')}
+              onChange={(event) => onDeckNameChange(event.target.value)}
+              className="min-h-11 px-3 py-2 text-body-sm"
             />
+          </label>
+        )}
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2">
+          <label className="grid min-w-0 gap-1">
+            <span className="font-mono text-minutia uppercase tracking-[var(--tracking-control)] text-content-muted">
+              {t('deckEditor.deckLibrary')}
+            </span>
+            <div className="relative min-w-0">
+              <Select
+                value={selectedDeckLibraryId}
+                disabled={!onSelectDeckLibrary || deckLibraryOptions.length === 0}
+                onChange={(event) => onSelectDeckLibrary?.(event.target.value)}
+                aria-label={t('deckEditor.selectDeck')}
+                className="min-h-11 appearance-none truncate border-border-soft bg-surface-canvas py-2 pl-3 pr-10 text-body-sm"
+              >
+                {deckLibraryOptions.length === 0 ? (
+                  <option value="">{t('deckEditor.currentDraft')}</option>
+                ) : (
+                  deckLibraryOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.name}
+                    </option>
+                  ))
+                )}
+              </Select>
+              <ChevronDown
+                className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-content-primary/35"
+                aria-hidden="true"
+              />
+            </div>
+          </label>
+          <div className="flex items-end gap-2">
+            {onNewDeck && (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="size-touch !px-0 md:w-auto md:!px-3"
+                onClick={onNewDeck}
+                aria-label={t('deckEditor.newDeck')}
+              >
+                <Plus className="size-3.5" aria-hidden="true" />
+                <span className="hidden md:inline">{t('deckEditor.newDeck')}</span>
+              </Button>
+            )}
+            {onImportDeck && (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="size-touch !px-0 md:w-auto md:!px-3"
+                onClick={onImportDeck}
+                aria-label={t('deckEditor.importDeck')}
+              >
+                <Upload className="size-3.5" aria-hidden="true" />
+                <span className="hidden md:inline">{t('deckEditor.importDeck')}</span>
+              </Button>
+            )}
+            {onExportDeck && (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="size-touch !px-0 md:w-auto md:!px-3"
+                onClick={() => onExportDeck(deck)}
+                disabled={deck.length === 0}
+                aria-label={t('deckEditor.exportDeck')}
+              >
+                <Download className="size-3.5" aria-hidden="true" />
+                <span className="hidden md:inline">{t('deckEditor.exportDeck')}</span>
+              </Button>
+            )}
           </div>
-        </label>
-        <div className="flex items-end gap-2">
-          {onNewDeck && (
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              className="size-touch !px-0 md:w-auto md:!px-3"
-              onClick={onNewDeck}
-              aria-label={t('deckEditor.newDeck')}
-            >
-              <Plus className="size-3.5" aria-hidden="true" />
-              <span className="hidden md:inline">{t('deckEditor.newDeck')}</span>
-            </Button>
-          )}
-          {onImportDeck && (
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              className="size-touch !px-0 md:w-auto md:!px-3"
-              onClick={onImportDeck}
-              aria-label={t('deckEditor.importDeck')}
-            >
-              <Upload className="size-3.5" aria-hidden="true" />
-              <span className="hidden md:inline">{t('deckEditor.importDeck')}</span>
-            </Button>
-          )}
-          {onExportDeck && (
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              className="size-touch !px-0 md:w-auto md:!px-3"
-              onClick={() => onExportDeck(deck)}
-              disabled={deck.length === 0}
-              aria-label={t('deckEditor.exportDeck')}
-            >
-              <Download className="size-3.5" aria-hidden="true" />
-              <span className="hidden md:inline">{t('deckEditor.exportDeck')}</span>
-            </Button>
-          )}
         </div>
       </div>
     );
@@ -695,7 +718,7 @@ export function DeckEditor({
                   aria-label={t('deck.custom')}
                   placeholder={t('deck.custom')}
                   onChange={(event) => onDeckNameChange(event.target.value)}
-                  className="min-h-11 w-32 px-3 py-2 text-body-sm sm:w-40"
+                  className="hidden min-h-11 w-40 px-3 py-2 text-body-sm sm:block"
                 />
               )}
               {syncLabel && (
@@ -885,7 +908,7 @@ export function DeckEditor({
                 </button>
                 {card.hasOfficialErrata && card.officialErrataId && (
                   <Link
-                    className="absolute bottom-1 left-1 z-[var(--z-dropdown)] rounded-xs bg-accent-action/90 px-1.5 py-1 font-mono text-minutia leading-none text-surface-canvas transition hover:bg-accent-action focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--focus-ring-color]"
+                    className="absolute bottom-1 left-1 z-[var(--z-dropdown)] inline-flex min-h-11 items-center rounded-xs bg-accent-action/90 px-2 font-mono text-minutia leading-none text-surface-canvas transition hover:bg-accent-action focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--focus-ring-color] lg:min-h-0 lg:px-1.5 lg:py-1"
                     to={`/rules/errata/${card.officialErrataId}`}
                   >
                     {t('card.officialErrata')}
@@ -945,16 +968,19 @@ export function DeckEditor({
         title={deckName?.trim() || t('deckEditor.currentDeck')}
         closeLabel={t('common.close')}
         footer={
-          <Button
-            type="button"
-            disabled={!isValid || saving}
-            onClick={() => void saveDeck()}
-            fullWidth
-            variant="primary"
-            className="min-h-11"
-          >
-            <Save className="size-3.5" aria-hidden="true" /> {saveLabel ?? t('deckEditor.saveDeck')}
-          </Button>
+          <div className="grid w-full gap-2 sm:grid-cols-2">
+            {deckSheetActions}
+            <Button
+              type="button"
+              disabled={!isValid || saving}
+              onClick={() => void saveDeck()}
+              fullWidth
+              variant="primary"
+              className={deckSheetActions ? 'min-h-11' : 'min-h-11 sm:col-span-2'}
+            >
+              <Save className="size-3.5" aria-hidden="true" /> {saveLabel ?? t('deckEditor.saveDeck')}
+            </Button>
+          </div>
         }
       >
         {renderActiveDeckContent()}

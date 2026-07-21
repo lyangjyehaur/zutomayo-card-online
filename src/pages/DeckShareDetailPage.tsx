@@ -15,9 +15,16 @@ import {
 } from '../api/client';
 import { copyText } from '../clipboard';
 import { trackDeckShareEvent } from '../deckShareAnalytics';
-import { applyDeckShareLikeState, getDeckShareCopyIssue, type DeckShareCopyIssue } from '../deckShareUi';
+import {
+  applyDeckShareLikeState,
+  deckShareElementLabel,
+  getDeckShareCopyIssue,
+  type DeckShareCopyIssue,
+} from '../deckShareUi';
+import { getLocalDeckShareDemo, isLocalDeckShareDemo, shouldUseLocalDeckShareDemo } from '../deckShareDemo';
 import { CardBrowserDetailSheet } from '../components/CardBrowser';
 import { CardImage } from '../components/CardImage';
+import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import { useToast } from '../components/ToastProvider';
 import { getCardDef } from '../game/cards/loader';
 import { getLocalizedCardEffect, getLocalizedCardName, getLocalizedSongTitle } from '../game/cards/i18n';
@@ -36,8 +43,6 @@ import {
   LoadingState,
   PageShell,
   Select,
-  StatCard,
-  StatsGrid,
   Textarea,
 } from '../ui';
 
@@ -75,6 +80,13 @@ export function DeckShareDetailPage({ onServerDeckCopied }: { onServerDeckCopied
     setLoading(true);
     setError('');
     getDeckShare(shareId)
+      .catch((requestError) => {
+        if (shouldUseLocalDeckShareDemo() && isLocalDeckShareDemo(shareId)) {
+          const demo = getLocalDeckShareDemo(shareId, locale);
+          if (demo) return demo;
+        }
+        throw requestError;
+      })
       .then((result) => {
         if (!cancelled) {
           setShare(result);
@@ -94,7 +106,7 @@ export function DeckShareDetailPage({ onServerDeckCopied }: { onServerDeckCopied
     return () => {
       cancelled = true;
     };
-  }, [shareId]);
+  }, [locale, shareId]);
 
   useEffect(() => {
     if (!isLoggedIn()) {
@@ -133,7 +145,8 @@ export function DeckShareDetailPage({ onServerDeckCopied }: { onServerDeckCopied
     [share],
   );
   const isOwner = Boolean(share && currentUserId && share.owner.userId === currentUserId);
-  const showSocialActions = viewerIdentityResolved && !isOwner;
+  const localPreview = Boolean(share && isLocalDeckShareDemo(share.id));
+  const showSocialActions = viewerIdentityResolved && !isOwner && !localPreview;
 
   const formatTimestamp = (value: string | null) => {
     if (!value) return t('deckShare.timeUnavailable');
@@ -187,7 +200,10 @@ export function DeckShareDetailPage({ onServerDeckCopied }: { onServerDeckCopied
     setCopying(true);
     try {
       const copyName = `${share.name} ${t('deckShare.copySuffix')}`.slice(0, 60);
-      if (isLoggedIn()) {
+      if (localPreview) {
+        saveCustomDeck(copyName, share.cardIds);
+        showToast({ title: t('deckShare.localCopySuccess'), kind: 'success' });
+      } else if (isLoggedIn()) {
         const idempotencyKey =
           typeof crypto !== 'undefined' && 'randomUUID' in crypto
             ? crypto.randomUUID()
@@ -320,12 +336,15 @@ export function DeckShareDetailPage({ onServerDeckCopied }: { onServerDeckCopied
         title={share?.name || t('deckShare.detailTitle')}
         backTo="/deck-shares"
         actions={
-          share ? (
-            <Button type="button" size="sm" variant="secondary" onClick={() => void shareLink()}>
-              <Link2 className="size-4" aria-hidden="true" />
-              <span className="hidden sm:inline">{t('deckShare.shareLink')}</span>
-            </Button>
-          ) : undefined
+          <div className="flex items-center gap-2">
+            <LanguageSwitcher />
+            {share && (
+              <Button type="button" size="sm" variant="secondary" onClick={() => void shareLink()}>
+                <Link2 className="size-4" aria-hidden="true" />
+                <span className="hidden sm:inline">{t('deckShare.shareLink')}</span>
+              </Button>
+            )}
+          </div>
         }
       />
 
@@ -336,12 +355,15 @@ export function DeckShareDetailPage({ onServerDeckCopied }: { onServerDeckCopied
           <EmptyState title={t('deckShare.detailNotFoundTitle')} description={error || t('deckShare.detailNotFound')} />
         ) : (
           <>
-            <header className="grid gap-4 rounded-sm border border-border-soft bg-surface-panel p-5 shadow-floating md:p-6">
+            <header className="grid gap-5 border-b border-border-soft pb-6">
               <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
                 <div className="min-w-0">
-                  <p className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary">
-                    {share.visibility === 'unlisted' ? t('deckShare.unlisted') : t('deckShare.public')}
-                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary">
+                      {share.visibility === 'unlisted' ? t('deckShare.unlisted') : t('deckShare.public')}
+                    </p>
+                    {localPreview && <Badge tone="gold">{t('deckShare.localPreview')}</Badge>}
+                  </div>
                   <h1 className="mt-1 break-words font-display text-title-lg font-bold">{share.name}</h1>
                   <p className="mt-2 flex items-center gap-2 text-body text-content-muted">
                     <UserRound className="size-4" aria-hidden="true" />
@@ -365,7 +387,7 @@ export function DeckShareDetailPage({ onServerDeckCopied }: { onServerDeckCopied
                 <div className="flex flex-wrap gap-2 md:justify-end">
                   {share.elements.map((element) => (
                     <Badge key={element} tone="neutral">
-                      {element}
+                      {deckShareElementLabel(element, t)}
                     </Badge>
                   ))}
                 </div>
@@ -383,13 +405,20 @@ export function DeckShareDetailPage({ onServerDeckCopied }: { onServerDeckCopied
                 </Alert>
               )}
 
-              <StatsGrid columns={3}>
-                <StatCard label={t('deckShare.cards')} value={share.cardIds.length} />
-                <StatCard label={t('deckShare.likes')} value={share.likeCount} />
-                <StatCard label={t('deckShare.copies')} value={share.copyCount} />
-              </StatsGrid>
+              <dl className="grid grid-cols-3 divide-x divide-border-soft border-y border-border-soft py-4">
+                {[
+                  [t('deckShare.cards'), share.cardIds.length],
+                  [t('deckShare.likes'), share.likeCount],
+                  [t('deckShare.copies'), share.copyCount],
+                ].map(([label, value]) => (
+                  <div className="px-3 first:pl-0 last:pr-0 md:px-5" key={label}>
+                    <dt className="font-mono text-caption uppercase text-content-dim">{label}</dt>
+                    <dd className="mt-1 font-mono text-title-sm text-accent-primary">{value}</dd>
+                  </div>
+                ))}
+              </dl>
 
-              <div className="flex flex-wrap gap-2 border-t border-border-soft pt-4">
+              <div className="flex flex-wrap gap-2">
                 <Button
                   type="button"
                   variant="primary"
@@ -476,7 +505,7 @@ export function DeckShareDetailPage({ onServerDeckCopied }: { onServerDeckCopied
                         )}
                       </div>
                       <div className="min-w-0">
-                        <span className="block truncate font-mono text-minutia text-content-muted">{cardId}</span>
+                        <span className="block truncate font-mono text-caption text-content-muted">{cardId}</span>
                         <h3 className="line-clamp-2 text-body-sm font-semibold text-content-primary">{name}</h3>
                       </div>
                     </Card>

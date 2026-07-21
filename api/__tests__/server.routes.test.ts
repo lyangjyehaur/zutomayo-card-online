@@ -369,7 +369,7 @@ describe('server routes', () => {
   describe('official rulings', () => {
     it('serves the localized public Q&A list with cache headers', async () => {
       mockQuery.mockImplementation(async (sql: string, params?: unknown[]) => {
-        if (sql.includes('FROM official_qa_items')) {
+        if (sql.includes('JOIN official_rulings_release_qa AS qa')) {
           expect(params).toEqual(['zh-TW']);
           return {
             rows: [
@@ -399,7 +399,14 @@ describe('server routes', () => {
       expect(res.statusCode).toBe(200);
       expect(parseBody(res)).toMatchObject({
         total: 1,
-        items: [{ number: 1, localized: { question: '問題', answer: '答案' } }],
+        items: [
+          {
+            number: 1,
+            tagIds: ['基本ルール'],
+            tags: ['基本規則'],
+            localized: { question: '問題', answer: '答案' },
+          },
+        ],
       });
       expect(res.headers['cache-control']).toContain('max-age=300');
       expect(res.headers.etag).toMatch(/^"[A-Za-z0-9_-]+"$/);
@@ -413,7 +420,7 @@ describe('server routes', () => {
 
     it('returns a public errata detail with the canonical corrected card text', async () => {
       mockQuery.mockImplementation(async (sql: string, params?: unknown[]) => {
-        if (sql.includes('FROM card_official_errata AS errata')) {
+        if (sql.includes('JOIN official_rulings_release_errata AS errata')) {
           expect(params).toEqual(['en', '001']);
           return {
             rows: [
@@ -426,6 +433,11 @@ describe('server routes', () => {
                 incorrect_text: 'old',
                 corrected_japanese_text: '新しい',
                 corrected_english_text: 'Corrected',
+                translated_incorrect_text: 'old',
+                translated_reason_text: 'reason',
+                translated_replacement_policy_text: 'replacement',
+                translated_usage_policy_text: 'usage',
+                translation_status: 'verified',
                 card_name_ja: 'カード',
                 card_name_en: 'Card',
                 pack: 'Pack',
@@ -450,6 +462,30 @@ describe('server routes', () => {
       expect(parseBody(res)).toMatchObject({
         item: { errataId: '001', localized: { correctedText: 'Corrected' } },
       });
+    });
+
+    it('reports the active official-rulings release bound to its build', async () => {
+      mockQuery.mockResolvedValue({
+        rows: [
+          {
+            release_id: 'a'.repeat(64),
+            source_hash: 'b'.repeat(64),
+            translation_hash: 'c'.repeat(64),
+            card_dataset_hash: 'd'.repeat(64),
+            qa_count: 74,
+            errata_count: 12,
+            locales: ['zh-TW', 'zh-CN', 'zh-HK', 'en', 'ko'],
+            app_version: '0.2.2',
+            build_id: 'e'.repeat(40),
+            source_checked_at: '2026-07-21T00:00:00.000Z',
+            activated_at: '2026-07-21T00:01:00.000Z',
+          },
+        ],
+        rowCount: 1,
+      });
+      const res = await sendRequest('GET', '/api/official/status');
+      expect(res.statusCode).toBe(200);
+      expect(parseBody(res)).toMatchObject({ qaCount: 74, errataCount: 12, appVersion: '0.2.2' });
     });
 
     it('lists official translation coverage for authorized administrators', async () => {

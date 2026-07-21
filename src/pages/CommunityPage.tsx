@@ -24,7 +24,7 @@ import { buildMatchHistoryChatPath } from '../game/matchHistory';
 import { AuthSection } from '../components/lobby/AuthSection';
 import { useToast } from '../components/ToastProvider';
 import { t, useLocale } from '../i18n';
-import { Alert, AppHeader, IconButton, Input, PageShell, SegmentedControl } from '../ui';
+import { Alert, AppHeader, IconButton, Input, LoadingState, PageShell, Panel, SegmentedControl } from '../ui';
 
 const GLOBAL_LOBBY_CHAT_SUBJECT_ID = 'online-lobby';
 type CommunityView = 'global' | 'direct';
@@ -243,186 +243,199 @@ export function CommunityPage({ onAuthChanged }: { onAuthChanged: () => void | P
         backTo="/"
         actions={<AuthSection onAuthChanged={handleAuthChanged} compact />}
       />
-      <main className="mx-auto grid min-h-full w-full max-w-7xl gap-4 px-4 pb-6 pt-24 lg:grid-cols-[18rem_minmax(0,1fr)] lg:px-6">
-        <aside className="min-w-0 border-r border-border-soft pr-4">
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="flex items-center gap-2 font-display text-lg font-bold">
-              <Users className="size-4 text-accent-primary" aria-hidden="true" />
-              {t('friend.title')}
-            </h2>
-            <IconButton
-              label={t('friend.refresh')}
-              icon={<RefreshCw className="size-4" />}
-              onClick={() => void refreshIdentity()}
-            />
-          </div>
-          {profile && (
-            <div className="mt-3 flex gap-2">
-              <Input
-                value={friendDraft}
-                onChange={(event) => setFriendDraft(event.target.value.slice(0, 128))}
-                placeholder={t('friend.userId')}
-                aria-label={t('friend.userId')}
-              />
-              <IconButton
-                label={t('friend.add')}
-                icon={<Plus className="size-4" />}
-                onClick={() => void handleAddFriend()}
-                disabled={!friendDraft.trim()}
-              />
-            </div>
-          )}
-          <div className="mt-3 grid gap-1">
-            {friends.map((friend) => (
-              <div
-                key={friend.userId}
-                data-friend-user-id={friend.userId}
-                className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-sm border px-3 py-2 ${selectedFriend?.userId === friend.userId ? 'border-accent-primary bg-accent-primary/10' : 'border-border-soft'}`}
-              >
-                <button
-                  type="button"
-                  className="min-h-touch min-w-0 text-left"
-                  data-direct-chat-open={friend.userId}
-                  onClick={() => {
-                    setSelectedFriend(friend);
-                    setView('direct');
-                  }}
-                >
-                  <strong className="block truncate text-body">{friend.nickname || friend.userId}</strong>
-                  <span className="block truncate text-minutia text-content-dim">{friend.userId}</span>
-                </button>
+      <main
+        className={`mx-auto min-h-full w-full max-w-7xl gap-4 px-4 pb-6 pt-24 lg:px-6 ${profile ? 'grid lg:grid-cols-[18rem_minmax(0,1fr)]' : 'flex items-center justify-center'}`}
+      >
+        {!profile ? (
+          loading ? (
+            <LoadingState label={t('presence.syncing')} />
+          ) : (
+            <Panel className="grid w-full max-w-md gap-4 text-center" size="lg">
+              <h1 className="font-display text-title-md font-bold">{t('community.loginRequiredTitle')}</h1>
+              <p className="text-body-sm leading-relaxed text-content-muted">{t('community.loginRequired')}</p>
+              <AuthSection onAuthChanged={handleAuthChanged} />
+            </Panel>
+          )
+        ) : (
+          <>
+            <aside className="min-w-0 border-r border-border-soft pr-4">
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="flex items-center gap-2 font-display text-lg font-bold">
+                  <Users className="size-4 text-accent-primary" aria-hidden="true" />
+                  {t('friend.title')}
+                </h2>
                 <IconButton
-                  label={t('friend.remove')}
-                  icon={<Trash2 className="size-3.5" />}
-                  onClick={() => void handleRemoveFriend(friend)}
+                  label={t('friend.refresh')}
+                  icon={<RefreshCw className="size-4" />}
+                  onClick={() => void refreshIdentity()}
                 />
               </div>
-            ))}
-          </div>
-          {unreadChats.length > 0 && (
-            <div className="mt-5 border-t border-border-soft pt-3" data-chat-surface="unread">
-              <h3 className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-dim">
-                {t('chat.unreadTitle')}
-              </h3>
-              <div className="mt-2 grid gap-1">
-                {unreadChats.map((conversation) => (
-                  <button
-                    key={conversation.id}
-                    type="button"
-                    className="grid min-h-touch grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-sm border border-border-soft px-3 py-2 text-left"
-                    data-unread-conversation={conversation.type}
-                    data-unread-subject={conversation.subjectId}
-                    onClick={() => openUnreadConversation(conversation)}
+              {profile && (
+                <div className="mt-3 flex gap-2">
+                  <Input
+                    value={friendDraft}
+                    onChange={(event) => setFriendDraft(event.target.value.slice(0, 128))}
+                    placeholder={t('friend.userId')}
+                    aria-label={t('friend.userId')}
+                  />
+                  <IconButton
+                    label={t('friend.add')}
+                    icon={<Plus className="size-4" />}
+                    onClick={() => void handleAddFriend()}
+                    disabled={!friendDraft.trim()}
+                  />
+                </div>
+              )}
+              <div className="mt-3 grid gap-1">
+                {friends.map((friend) => (
+                  <div
+                    key={friend.userId}
+                    data-friend-user-id={friend.userId}
+                    className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-sm border px-3 py-2 ${selectedFriend?.userId === friend.userId ? 'border-accent-primary bg-accent-primary/10' : 'border-border-soft'}`}
                   >
-                    <span className="truncate text-caption">{conversation.title || conversation.subjectId}</span>
-                    <span className="font-mono text-caption text-accent-primary">{conversation.unreadCount}</span>
-                  </button>
+                    <button
+                      type="button"
+                      className="min-h-touch min-w-0 text-left"
+                      data-direct-chat-open={friend.userId}
+                      onClick={() => {
+                        setSelectedFriend(friend);
+                        setView('direct');
+                      }}
+                    >
+                      <strong className="block truncate text-body">{friend.nickname || friend.userId}</strong>
+                      <span className="block truncate text-minutia text-content-dim">{friend.userId}</span>
+                    </button>
+                    <IconButton
+                      label={t('friend.remove')}
+                      icon={<Trash2 className="size-3.5" />}
+                      onClick={() => void handleRemoveFriend(friend)}
+                    />
+                  </div>
                 ))}
               </div>
-            </div>
-          )}
-        </aside>
+              {unreadChats.length > 0 && (
+                <div className="mt-5 border-t border-border-soft pt-3" data-chat-surface="unread">
+                  <h3 className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-dim">
+                    {t('chat.unreadTitle')}
+                  </h3>
+                  <div className="mt-2 grid gap-1">
+                    {unreadChats.map((conversation) => (
+                      <button
+                        key={conversation.id}
+                        type="button"
+                        className="grid min-h-touch grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-sm border border-border-soft px-3 py-2 text-left"
+                        data-unread-conversation={conversation.type}
+                        data-unread-subject={conversation.subjectId}
+                        onClick={() => openUnreadConversation(conversation)}
+                      >
+                        <span className="truncate text-caption">{conversation.title || conversation.subjectId}</span>
+                        <span className="font-mono text-caption text-accent-primary">{conversation.unreadCount}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </aside>
 
-        <section
-          className="grid min-h-[65vh] min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] border border-border-soft bg-surface-base/45"
-          data-chat-surface={conversationType}
-          data-chat-subject={subjectId}
-        >
-          <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border-soft p-3">
-            <SegmentedControl
-              ariaLabel={t('community.title')}
-              value={view}
-              onChange={setView}
-              options={[
-                { value: 'global', label: t('chat.globalTitle') },
-                { value: 'direct', label: t('chat.directTitle') },
-              ]}
-            />
-            <IconButton
-              label={t('chat.refreshUnread')}
-              icon={<RefreshCw className="size-4" />}
-              onClick={() => void refreshMessages()}
-            />
-          </header>
+            <section
+              className="grid min-h-[65vh] min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] border border-border-soft bg-surface-base/45"
+              data-chat-surface={conversationType}
+              data-chat-subject={subjectId}
+            >
+              <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border-soft p-3">
+                <SegmentedControl
+                  ariaLabel={t('community.title')}
+                  value={view}
+                  onChange={setView}
+                  options={[
+                    { value: 'global', label: t('chat.globalTitle') },
+                    { value: 'direct', label: t('chat.directTitle') },
+                  ]}
+                />
+                <IconButton
+                  label={t('chat.refreshUnread')}
+                  icon={<RefreshCw className="size-4" />}
+                  onClick={() => void refreshMessages()}
+                />
+              </header>
 
-          <div ref={messagesRef} className="flex min-h-0 flex-col gap-3 overflow-y-auto p-4" aria-live="polite">
-            {!profile && (
-              <div className="m-auto max-w-md text-center text-body text-content-muted">
-                {t('community.loginRequired')}
+              <div ref={messagesRef} className="flex min-h-0 flex-col gap-3 overflow-y-auto p-4" aria-live="polite">
+                {view === 'direct' && !selectedFriend && (
+                  <div className="m-auto text-body text-content-muted">{t('chat.selectDirect')}</div>
+                )}
+                {loading && profile && (
+                  <div className="m-auto text-caption text-content-dim">{t('presence.syncing')}</div>
+                )}
+                {error && <Alert tone="danger">{error}</Alert>}
+                {messages.map((message) => {
+                  const self = message.authorUserId === profile?.id;
+                  return (
+                    <article
+                      key={message.id}
+                      data-chat-message={conversationType}
+                      className={`max-w-[85%] ${self ? 'self-end text-right' : 'self-start'}`}
+                    >
+                      <div className="mb-1 flex items-center gap-1 text-minutia text-content-dim">
+                        <span>{message.authorDisplayName || t('auth.guest')}</span>
+                        <IconButton
+                          size="sm"
+                          label={t('chat.translate')}
+                          icon={<Languages className="size-3" />}
+                          onClick={() => void translateMessage(message)}
+                        />
+                        {!self && (
+                          <IconButton
+                            size="sm"
+                            label={reportedIds.has(message.id) ? t('chat.reported') : t('chat.report')}
+                            icon={<Flag className="size-3" />}
+                            disabled={reportedIds.has(message.id)}
+                            onClick={() => void reportMessage(message)}
+                          />
+                        )}
+                      </div>
+                      <div
+                        className={`rounded-sm border px-3 py-2 text-body [overflow-wrap:anywhere] ${self ? 'border-accent-primary/40 bg-accent-primary/10' : 'border-border-soft bg-surface-elevated/60'}`}
+                      >
+                        {message.content}
+                      </div>
+                      {message.translation && (
+                        <div className="mt-1 rounded-sm border border-border-soft px-3 py-2 text-caption text-content-muted">
+                          {message.translation.content ||
+                            (message.translation.status === 'loading'
+                              ? t('chat.translationTranslating')
+                              : t('chat.translationOffline'))}
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
               </div>
-            )}
-            {profile && view === 'direct' && !selectedFriend && (
-              <div className="m-auto text-body text-content-muted">{t('chat.selectDirect')}</div>
-            )}
-            {loading && profile && <div className="m-auto text-caption text-content-dim">{t('presence.syncing')}</div>}
-            {error && <Alert tone="danger">{error}</Alert>}
-            {messages.map((message) => {
-              const self = message.authorUserId === profile?.id;
-              return (
-                <article
-                  key={message.id}
-                  data-chat-message={conversationType}
-                  className={`max-w-[85%] ${self ? 'self-end text-right' : 'self-start'}`}
-                >
-                  <div className="mb-1 flex items-center gap-1 text-minutia text-content-dim">
-                    <span>{message.authorDisplayName || t('auth.guest')}</span>
-                    <IconButton
-                      size="sm"
-                      label={t('chat.translate')}
-                      icon={<Languages className="size-3" />}
-                      onClick={() => void translateMessage(message)}
-                    />
-                    {!self && (
-                      <IconButton
-                        size="sm"
-                        label={reportedIds.has(message.id) ? t('chat.reported') : t('chat.report')}
-                        icon={<Flag className="size-3" />}
-                        disabled={reportedIds.has(message.id)}
-                        onClick={() => void reportMessage(message)}
-                      />
-                    )}
-                  </div>
-                  <div
-                    className={`rounded-sm border px-3 py-2 text-body [overflow-wrap:anywhere] ${self ? 'border-accent-primary/40 bg-accent-primary/10' : 'border-border-soft bg-surface-elevated/60'}`}
-                  >
-                    {message.content}
-                  </div>
-                  {message.translation && (
-                    <div className="mt-1 rounded-sm border border-border-soft px-3 py-2 text-caption text-content-muted">
-                      {message.translation.content ||
-                        (message.translation.status === 'loading'
-                          ? t('chat.translationTranslating')
-                          : t('chat.translationOffline'))}
-                    </div>
-                  )}
-                </article>
-              );
-            })}
-          </div>
 
-          <form
-            className="grid grid-cols-[minmax(0,1fr)_var(--touch-target-min)] gap-2 border-t border-border-soft p-3"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void handleSend();
-            }}
-          >
-            <Input
-              value={draft}
-              onChange={(event) => setDraft(event.target.value.slice(0, 500))}
-              placeholder={t('chat.messagePlaceholder')}
-              aria-label={t('chat.messagePlaceholder')}
-              disabled={!profile || !subjectId || sending}
-            />
-            <IconButton
-              type="submit"
-              variant="secondary"
-              label={t('chat.send')}
-              icon={<Send className="size-4" />}
-              disabled={!profile || !subjectId || !draft.trim() || sending}
-            />
-          </form>
-        </section>
+              <form
+                className="grid grid-cols-[minmax(0,1fr)_var(--touch-target-min)] gap-2 border-t border-border-soft p-3"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void handleSend();
+                }}
+              >
+                <Input
+                  value={draft}
+                  onChange={(event) => setDraft(event.target.value.slice(0, 500))}
+                  placeholder={t('chat.messagePlaceholder')}
+                  aria-label={t('chat.messagePlaceholder')}
+                  disabled={!profile || !subjectId || sending}
+                />
+                <IconButton
+                  type="submit"
+                  variant="secondary"
+                  label={t('chat.send')}
+                  icon={<Send className="size-4" />}
+                  disabled={!profile || !subjectId || !draft.trim() || sending}
+                />
+              </form>
+            </section>
+          </>
+        )}
       </main>
     </PageShell>
   );

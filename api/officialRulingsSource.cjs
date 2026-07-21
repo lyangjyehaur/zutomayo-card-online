@@ -33,6 +33,16 @@ function normalizeOfficialText(value) {
     .trim();
 }
 
+function normalizeOfficialCardName(value) {
+  return normalizeOfficialText(value).normalize('NFKC').replace(/\s+/g, '');
+}
+
+function officialCorrectedNameMatches(correctedText, canonicalName) {
+  const corrected = normalizeOfficialCardName(correctedText);
+  const canonical = normalizeOfficialCardName(canonicalName);
+  return Boolean(canonical) && corrected.includes(canonical);
+}
+
 function strings(value) {
   return Array.isArray(value) ? value.map(normalizeOfficialText).filter(Boolean) : [];
 }
@@ -197,6 +207,7 @@ module.exports = {
   errataHashInput,
   fetchOfficialSourceSnapshot,
   normalizeOfficialText,
+  officialCorrectedNameMatches,
   normalizeQaRows,
   officialContentHash,
   parseErrataDetail,

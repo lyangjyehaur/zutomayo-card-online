@@ -139,6 +139,26 @@ describe('schema migrations', () => {
     expect(migration).toContain('export const down = false');
   });
 
+  it('gates official rulings behind an atomic active release manifest', () => {
+    const migration = readRepoFile('migrations/000040_official_rulings_releases.js');
+    const schemaGate = readRepoFile('api/schemaGate.cjs');
+    const initSchema = readRepoFile('api/server.cjs');
+    for (const artifact of [
+      'official_rulings_releases',
+      'official_rulings_release_qa',
+      'official_rulings_release_errata',
+      'official_rulings_active_release',
+      'card_dataset_hash',
+      'translation_hash',
+    ]) {
+      expect(migration).toContain(artifact);
+      expect(schemaGate).toContain(artifact);
+      expect(initSchema).toContain(artifact);
+    }
+    expect(migration).toContain("status IN ('candidate', 'active', 'superseded')");
+    expect(migration).toContain('export const down = false');
+  });
+
   it('backfills the reward entitlement ledger for every existing grant', () => {
     const consistencyMigration = readRepoFile('migrations/000021_season_result_consistency.js');
     expect(consistencyMigration).toContain('SELECT season_id, user_id, reward_tier, reward_payload, granted_at');

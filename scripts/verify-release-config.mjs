@@ -224,7 +224,7 @@ function assertServer4DeployScript() {
   const requiredFragments = [
     'origin/master',
     'git reset --hard origin/master',
-    '000036_harden_card_i18n_contract',
+    "find migrations -maxdepth 1 -type f -name '*.js'",
     'APP_BUILD_ID',
     'APP_VERSION',
     'GAME_RULES_VERSION',
@@ -243,6 +243,9 @@ function assertServer4DeployScript() {
     'deploy-smoke.mjs',
     'battle-assets.sha256',
     'sync_battle_assets',
+    'release_official_rulings',
+    'release-official-rulings.ts',
+    '--translations=-',
   ];
   for (const fragment of requiredFragments) {
     if (!deploy.includes(fragment)) throw new Error(`${relativePath} is missing beta safety step: ${fragment}`);

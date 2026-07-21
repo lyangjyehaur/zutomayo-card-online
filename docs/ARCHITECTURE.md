@@ -144,6 +144,7 @@ flowchart LR
 
 - 核心 `t()` / `translate()` 在 `src/i18n/index.ts`，語言偏好存 localStorage。
 - 卡牌名稱與效果由 API `/api/cards/texts` 一次載入；日英投影自 `cards`，衍生語言來自 `card_texts_i18n`，顯示統一經 `game/cards/i18n.ts` 處理。
+- UI、卡牌文本與官方裁定共用 `src/rulesTerminology.ts` 的規則術語契約；`Power Cost`、`SEND TO POWER` 等保留標記與本地化卡種／區域由測試及發布閘門共同檢查。Q&A API 以官方日文 `tagIds` 維持跨語言篩選，本地化 `tags` 僅用於顯示，兩者對齊由 API 契約測試與 E2E 檢查。
 
 ---
 
@@ -273,7 +274,7 @@ boardgame.io 多實例需要**兩個獨立的跨節點層**，兩者職責不同
 | `matchVerification.cjs`           | 防作弊驗證（見下節）                                                           |
 | `feedbackService.cjs`             | 反饋看板（文章、投票、留言、標籤、emoji 反應、圖片附件、重複標記）             |
 | `imgproxySigner.cjs`              | imgproxy 簽名 URL 產生與來源白名單                                             |
-| `officialRulingsService.cjs`      | 官方 Q&A／勘誤公開讀取、多語回退、翻譯寫入與內容版本                           |
+| `officialRulingsService.cjs`      | 從 active release snapshot 讀取官方 Q&A／勘誤、公開 release 狀態與翻譯維護     |
 | `officialRulingsAdminService.cjs` | 翻譯覆蓋率、人工複核、來源同步狀態與 audit log                                 |
 | `officialRulingsSource.cjs`       | 官方來源抓取、解析與 fail-closed 差異比較                                      |
 | `observability.cjs`               | pino log、Prometheus metrics、request tracing                                  |
@@ -455,7 +456,7 @@ flowchart LR
 ### PostgreSQL
 
 - **兩個 database**：
-  - `zutomayo`：應用資料（users / decks / deck_shares / matches / cards / official_qa_items / official-rulings translations / game_config / feedback\*\* / `bjg_matches`）。
+  - `zutomayo`：應用資料（users / decks / deck_shares / matches / cards / official_qa_items / official-rulings translations、release manifests 與 active pointer / game_config / feedback\*\* / `bjg_matches`）。
   - `logto`：Logto 自管的身份 / session database（獨立，不由本專案 code 直接存取）。
 - **table 隔離**：boardgame.io state 用 `bjg_` 前綴（`bjg_matches`），其餘 API table 無前綴，兩者共存於同一個 `zutomayo` database。
 

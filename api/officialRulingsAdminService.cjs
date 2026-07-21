@@ -11,6 +11,7 @@ const { upsertOfficialErrataTranslation, upsertOfficialQaTranslation } = require
 const {
   errataHashInput,
   fetchOfficialSourceSnapshot,
+  officialCorrectedNameMatches,
   officialContentHash,
   qaHashInput,
 } = require('./officialRulingsSource.cjs');
@@ -76,24 +77,52 @@ function validateProtectedTranslation(source, translated) {
 
 function tokenizeCards(value, cards) {
   let output = text(value);
-  for (const card of cards) {
+  for (const card of [...cards].sort((left, right) => text(right.name).length - text(left.name).length)) {
     if (card.name) output = output.replaceAll(card.name, `[[CARD:${card.id}]]`);
   }
   return output;
 }
 
+function reviewedCardName(card, targetLocale) {
+  if (targetLocale === 'en' && text(card.en_name_official).trim()) return text(card.en_name_official).trim();
+  if (targetLocale !== 'en' && card.localized_review_status === 'verified' && text(card.localized_name_text).trim()) {
+    return text(card.localized_name_text).trim();
+  }
+  throw new Error(`Reviewed ${targetLocale} card name is unavailable for ${card.id}`);
+}
+
 function restoreCards(value, cards, targetLocale) {
-  const names = new Map(
-    cards.map((card) => [
-      card.id,
-      targetLocale === 'en'
-        ? card.en_name_official || card.name
-        : card.localized_review_status === 'verified' && card.localized_name_text
-          ? card.localized_name_text
-          : card.en_name_official || card.name,
-    ]),
+  const cardsById = new Map(cards.map((card) => [card.id, card]));
+  return text(value).replace(/\[\[CARD:([^\]]+)\]\]/g, (_match, cardId) => {
+    const card = cardsById.get(cardId);
+    if (!card) throw new Error(`Translation returned an unknown card token: ${cardId}`);
+    return reviewedCardName(card, targetLocale);
+  });
+}
+
+function referencedQaCards(row, cards) {
+  const source = `${text(row.question_ja)}\n${text(row.answer_ja)}`;
+  const normalizedSource = source.normalize('NFKC').replace(/\s+/g, '');
+  const quotedNames = new Set(
+    [...source.matchAll(/「([^」]+)」/gu)].map((match) => text(match[1]).normalize('NFKC').replace(/\s+/g, '')),
   );
-  return text(value).replace(/\[\[CARD:([^\]]+)\]\]/g, (_match, cardId) => names.get(cardId) || cardId);
+  const relatedIds = new Set(Array.isArray(row.related_card_ids) ? row.related_card_ids : []);
+  const grouped = new Map();
+  for (const card of cards) {
+    const japaneseName = text(card.name).normalize('NFKC').replace(/\s+/g, '');
+    if (!japaneseName) continue;
+    const group = grouped.get(japaneseName) || [];
+    group.push(card);
+    grouped.set(japaneseName, group);
+  }
+  return [...grouped]
+    .sort((left, right) => right[0].length - left[0].length)
+    .flatMap(([japaneseName, group]) => {
+      const related = group.find((card) => relatedIds.has(card.id));
+      if (!related && !quotedNames.has(japaneseName)) return [];
+      if (!normalizedSource.includes(japaneseName)) return [];
+      return [related || [...group].sort((left, right) => text(left.id).localeCompare(text(right.id)))[0]];
+    });
 }
 
 function translationStatus(value) {
@@ -238,7 +267,9 @@ async function validateRemoteCards(pool, snapshot) {
   for (const row of snapshot.errata) {
     const card = cards.get(row.cardId);
     if (NAME_ERRATA_IDS.has(row.errataId)) {
-      if (!row.correctedText.includes(card.name)) throw new Error(`Errata ${row.errataId} corrected name mismatch`);
+      if (!officialCorrectedNameMatches(row.correctedText, card.name)) {
+        throw new Error(`Errata ${row.errataId} corrected name mismatch`);
+      }
     } else if (/[ぁ-んァ-ヶ一-龠]/.test(row.correctedText) && card.effect !== row.correctedText) {
       throw new Error(`Errata ${row.errataId} corrected effect mismatch`);
     }
@@ -330,20 +361,19 @@ async function getOfficialSyncStatus({ pool, limit = 20 }) {
 }
 
 async function qaCards(pool, row, targetLocale) {
-  const ids = Array.isArray(row.related_card_ids) ? row.related_card_ids : [];
-  if (ids.length === 0) return [];
-  return (
+  const cards = (
     await pool.query(
       `SELECT card.id, card.name, card.en_name_official,
               localized.name_text AS localized_name_text,
               localized.review_status AS localized_review_status
          FROM cards card
          LEFT JOIN card_texts_i18n localized
-           ON localized.card_id = card.id AND localized.lang = $2
-        WHERE card.id = ANY($1::text[])`,
-      [ids, targetLocale],
+           ON localized.card_id = card.id AND localized.lang = $1
+        ORDER BY card.id`,
+      [targetLocale],
     )
   ).rows;
+  return referencedQaCards(row, cards);
 }
 
 async function generateOfficialTranslation({ pool, resourceType, resourceId, language, adminUserId, translateText }) {
@@ -366,11 +396,17 @@ async function generateOfficialTranslation({ pool, resourceType, resourceId, lan
         question: tokenizeCards(row.question_ja, cards),
         answer: tokenizeCards(row.answer_ja, cards),
       };
+      const canonicalCardNames = Object.fromEntries(
+        cards
+          .filter((card) => `${source.question}\n${source.answer}`.includes(`[[CARD:${card.id}]]`))
+          .map((card) => [card.id, reviewedCardName(card, targetLocale)]),
+      );
       const result = await translateText({
         text: JSON.stringify({
           ...source,
+          canonicalCardNames,
           instruction:
-            'Translate faithfully as a trading-card rules ruling. Preserve every [[CARD:id]] token, number, ★ symbol, zone label, and SEND TO POWER. Return JSON with question and answer only.',
+            'Translate faithfully as a trading-card rules ruling. Never translate or rewrite a card name. Preserve every [[CARD:id]] token exactly; the server will restore it from canonicalCardNames after translation. Also preserve every number, ★ symbol, zone label, and SEND TO POWER. Return JSON with question and answer only.',
         }),
         sourceLanguage: 'ja',
         targetLanguage: targetLocale,

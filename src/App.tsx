@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { Menu, X } from 'lucide-react';
-import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { identifyAnalytics, trackPageView } from './analytics';
 import { formatAnonymousDisplayName } from './anonymousIdentity';
 import { getDecks, getProfile, isLoggedIn, reserveDeck, type DeckResponse } from './api/client';
@@ -54,6 +54,9 @@ const DeckShareDetailPage = lazy(() =>
 );
 const MatchHistoryPage = lazy(() =>
   import('./pages/MatchHistoryPage').then((module) => ({ default: module.MatchHistoryPage })),
+);
+const LeaderboardPage = lazy(() =>
+  import('./pages/LeaderboardPage').then((module) => ({ default: module.LeaderboardPage })),
 );
 const OnlineGamePage = lazy(() =>
   import('./pages/OnlineGamePage').then((module) => ({ default: module.OnlineGamePage })),
@@ -760,7 +763,7 @@ function RouterShell() {
               />
             )}
             <Route path="/history" element={<MatchHistoryPage />} />
-            <Route path="/leaderboard" element={<Navigate to="/" replace />} />
+            <Route path="/leaderboard" element={<LeaderboardPage />} />
             <Route path="/feedback" element={<FeedbackPage />} />
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/rules/qa" element={<OfficialQaPage />} />

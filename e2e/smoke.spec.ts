@@ -21,8 +21,7 @@ test.describe('首頁煙霧測試', () => {
     await page.goto('/');
 
     // 等待 AppBootLoader 結束、主內容出現。
-    // 頻道列 "Channels" 文字只出現在主大廳頁面。
-    await expect(page.getByText('Channels', { exact: true })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('ZUTOMAYO', { timeout: 30_000 });
 
     // 瀏覽器分頁標題
     await expect(page).toHaveTitle(/ZUTOMAYO CARD ONLINE/i);
@@ -30,7 +29,7 @@ test.describe('首頁煙霧測試', () => {
 
   test('主視覺 wordmark 可見', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByText('Channels', { exact: true })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('ZUTOMAYO', { timeout: 30_000 });
 
     // 主標題包含 ZUTOMAYO / CARD / ONLINE 三行
     const heading = page.getByRole('heading', { level: 1 });
@@ -42,27 +41,28 @@ test.describe('首頁煙霧測試', () => {
 
   test('頻道導覽按鈕存在', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByText('Channels', { exact: true })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('ZUTOMAYO', { timeout: 30_000 });
 
-    // 七個頻道入口（CH.01 ~ CH.07），編號不可重複。
-    for (const no of ['01', '02', '03', '04', '05', '06', '07']) {
+    // 核心頻道編號不可重複；CH.04 由牌組分享功能旗標控制。
+    for (const no of ['01', '02', '03', '05', '06', '07', '08']) {
       await expect(page.getByText(`CH.${no}`, { exact: true })).toBeVisible();
       await expect(page.getByText(`CH.${no}`, { exact: true })).toHaveCount(1);
     }
+    expect(await page.getByText('CH.04', { exact: true }).count()).toBeLessThanOrEqual(1);
   });
 
   test('主要導覽元素存在', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByText('Channels', { exact: true })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('ZUTOMAYO', { timeout: 30_000 });
 
     // Hero 區的線上對戰與教學按鈕
-    await expect(page.getByRole('button', { name: '線上房間 →', exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: '新手教學', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: /CH\.01.*線上房間/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /GUIDE.*新手教學/ })).toBeVisible();
   });
 
   test('頁尾連結使用斜線完整分隔', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByText('Channels', { exact: true })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('ZUTOMAYO', { timeout: 30_000 });
 
     const separators = page.locator('.lobby-home-footer span[aria-hidden="true"]').filter({ hasText: /^\/$/ });
     await expect(separators).toHaveCount(2);
@@ -71,7 +71,7 @@ test.describe('首頁煙霧測試', () => {
 
   test('能導覽到牌組編輯器頁面', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByText('Channels', { exact: true })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('ZUTOMAYO', { timeout: 30_000 });
 
     // 點擊 CH.03 牌組編輯器頻道
     await page.getByText('CH.03', { exact: true }).click();
@@ -82,7 +82,7 @@ test.describe('首頁煙霧測試', () => {
 
   test('能導覽到教學頁面', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByText('Channels', { exact: true })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('ZUTOMAYO', { timeout: 30_000 });
 
     // 點擊 Hero 區的教學按鈕
     await page
@@ -90,6 +90,16 @@ test.describe('首頁煙霧測試', () => {
       .first()
       .click();
     await expect(page).toHaveURL(/\/tutorial/);
+  });
+
+  test('排行榜頻道開啟實際排行榜頁面', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('ZUTOMAYO', { timeout: 30_000 });
+
+    await page.getByText('CH.06', { exact: true }).click();
+    await expect(page).toHaveURL(/\/leaderboard/);
+    await expect(page.getByText('排行榜', { exact: true }).first()).toBeVisible();
+    await expect(page.getByRole('tab', { name: '全域排行', exact: true })).toBeVisible();
   });
 
   test('未登入也能查看政策、條款與聯絡方式', async ({ page }) => {

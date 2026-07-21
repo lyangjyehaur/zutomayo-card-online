@@ -1,7 +1,20 @@
 import type { DeckShareSort, DeckShareSummary } from './api/client';
+import type { TranslationKey } from './i18n';
 
 export const DECK_SHARE_SORTS: DeckShareSort[] = ['popular', 'newest', 'most-copied'];
 export const DECK_SHARE_ELEMENTS = ['', '闇', '炎', '電気', '風', 'カオス'] as const;
+const DECK_SHARE_ELEMENT_KEYS: Record<string, TranslationKey> = {
+  闇: 'card.element.dark',
+  炎: 'card.element.flame',
+  電気: 'card.element.electric',
+  風: 'card.element.wind',
+  カオス: 'card.element.chaos',
+};
+
+export function deckShareElementLabel(element: string, translate: (key: TranslationKey) => string): string {
+  const key = DECK_SHARE_ELEMENT_KEYS[element];
+  return key ? translate(key) : element;
+}
 
 export interface DeckShareLobbyState {
   sort: DeckShareSort;

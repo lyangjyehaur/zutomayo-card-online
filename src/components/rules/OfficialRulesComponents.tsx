@@ -1,37 +1,119 @@
-import { ExternalLink, Languages } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { BookOpenText, ExternalLink, Languages, Search, TriangleAlert, X } from 'lucide-react';
+import type { ChangeEvent, ReactNode } from 'react';
 import { NavLink } from 'react-router-dom';
 import type { OfficialTranslationStatus } from '../../api/client';
 import { getCardDef } from '../../game/cards/loader';
 import { getLocalizedCardName } from '../../game/cards/i18n';
 import { t, useLocale } from '../../i18n';
-import { Badge, cn } from '../../ui';
+import { Badge, cn, SearchInput } from '../../ui';
 import { CardImage } from '../CardImage';
 
 export function RulesTabs() {
   const links = [
-    { to: '/rules/qa', label: t('officialRules.qaTitle') },
-    { to: '/rules/errata', label: t('officialRules.errataTitle') },
+    { to: '/rules/qa', label: t('officialRules.qaTitle'), icon: BookOpenText },
+    { to: '/rules/errata', label: t('officialRules.errataTitle'), icon: TriangleAlert },
   ];
   return (
-    <nav className="flex flex-wrap gap-2" aria-label={t('officialRules.navigation')}>
-      {links.map((link) => (
-        <NavLink
-          key={link.to}
-          to={link.to}
-          className={({ isActive }) =>
-            cn(
-              'inline-flex min-h-11 items-center rounded-sm border px-4 font-mono text-caption uppercase tracking-[var(--tracking-control)] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--focus-ring-color]',
-              isActive
-                ? 'border-accent-primary/60 bg-accent-primary/10 text-accent-primary'
-                : 'border-border-soft bg-surface-panel/60 text-content-muted hover:border-border-strong hover:text-content-primary',
-            )
-          }
-        >
-          {link.label}
-        </NavLink>
-      ))}
+    <nav
+      className="grid grid-cols-2 border-b border-border-soft sm:flex sm:w-fit"
+      aria-label={t('officialRules.navigation')}
+    >
+      {links.map((link) => {
+        const Icon = link.icon;
+        return (
+          <NavLink
+            key={link.to}
+            to={link.to}
+            className={({ isActive }) =>
+              cn(
+                'relative inline-flex min-h-12 items-center justify-center gap-2 px-4 font-mono text-caption uppercase tracking-[var(--tracking-control)] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[--focus-ring-color] sm:min-w-36',
+                isActive
+                  ? 'text-accent-primary after:absolute after:inset-x-0 after:bottom-[-1px] after:h-0.5 after:bg-accent-primary'
+                  : 'text-content-dim hover:text-content-primary',
+              )
+            }
+          >
+            <Icon className="size-4" aria-hidden="true" />
+            {link.label}
+          </NavLink>
+        );
+      })}
     </nav>
+  );
+}
+
+export function RulesSearchField({
+  value,
+  onChange,
+  onClear,
+  placeholder,
+}: {
+  value: string;
+  onChange: (event: ChangeEvent<HTMLInputElement>) => void;
+  onClear: () => void;
+  placeholder: string;
+}) {
+  return (
+    <div className="relative w-full">
+      <SearchInput
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        aria-label={placeholder}
+        icon={<Search className="size-4 text-content-dim" aria-hidden="true" />}
+        className="pr-10"
+        containerClassName="min-h-12 bg-surface-panel/65 backdrop-blur"
+      />
+      {value && (
+        <button
+          type="button"
+          className="absolute right-1 top-1 inline-flex size-10 items-center justify-center rounded-sm text-content-dim transition hover:text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--focus-ring-color]"
+          onClick={onClear}
+          aria-label={t('officialRules.clearSearch')}
+        >
+          <X className="size-4" aria-hidden="true" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+export function RulesFilterButton({
+  label,
+  count,
+  selected,
+  tone = 'gold',
+  className,
+  onClick,
+}: {
+  label: string;
+  count: number;
+  selected: boolean;
+  tone?: 'gold' | 'vermilion';
+  className?: string;
+  onClick: () => void;
+}) {
+  const selectedClasses =
+    tone === 'vermilion'
+      ? 'border-accent-action/60 bg-accent-action/10 text-accent-action'
+      : 'border-accent-primary/60 bg-accent-primary/10 text-accent-primary';
+  return (
+    <button
+      type="button"
+      className={cn(
+        'inline-flex min-h-11 shrink-0 items-center justify-between gap-3 rounded-sm border px-3 text-left text-body-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--focus-ring-color] md:w-full',
+        selected
+          ? selectedClasses
+          : 'border-border-soft bg-surface-panel/50 text-content-muted hover:border-border-strong hover:text-content-primary',
+        className,
+      )}
+      aria-pressed={selected}
+      aria-label={label}
+      onClick={onClick}
+    >
+      <span>{label}</span>
+      <span className="font-mono text-caption opacity-70">{count}</span>
+    </button>
   );
 }
 

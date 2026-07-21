@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
+import { assertCanonicalRulesTerminology } from '../src/rulesTerminology';
 
 export interface OfficialQaSnapshotRow {
   id: string;
@@ -54,6 +55,14 @@ export interface OfficialTranslationsSnapshot {
   errata: OfficialErrataTranslationSeed[];
 }
 
+export type OfficialCanonicalCardNames = Record<
+  string,
+  {
+    ja: string;
+    translations: Record<OfficialTranslationLocale, string>;
+  }
+>;
+
 const HTML_ENTITIES: Record<string, string> = {
   '&amp;': '&',
   '&quot;': '"',
@@ -74,6 +83,46 @@ export function normalizeOfficialText(value: unknown): string {
     .replace(/\n[ \t]+/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+}
+
+export function normalizeOfficialCardName(value: unknown): string {
+  return normalizeOfficialText(value).normalize('NFKC').replace(/\s+/g, '');
+}
+
+export function officialCorrectedNameMatches(correctedText: unknown, canonicalName: unknown): boolean {
+  const corrected = normalizeOfficialCardName(correctedText);
+  const canonical = normalizeOfficialCardName(canonicalName);
+  return Boolean(canonical) && corrected.includes(canonical);
+}
+
+export function referencedQaCardIds(
+  source: Pick<OfficialQaSnapshotRow, 'question' | 'answer' | 'relatedCards'>,
+  cards: OfficialCanonicalCardNames,
+): string[] {
+  const sourceText = normalizeOfficialCardName(`${source.question}\n${source.answer}`);
+  const quotedNames = new Set(
+    [...`${source.question}\n${source.answer}`.matchAll(/「([^」]+)」/gu)].map((match) =>
+      normalizeOfficialCardName(match[1]),
+    ),
+  );
+  const relatedIds = new Set(source.relatedCards);
+  const cardsByJapaneseName = new Map<string, string[]>();
+  for (const [cardId, card] of Object.entries(cards)) {
+    const japaneseName = normalizeOfficialCardName(card.ja);
+    if (!japaneseName) continue;
+    const ids = cardsByJapaneseName.get(japaneseName) ?? [];
+    ids.push(cardId);
+    cardsByJapaneseName.set(japaneseName, ids);
+  }
+
+  const referenced: string[] = [];
+  for (const [japaneseName, ids] of [...cardsByJapaneseName].sort((left, right) => right[0].length - left[0].length)) {
+    const relatedId = ids.find((cardId) => relatedIds.has(cardId));
+    if (!relatedId && !quotedNames.has(japaneseName)) continue;
+    if (!sourceText.includes(japaneseName)) continue;
+    referenced.push(relatedId ?? [...ids].sort()[0]);
+  }
+  return referenced;
 }
 
 function strings(value: unknown): string[] {
@@ -97,6 +146,53 @@ export function validateOfficialTranslation(source: string, translated: string):
       `Official-rulings translation changed protected tokens: expected ${JSON.stringify(sourceTokens)}, received ${JSON.stringify(translatedTokens)}`,
     );
   }
+}
+
+export function applyCanonicalQaCardNames(
+  snapshot: OfficialTranslationsSnapshot,
+  sources: OfficialQaSnapshotRow[],
+  cards: OfficialCanonicalCardNames,
+): OfficialTranslationsSnapshot {
+  const sourceById = new Map(sources.map((row) => [row.id, row]));
+  return {
+    ...snapshot,
+    qa: snapshot.qa.map((row) => {
+      const source = sourceById.get(row.id);
+      if (!source) throw new Error(`Canonical card-name validation references unknown Q&A: ${row.id}`);
+      const sourceText = normalizeOfficialCardName(`${source.question}\n${source.answer}`);
+      const translations = Object.fromEntries(
+        OFFICIAL_TRANSLATION_LOCALES.map((locale) => {
+          let question = row.translations[locale].question;
+          let answer = row.translations[locale].answer;
+          for (const cardId of referencedQaCardIds(source, cards)) {
+            const card = cards[cardId];
+            if (!card) throw new Error(`Official Q&A ${row.id} references unknown canonical card ${cardId}`);
+            const japaneseName = normalizeOfficialCardName(card.ja);
+            if (!japaneseName || !sourceText.includes(japaneseName)) continue;
+            const canonicalName = normalizeOfficialText(card.translations[locale]);
+            if (!canonicalName) {
+              throw new Error(`Official Q&A ${row.id} has no reviewed ${locale} card name for ${cardId}`);
+            }
+            const token = `[[CARD:${cardId}]]`;
+            question = question.replaceAll(token, canonicalName);
+            answer = answer.replaceAll(token, canonicalName);
+            if (
+              !normalizeOfficialCardName(`${question}\n${answer}`).includes(normalizeOfficialCardName(canonicalName))
+            ) {
+              throw new Error(
+                `Official Q&A ${row.id} ${locale} must use reviewed card name ${canonicalName} (${cardId})`,
+              );
+            }
+          }
+          if (/\[\[CARD:[^\]]+\]\]/.test(`${question}\n${answer}`)) {
+            throw new Error(`Official Q&A ${row.id} ${locale} contains an unresolved card token`);
+          }
+          return [locale, { question, answer }];
+        }),
+      ) as OfficialQaTranslationSeed['translations'];
+      return { ...row, translations };
+    }),
+  };
 }
 
 export function normalizeQaRows(
@@ -162,7 +258,14 @@ export async function loadOfficialTranslationsSnapshot(
   path: string,
   sources: { qa: OfficialQaSnapshotRow[]; errata: OfficialErrataSnapshotRow[] },
 ): Promise<OfficialTranslationsSnapshot> {
-  const parsed = JSON.parse(await readFile(path, 'utf8')) as Record<string, unknown>;
+  return parseOfficialTranslationsSnapshot(await readFile(path, 'utf8'), sources);
+}
+
+export function parseOfficialTranslationsSnapshot(
+  input: string,
+  sources: { qa: OfficialQaSnapshotRow[]; errata: OfficialErrataSnapshotRow[] },
+): OfficialTranslationsSnapshot {
+  const parsed = JSON.parse(input) as Record<string, unknown>;
   if (parsed.schemaVersion !== 1) throw new Error('Official translations snapshot schemaVersion must be 1');
   const locales = Array.isArray(parsed.locales) ? parsed.locales.map(String) : [];
   if (JSON.stringify(locales) !== JSON.stringify(OFFICIAL_TRANSLATION_LOCALES)) {
@@ -190,6 +293,7 @@ export async function loadOfficialTranslationsSnapshot(
         const question = staticTranslationText(rawTranslations?.[locale]?.question, `${id} ${locale} question`);
         const answer = staticTranslationText(rawTranslations?.[locale]?.answer, `${id} ${locale} answer`);
         validateStaticSymbols(`${source.question}\n${source.answer}`, `${question}\n${answer}`, `${id} ${locale}`);
+        assertCanonicalRulesTerminology(locale, `${question}\n${answer}`, `${id} ${locale}`);
         return [locale, { question, answer }];
       }),
     ) as OfficialQaTranslationSeed['translations'];
@@ -227,6 +331,7 @@ export async function loadOfficialTranslationsSnapshot(
           Object.values(translation).join('\n'),
           `${errataId} ${locale}`,
         );
+        assertCanonicalRulesTerminology(locale, Object.values(translation).join('\n'), `${errataId} ${locale}`);
         return [locale, translation];
       }),
     ) as OfficialErrataTranslationSeed['translations'];
@@ -235,7 +340,7 @@ export async function loadOfficialTranslationsSnapshot(
   return {
     schemaVersion: 1,
     generatedAt: staticTranslationText(parsed.generatedAt, 'generatedAt'),
-    provider: staticTranslationText(parsed.provider, 'provider'),
+    provider: normalizeOfficialText(parsed.provider) || 'reviewed-static',
     locales: [...OFFICIAL_TRANSLATION_LOCALES],
     qa,
     errata,
