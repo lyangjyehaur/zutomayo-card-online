@@ -159,6 +159,28 @@ describe('schema migrations', () => {
     expect(migration).toContain('export const down = false');
   });
 
+  it('stores Grand Rules and Floor Rules as versioned translated PostgreSQL documents', () => {
+    const migration = readRepoFile('migrations/000041_official_rule_documents.js');
+    const schemaGate = readRepoFile('api/schemaGate.cjs');
+    const initSchema = readRepoFile('api/server.cjs');
+    for (const artifact of [
+      'official_rule_documents',
+      'official_rule_sections',
+      'official_rule_section_translations',
+      'official_rule_active_versions',
+      'source_sha256',
+      'page_start',
+      'body_text',
+    ]) {
+      expect(migration).toContain(artifact);
+      expect(schemaGate).toContain(artifact);
+      expect(initSchema).toContain(artifact);
+    }
+    expect(migration).toContain("document_id IN ('grand', 'floor')");
+    expect(migration).toContain("locale IN ('zh-TW', 'zh-CN', 'zh-HK', 'en', 'ko')");
+    expect(migration).toContain('export const down = false');
+  });
+
   it('backfills the reward entitlement ledger for every existing grant', () => {
     const consistencyMigration = readRepoFile('migrations/000021_season_result_consistency.js');
     expect(consistencyMigration).toContain('SELECT season_id, user_id, reward_tier, reward_payload, granted_at');

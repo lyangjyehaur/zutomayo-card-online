@@ -2,7 +2,7 @@
 
 **言語 / Languages：** [繁體中文](README.md) | [日本語](README.ja.md) | [English](README.en.md)
 
-現在のバージョン：**0.2.2**
+現在のバージョン：**0.2.3**
 
 > ZUTOMAYO CARD（ずっと真夜中でいいのに。公式 TCG）の非公式デジタル対戦プラットフォームです。
 > ローカル 2 人対戦、AI 練習、インタラクティブチュートリアル、リアルタイムオンライン対戦に対応します。
@@ -11,7 +11,7 @@
 
 0.2.0 では、単体の対戦アプリからマルチプレイヤープラットフォームへ拡張しました。カード状態の権威は引き続き `boardgame.io` が持ち、Colyseus がロビー、マッチング、ルーム、招待、観戦 presence を担当し、ChatService が永続チャット、未読、翻訳、通報、モデレーションを担当します。
 
-0.2.2 では、共有デッキロビーと、PostgreSQL を正本とする公式日本語 Q&A／訂正情報、多言語ページ、管理レビュー、公式ソース同期フローを追加しました。
+0.2.3 では、PostgreSQL のアトミックな公開フローに対応したグランドルール／基本フロアルールの多言語ページを追加し、AI 対戦後の導線、対戦ログ、初回チュートリアル入口、デッキ作成体験を改善しました。
 
 ### ゲームと対戦
 
@@ -41,7 +41,7 @@
 
 - 6 言語 UI：繁体字中国語、広東語、簡体字中国語、日本語、英語、韓国語。
 - デッキエディター、共有デッキロビー、ランキング、端末間戦績、プロフィール、OAuth identity、フィードバックボード。
-- 公式日本語 Q&A／訂正情報、多言語閲覧ページ、管理レビュー、公式ソース同期。
+- 公式グランドルール／基本フロアルール、日本語 Q&A／訂正情報、多言語閲覧ページ、管理レビュー、公式ソース同期。
 - PWA インストール／更新通知と app、build、rules の 3 層バージョン互換チェック。
 - カード、翻訳、ユーザー、ELO、チャット証拠、制裁、フィードバックの管理画面。
 - Playwright core E2E、k6 API／WebSocket／認証／matchmaking 負荷テスト、staging／production CD pipeline。
@@ -171,7 +171,7 @@ load-tests/           k6 API、WebSocket、認証、matchmaking 負荷テスト
 docs/                 architecture、API、deployment、multiplayer、UI/UX 文書
 ```
 
-主なページは `/online`、`/ai`、`/tutorial`、`/deck-builder`、`/deck-shares`、`/history`、`/leaderboard`、`/feedback`、`/profile`、`/rules/qa`、`/rules/errata`、`/admin` です。
+主なページは `/online`、`/ai`、`/tutorial`、`/deck-builder`、`/deck-shares`、`/history`、`/leaderboard`、`/feedback`、`/profile`、`/rules/grand`、`/rules/floor`、`/rules/qa`、`/rules/errata`、`/admin` です。
 
 ## セキュリティと運用
 

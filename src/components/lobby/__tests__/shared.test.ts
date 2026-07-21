@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { COUNTER_DECK_NAME, RANDOM_DECK_NAME } from '../../../game/cards/deckBuilder';
-import { aiOpponentDeckName, canStartAI } from '../shared';
+import { aiOpponentDeckName, canStartAI, onlineDeckName, serverDeckOptionId } from '../shared';
 
 describe('AI lobby deck flow', () => {
   it('allows difficulty selection after the player deck is selected', () => {
@@ -10,5 +10,13 @@ describe('AI lobby deck flow', () => {
   it('keeps AI-only counter decks and defaults blank opponent decks to random', () => {
     expect(aiOpponentDeckName(COUNTER_DECK_NAME)).toBe(COUNTER_DECK_NAME);
     expect(aiOpponentDeckName('')).toBe(RANDOM_DECK_NAME);
+  });
+
+  it('passes the selected server deck cards into local AI matches', () => {
+    const cardIds = Array.from({ length: 20 }, (_, index) => `card-${index + 1}`);
+
+    expect(onlineDeckName(0, serverDeckOptionId('deck-1'), [{ id: 'deck-1', name: 'Reviewed Deck', cardIds }])).toEqual(
+      { deck0Ids: cardIds },
+    );
   });
 });

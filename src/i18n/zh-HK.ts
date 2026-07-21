@@ -8,8 +8,10 @@ export const zhHK: Record<TranslationKey, string> = {
   'app.footerCopyrightSuffix': '',
 
   'intro.deckTitle': '歡迎嚟到 ZUTOMAYO CARD ONLINE',
-  'intro.deckDescription': '開始遊戲之前，你需要揀一副牌組。可以用預設牌組，或者去牌組編輯器整自己嘅牌組。',
+  'intro.deckDescription':
+    '開始遊戲之前，你需要揀一副牌組。可以用預設牌組、去牌組編輯器整自己嘅牌組，或者先透過新手教學熟習玩法。',
   'intro.goToDeckBuilder': '去牌組編輯器',
+  'intro.goToTutorial': '先玩新手教學',
   'intro.exploreLater': '遲啲再睇',
 
   'common.back': '返回',
@@ -578,6 +580,9 @@ export const zhHK: Record<TranslationKey, string> = {
   'board.result.duration': '對局時長',
   'board.result.turns': '回合數',
   'board.result.reason': '結束原因',
+  'board.result.viewLog': '查看對戰紀錄',
+  'board.result.battleLog': '本局對戰紀錄',
+  'board.result.changeSetup': '重新揀牌組同難度',
   'board.cardsUnit': '張',
 
   'card.type.character': '角色',
@@ -786,6 +791,7 @@ export const zhHK: Record<TranslationKey, string> = {
   'deckEditor.deckName': '卡組名稱',
   'deckEditor.selectDeck': '選擇牌組',
   'deckEditor.newDeck': '新牌組',
+  'deckEditor.newDeckCreated': '已建立新嘅空白牌組',
   'deckEditor.importDeck': '導入',
   'deckEditor.exportDeck': '導出',
   'deckEditor.currentDraft': '未儲存牌組',
@@ -1444,4 +1450,17 @@ export const zhHK: Record<TranslationKey, string> = {
   'officialRules.relatedQa': '查看呢張卡牌嘅相關 Q&A',
   'officialRules.channelTitle': '規則資料庫',
   'officialRules.channelCaption': '官方 Q&A、裁定同卡牌勘誤',
+  'officialRules.grandTitle': 'Grand Rules',
+  'officialRules.floorTitle': '基本 Floor Rules',
+  'officialRules.officialDocument': '官方規則文件',
+  'officialRules.pageCount': '共 {count} 頁',
+  'officialRules.openPdf': '開啟官方 PDF',
+  'officialRules.floorScopeTitle': '適用範圍：',
+  'officialRules.floorScopeBody': '呢份文件適用於官方同公認賽事；個別賽事另外訂立嘅規則有機會優先適用。',
+  'officialRules.documentSearchPlaceholder': '搜尋章節、條文或關鍵字',
+  'officialRules.contents': '章節目錄',
+  'officialRules.documentSections': '規則文件章節',
+  'officialRules.sectionCount': '{count} 個章節',
+  'officialRules.sourcePages': '原文第 {pages} 頁',
+  'officialRules.sourceFingerprint': '官方來源 SHA-256：{hash}',
 } as const satisfies Record<TranslationKey, string>;

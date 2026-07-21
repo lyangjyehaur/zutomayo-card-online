@@ -6,12 +6,13 @@ const requiredIgnoreRules = [
   'qa.json',
   'data/card*.json',
   'data/official-rulings-*.json',
+  'data/official-rule-documents-*.json',
   'data/e2e-card-seed.json',
   'scripts/card-english-*.json',
 ];
 const trackedFiles = execFileSync('git', ['ls-files', '-z'], { encoding: 'utf8' }).split('\0').filter(Boolean);
 const forbiddenTrackedPath =
-  /^(?:cards\.json|qa\.json|data\/(?:card.*|official-rulings-.*|e2e-card-seed)\.json|scripts\/card-english-.*\.json)$/;
+  /^(?:cards\.json|qa\.json|data\/(?:card.*|official-rulings-.*|official-rule-documents-.*|e2e-card-seed)\.json|scripts\/card-english-.*\.json)$/;
 const rawMarkers = [
   /"japaneseEffect"\s*:/,
   /"enEffectOfficial"\s*:/,

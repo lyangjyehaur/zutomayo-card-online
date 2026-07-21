@@ -2,7 +2,7 @@
 
 **Languages:** [繁體中文](README.md) | [日本語](README.ja.md) | [English](README.en.md)
 
-Current version: **0.2.2**
+Current version: **0.2.3**
 
 > An unofficial digital battle platform for ZUTOMAYO CARD, the official TCG from ZUTOMAYO.
 > Supports local two-player games, AI practice, an interactive tutorial, and real-time online play.
@@ -11,7 +11,7 @@ Current version: **0.2.2**
 
 Version 0.2.0 expands the project from a standalone battle app into a multiplayer platform. `boardgame.io` remains authoritative for card state, Colyseus owns lobby, matchmaking, room, invite, and spectator presence flows, and ChatService owns durable chat, unread state, translation, reports, and moderation.
 
-Version 0.2.2 adds the shared-deck lobby plus PostgreSQL-backed official Japanese Q&A and errata, localized pages, admin review, and source synchronization workflows.
+Version 0.2.3 adds localized Grand Rules and Basic Floor Rules backed by an atomic PostgreSQL release workflow, and completes the AI post-match navigation, battle log, first-visit tutorial entry, and deck-creation experience.
 
 ### Game and Battle
 
@@ -41,7 +41,7 @@ Version 0.2.2 adds the shared-deck lobby plus PostgreSQL-backed official Japanes
 
 - Six UI languages: Traditional Chinese, Cantonese, Simplified Chinese, Japanese, English, and Korean.
 - Deck editor, shared-deck lobby, leaderboard, cross-device match history, profile, OAuth identities, and feedback board.
-- Official Japanese Q&A and errata, localized reading pages, admin review, and source synchronization.
+- Official Grand Rules, Basic Floor Rules, Japanese Q&A and errata, localized reading pages, admin review, and source synchronization.
 - PWA install/update prompts plus app, build, and rules compatibility checks.
 - Admin tooling for cards, translations, users, ELO, chat evidence, sanctions, and feedback.
 - Playwright core E2E, k6 API/WebSocket/auth/matchmaking load tests, and staging/production CD pipelines.
@@ -172,7 +172,7 @@ load-tests/           k6 API, WebSocket, auth, and matchmaking load tests
 docs/                 architecture, API, deployment, multiplayer, and UI/UX docs
 ```
 
-Primary pages include `/online`, `/ai`, `/tutorial`, `/deck-builder`, `/deck-shares`, `/history`, `/leaderboard`, `/feedback`, `/profile`, `/rules/qa`, `/rules/errata`, and `/admin`.
+Primary pages include `/online`, `/ai`, `/tutorial`, `/deck-builder`, `/deck-shares`, `/history`, `/leaderboard`, `/feedback`, `/profile`, `/rules/grand`, `/rules/floor`, `/rules/qa`, `/rules/errata`, and `/admin`.
 
 ## Security and Operations
 

@@ -1,4 +1,4 @@
-import { BookOpenText, ExternalLink, Languages, Search, TriangleAlert, X } from 'lucide-react';
+import { BookMarked, BookOpenText, ExternalLink, Languages, Scale, Search, TriangleAlert, X } from 'lucide-react';
 import type { ChangeEvent, ReactNode } from 'react';
 import { NavLink } from 'react-router-dom';
 import type { OfficialTranslationStatus } from '../../api/client';
@@ -10,12 +10,14 @@ import { CardImage } from '../CardImage';
 
 export function RulesTabs() {
   const links = [
+    { to: '/rules/grand', label: t('officialRules.grandTitle'), icon: BookMarked },
+    { to: '/rules/floor', label: t('officialRules.floorTitle'), icon: Scale },
     { to: '/rules/qa', label: t('officialRules.qaTitle'), icon: BookOpenText },
     { to: '/rules/errata', label: t('officialRules.errataTitle'), icon: TriangleAlert },
   ];
   return (
     <nav
-      className="grid grid-cols-2 border-b border-border-soft sm:flex sm:w-fit"
+      className="-mx-4 flex overflow-x-auto border-b border-border-soft px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:w-fit sm:px-0"
       aria-label={t('officialRules.navigation')}
     >
       {links.map((link) => {
@@ -26,7 +28,7 @@ export function RulesTabs() {
             to={link.to}
             className={({ isActive }) =>
               cn(
-                'relative inline-flex min-h-12 items-center justify-center gap-2 px-4 font-mono text-caption uppercase tracking-[var(--tracking-control)] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[--focus-ring-color] sm:min-w-36',
+                'relative inline-flex min-h-12 min-w-max items-center justify-center gap-2 px-4 font-mono text-caption uppercase tracking-[var(--tracking-control)] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[--focus-ring-color] sm:min-w-32',
                 isActive
                   ? 'text-accent-primary after:absolute after:inset-x-0 after:bottom-[-1px] after:h-0.5 after:bg-accent-primary'
                   : 'text-content-dim hover:text-content-primary',

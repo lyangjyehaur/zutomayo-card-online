@@ -831,6 +831,37 @@ export interface OfficialErrataContent {
   usagePolicy: string;
 }
 
+export type OfficialRuleDocumentId = 'grand' | 'floor';
+
+export interface OfficialRuleSection {
+  id: string;
+  number: string;
+  parentId: string | null;
+  level: number;
+  order: number;
+  pages: { start: number; end: number };
+  source: { title: string; body: string };
+  localized: { title: string; body: string };
+  effectiveLocale: string;
+  translationStatus: OfficialTranslationStatus;
+}
+
+export interface OfficialRuleDocument {
+  id: OfficialRuleDocumentId;
+  version: string;
+  publishedAt: string;
+  sourceUrl: string;
+  sourceSha256: string;
+  pageCount: number;
+  sourceCheckedAt: string;
+  activatedAt: string;
+  requestedLocale: string;
+  source: { title: string; summary: string };
+  localized: { title: string; summary: string };
+  translationStatus: OfficialTranslationStatus;
+  sections: OfficialRuleSection[];
+}
+
 export type AdminOfficialResourceType = 'qa' | 'errata';
 export type AdminOfficialTranslationStatus = 'pending_review' | 'machine' | 'verified' | 'failed';
 
@@ -908,6 +939,17 @@ export async function fetchOfficialErrataItem(errataId: string, language: string
     `/official/errata/${encodeURIComponent(errataId)}?${new URLSearchParams({ lang: language }).toString()}`,
   );
   return data.item;
+}
+
+export async function fetchOfficialRuleDocument(
+  documentId: OfficialRuleDocumentId,
+  language: string,
+): Promise<OfficialRuleDocument> {
+  const params = new URLSearchParams({ lang: language });
+  const data = await request<{ document: OfficialRuleDocument }>(
+    `/official/rules/${encodeURIComponent(documentId)}?${params.toString()}`,
+  );
+  return data.document;
 }
 
 export async function adminGetOfficialTranslations(filters: {

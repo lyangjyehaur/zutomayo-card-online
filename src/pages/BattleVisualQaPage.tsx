@@ -23,6 +23,7 @@ import type {
   PlayerIndex,
   SetSlot,
 } from '../game/types';
+import { t } from '../i18n';
 
 type BoardComponentProps = ComponentProps<typeof Board>;
 
@@ -686,6 +687,19 @@ export function BattleVisualQaPage() {
         isConnected
         isMultiplayer={false}
         useServerTimer
+        gameOverActions={
+          selectedState === 'game-over'
+            ? {
+                primary: { label: t('board.playAgain'), onClick: () => undefined },
+                secondary: {
+                  label: t('board.result.changeSetup'),
+                  onClick: () => undefined,
+                  variant: 'secondary',
+                },
+                tertiary: { label: t('common.backToLobby'), onClick: () => undefined, variant: 'secondary' },
+              }
+            : undefined
+        }
       />
       {showControls && (
         <QaControls selectedState={selectedState} selectedSide={selectedSide} selectedTime={selectedTime} />

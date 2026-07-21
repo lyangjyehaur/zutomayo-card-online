@@ -3,7 +3,7 @@ import { Client } from 'boardgame.io/react';
 import { Local } from 'boardgame.io/multiplayer';
 import type { BoardProps } from 'boardgame.io/react';
 import { createZutomayoCard } from '../game/Game';
-import { Board, type TutorialBoardAction } from './Board';
+import { Board, type BoardGameOverActions, type TutorialBoardAction } from './Board';
 import { useAIMoves, type ZutomayoMoveDispatchers, type TutorialAIScript } from '../game/useAIMoves';
 import type { AIDifficulty } from '../game/ai';
 import type { GameState } from '../game/types';
@@ -14,6 +14,8 @@ import { PageShell } from '../ui';
 interface AIGameProps {
   difficulty: AIDifficulty;
   onBack: () => void;
+  onRematch?: () => void;
+  onChooseSetup?: () => void;
   deck0Name?: string;
   deck1Name?: string;
   /** 固定牌組（教學模式）：優先於 deck0Name/deck1Name */
@@ -64,6 +66,7 @@ function AIBoard(
     tutorialSuppressNotices?: boolean;
     tutorialEffectOverlayVisible?: boolean;
     tutorialPresentationState?: GameState;
+    gameOverActions?: BoardGameOverActions;
   },
 ) {
   const {
@@ -83,6 +86,7 @@ function AIBoard(
     tutorialSuppressNotices,
     tutorialEffectOverlayVisible,
     tutorialPresentationState,
+    gameOverActions,
     ...boardProps
   } = props;
   const aiMoves = useMemo<ZutomayoMoveDispatchers>(
@@ -174,12 +178,16 @@ function AIBoard(
       tutorialAutoReplay={tutorialAutoReplay}
       tutorialSuppressNotices={tutorialSuppressNotices}
       tutorialEffectOverlayVisible={tutorialEffectOverlayVisible}
+      gameOverActions={gameOverActions}
     />
   );
 }
 
 export function AIGame({
   difficulty,
+  onBack,
+  onRematch,
+  onChooseSetup,
   deck0Name,
   deck1Name,
   deck0Ids,
@@ -221,6 +229,9 @@ export function AIGame({
     tutorialSuppressNotices,
     tutorialEffectOverlayVisible,
     tutorialPresentationState,
+    onBack,
+    onRematch,
+    onChooseSetup,
   });
   dynamicPropsRef.current = {
     difficulty,
@@ -239,6 +250,9 @@ export function AIGame({
     tutorialSuppressNotices,
     tutorialEffectOverlayVisible,
     tutorialPresentationState,
+    onBack,
+    onRematch,
+    onChooseSetup,
   };
 
   // 標記對戰模式（AI / tutorial），便於 Sentry 後台區分錯誤來源。
@@ -273,6 +287,19 @@ export function AIGame({
             tutorialSuppressNotices={dp.tutorialSuppressNotices}
             tutorialEffectOverlayVisible={dp.tutorialEffectOverlayVisible}
             tutorialPresentationState={dp.tutorialPresentationState}
+            gameOverActions={
+              !dp.tutorialMode && dp.onRematch && dp.onChooseSetup
+                ? {
+                    primary: { label: t('board.playAgain'), onClick: dp.onRematch },
+                    secondary: {
+                      label: t('board.result.changeSetup'),
+                      onClick: dp.onChooseSetup,
+                      variant: 'secondary',
+                    },
+                    tertiary: { label: t('common.backToLobby'), onClick: dp.onBack, variant: 'secondary' },
+                  }
+                : undefined
+            }
           />
         );
       },

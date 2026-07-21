@@ -9,8 +9,9 @@ export const ko: Record<TranslationKey, string> = {
 
   'intro.deckTitle': 'ZUTOMAYO CARD ONLINE 에 오신 것을 환영합니다',
   'intro.deckDescription':
-    '게임을 시작하기 전에 덱을 선택해야 합니다. 프리셋 덱을 사용하거나 덱 에디터에서 직접 만들 수 있습니다.',
+    '게임을 시작하기 전에 프리셋 덱을 선택하거나 덱 에디터에서 직접 만들 수 있습니다. 처음이라면 튜토리얼에서 기본 규칙을 익혀 보세요.',
   'intro.goToDeckBuilder': '덱 에디터로 이동',
+  'intro.goToTutorial': '튜토리얼 시작',
   'intro.exploreLater': '나중에 둘러보기',
 
   'common.back': '뒤로',
@@ -583,6 +584,9 @@ export const ko: Record<TranslationKey, string> = {
   'board.result.duration': '대국 시간',
   'board.result.turns': '턴 수',
   'board.result.reason': '종료 원인',
+  'board.result.viewLog': '전투 로그 보기',
+  'board.result.battleLog': '전투 로그',
+  'board.result.changeSetup': '덱 및 난이도 변경',
   'board.cardsUnit': '장',
 
   'card.type.character': '캐릭터',
@@ -795,6 +799,7 @@ export const ko: Record<TranslationKey, string> = {
   'deckEditor.deckName': '덱 이름',
   'deckEditor.selectDeck': '덱 선택',
   'deckEditor.newDeck': '새 덱',
+  'deckEditor.newDeckCreated': '새 빈 덱을 만들었습니다',
   'deckEditor.importDeck': '가져오기',
   'deckEditor.exportDeck': '내보내기',
   'deckEditor.currentDraft': '저장되지 않은 덱',
@@ -1478,4 +1483,17 @@ export const ko: Record<TranslationKey, string> = {
   'officialRules.relatedQa': '이 카드의 관련 Q&A 보기',
   'officialRules.channelTitle': '규칙 데이터베이스',
   'officialRules.channelCaption': '공식 Q&A, 판정 및 카드 정정',
+  'officialRules.grandTitle': '그랜드 룰',
+  'officialRules.floorTitle': '기본 플로어 룰',
+  'officialRules.officialDocument': '공식 규칙 문서',
+  'officialRules.pageCount': '총 {count}페이지',
+  'officialRules.openPdf': '공식 PDF 열기',
+  'officialRules.floorScopeTitle': '적용 범위:',
+  'officialRules.floorScopeBody': '이 문서는 공식 및 공인 대회에 적용됩니다. 각 대회의 별도 규칙이 우선할 수 있습니다.',
+  'officialRules.documentSearchPlaceholder': '장, 조항 또는 키워드 검색',
+  'officialRules.contents': '목차',
+  'officialRules.documentSections': '규칙 문서 장',
+  'officialRules.sectionCount': '{count}개 장',
+  'officialRules.sourcePages': '원문 {pages}페이지',
+  'officialRules.sourceFingerprint': '공식 출처 SHA-256: {hash}',
 };

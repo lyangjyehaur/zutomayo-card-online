@@ -91,6 +91,10 @@ describe('production schema gate', () => {
     expect(REQUIRED_RUNTIME_TABLES).toContain('official_qa_translations');
     expect(REQUIRED_RUNTIME_TABLES).toContain('card_official_errata_translations');
     expect(REQUIRED_RUNTIME_TABLES).toContain('official_rulings_sync_runs');
+    expect(REQUIRED_RUNTIME_TABLES).toContain('official_rule_documents');
+    expect(REQUIRED_RUNTIME_TABLES).toContain('official_rule_sections');
+    expect(REQUIRED_RUNTIME_TABLES).toContain('official_rule_section_translations');
+    expect(REQUIRED_RUNTIME_TABLES).toContain('official_rule_active_versions');
     expect(REQUIRED_RUNTIME_COLUMNS.cards).toContain('en_name_official');
     expect(REQUIRED_RUNTIME_COLUMNS.cards).toContain('has_official_errata');
     expect(REQUIRED_RUNTIME_COLUMNS.card_texts_i18n).toContain('review_status');
@@ -99,6 +103,9 @@ describe('production schema gate', () => {
     expect(REQUIRED_RUNTIME_COLUMNS.official_qa_items).toContain('question_ja');
     expect(REQUIRED_RUNTIME_COLUMNS.official_qa_translations).toContain('question_text');
     expect(REQUIRED_RUNTIME_COLUMNS.official_rulings_sync_runs).toContain('diff');
+    expect(REQUIRED_RUNTIME_COLUMNS.official_rule_documents).toContain('source_sha256');
+    expect(REQUIRED_RUNTIME_COLUMNS.official_rule_sections).toContain('body_ja');
+    expect(REQUIRED_RUNTIME_COLUMNS.official_rule_section_translations).toContain('body_text');
     expect(REQUIRED_RUNTIME_COLUMNS.card_official_errata).not.toContain('corrected_japanese_text');
     expect(REQUIRED_RUNTIME_COLUMNS.card_official_errata).not.toContain('corrected_english_text');
     expect(REQUIRED_RUNTIME_CONSTRAINTS).toContainEqual(

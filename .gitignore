@@ -64,6 +64,7 @@ cards.json
 qa.json
 data/card*.json
 data/official-rulings-*.json
+data/official-rule-documents-*.json
 data/e2e-card-seed.json
 data/vision-ocr/
 scripts/card-english-*.json

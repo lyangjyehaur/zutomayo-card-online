@@ -186,6 +186,7 @@ export type BoardGameOverActions = {
   helperText?: string;
   primary: BoardGameOverAction;
   secondary?: BoardGameOverAction;
+  tertiary?: BoardGameOverAction;
 };
 
 export type TutorialBoardAction = 'mulligan-select' | 'set-select' | 'set-play';
@@ -1189,6 +1190,7 @@ function ResultCell({ label, value, accent }: { label: string; value: string; ac
 }
 
 function GameOverScreen({ G, ctx, playerID, matchID, gameOverActions, spectator = false }: Props) {
+  const [logOpen, setLogOpen] = useState(false);
   const eloState = useOnlineMatchSubmission({
     G,
     gameover: ctx.gameover as { winner?: string | number; draw?: boolean } | undefined,
@@ -1246,7 +1248,7 @@ function GameOverScreen({ G, ctx, playerID, matchID, gameOverActions, spectator 
         <div className="absolute inset-0 opacity-[0.04] [background-image:var(--pattern-dot)] [background-size:var(--pattern-dot-size)]" />
       </div>
 
-      <main className="relative z-[var(--z-dropdown)] flex w-full max-w-3xl flex-col items-center justify-center px-8 text-center">
+      <main className="relative z-[var(--z-dropdown)] flex max-h-full w-full max-w-3xl flex-col items-center overflow-y-auto px-2 py-6 text-center sm:px-8">
         <div
           className={`font-mono text-caption uppercase tracking-[var(--tracking-hero)] ${win ? 'text-accent-primary' : 'text-accent-action'}`}
         >
@@ -1261,7 +1263,7 @@ function GameOverScreen({ G, ctx, playerID, matchID, gameOverActions, spectator 
           {title} · {t('board.turn')} {G.turnNumber}
         </div>
 
-        <div className="mt-10 grid w-full grid-cols-3 gap-3 border-y border-content-primary/10 py-6">
+        <div className="mt-6 grid w-full grid-cols-3 gap-3 border-y border-content-primary/10 py-4 sm:mt-10 sm:py-6">
           <ResultCell label={t('board.result.duration')} value={formatDuration(durationSeconds)} />
           <ResultCell label={t('board.result.turns')} value={String(G.turnNumber)} />
           <ResultCell label={t('board.result.reason')} value={reason} />
@@ -1276,42 +1278,71 @@ function GameOverScreen({ G, ctx, playerID, matchID, gameOverActions, spectator 
           </div>
         )}
 
-        {ctx.gameover &&
-          (gameOverActions ? (
-            <div className="mt-10 flex flex-col items-center gap-3 md:flex-row">
-              {gameOverActions.helperText && (
-                <p className="text-xs text-content-primary/45">{gameOverActions.helperText}</p>
-              )}
-              <Button
-                className={gameOverActionClass(gameOverActions.primary)}
-                type="button"
-                variant={gameOverActions.primary.variant === 'secondary' ? 'secondary' : 'primary'}
-                onClick={gameOverActions.primary.onClick}
-              >
-                {gameOverActions.primary.label}
-              </Button>
-              {gameOverActions.secondary && (
-                <Button
-                  className={gameOverActionClass(gameOverActions.secondary)}
-                  type="button"
-                  variant={gameOverActions.secondary.variant === 'secondary' ? 'secondary' : 'primary'}
-                  onClick={gameOverActions.secondary.onClick}
-                >
-                  {gameOverActions.secondary.label}
-                </Button>
-              )}
-            </div>
-          ) : (
-            <Button
-              className={primaryActionClass('mt-10')}
-              type="button"
-              variant="primary"
-              onClick={() => window.location.reload()}
-            >
-              {t('board.playAgain')}
+        {ctx.gameover && (
+          <div className="mt-6 grid justify-items-center gap-3 sm:mt-8">
+            <Button type="button" variant="secondary" onClick={() => setLogOpen(true)}>
+              <BookOpen className="size-4" aria-hidden="true" />
+              {t('board.result.viewLog')}
             </Button>
-          ))}
+            {gameOverActions ? (
+              <div className="flex flex-wrap items-center justify-center gap-3">
+                {gameOverActions.helperText && (
+                  <p className="w-full text-xs text-content-primary/45">{gameOverActions.helperText}</p>
+                )}
+                <Button
+                  className={gameOverActionClass(gameOverActions.primary)}
+                  type="button"
+                  variant={gameOverActions.primary.variant === 'secondary' ? 'secondary' : 'primary'}
+                  onClick={gameOverActions.primary.onClick}
+                >
+                  {gameOverActions.primary.label}
+                </Button>
+                {gameOverActions.secondary && (
+                  <Button
+                    className={gameOverActionClass(gameOverActions.secondary)}
+                    type="button"
+                    variant={gameOverActions.secondary.variant === 'secondary' ? 'secondary' : 'primary'}
+                    onClick={gameOverActions.secondary.onClick}
+                  >
+                    {gameOverActions.secondary.label}
+                  </Button>
+                )}
+                {gameOverActions.tertiary && (
+                  <Button
+                    className={gameOverActionClass(gameOverActions.tertiary)}
+                    type="button"
+                    variant={gameOverActions.tertiary.variant === 'secondary' ? 'secondary' : 'primary'}
+                    onClick={gameOverActions.tertiary.onClick}
+                  >
+                    {gameOverActions.tertiary.label}
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <Button
+                className={primaryActionClass()}
+                type="button"
+                variant="primary"
+                onClick={() => window.location.reload()}
+              >
+                {t('board.playAgain')}
+              </Button>
+            )}
+          </div>
+        )}
       </main>
+      <Sheet
+        open={logOpen}
+        onOpenChange={setLogOpen}
+        title={t('board.result.battleLog')}
+        closeLabel={t('common.close')}
+        side="right"
+        className="max-w-xl"
+      >
+        <div className="flex h-full min-h-[20rem]">
+          <BattleLogSidebarPanel G={G} />
+        </div>
+      </Sheet>
     </div>
   );
 }
