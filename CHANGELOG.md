@@ -2,6 +2,12 @@
 
 本檔案記錄 ZUTOMAYO CARD Online 的所有顯著變更，格式依循 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版本編號依循 [Semantic Versioning](https://semver.org/lang/zh-TW/)。
 
+## [Unreleased]
+
+### Fixed
+
+- **Umami 同源代理**：前端改由 game service 的 `/analytics` 固定端點載入腳本及上報事件，上游地址改為 runtime `UMAMI_UPSTREAM_URL`，避免第三方腳本被 CSP 阻擋，並使更換分析服務時無須重建前端。
+
 ## [0.2.2] - 2026-07-21
 
 公開測試內容擴充版本：加入卡組分享、官方 Q&A／勘誤資料庫與完整多語閱讀流程，同時完成教學、卡圖交付、PWA 與 CI 穩定性修正。

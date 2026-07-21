@@ -42,6 +42,7 @@ import {
 import { createServiceReadiness } from './operational/serviceLifecycle';
 import { drainNetwork } from './operational/networkDrain';
 import { replayJsonRequestBody } from './server/requestBodyReplay';
+import { createUmamiProxyMiddleware, UMAMI_SCRIPT_PATH, UMAMI_SEND_PATH } from './server/umamiProxy';
 import {
   configurePlatformJwtAccountStore,
   configurePlatformJwtRevocationStore,
@@ -444,8 +445,22 @@ server.app.use(
 // Structured request logging + Prometheus metrics (before route handlers).
 server.app.use(requestLoggingMiddleware());
 server.app.use(metricsMiddleware());
+const analyticsRateLimit = createRateLimit({ redis: redisPubClient, limit: 300, namespace: 'analytics' });
+server.app.use(async (ctx: KoaContext, next: Next) => {
+  if (ctx.path === UMAMI_SCRIPT_PATH || ctx.path === UMAMI_SEND_PATH) {
+    return analyticsRateLimit(ctx, next);
+  }
+  await next();
+});
+server.app.use(
+  createUmamiProxyMiddleware({
+    upstreamUrl: process.env.UMAMI_UPSTREAM_URL,
+    clientIp: (ctx) => getClientIpFromRequest(ctx.req) || ctx.ip,
+    onError: (err, route) => logger.warn({ err, route }, 'Umami proxy request failed'),
+  }),
+);
 // Rate limit boardgame.io lobby routes (/games/*) to prevent match flooding. /api/* is
-// proxied to the API server which has its own rate limiter; static assets are exempt.
+// proxied to the API server which has its own limiter; other static assets are exempt.
 server.app.use(async (ctx: KoaContext, next: Next) => {
   if (ctx.path.startsWith('/games/')) {
     return createRateLimit({ redis: redisPubClient, limit: 120, namespace: 'game' })(ctx, next);

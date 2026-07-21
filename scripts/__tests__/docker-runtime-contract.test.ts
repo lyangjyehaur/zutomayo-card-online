@@ -42,6 +42,25 @@ describe('game runtime image contract', () => {
     expect(dockerfile).toContain('RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force');
   });
 
+  it('keeps the Umami upstream address out of the frontend bundle', () => {
+    const dockerfile = readFileSync(resolve(root, 'Dockerfile'), 'utf8');
+    const compose = readFileSync(resolve(root, 'docker-compose.server4.yml'), 'utf8');
+    const analytics = readFileSync(resolve(root, 'src/analytics.ts'), 'utf8');
+
+    expect(compose).toContain('UMAMI_UPSTREAM_URL=${UMAMI_UPSTREAM_URL:-}');
+    expect(analytics).toContain("const SCRIPT_URL = '/analytics/script.js'");
+    expect(analytics).toContain("const HOST_URL = '/analytics'");
+    for (const removedBuildVariable of [
+      'VITE_UMAMI_SCRIPT_URL',
+      'VITE_UMAMI_HOST_URL',
+      'VITE_UMAMI_SECONDARY_HOST_URL',
+    ]) {
+      expect(dockerfile).not.toContain(removedBuildVariable);
+      expect(compose).not.toContain(removedBuildVariable);
+      expect(analytics).not.toContain(removedBuildVariable);
+    }
+  });
+
   it('ships the server-owned deck helper despite the API source ignore rule', () => {
     const dockerfile = readFileSync(resolve(root, 'Dockerfile'), 'utf8');
     const dockerignore = readFileSync(resolve(root, '.dockerignore'), 'utf8');
