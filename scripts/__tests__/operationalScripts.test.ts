@@ -93,6 +93,9 @@ describe('operational shell scripts', () => {
     expect(deploy).toContain('battle-assets.sha256');
     expect(deploy).toContain('sync_battle_assets');
     expect(deploy).toContain('release_official_rulings');
+    expect(deploy).toContain('OFFICIAL_RULE_DOCUMENTS_SOURCE');
+    expect(deploy).toContain('release_official_rule_documents');
+    expect(deploy).toContain('OFFICIAL_RULE_DOCUMENTS_FILE');
     expect(deploy).toContain('release_card_derived_effects');
     expect(deploy).toContain('CARD_DERIVED_EFFECTS_REVIEW_SOURCE');
     expect(deploy).toContain('import-card-derived-effects-pg.ts');

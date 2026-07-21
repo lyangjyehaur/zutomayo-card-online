@@ -9,8 +9,9 @@ export const ja: Record<TranslationKey, string> = {
 
   'intro.deckTitle': 'ZUTOMAYO CARD ONLINE へようこそ',
   'intro.deckDescription':
-    'ゲームを始める前に、デッキを選択する必要があります。プリセットデッキを使うか、デッキエディタで自分のデッキを作成できます。',
+    'ゲームを始める前に、プリセットデッキを選ぶか、デッキエディタで自分のデッキを作成できます。初めての場合はチュートリアルで基本を確認できます。',
   'intro.goToDeckBuilder': 'デッキエディタへ',
+  'intro.goToTutorial': 'チュートリアルを始める',
   'intro.exploreLater': '後で見る',
 
   'common.back': '戻る',
@@ -585,6 +586,9 @@ export const ja: Record<TranslationKey, string> = {
   'board.result.duration': '対局時間',
   'board.result.turns': 'ターン数',
   'board.result.reason': '終了原因',
+  'board.result.viewLog': '対戦ログを見る',
+  'board.result.battleLog': '対戦ログ',
+  'board.result.changeSetup': 'デッキ・難易度を変更',
   'board.cardsUnit': '枚',
 
   'card.type.character': 'キャラクター',
@@ -798,6 +802,7 @@ export const ja: Record<TranslationKey, string> = {
   'deckEditor.deckName': 'デッキ名',
   'deckEditor.selectDeck': 'デッキを選択',
   'deckEditor.newDeck': '新規デッキ',
+  'deckEditor.newDeckCreated': '新しい空のデッキを作成しました',
   'deckEditor.importDeck': 'インポート',
   'deckEditor.exportDeck': 'エクスポート',
   'deckEditor.currentDraft': '未保存デッキ',
@@ -1486,4 +1491,18 @@ export const ja: Record<TranslationKey, string> = {
   'officialRules.relatedQa': 'このカードに関連する Q&A を見る',
   'officialRules.channelTitle': 'ルール資料庫',
   'officialRules.channelCaption': '公式 Q&A・裁定・カードエラッタ',
+  'officialRules.grandTitle': 'グランドルール',
+  'officialRules.floorTitle': '基本フロアルール',
+  'officialRules.officialDocument': '公式ルール文書',
+  'officialRules.pageCount': '全{count}ページ',
+  'officialRules.openPdf': '公式PDFを開く',
+  'officialRules.floorScopeTitle': '適用範囲：',
+  'officialRules.floorScopeBody':
+    '本書は公式・公認大会に適用されます。大会ごとの個別ルールが優先される場合があります。',
+  'officialRules.documentSearchPlaceholder': '章・条文・キーワードを検索',
+  'officialRules.contents': '目次',
+  'officialRules.documentSections': 'ルール文書の各章',
+  'officialRules.sectionCount': '{count}章',
+  'officialRules.sourcePages': '原文 {pages}ページ',
+  'officialRules.sourceFingerprint': '公式ソース SHA-256：{hash}',
 } as const satisfies Record<TranslationKey, string>;

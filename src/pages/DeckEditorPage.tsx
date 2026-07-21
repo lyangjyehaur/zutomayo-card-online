@@ -100,6 +100,7 @@ export function DeckEditorPage({
   const [shareSaving, setShareSaving] = useState(false);
   const [shareError, setShareError] = useState('');
   const importInputRef = useRef<HTMLInputElement>(null);
+  const initialServerDeckResolvedRef = useRef(false);
   const selectedServerDeckId = serverDeckIdFromOption(selectedDeckLibraryId);
 
   useEffect(() => {
@@ -124,7 +125,8 @@ export function DeckEditorPage({
   }, [loggedIn, onServerDecksLoaded]);
 
   useEffect(() => {
-    if (!loggedIn || selectedDeckLibraryId || !serverDecks[0]) return;
+    if (!loggedIn || initialServerDeckResolvedRef.current || selectedDeckLibraryId || !serverDecks[0]) return;
+    initialServerDeckResolvedRef.current = true;
     const firstDeck = serverDecks[0];
     setSelectedDeckLibraryId(serverDeckOptionId(firstDeck.id));
     setDeckName(firstDeck.name);
@@ -305,6 +307,7 @@ export function DeckEditorPage({
   );
 
   const markDeckDirty = () => {
+    initialServerDeckResolvedRef.current = true;
     setSyncedDeckId(null);
     setSaveError('');
     setHasUnsavedChanges(true);
@@ -315,6 +318,7 @@ export function DeckEditorPage({
   const handleSelectDeckLibrary = (optionId: string) => {
     if (optionId === selectedDeckLibraryId) return;
     if (!canDiscardCurrentDraft()) return;
+    initialServerDeckResolvedRef.current = true;
     setSelectedDeckLibraryId(optionId);
     setSyncedDeckId(null);
     setHasUnsavedChanges(false);
@@ -342,6 +346,7 @@ export function DeckEditorPage({
 
   const handleNewDeck = () => {
     if (!canDiscardCurrentDraft()) return;
+    initialServerDeckResolvedRef.current = true;
     setSelectedDeckLibraryId('');
     setDeckName(t('deck.custom'));
     setEditorDeck([]);
@@ -349,6 +354,7 @@ export function DeckEditorPage({
     setHasUnsavedChanges(false);
     setSaveError('');
     setEditorRevision((value) => value + 1);
+    showToast({ title: t('deckEditor.newDeckCreated'), kind: 'info' });
   };
 
   const handleExportDeck = (deckIds: string[]) => {
@@ -369,6 +375,7 @@ export function DeckEditorPage({
       const text = await file.text();
       const parsed = parseDeckImport(JSON.parse(text));
       if (!parsed) throw new Error('Invalid deck import');
+      initialServerDeckResolvedRef.current = true;
       setSelectedDeckLibraryId('');
       setDeckName(parsed.name?.trim() || t('deckEditor.currentDraft'));
       setEditorDeck(parsed.cardIds);

@@ -190,6 +190,7 @@ const {
   upsertOfficialErrataTranslation,
   upsertOfficialQaTranslation,
 } = require('./officialRulingsService.cjs');
+const { getPublicRuleDocument } = require('./officialRuleDocumentsService.cjs');
 const {
   checkOfficialSources,
   generateOfficialTranslation,
@@ -817,6 +818,73 @@ async function initSchema() {
       key TEXT PRIMARY KEY DEFAULT 'active' CHECK (key = 'active'),
       release_id TEXT NOT NULL REFERENCES official_rulings_releases(id) ON DELETE RESTRICT,
       activated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS official_rule_documents (
+      document_id TEXT NOT NULL CHECK (document_id IN ('grand', 'floor')),
+      document_version TEXT NOT NULL,
+      title_ja TEXT NOT NULL,
+      summary_ja TEXT NOT NULL,
+      published_at DATE NOT NULL,
+      source_url TEXT NOT NULL,
+      source_sha256 TEXT NOT NULL,
+      source_page_count INTEGER NOT NULL,
+      content_hash TEXT NOT NULL,
+      publication_status TEXT NOT NULL DEFAULT 'candidate'
+        CHECK (publication_status IN ('candidate', 'active', 'superseded')),
+      source_checked_at TIMESTAMPTZ NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (document_id, document_version)
+    )`,
+    `CREATE TABLE IF NOT EXISTS official_rule_sections (
+      document_id TEXT NOT NULL,
+      document_version TEXT NOT NULL,
+      section_id TEXT NOT NULL,
+      section_number TEXT NOT NULL DEFAULT '',
+      parent_section_id TEXT,
+      level INTEGER NOT NULL,
+      sort_order INTEGER NOT NULL,
+      page_start INTEGER NOT NULL,
+      page_end INTEGER NOT NULL,
+      title_ja TEXT NOT NULL,
+      body_ja TEXT NOT NULL,
+      content_hash TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (document_id, document_version, section_id),
+      FOREIGN KEY (document_id, document_version)
+        REFERENCES official_rule_documents(document_id, document_version) ON DELETE CASCADE
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_official_rule_sections_order
+      ON official_rule_sections(document_id, document_version, sort_order)`,
+    `CREATE TABLE IF NOT EXISTS official_rule_section_translations (
+      document_id TEXT NOT NULL,
+      document_version TEXT NOT NULL,
+      section_id TEXT NOT NULL,
+      locale TEXT NOT NULL CHECK (locale IN ('zh-TW', 'zh-CN', 'zh-HK', 'en', 'ko')),
+      title_text TEXT NOT NULL,
+      body_text TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending_review'
+        CHECK (status IN ('pending_review', 'machine', 'verified', 'failed')),
+      provider TEXT NOT NULL DEFAULT '',
+      model TEXT NOT NULL DEFAULT '',
+      review_note TEXT NOT NULL DEFAULT '',
+      reviewed_by_user_id TEXT,
+      reviewed_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (document_id, document_version, section_id, locale),
+      FOREIGN KEY (document_id, document_version, section_id)
+        REFERENCES official_rule_sections(document_id, document_version, section_id) ON DELETE CASCADE
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_official_rule_section_translations_locale_status
+      ON official_rule_section_translations(locale, status)`,
+    `CREATE TABLE IF NOT EXISTS official_rule_active_versions (
+      document_id TEXT PRIMARY KEY CHECK (document_id IN ('grand', 'floor')),
+      document_version TEXT NOT NULL,
+      activated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      FOREIGN KEY (document_id, document_version)
+        REFERENCES official_rule_documents(document_id, document_version) ON DELETE RESTRICT
     )`,
 
     `CREATE TABLE IF NOT EXISTS card_texts_i18n (
@@ -4416,6 +4484,19 @@ function handleRequest(req, res) {
     if (pathname === '/api/official/status' && method === 'GET') {
       res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
       publicServiceJson(await getOfficialRulingsReleaseStatus({ pool }));
+      return;
+    }
+
+    const publicOfficialRuleDocumentRoute = pathname.match(/^\/api\/official\/rules\/(grand|floor)$/);
+    if (publicOfficialRuleDocumentRoute && method === 'GET') {
+      res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=1800');
+      publicServiceJson(
+        await getPublicRuleDocument({
+          pool,
+          language: url.searchParams.get('lang'),
+          documentId: publicOfficialRuleDocumentRoute[1],
+        }),
+      );
       return;
     }
 

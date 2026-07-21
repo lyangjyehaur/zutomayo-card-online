@@ -19,6 +19,7 @@ const appVersion = versionEnv('APP_VERSION', packageVersion);
 const appBuildId = versionEnv('APP_BUILD_ID', appVersion);
 const gameRulesVersion = versionEnv('GAME_RULES_VERSION', appVersion);
 const imgproxyDevProxyTarget = process.env.IMGPROXY_DEV_PROXY_TARGET?.trim();
+const apiDevProxyTarget = process.env.API_DEV_PROXY_TARGET?.trim() || 'http://127.0.0.1:3001';
 
 // Release 字串必須與 src/sentry.ts 的 release 完全一致，source map 才能正確關聯。
 const release = `${appVersion}@${appBuildId}`;
@@ -103,7 +104,7 @@ export default defineConfig({
         navigateFallbackDenylist: [/^\/api/],
         runtimeCaching: [
           {
-            urlPattern: /\/api\/official\/(?:qa|errata)(?:\/[^/?]+)?(?:\?.*)?$/i,
+            urlPattern: /\/api\/official\/(?:qa|errata|rules)(?:\/[^/?]+)?(?:\?.*)?$/i,
             handler: 'NetworkFirst',
             options: {
               cacheName: 'official-rulings-api',
@@ -154,7 +155,7 @@ export default defineConfig({
           }
         : {}),
       '/api': {
-        target: 'http://127.0.0.1:3001',
+        target: apiDevProxyTarget,
         changeOrigin: true,
       },
     },

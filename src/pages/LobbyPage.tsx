@@ -7,6 +7,7 @@ import {
   Code2,
   ExternalLink,
   Github,
+  GraduationCap,
   LayoutGrid,
   Medal,
   Megaphone,
@@ -357,6 +358,12 @@ export function LobbyPage({ onAuthChanged, deckSharingEnabled }: LobbyPageProps)
     localStorage.setItem('zutomayo_deck_intro_seen', 'true');
     setShowDeckIntro(false);
     navigate('/deck-builder');
+  };
+
+  const handleGoToTutorial = () => {
+    localStorage.setItem('zutomayo_deck_intro_seen', 'true');
+    setShowDeckIntro(false);
+    navigate('/tutorial');
   };
 
   const communityLinks = (
@@ -770,9 +777,21 @@ export function LobbyPage({ onAuthChanged, deckSharingEnabled }: LobbyPageProps)
                 onClick={handleGoToDeckBuilder}
                 data-umami-event="deck-intro-go-to-builder"
               >
+                <LayoutGrid className="size-4" aria-hidden="true" />
                 {t('intro.goToDeckBuilder')}
               </Button>
-              <Button type="button" size="sm" variant="secondary" className="min-h-11" onClick={handleDismissIntro}>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                className="min-h-11"
+                onClick={handleGoToTutorial}
+                data-umami-event="deck-intro-go-to-tutorial"
+              >
+                <GraduationCap className="size-4" aria-hidden="true" />
+                {t('intro.goToTutorial')}
+              </Button>
+              <Button type="button" size="sm" variant="ghost" className="min-h-11" onClick={handleDismissIntro}>
                 {t('intro.exploreLater')}
               </Button>
             </div>

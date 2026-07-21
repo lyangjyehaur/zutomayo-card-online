@@ -9,8 +9,9 @@ export const en: Record<TranslationKey, string> = {
 
   'intro.deckTitle': 'Welcome to ZUTOMAYO CARD ONLINE',
   'intro.deckDescription':
-    'Before starting a game, you need to select a deck. You can use a preset deck or create your own in the Deck Editor.',
+    'Before starting a game, select a preset deck, build your own in the Deck Editor, or learn the basics in the tutorial.',
   'intro.goToDeckBuilder': 'Go to Deck Editor',
+  'intro.goToTutorial': 'Start Tutorial',
   'intro.exploreLater': 'Explore Later',
 
   'common.back': 'Back',
@@ -584,6 +585,9 @@ export const en: Record<TranslationKey, string> = {
   'board.result.duration': 'Duration',
   'board.result.turns': 'Turns',
   'board.result.reason': 'Result',
+  'board.result.viewLog': 'View Battle Log',
+  'board.result.battleLog': 'Battle Log',
+  'board.result.changeSetup': 'Change Deck & Difficulty',
   'board.cardsUnit': 'cards',
 
   'card.type.character': 'Character',
@@ -797,6 +801,7 @@ export const en: Record<TranslationKey, string> = {
   'deckEditor.deckName': 'Deck name',
   'deckEditor.selectDeck': 'Select Deck',
   'deckEditor.newDeck': 'New Deck',
+  'deckEditor.newDeckCreated': 'New blank deck created',
   'deckEditor.importDeck': 'Import',
   'deckEditor.exportDeck': 'Export',
   'deckEditor.currentDraft': 'Unsaved Deck',
@@ -1491,4 +1496,18 @@ export const en: Record<TranslationKey, string> = {
   'officialRules.relatedQa': 'View related Q&A for this card',
   'officialRules.channelTitle': 'Rules Database',
   'officialRules.channelCaption': 'Official Q&A, rulings, and card errata',
+  'officialRules.grandTitle': 'Grand Rules',
+  'officialRules.floorTitle': 'Basic Floor Rules',
+  'officialRules.officialDocument': 'Official rules document',
+  'officialRules.pageCount': '{count} pages',
+  'officialRules.openPdf': 'Open official PDF',
+  'officialRules.floorScopeTitle': 'Scope:',
+  'officialRules.floorScopeBody':
+    'This document applies to official and sanctioned tournaments. Event-specific rules may take precedence.',
+  'officialRules.documentSearchPlaceholder': 'Search sections, rules, or keywords',
+  'officialRules.contents': 'Contents',
+  'officialRules.documentSections': 'Rule document sections',
+  'officialRules.sectionCount': '{count} sections',
+  'officialRules.sourcePages': 'Source page {pages}',
+  'officialRules.sourceFingerprint': 'Official source SHA-256: {hash}',
 };

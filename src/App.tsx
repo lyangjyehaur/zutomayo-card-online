@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { Menu, X } from 'lucide-react';
-import { BrowserRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { identifyAnalytics, trackPageView } from './analytics';
 import { formatAnonymousDisplayName } from './anonymousIdentity';
 import { getDecks, getProfile, isLoggedIn, reserveDeck, type DeckResponse } from './api/client';
@@ -14,13 +14,7 @@ import { hasStoredCustomDeck } from './game/cards/customDeck';
 import { getGameConfig as getLoadedGameConfig } from './game/cards/loader';
 import type { ZutomayoSetupData } from './game/types';
 import type { AIDifficulty } from './game/ai';
-import {
-  LobbyPage,
-  aiOpponentDeckName,
-  onlineDeckName,
-  selectedDeckName,
-  serverDeckIdFromOption,
-} from './pages/LobbyPage';
+import { LobbyPage, aiOpponentDeckName, onlineDeckName, serverDeckIdFromOption } from './pages/LobbyPage';
 import { t, translate, useLocale, type TranslationKey } from './i18n';
 import {
   clearStoredOnlineSession,
@@ -79,6 +73,9 @@ const OfficialErrataPage = lazy(() =>
 );
 const OfficialErrataDetailPage = lazy(() =>
   import('./pages/OfficialErrataDetailPage').then((module) => ({ default: module.OfficialErrataDetailPage })),
+);
+const OfficialRuleDocumentPage = lazy(() =>
+  import('./pages/OfficialRuleDocumentPage').then((module) => ({ default: module.OfficialRuleDocumentPage })),
 );
 const VerifyEmailPage = lazy(() =>
   import('./pages/AccountActionPage').then((module) => ({ default: module.VerifyEmailPage })),
@@ -645,7 +642,7 @@ function RouterShell() {
     clearOnlineSession();
   };
 
-  const deck0 = selectedDeckName(deck0Name, customDeckAvailable);
+  const aiPlayerDeck = onlineDeckName(0, deck0Name, serverDecks);
   const deck1 = aiOpponentDeckName(deck1Name);
   const cardsReady = cardResourceState === 'ready';
   const cardsLoadError = cardResourceState === 'error';
@@ -704,7 +701,8 @@ function RouterShell() {
               path="/play/ai"
               element={
                 <AIGamePage
-                  deck0Name={deck0}
+                  deck0Name={aiPlayerDeck.deck0Name}
+                  deck0Ids={aiPlayerDeck.deck0Ids}
                   deck1Name={deck1}
                   cardsReady={cardsReady}
                   cardsLoadError={cardsLoadError}
@@ -766,10 +764,13 @@ function RouterShell() {
             <Route path="/leaderboard" element={<LeaderboardPage />} />
             <Route path="/feedback" element={<FeedbackPage />} />
             <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/rules" element={<Navigate to="/rules/grand" replace />} />
             <Route path="/rules/qa" element={<OfficialQaPage />} />
             <Route path="/rules/qa/:number" element={<OfficialQaDetailPage />} />
             <Route path="/rules/errata" element={<OfficialErrataPage />} />
             <Route path="/rules/errata/:errataId" element={<OfficialErrataDetailPage />} />
+            <Route path="/rules/grand" element={<OfficialRuleDocumentPage documentId="grand" />} />
+            <Route path="/rules/floor" element={<OfficialRuleDocumentPage documentId="floor" />} />
             <Route path="/legal" element={<LegalPage documentId="overview" />} />
             <Route path="/legal/privacy" element={<LegalPage documentId="privacy" />} />
             <Route path="/legal/terms" element={<LegalPage documentId="terms" />} />

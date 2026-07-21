@@ -373,16 +373,19 @@ If the `migrate` service exits non-zero, `api` will not start. Check `docker com
 
 ### Official rulings release gate
 
-Migrations `000039_official_rulings` and `000040_official_rulings_releases` create the source, translation, immutable release-snapshot, manifest, and active-pointer schema. After the target database contains the real card dataset and canonical card errata, publish from a trusted maintenance checkout with the reviewed, Git-ignored translation source:
+Migrations `000039_official_rulings`, `000040_official_rulings_releases`, and `000041_official_rule_documents` create the source, translation, immutable release-snapshot, versioned rule-document, and active-pointer schema. After the target database contains the real card dataset and canonical card errata, publish from a trusted maintenance checkout with the reviewed, Git-ignored translation sources:
 
 ```bash
 cat data/official-rulings-translations.json | npm run release:official-rulings -- \
-  --translations=- --app-version=0.2.2 --build-id="$(git rev-parse HEAD)"
+  --translations=- --app-version=0.2.3 --build-id="$(git rev-parse HEAD)"
+
+OFFICIAL_RULE_DOCUMENTS_FILE=data/official-rule-documents-20260721.json \
+  npm run release:official-rule-documents
 ```
 
 The command fetches the live official Japanese sources and validates every local translation source hash before opening a serializable PostgreSQL transaction. That transaction verifies canonical cards, reviewed localized card names, and the card-dataset hash; Q&A card-name tokens are resolved from PostgreSQL and re-translated card names fail closed. It then writes every source and five-locale translation, checks completeness, records immutable snapshots and hashes, and switches the singleton active pointer. Any error rolls back the whole release.
 
-`scripts/deploy-server4.sh` performs this gate after migration and before starting the new services. Set local `OFFICIAL_TRANSLATIONS_SOURCE` when the reviewed file is outside the checkout. Its bytes travel over SSH stdin directly into the one-shot migration container; the JSON is never committed, copied into an image, or stored in the remote checkout. The post-start smoke requires `/api/official/status` to reference the deployed build. Operational details are documented in [`official-rulings.md`](./official-rulings.md).
+`scripts/deploy-server4.sh` performs these gates after migration and before starting the new services. Set local `OFFICIAL_TRANSLATIONS_SOURCE` or `OFFICIAL_RULE_DOCUMENTS_SOURCE` when a reviewed file is outside the checkout. Their bytes travel over SSH stdin directly into the one-shot migration container; the JSON is never committed, copied into an image, or stored in the remote checkout. The rule-document gate verifies that the official rules index still advertises both source PDFs, checks each live PDF SHA-256, and rejects incomplete locale coverage before switching the active versions. The post-start smoke requires `/api/official/status` to reference the deployed build. Operational details are documented in [`official-rulings.md`](./official-rulings.md).
 
 同一部署階段也會將 `CARD_DERIVED_EFFECTS_DIR`（預設為本機 `data/`）中的卡牌效果、複核 manifest、官方日英來源及勘誤來源以 tar/stdin 串流至一次性 migration container，通過完整 audit 後以 transaction 更新 `card_texts_i18n`。檔案不會寫入 Server4 checkout 或容器映像；缺少任一來源、雜湊不符或術語違規時，部署會在啟動新服務前中止。
 

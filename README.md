@@ -2,7 +2,7 @@
 
 **語言 / Languages：** [繁體中文](README.md) | [日本語](README.ja.md) | [English](README.en.md)
 
-目前版本：**0.2.2**
+目前版本：**0.2.3**
 
 > ZUTOMAYO CARD（ずっと真夜中でいいのに。官方 TCG）的非官方數位化對戰平台。
 > 支援本機雙人、AI 練習、互動式教學與即時線上對戰。
@@ -11,7 +11,7 @@
 
 0.2.0 將專案從單一對戰應用擴充為多人平台：`boardgame.io` 繼續掌管權威卡牌狀態，Colyseus 負責大廳、配對、房間、邀請與觀戰 presence，ChatService 負責可持久化聊天、未讀、翻譯、舉報與管理審核。
 
-0.2.2 新增卡組分享大廳，以及由 PostgreSQL 提供的官方日文 Q&A／勘誤資料、六語頁面、後台校訂與來源同步流程。
+0.2.3 進一步整合官方 Grand Rules／基本 Floor Rules 五語閱讀頁與 PostgreSQL 原子發布流程，並補完整 AI 賽後導航、對戰記錄、首訪教學入口和牌組建立體驗。
 
 ### 遊戲與對戰
 
@@ -41,7 +41,7 @@
 
 - 六語 UI：繁中、粵語、簡中、日文、英文、韓文。
 - 牌組編輯器、卡組分享大廳、排行榜、跨裝置戰績、個人頁、OAuth 身份與反饋看板。
-- 官方日文 Q&A／勘誤、在地化閱讀頁面，以及人工校訂與來源同步後台。
+- 官方 Grand Rules／基本 Floor Rules、日文 Q&A／勘誤、在地化閱讀頁面，以及人工校訂與來源同步後台。
 - PWA 安裝／更新提示與 app、build、rules 三層版本相容檢查。
 - 卡牌、翻譯、使用者、ELO、聊天證據、處分與反饋管理後台。
 - Playwright 核心 E2E、k6 API／WebSocket／認證／配對負載測試，以及 staging／production CD pipeline。
@@ -172,7 +172,7 @@ load-tests/           k6 API、WebSocket、認證與配對壓測
 docs/                 架構、API、部署、多人平台與 UI/UX 文檔
 ```
 
-主要頁面包括 `/online`、`/ai`、`/tutorial`、`/deck-builder`、`/history`、`/leaderboard`、`/feedback`、`/profile`、`/rules/qa`、`/rules/errata` 與 `/admin`。
+主要頁面包括 `/online`、`/ai`、`/tutorial`、`/deck-builder`、`/deck-shares`、`/history`、`/leaderboard`、`/feedback`、`/profile`、`/rules/grand`、`/rules/floor`、`/rules/qa`、`/rules/errata` 與 `/admin`。
 
 ## 安全與運維
 

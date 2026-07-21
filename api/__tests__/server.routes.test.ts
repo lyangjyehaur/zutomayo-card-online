@@ -464,6 +464,79 @@ describe('server routes', () => {
       });
     });
 
+    it('serves a translated official Grand Rules document with source metadata', async () => {
+      mockQuery.mockImplementation(async (sql: string, params?: unknown[]) => {
+        if (sql.includes('FROM official_rule_active_versions active')) {
+          expect(params).toEqual(['zh-TW', 'grand']);
+          return {
+            rows: [
+              {
+                document_id: 'grand',
+                document_version: '1.0.0',
+                title_ja: 'グランドルール',
+                summary_ja: '概要',
+                published_at: '2026-07-21',
+                source_url: 'https://example.test/grand.pdf',
+                source_sha256: 'a'.repeat(64),
+                source_page_count: 8,
+                source_checked_at: '2026-07-21T08:00:00.000Z',
+                activated_at: '2026-07-21T09:00:00.000Z',
+                section_id: 'overview',
+                section_number: '',
+                parent_section_id: null,
+                level: 1,
+                sort_order: 0,
+                page_start: 1,
+                page_end: 1,
+                section_title_ja: 'グランドルール',
+                body_ja: '概要',
+                translated_title: 'Grand Rules',
+                translated_body: '官方進階規則。',
+                translation_status: 'verified',
+              },
+              {
+                document_id: 'grand',
+                document_version: '1.0.0',
+                title_ja: 'グランドルール',
+                summary_ja: '概要',
+                published_at: '2026-07-21',
+                source_url: 'https://example.test/grand.pdf',
+                source_sha256: 'a'.repeat(64),
+                source_page_count: 8,
+                source_checked_at: '2026-07-21T08:00:00.000Z',
+                activated_at: '2026-07-21T09:00:00.000Z',
+                section_id: 'overview-1',
+                section_number: '1',
+                parent_section_id: null,
+                level: 1,
+                sort_order: 1,
+                page_start: 1,
+                page_end: 1,
+                section_title_ja: 'ゲームの概要',
+                body_ja: '本文',
+                translated_title: '遊戲概要',
+                translated_body: '正文',
+                translation_status: 'verified',
+              },
+            ],
+            rowCount: 2,
+          };
+        }
+        return { rows: [], rowCount: 0 };
+      });
+      const res = await sendRequest('GET', '/api/official/rules/grand?lang=zh-TW');
+      expect(res.statusCode).toBe(200);
+      expect(parseBody(res)).toMatchObject({
+        document: {
+          id: 'grand',
+          version: '1.0.0',
+          localized: { title: 'Grand Rules' },
+          sections: [{ localized: { title: '遊戲概要' } }],
+        },
+      });
+      expect(res.headers['cache-control']).toContain('max-age=300');
+    });
+
     it('reports the active official-rulings release bound to its build', async () => {
       mockQuery.mockResolvedValue({
         rows: [

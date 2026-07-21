@@ -6,8 +6,10 @@ export const zhTW = {
   'app.footerCopyrightSuffix': '',
 
   'intro.deckTitle': '歡迎來到 ZUTOMAYO CARD ONLINE',
-  'intro.deckDescription': '在開始遊戲前，你需要選擇一副牌組。可以使用預設牌組，或前往牌組編輯器建立自己的牌組。',
+  'intro.deckDescription':
+    '在開始遊戲前，你需要選擇一副牌組。可以使用預設牌組、前往牌組編輯器建立自己的牌組，或先透過新手教學熟悉玩法。',
   'intro.goToDeckBuilder': '前往牌組編輯器',
+  'intro.goToTutorial': '先玩新手教學',
   'intro.exploreLater': '稍後探索',
 
   'common.back': '返回',
@@ -576,6 +578,9 @@ export const zhTW = {
   'board.result.duration': '對局時長',
   'board.result.turns': '回合數',
   'board.result.reason': '結束原因',
+  'board.result.viewLog': '查看對戰記錄',
+  'board.result.battleLog': '本場對戰記錄',
+  'board.result.changeSetup': '調整牌組與難度',
   'board.cardsUnit': '張',
 
   'card.type.character': '角色',
@@ -784,6 +789,7 @@ export const zhTW = {
   'deckEditor.deckName': '牌組名稱',
   'deckEditor.selectDeck': '選擇牌組',
   'deckEditor.newDeck': '新牌組',
+  'deckEditor.newDeckCreated': '已建立新的空白牌組',
   'deckEditor.importDeck': '導入',
   'deckEditor.exportDeck': '導出',
   'deckEditor.currentDraft': '未保存牌組',
@@ -1441,6 +1447,19 @@ export const zhTW = {
   'officialRules.relatedQa': '查看這張卡牌的相關 Q&A',
   'officialRules.channelTitle': '規則資料庫',
   'officialRules.channelCaption': '官方 Q&A、裁定與卡牌勘誤',
+  'officialRules.grandTitle': 'Grand Rules',
+  'officialRules.floorTitle': '基本 Floor Rules',
+  'officialRules.officialDocument': '官方規則文件',
+  'officialRules.pageCount': '共 {count} 頁',
+  'officialRules.openPdf': '開啟官方 PDF',
+  'officialRules.floorScopeTitle': '適用範圍：',
+  'officialRules.floorScopeBody': '本文件適用於官方及公認賽事；個別賽事另訂的規則可能優先適用。',
+  'officialRules.documentSearchPlaceholder': '搜尋章節、條文或關鍵字',
+  'officialRules.contents': '章節目錄',
+  'officialRules.documentSections': '規則文件章節',
+  'officialRules.sectionCount': '{count} 個章節',
+  'officialRules.sourcePages': '原文第 {pages} 頁',
+  'officialRules.sourceFingerprint': '官方來源 SHA-256：{hash}',
 } as const;
 
 export type TranslationKey = keyof typeof zhTW;

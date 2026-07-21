@@ -29,6 +29,7 @@ SMOKE_LOCAL_GAME_PORT="${SMOKE_LOCAL_GAME_PORT:-13000}"
 SMOKE_LOCAL_API_PORT="${SMOKE_LOCAL_API_PORT:-13001}"
 SMOKE_LOCAL_PLATFORM_PORT="${SMOKE_LOCAL_PLATFORM_PORT:-13002}"
 OFFICIAL_TRANSLATIONS_SOURCE="${OFFICIAL_TRANSLATIONS_SOURCE:-$PROJECT_DIR/data/official-rulings-translations.json}"
+OFFICIAL_RULE_DOCUMENTS_SOURCE="${OFFICIAL_RULE_DOCUMENTS_SOURCE:-$PROJECT_DIR/data/official-rule-documents-20260721.json}"
 CARD_DERIVED_EFFECTS_DIR="${CARD_DERIVED_EFFECTS_DIR:-$PROJECT_DIR/data}"
 CARD_DERIVED_EFFECT_FILES=(
   card-effects-i18n.json
@@ -128,6 +129,8 @@ load_local_release() {
   verify_local_battle_assets
   [[ -f "$OFFICIAL_TRANSLATIONS_SOURCE" ]] || \
     die "reviewed official-rulings translations are missing: $OFFICIAL_TRANSLATIONS_SOURCE"
+  [[ -f "$OFFICIAL_RULE_DOCUMENTS_SOURCE" ]] || \
+    die "reviewed official rule documents are missing: $OFFICIAL_RULE_DOCUMENTS_SOURCE"
   [[ -d "$CARD_DERIVED_EFFECTS_DIR" ]] || \
     die "reviewed card-derived-effects directory is missing: $CARD_DERIVED_EFFECTS_DIR"
   local derived_file
@@ -267,6 +270,18 @@ release_official_rulings() {
     < "$OFFICIAL_TRANSLATIONS_SOURCE"
 }
 
+release_official_rule_documents() {
+  ssh -p "$SERVER_PORT" "$SERVER_USER@$SERVER_HOST" "set -euo pipefail
+    cd '$REMOTE_DIR'
+    docker compose -f '$COMPOSE_FILE' run --rm -T migrate sh -ceu '
+      tmp=\$(mktemp)
+      trap \"rm -f \\\"\$tmp\\\"\" EXIT
+      cat > \"\$tmp\"
+      OFFICIAL_RULE_DOCUMENTS_FILE=\"\$tmp\" \\
+        node --import tsx scripts/release-official-rule-documents.ts
+    '" < "$OFFICIAL_RULE_DOCUMENTS_SOURCE"
+}
+
 release_card_derived_effects() {
   COPYFILE_DISABLE=1 tar -C "$CARD_DERIVED_EFFECTS_DIR" -cf - "${CARD_DERIVED_EFFECT_FILES[@]}" \
     | ssh -p "$SERVER_PORT" "$SERVER_USER@$SERVER_HOST" "set -euo pipefail
@@ -324,6 +339,7 @@ if [[ "$DRY_RUN" == true ]]; then
   log "[dry-run] would back up PostgreSQL and deploy origin/master $TARGET_SHORT"
   log "[dry-run] schema=$EXPECTED_SCHEMA_MIGRATION checksum=$EXPECTED_SCHEMA_CHECKSUM"
   log "[dry-run] would stream the reviewed official-rulings translations and require an atomic active release"
+  log "[dry-run] would stream and atomically activate the translated official rule documents"
   log "[dry-run] would stream and transactionally import reviewed card-derived effects"
   log "[dry-run] would synchronize and verify $BATTLE_ASSET_COUNT private battle assets"
   exit 0
@@ -347,6 +363,8 @@ log 'streaming and transactionally importing reviewed card-derived effects'
 release_card_derived_effects || die 'card-derived-effects release gate failed; the running release was not replaced'
 log 'synchronizing and atomically activating current official Q&A, errata, and five reviewed locales'
 release_official_rulings || die 'official-rulings release gate failed; the running release was not replaced'
+log 'synchronizing and atomically activating Grand Rules and Floor Rules in five reviewed locales'
+release_official_rule_documents || die 'official rule documents release gate failed; the running release was not replaced'
 remote_start || die 'deployment failed; inspect the server4 Compose logs before retrying'
 
 run_smoke "$TARGET_SHA" || die 'health verification failed; inspect the deployed release before retrying'

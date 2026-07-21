@@ -1,15 +1,17 @@
-# 官方 Q&A 與勘誤資料庫
+# 官方規則、Q&A 與勘誤資料庫
 
-站內規則資料庫整合官方 [Q&A](https://zutomayocard.net/qa/) 與[勘誤](https://zutomayocard.net/errata/)，公開路由為：
+站內規則資料庫整合官方 [Grand Rules／基本 Floor Rules](https://zutomayocard.net/rule/)、[Q&A](https://zutomayocard.net/qa/) 與[勘誤](https://zutomayocard.net/errata/)，公開路由為：
 
 - `/rules/qa`、`/rules/qa/:number`
 - `/rules/errata`、`/rules/errata/:errataId`
+- `/rules/grand`、`/rules/floor`
 
 日文內容永遠是權威來源。正式 active release 要求五個衍生語言全部為 `verified` 且內容完整；詳情頁仍可展開原文核對。固定介面文案使用既有六語系字典；Q&A、勘誤、翻譯與 release manifest 都保存於 PostgreSQL。
 
 ## 資料與同步
 
-- PostgreSQL 是 Q&A、勘誤與翻譯的唯一執行期事實來源；API 不提供 repository JSON fallback。
+- PostgreSQL 是規則文件、Q&A、勘誤與翻譯的唯一執行期事實來源；API 不提供 repository JSON fallback。
+- `npm run release:official-rule-documents`：讀取 `OFFICIAL_RULE_DOCUMENTS_FILE` 指定的未追蹤五語文件來源，確認官方規則索引仍指向兩份來源 PDF，重新下載並核對 SHA-256 與五語完整性，再原子切換兩份文件的 active version。
 - 官方日文內容由同步程式直接抓取並與 PostgreSQL 比對，不建立或更新 Git 追蹤快照。
 - `npm run sync:official-rulings`：從官方來源抓取並與 PostgreSQL 比對。發現差異時以 exit code `2` 結束。
 - `npm run sync:official-rulings -- --apply`：僅供維護／開發資料庫更新日文 candidate；正式發布不得以此取代 release gate。
@@ -29,9 +31,9 @@ Q&A 同步只接受 `public === '公開'`。parser、筆數或必要欄位不符
 
 1. `npm run db:migrate`：建立來源、翻譯、release snapshot、manifest 與 active pointer。
 2. 匯入／seed 正式卡牌資料與官方卡牌文本，例如 `npm run seed:cards`、`npm run import:card-official-texts`。
-3. 將本機已複核、受 `.gitignore` 保護的 `data/official-rulings-translations.json` 放好。
-4. 以 `release:official-rulings` 一次完成即時抓取、來源 hash 驗證、五語匯入、完整性檢查及 active pointer 切換。
-5. 啟動或重啟 API，檢查 `/api/official/status` 的 `buildId`，並抽查 Q&A／勘誤六種語言。
+3. 將本機已複核、受 `.gitignore` 保護的 `data/official-rulings-translations.json` 與 `data/official-rule-documents-*.json` 放好。
+4. 以 `release:official-rulings` 及 `release:official-rule-documents` 完成即時來源驗證、五語匯入、完整性檢查及 active pointer 切換。
+5. 啟動或重啟 API，檢查 `/api/official/status` 的 `buildId`，並抽查 Grand Rules、基本 Floor Rules、Q&A 與勘誤六種語言。
 
 內容 JSON 不得提交 GitHub，也不會複製進 API 或 migration image。內容發布須從持有本機受控來源檔的維護環境執行；server4 部署透過 SSH stdin 將內容直接送進一次性 migration container。
 
@@ -41,7 +43,10 @@ npm run export:official-rulings-translations -- \
   --output=data/official-rulings-translations.json
 
 cat data/official-rulings-translations.json | npm run release:official-rulings -- \
-  --translations=- --app-version=0.2.2 --build-id="$(git rev-parse HEAD)"
+  --translations=- --app-version=0.2.3 --build-id="$(git rev-parse HEAD)"
+
+OFFICIAL_RULE_DOCUMENTS_FILE=data/official-rule-documents-20260721.json \
+  npm run release:official-rule-documents
 ```
 
 發布命令會驗證所有 Q&A 關聯卡牌 ID、勘誤卡牌 ID、修正後日文、卡牌資料集 hash，以及每筆當前內容版本的五語完整翻譯。Q&A 日文原文出現關聯卡名時，英文必須使用 `cards.en_name_official`，繁中、簡中、粵語與韓文必須使用 `card_texts_i18n` 中 `review_status='verified'` 的卡名；翻譯來源也可填入 `[[CARD:<id>]]`，由 release gate 以該語言 canonical 卡名解析。缺少已複核卡名、保留未解析 token 或自行重譯卡名都會 rollback。全形／半形括號與空白會先正規化後再核對卡名。
@@ -91,6 +96,7 @@ generator 只寫入 `machine`，不會覆蓋 `verified`。卡名會先轉為 `[[
 - `GET /api/official/qa/:number?lang=`
 - `GET /api/official/errata?lang=&cardId=`
 - `GET /api/official/errata/:errataId?lang=`
+- `GET /api/official/rules/:documentId?lang=`，其中 `documentId` 為 `grand` 或 `floor`
 
 成功回應包含日文 `source`、實際顯示的 `localized`、`requestedLocale`、`effectiveLocale`、翻譯狀態、官方來源與同步時間。Q&A 另同時回傳官方日文 `tagIds` 與本地化 `tags`；前端以 `tagIds` 保留篩選狀態，以 `tags` 顯示文字，因此切換語言不會丟失分類篩選。公開回應使用五分鐘快取、stale-while-revalidate 與內容雜湊 ETag。
 

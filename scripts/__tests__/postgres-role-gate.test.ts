@@ -97,6 +97,10 @@ function successfulQuery(users: Record<string, string> = roleUsers, override?: Q
 describe('PostgreSQL runtime role gate', () => {
   it('includes official source-check history in the application role matrix', () => {
     expect(APPLICATION_TABLES).toContain('official_rulings_sync_runs');
+    expect(APPLICATION_TABLES).toContain('official_rule_documents');
+    expect(APPLICATION_TABLES).toContain('official_rule_sections');
+    expect(APPLICATION_TABLES).toContain('official_rule_section_translations');
+    expect(APPLICATION_TABLES).toContain('official_rule_active_versions');
     expect(REQUIRED_RUNTIME_TABLES).toContain('official_rulings_sync_runs');
   });
 

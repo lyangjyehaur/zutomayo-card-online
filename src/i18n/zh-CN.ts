@@ -8,8 +8,10 @@ export const zhCN: Record<TranslationKey, string> = {
   'app.footerCopyrightSuffix': ' 所有',
 
   'intro.deckTitle': '欢迎来到 ZUTOMAYO CARD ONLINE',
-  'intro.deckDescription': '在开始游戏前，你需要选择一副牌组。可以使用预设牌组，或前往牌组编辑器建立自己的牌组。',
+  'intro.deckDescription':
+    '在开始游戏前，你需要选择一副牌组。可以使用预设牌组、前往牌组编辑器建立自己的牌组，或先通过新手教程熟悉玩法。',
   'intro.goToDeckBuilder': '前往牌组编辑器',
+  'intro.goToTutorial': '前往新手教程',
   'intro.exploreLater': '稍后探索',
 
   'common.back': '返回',
@@ -578,6 +580,9 @@ export const zhCN: Record<TranslationKey, string> = {
   'board.result.duration': '对局时长',
   'board.result.turns': '回合数',
   'board.result.reason': '结束原因',
+  'board.result.viewLog': '查看对战记录',
+  'board.result.battleLog': '本场对战记录',
+  'board.result.changeSetup': '调整牌组与难度',
   'board.cardsUnit': '张',
 
   'card.type.character': '角色',
@@ -786,6 +791,7 @@ export const zhCN: Record<TranslationKey, string> = {
   'deckEditor.deckName': '卡组名称',
   'deckEditor.selectDeck': '选择牌组',
   'deckEditor.newDeck': '新牌组',
+  'deckEditor.newDeckCreated': '已建立新的空白牌组',
   'deckEditor.importDeck': '导入',
   'deckEditor.exportDeck': '导出',
   'deckEditor.currentDraft': '未保存牌组',
@@ -1443,4 +1449,17 @@ export const zhCN: Record<TranslationKey, string> = {
   'officialRules.relatedQa': '查看这张卡牌的相关 Q&A',
   'officialRules.channelTitle': '规则资料库',
   'officialRules.channelCaption': '官方 Q&A、裁定与卡牌勘误',
+  'officialRules.grandTitle': 'Grand Rules',
+  'officialRules.floorTitle': '基本 Floor Rules',
+  'officialRules.officialDocument': '官方规则文件',
+  'officialRules.pageCount': '共 {count} 页',
+  'officialRules.openPdf': '打开官方 PDF',
+  'officialRules.floorScopeTitle': '适用范围：',
+  'officialRules.floorScopeBody': '本文件适用于官方及认证赛事；单项赛事另行制定的规则可能优先适用。',
+  'officialRules.documentSearchPlaceholder': '搜索章节、条文或关键词',
+  'officialRules.contents': '章节目录',
+  'officialRules.documentSections': '规则文件章节',
+  'officialRules.sectionCount': '{count} 个章节',
+  'officialRules.sourcePages': '原文第 {pages} 页',
+  'officialRules.sourceFingerprint': '官方来源 SHA-256：{hash}',
 } as const satisfies Record<TranslationKey, string>;
