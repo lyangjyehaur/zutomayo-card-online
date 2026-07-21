@@ -165,6 +165,8 @@ Frontend build-time variables (baked into the bundle at `vite build`):
 | `ACCOUNT_DELETION_RECOVERY_INTERVAL_MS` | `60000`                             | Interval for retrying durable `provider_deleting` and `provider_deleted` requests; clamped to 10 seconds through one hour.                                                                                     |
 | `ACCOUNT_EXPORT_MAX_BYTES`              | `8388608`                           | Maximum serialized synchronous account export size; values are clamped to 64 KiB through 25 MiB.                                                                                                               |
 
+Cloudflare-fronted deployments must include every current CIDR from [Cloudflare IP Ranges](https://www.cloudflare.com/ips/) in `TRUSTED_PROXY`, in addition to the local ingress/container ranges.
+
 ### `platform`
 
 | Variable                           | Default                                   | Notes                                                                                                                                                                                          |
