@@ -60,19 +60,32 @@ async function createUserDeck(pool, userId, body, generateDeckId = () => 'd_' + 
   const shapeError = validateDeckShape(name, cardIds);
   if (shapeError) return { ok: false, status: 400, error: shapeError };
 
-  return withLiveAccountMutation(pool, userId, async (client) => {
-    const validationError = await validateDeckInput(client, name, cardIds);
-    if (validationError) return { ok: false, status: 400, error: validationError };
+  return withLiveAccountMutation(pool, userId, (client) =>
+    createUserDeckInTransaction(client, userId, body, generateDeckId),
+  );
+}
 
-    const id = generateDeckId();
-    await client.query('INSERT INTO decks (id, user_id, name, card_ids) VALUES ($1, $2, $3, $4::jsonb)', [
-      id,
-      userId,
-      name,
-      JSON.stringify(cardIds),
-    ]);
-    return { ok: true, body: { id, name, cardIds } };
-  });
+async function createUserDeckInTransaction(
+  client,
+  userId,
+  body,
+  generateDeckId = () => 'd_' + crypto.randomBytes(8).toString('hex'),
+) {
+  const { name, cardIds } = body;
+  const shapeError = validateDeckShape(name, cardIds);
+  if (shapeError) return { ok: false, status: 400, error: shapeError };
+
+  const validationError = await validateDeckInput(client, name, cardIds);
+  if (validationError) return { ok: false, status: 400, error: validationError };
+
+  const id = generateDeckId();
+  await client.query('INSERT INTO decks (id, user_id, name, card_ids) VALUES ($1, $2, $3, $4::jsonb)', [
+    id,
+    userId,
+    name,
+    JSON.stringify(cardIds),
+  ]);
+  return { ok: true, body: { id, name, cardIds } };
 }
 
 async function updateUserDeck(pool, userId, deckId, body) {
@@ -253,6 +266,7 @@ async function peekDeckReservation(pool, { reservationId, userId }) {
 
 module.exports = {
   createUserDeck,
+  createUserDeckInTransaction,
   consumeDeckReservation,
   DEFAULT_RESERVATION_TTL_SECONDS,
   deleteUserDeck,

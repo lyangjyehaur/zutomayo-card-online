@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import type { DeckResponse } from '../api/client';
 import { DeckSelector } from '../components/lobby/DeckSelector';
 import { DifficultyButtons } from '../components/lobby/DifficultyButtons';
@@ -62,6 +62,8 @@ export function AILobbyPage({
 }: AILobbyPageProps) {
   const { showToast } = useToast();
   const locale = useLocale();
+  const opponentStepRef = useRef<HTMLDivElement | null>(null);
+  const difficultyStepRef = useRef<HTMLDivElement | null>(null);
   const playerDeckOptions = useMemo(() => {
     const localOptions = buildDeckOptions(customDeckAvailable);
     const serverOptions = buildServerDeckOptions(serverDecks);
@@ -89,6 +91,26 @@ export function AILobbyPage({
         });
         sessionStorage.setItem('zutomayo_deck_selected_toast', 'true');
       }
+    }
+    if (newDeck && window.matchMedia('(max-width: 1023px)').matches) {
+      window.requestAnimationFrame(() =>
+        opponentStepRef.current?.scrollIntoView({
+          behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+          block: 'center',
+        }),
+      );
+    }
+  };
+
+  const handleOpponentDeckChange = (newDeck: string) => {
+    setDeck1Name(newDeck);
+    if (newDeck && window.matchMedia('(max-width: 1023px)').matches) {
+      window.requestAnimationFrame(() =>
+        difficultyStepRef.current?.scrollIntoView({
+          behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+          block: 'center',
+        }),
+      );
     }
   };
 
@@ -126,18 +148,22 @@ export function AILobbyPage({
               onChange={handlePlayerDeckChange}
             />
           </Step>
-          <Step no="02" title={t('lobby.opponentDeck')}>
-            <DeckSelector
-              label={t('lobby.opponentDeck')}
-              value={deck1Name}
-              options={opponentDeckOptions}
-              onChange={setDeck1Name}
-            />
-          </Step>
-          <Step no="03" title={t('lobby.difficulty')}>
-            <h2 className="mb-3 font-display text-lg font-bold leading-tight">{t('lobby.difficulty')}</h2>
-            <DifficultyButtons onStart={onStartAI} disabled={!canStartAI({ cardsReady, deck0Name, deck1Name })} />
-          </Step>
+          <div ref={opponentStepRef} className="scroll-mt-24">
+            <Step no="02" title={t('lobby.opponentDeck')}>
+              <DeckSelector
+                label={t('lobby.opponentDeck')}
+                value={deck1Name}
+                options={opponentDeckOptions}
+                onChange={handleOpponentDeckChange}
+              />
+            </Step>
+          </div>
+          <div ref={difficultyStepRef} className="scroll-mt-24">
+            <Step no="03" title={t('lobby.difficulty')}>
+              <h2 className="mb-3 font-display text-lg font-bold leading-tight">{t('lobby.difficulty')}</h2>
+              <DifficultyButtons onStart={onStartAI} disabled={!canStartAI({ cardsReady, deck0Name, deck1Name })} />
+            </Step>
+          </div>
         </div>
       </main>
     </PageShell>

@@ -1,8 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { createDeck, getDecks, isLoggedIn, updateDeck, type DeckResponse } from '../api/client';
+import { Share2 } from 'lucide-react';
+import {
+  ApiError,
+  createDeck,
+  getDecks,
+  getOwnedDeckShare,
+  isLoggedIn,
+  publishDeckShare,
+  unpublishDeckShare,
+  updateDeck,
+  updateDeckShare,
+  type DeckResponse,
+  type DeckShareVisibility,
+  type OwnedDeckShare,
+} from '../api/client';
 import { DeckEditor } from '../components/DeckEditor';
+import { DeckShareManagerDialog } from '../components/deck-sharing/DeckShareManagerDialog';
 import { useToast } from '../components/ToastProvider';
 import { Sentry } from '../sentry';
+import { trackDeckShareEvent } from '../deckShareAnalytics';
 import {
   createDeckExport,
   customDeckIdFromOption,
@@ -24,6 +40,7 @@ interface DeckEditorPageProps {
   serverDecks: DeckResponse[];
   onServerDecksLoaded: (decks: DeckResponse[]) => void;
   onDeckSaved: (deck?: DeckResponse) => void;
+  deckSharingEnabled?: boolean;
 }
 
 function initialCustomDeckSelection(): { decks: SavedCustomDeck[]; selectedId: string; deck?: SavedCustomDeck } {
@@ -51,7 +68,12 @@ function sameDeckContents(a: string[], b: string[]): boolean {
   return a.length === b.length && deckFingerprint(a) === deckFingerprint(b);
 }
 
-export function DeckEditorPage({ serverDecks, onServerDecksLoaded, onDeckSaved }: DeckEditorPageProps) {
+export function DeckEditorPage({
+  serverDecks,
+  onServerDecksLoaded,
+  onDeckSaved,
+  deckSharingEnabled = false,
+}: DeckEditorPageProps) {
   const { showToast } = useToast();
   const loggedIn = isLoggedIn();
   const [initialCustomDeck] = useState(initialCustomDeckSelection);
@@ -72,7 +94,14 @@ export function DeckEditorPage({ serverDecks, onServerDecksLoaded, onDeckSaved }
   const [loadError, setLoadError] = useState('');
   const [saveError, setSaveError] = useState('');
   const [linkingLocalDecks, setLinkingLocalDecks] = useState(false);
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [ownedDeckShare, setOwnedDeckShare] = useState<OwnedDeckShare | null>(null);
+  const [shareLoading, setShareLoading] = useState(false);
+  const [shareSaving, setShareSaving] = useState(false);
+  const [shareError, setShareError] = useState('');
   const importInputRef = useRef<HTMLInputElement>(null);
+  const initialServerDeckResolvedRef = useRef(false);
+  const selectedServerDeckId = serverDeckIdFromOption(selectedDeckLibraryId);
 
   useEffect(() => {
     if (!loggedIn) return;
@@ -96,7 +125,8 @@ export function DeckEditorPage({ serverDecks, onServerDecksLoaded, onDeckSaved }
   }, [loggedIn, onServerDecksLoaded]);
 
   useEffect(() => {
-    if (!loggedIn || selectedDeckLibraryId || !serverDecks[0]) return;
+    if (!loggedIn || initialServerDeckResolvedRef.current || selectedDeckLibraryId || !serverDecks[0]) return;
+    initialServerDeckResolvedRef.current = true;
     const firstDeck = serverDecks[0];
     setSelectedDeckLibraryId(serverDeckOptionId(firstDeck.id));
     setDeckName(firstDeck.name);
@@ -105,6 +135,131 @@ export function DeckEditorPage({ serverDecks, onServerDecksLoaded, onDeckSaved }
     setHasUnsavedChanges(false);
     setEditorRevision((value) => value + 1);
   }, [loggedIn, selectedDeckLibraryId, serverDecks]);
+
+  useEffect(() => {
+    if (!deckSharingEnabled || !loggedIn || !selectedServerDeckId) {
+      setOwnedDeckShare(null);
+      setShareError('');
+      setShareLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setShareLoading(true);
+    setShareError('');
+    getOwnedDeckShare(selectedServerDeckId)
+      .then((share) => {
+        if (!cancelled) setOwnedDeckShare(share);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        if (error instanceof ApiError && error.status === 404) {
+          setOwnedDeckShare(null);
+          return;
+        }
+        setShareError(t('deckShare.ownerLoadError'));
+      })
+      .finally(() => {
+        if (!cancelled) setShareLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [deckSharingEnabled, loggedIn, selectedServerDeckId, serverDecks]);
+
+  const runShareAction = async (action: () => Promise<OwnedDeckShare>, successTitle: string) => {
+    setShareSaving(true);
+    setShareError('');
+    try {
+      const share = await action();
+      setOwnedDeckShare(share);
+      showToast({ title: successTitle, kind: 'success' });
+      return true;
+    } catch {
+      setShareError(t('deckShare.saveError'));
+      showToast({ title: t('deckShare.saveError'), kind: 'error' });
+      return false;
+    } finally {
+      setShareSaving(false);
+    }
+  };
+
+  const handlePublishShare = async (visibility: DeckShareVisibility) => {
+    if (!selectedServerDeckId) return;
+    const published = await runShareAction(
+      () => publishDeckShare(selectedServerDeckId, visibility),
+      t('deckShare.publishSuccess'),
+    );
+    if (published) {
+      trackDeckShareEvent('deck_share_publish', { visibility, is_logged_in: true, source: 'deck_builder' });
+    }
+  };
+
+  const handleUpdateShare = async (input: {
+    visibility?: DeckShareVisibility;
+    published?: boolean;
+    publishLatest?: boolean;
+  }) => {
+    if (!ownedDeckShare) return;
+    const updated = await runShareAction(
+      () => updateDeckShare(ownedDeckShare.id, input),
+      input.publishLatest ? t('deckShare.updateSuccess') : t('deckShare.settingsSaved'),
+    );
+    if (updated) {
+      trackDeckShareEvent('deck_share_update', {
+        visibility: input.visibility || ownedDeckShare.visibility,
+        is_logged_in: true,
+        source: 'deck_builder',
+      });
+    }
+  };
+
+  const handleUnpublishShare = async () => {
+    if (!ownedDeckShare) return;
+    setShareSaving(true);
+    setShareError('');
+    try {
+      await unpublishDeckShare(ownedDeckShare.id);
+      setOwnedDeckShare((current) =>
+        current ? { ...current, publicationStatus: 'unpublished', unpublishedAt: new Date().toISOString() } : current,
+      );
+      showToast({ title: t('deckShare.unpublishSuccess'), kind: 'success' });
+      trackDeckShareEvent('deck_share_unpublish', { is_logged_in: true, source: 'deck_builder' });
+    } catch {
+      setShareError(t('deckShare.saveError'));
+    } finally {
+      setShareSaving(false);
+    }
+  };
+
+  const shareActionLabel = ownedDeckShare?.sourceChanged ? t('deckShare.updateSnapshot') : t('deckShare.shareAction');
+  const shareUnavailableReason = !selectedServerDeckId
+    ? t('deckShare.saveServerFirst')
+    : hasUnsavedChanges
+      ? t('deckShare.saveChangesFirst')
+      : '';
+  const openShareDialog = () => {
+    if (shareUnavailableReason) {
+      showToast({ title: shareUnavailableReason, kind: 'info' });
+      return;
+    }
+    setShareDialogOpen(true);
+  };
+
+  const renderShareButton = (placement: 'header' | 'sheet') => (
+    <Button
+      type="button"
+      size="sm"
+      variant="secondary"
+      className={placement === 'header' ? 'size-touch shrink-0 px-0 sm:w-auto sm:px-3' : 'min-h-11 w-full'}
+      disabled={saving || shareSaving}
+      title={shareUnavailableReason || undefined}
+      aria-label={shareActionLabel}
+      onClick={openShareDialog}
+    >
+      <Share2 className="size-4" aria-hidden="true" />
+      <span className={placement === 'header' ? 'hidden sm:inline' : undefined}>{shareActionLabel}</span>
+    </Button>
+  );
 
   const deckLibraryOptions = useMemo(() => {
     const draftOption =
@@ -152,6 +307,7 @@ export function DeckEditorPage({ serverDecks, onServerDecksLoaded, onDeckSaved }
   );
 
   const markDeckDirty = () => {
+    initialServerDeckResolvedRef.current = true;
     setSyncedDeckId(null);
     setSaveError('');
     setHasUnsavedChanges(true);
@@ -162,6 +318,7 @@ export function DeckEditorPage({ serverDecks, onServerDecksLoaded, onDeckSaved }
   const handleSelectDeckLibrary = (optionId: string) => {
     if (optionId === selectedDeckLibraryId) return;
     if (!canDiscardCurrentDraft()) return;
+    initialServerDeckResolvedRef.current = true;
     setSelectedDeckLibraryId(optionId);
     setSyncedDeckId(null);
     setHasUnsavedChanges(false);
@@ -189,6 +346,7 @@ export function DeckEditorPage({ serverDecks, onServerDecksLoaded, onDeckSaved }
 
   const handleNewDeck = () => {
     if (!canDiscardCurrentDraft()) return;
+    initialServerDeckResolvedRef.current = true;
     setSelectedDeckLibraryId('');
     setDeckName(t('deck.custom'));
     setEditorDeck([]);
@@ -196,6 +354,7 @@ export function DeckEditorPage({ serverDecks, onServerDecksLoaded, onDeckSaved }
     setHasUnsavedChanges(false);
     setSaveError('');
     setEditorRevision((value) => value + 1);
+    showToast({ title: t('deckEditor.newDeckCreated'), kind: 'info' });
   };
 
   const handleExportDeck = (deckIds: string[]) => {
@@ -216,6 +375,7 @@ export function DeckEditorPage({ serverDecks, onServerDecksLoaded, onDeckSaved }
       const text = await file.text();
       const parsed = parseDeckImport(JSON.parse(text));
       if (!parsed) throw new Error('Invalid deck import');
+      initialServerDeckResolvedRef.current = true;
       setSelectedDeckLibraryId('');
       setDeckName(parsed.name?.trim() || t('deckEditor.currentDraft'));
       setEditorDeck(parsed.cardIds);
@@ -280,6 +440,18 @@ export function DeckEditorPage({ serverDecks, onServerDecksLoaded, onDeckSaved }
 
   return (
     <>
+      <DeckShareManagerDialog
+        open={shareDialogOpen}
+        onOpenChange={setShareDialogOpen}
+        deckName={deckName}
+        share={ownedDeckShare}
+        loading={shareLoading}
+        saving={shareSaving}
+        error={shareError}
+        onPublish={handlePublishShare}
+        onUpdate={handleUpdateShare}
+        onUnpublish={handleUnpublishShare}
+      />
       <input
         ref={importInputRef}
         className="hidden"
@@ -313,6 +485,8 @@ export function DeckEditorPage({ serverDecks, onServerDecksLoaded, onDeckSaved }
         syncLabel={
           hasUnsavedChanges ? t('deckEditor.unsavedChanges') : loggedIn && syncedDeckId ? t('deck.synced') : undefined
         }
+        headerActions={deckSharingEnabled && loggedIn ? renderShareButton('header') : undefined}
+        deckSheetActions={deckSharingEnabled && loggedIn ? renderShareButton('sheet') : undefined}
         errorMessage={saveError || loadError}
         notice={
           loggedIn && unlinkedLocalDecks.length > 0 ? (

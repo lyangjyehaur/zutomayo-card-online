@@ -2,7 +2,7 @@
 
 | 資料                  | 正常保存期限 | 刪除／匿名化方式                                           |
 | --------------------- | ------------ | ---------------------------------------------------------- |
-| 帳號與牌組            | 帳號有效期間 | 刪除請求確認後 30 天內刪除或匿名化                         |
+| 帳號、私人牌組與分享  | 帳號有效期間 | 刪除請求確認後 30 天內刪除；複製／檢舉紀錄移除帳號識別     |
 | 完成對局與排名異動    | 365 天       | 移除直接帳號資料後保留匿名統計與完整性證據                 |
 | Action log / replay   | 180 天       | 逾期刪除；遭舉報或爭議中的對局例外                         |
 | 聊天訊息              | 180 天       | 逾期刪除或匿名化；審核證據另計                             |
@@ -17,7 +17,7 @@
 ## 執行要求
 
 - 每日執行 retention job，記錄刪除筆數、批次數、耗時與錯誤；失敗、重入跳過或超過 26 小時未成功必須告警。
-- 帳號刪除先撤銷 session，再刪除登入身分、牌組、社交關係與未完成 token，最後匿名化 user row。
+- 帳號刪除先撤銷 session，再刪除登入身分、私人牌組、玩家擁有的分享、分享按讚、社交關係與未完成 token；分享複製與檢舉證據移除帳號識別，最後匿名化 user row。
 - 使用者資料匯出不得包含 password hash、salt、OAuth token、IP、其他使用者私人資料或管理員備註。
 - 匯出物件預設只可下載 7 天；到期由 API worker 先以資料庫保存的完整 key 與 `object_version_id` 刪除，再把 job 標為已 purge。`ACCOUNT_EXPORT_S3_VERSIONING_MODE=required` 時不得只建立 delete marker。
 - `account_export_jobs` 只可在 `failed`/`expired` 等 terminal 狀態、`object_key` 與 `object_version_id` 已清空且已達 365 天時刪除；`account_export_audit` 使用獨立 365 天 cutoff，不可因 job 提前 cascade 消失。
@@ -41,3 +41,6 @@ moderation/report evidence。`legal_hold_objects` 保存 hold 的衍生 subject 
 root id 而漏保留關聯資料。
 
 帳號匯出由 API 內建 worker 執行，不授予 retention worker S3 credentials。每次 upload、download、integrity failure、expiry 與 purge retry 都留下 `account_export_audit`；Prometheus/Grafana 必須監控最老待處理 job、永久失敗、待 purge、purge retry 與 metrics freshness。若 restore 復原出已過期但仍有 `object_key` 的 job，API worker 必須先完成版本感知的實體刪除，之後 retention job 才能清除 terminal metadata。
+
+已結案或駁回的牌組分享檢舉通常保存 365 天後刪除；pending／reviewing 狀態不由一般 retention
+自動刪除。牌組分享本身與帳號有效期間一致，取消發布只改變可見狀態，不是立即刪除資料。

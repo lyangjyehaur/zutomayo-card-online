@@ -121,6 +121,13 @@ export function validateOperationalConfig() {
     'invalid_outbox_status',
     'deletion_hold_violations',
     'deleted_social_violations',
+    'PG_RESTORE_RELEASE_EVIDENCE',
+    'PG_RESTORE_EVIDENCE_OUTPUT',
+    'fixture_account',
+    'fixture_deck',
+    'fixture_match_history',
+    'fixture_leaderboard',
+    'schema_gate',
   ]);
   requireFragments('scripts/run-pg-restore-drill-scheduled.sh', [
     'PG_RESTORE_DRILL_RECEIPT_FILE',
@@ -406,6 +413,19 @@ export function validateOperationalConfig() {
     'guestCount: 1',
     'sameHistory: true',
   ]);
+  assertExecutable('scripts/server4-recovery-drill.sh');
+  requireFragments('scripts/server4-recovery-drill.sh', [
+    'DEPLOY_ENVIRONMENT=staging',
+    'RECOVERY_CONFIRM=source-redeploy-staging',
+    "!= '149.104.6.238'",
+    'stop game api platform',
+    'deploy-server4.sh',
+    'sourceCheckoutVerified',
+    'schemaCompatible',
+    'healthReady',
+    'smokePassed',
+  ]);
+  requireFragments('package.json', ['"release:operational-evidence"']);
   requireFragments('load-tests/operational-soak.js', [
     'OBSERVED_PEAK_RPS must be the measured',
     'PEAK_MULTIPLIER || 2',

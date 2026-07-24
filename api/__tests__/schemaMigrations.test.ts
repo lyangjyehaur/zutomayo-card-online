@@ -97,6 +97,96 @@ describe('schema migrations', () => {
     expect(schemaGate).toContain("'announcement_translations'");
   });
 
+  it('keeps guarded deck-sharing schema aligned with the development fallback', () => {
+    const migration = readRepoFile('migrations/000038_deck_sharing.js');
+    const initSchema = readRepoFile('api/server.cjs');
+    const schemaGate = readRepoFile('api/schemaGate.cjs');
+    for (const artifact of [
+      'deck_shares',
+      'deck_share_likes',
+      'deck_share_copy_events',
+      'deck_share_reports',
+      'uq_deck_shares_source_deck',
+      'idx_deck_shares_public_lobby',
+      'uq_deck_share_copy_events_idempotency',
+      'uq_deck_share_reports_active_reporter',
+    ]) {
+      expect(migration, `migration missing ${artifact}`).toContain(artifact);
+      expect(initSchema, `initSchema fallback missing ${artifact}`).toContain(artifact);
+      expect(schemaGate, `schema gate missing ${artifact}`).toContain(artifact);
+    }
+    expect(migration).toContain("onDelete: 'SET NULL'");
+    expect(migration).toContain("visibility IN ('public', 'unlisted')");
+    expect(initSchema).toContain('requireDeckSharing: DECK_SHARING_ENABLED');
+  });
+
+  it('stores versioned official Q&A and errata translations separately from Japanese source content', () => {
+    const migration = readRepoFile('migrations/000039_official_rulings.js');
+    const schemaGate = readRepoFile('api/schemaGate.cjs');
+    const initSchema = readRepoFile('api/server.cjs');
+
+    for (const artifact of [
+      'official_qa_items',
+      'official_qa_translations',
+      'card_official_errata_translations',
+      'official_rulings_sync_runs',
+      'content_version',
+      'publication_status',
+      'replacement_policy_ja',
+      'usage_policy_ja',
+    ]) {
+      expect(migration).toContain(artifact);
+      expect(schemaGate).toContain(artifact);
+      expect(initSchema).toContain(artifact);
+    }
+    expect(migration).toContain("primaryKey: ['qa_id', 'content_version', 'locale']");
+    expect(migration).toContain("primaryKey: ['errata_id', 'content_version', 'locale']");
+    expect(migration).toContain("status IN ('running', 'no_change', 'changes', 'failed')");
+    expect(migration).toContain('export const down = false');
+  });
+
+  it('gates official rulings behind an atomic active release manifest', () => {
+    const migration = readRepoFile('migrations/000040_official_rulings_releases.js');
+    const schemaGate = readRepoFile('api/schemaGate.cjs');
+    const initSchema = readRepoFile('api/server.cjs');
+    for (const artifact of [
+      'official_rulings_releases',
+      'official_rulings_release_qa',
+      'official_rulings_release_errata',
+      'official_rulings_active_release',
+      'card_dataset_hash',
+      'translation_hash',
+    ]) {
+      expect(migration).toContain(artifact);
+      expect(schemaGate).toContain(artifact);
+      expect(initSchema).toContain(artifact);
+    }
+    expect(migration).toContain("status IN ('candidate', 'active', 'superseded')");
+    expect(migration).toContain('export const down = false');
+  });
+
+  it('stores Grand Rules and Floor Rules as versioned translated PostgreSQL documents', () => {
+    const migration = readRepoFile('migrations/000041_official_rule_documents.js');
+    const schemaGate = readRepoFile('api/schemaGate.cjs');
+    const initSchema = readRepoFile('api/server.cjs');
+    for (const artifact of [
+      'official_rule_documents',
+      'official_rule_sections',
+      'official_rule_section_translations',
+      'official_rule_active_versions',
+      'source_sha256',
+      'page_start',
+      'body_text',
+    ]) {
+      expect(migration).toContain(artifact);
+      expect(schemaGate).toContain(artifact);
+      expect(initSchema).toContain(artifact);
+    }
+    expect(migration).toContain("document_id IN ('grand', 'floor')");
+    expect(migration).toContain("locale IN ('zh-TW', 'zh-CN', 'zh-HK', 'en', 'ko')");
+    expect(migration).toContain('export const down = false');
+  });
+
   it('backfills the reward entitlement ledger for every existing grant', () => {
     const consistencyMigration = readRepoFile('migrations/000021_season_result_consistency.js');
     expect(consistencyMigration).toContain('SELECT season_id, user_id, reward_tier, reward_payload, granted_at');

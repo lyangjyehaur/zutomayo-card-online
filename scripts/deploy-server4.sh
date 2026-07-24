@@ -278,6 +278,7 @@ remote_deploy() {
     docker pull "\$OPS_IMAGE" >/dev/null;
     docker compose -f '$COMPOSE_FILE' config --format json | jq -c -f scripts/project-compose-role-env.jq | docker compose -f '$COMPOSE_FILE' run --rm --no-deps -T migrate node scripts/verify-compose-role-env.mjs $ROLE_ENV_VALIDATOR_ARGS;
     docker compose -f '$COMPOSE_FILE' run --rm migrate;
+    docker compose -f '$COMPOSE_FILE' run --rm --no-deps -T migrate sh scripts/release-official-content.sh;
     role_tls_evidence='.release.role-tls.next.'\$\$;
     : > \"\$role_tls_evidence\";
     for role in api game platform retention monitor backup; do
@@ -412,6 +413,7 @@ confirm_action "deploy $(sed -n 's/^RELEASE_SHA=//p' "$MANIFEST_FILE" | cut -c1-
 if [[ "$DRY_RUN" == true ]]; then
   log "[dry-run] would upload $MANIFEST_FILE and deploy immutable images"
   log '[dry-run] would verify and synchronize private battle assets'
+  log '[dry-run] would atomically publish reviewed official rulings and rule documents from the private card-data mount'
   exit 0
 fi
 

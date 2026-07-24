@@ -6,6 +6,15 @@ function readRepoFile(path: string): string {
 }
 
 describe('online lobby platform boundary', () => {
+  it('uses the shared icon-button primitive for fixed-size icon controls', () => {
+    const lobbySource = readRepoFile('src/pages/OnlineLobbyPage.tsx');
+    const buttonSource = readRepoFile('src/ui/primitives/Button.tsx');
+
+    expect(lobbySource).toContain('IconButton');
+    expect(lobbySource).not.toMatch(/className="size-(?:7|11|touch)[^"]*\bp-0\b/);
+    expect(buttonSource).toContain('variant?: ButtonVariant;');
+  });
+
   it('uses Colyseus quick match without legacy REST matchmaking fallback', () => {
     const lobbySource = readRepoFile('src/pages/OnlineLobbyPage.tsx');
 

@@ -548,6 +548,7 @@ stage_slot() {
       | jq -c -f scripts/project-compose-role-env.jq \
       | compose run --rm --no-deps -T migrate node scripts/verify-compose-role-env.mjs --require-pgsslmode=verify-full --require-rediss
     compose run --rm --no-deps migrate
+    compose run --rm --no-deps -T migrate sh scripts/release-official-content.sh
     role_tls_evidence='.slot.$SLOT.role-tls.next.'\$\$
     : > \"\$role_tls_evidence\"
     for role in api game platform retention monitor backup; do

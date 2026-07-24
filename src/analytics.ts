@@ -1,3 +1,5 @@
+import { flushFunnelEvents } from './funnelAnalytics';
+
 type UmamiEventData = Record<string, string | number | boolean | null | undefined>;
 type UmamiPageviewPayload = (props: { url: string; title?: string }) => { url: string; title?: string };
 type UmamiTrackPayload = string | UmamiPageviewPayload;
@@ -15,8 +17,8 @@ let isInitialized = false;
 let isUsingMock = false;
 
 const WEBSITE_ID = import.meta.env.VITE_UMAMI_WEBSITE_ID || import.meta.env.VITE_UMAMI_SECONDARY_WEBSITE_ID || '';
-const SCRIPT_URL = import.meta.env.VITE_UMAMI_SCRIPT_URL || '';
-const HOST_URL = import.meta.env.VITE_UMAMI_HOST_URL || import.meta.env.VITE_UMAMI_SECONDARY_HOST_URL || '';
+const SCRIPT_URL = '/analytics/script.js';
+const HOST_URL = '/analytics';
 const TELEMETRY_SCRIPT_URL = import.meta.env.VITE_UMAMI_TELEMETRY_SCRIPT_URL || '';
 
 function isLocalEnvironment(): boolean {
@@ -79,7 +81,8 @@ function installUmamiScripts(): void {
   analyticsScript.src = SCRIPT_URL;
   analyticsScript.defer = true;
   analyticsScript.setAttribute('data-website-id', WEBSITE_ID);
-  if (HOST_URL) analyticsScript.setAttribute('data-host-url', HOST_URL);
+  analyticsScript.setAttribute('data-host-url', HOST_URL);
+  analyticsScript.addEventListener('load', flushFunnelEvents, { once: true });
   document.head.appendChild(analyticsScript);
 
   if (!TELEMETRY_SCRIPT_URL) return;
@@ -175,6 +178,7 @@ export function initAnalytics(): void {
   }
 
   installManualEventBridge();
+  flushFunnelEvents();
 }
 
 export function trackPageView(path: string, title = document.title): void {

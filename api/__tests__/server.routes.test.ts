@@ -419,6 +419,277 @@ describe('server routes', () => {
     mockRedisMget.mockResolvedValue([]);
   });
 
+  describe('official rulings', () => {
+    it('serves the localized public Q&A list with cache headers', async () => {
+      mockQuery.mockImplementation(async (sql: string, params?: unknown[]) => {
+        if (sql.includes('JOIN official_rulings_release_qa AS qa')) {
+          expect(params).toEqual(['zh-TW']);
+          return {
+            rows: [
+              {
+                id: 'qa_1',
+                number: 1,
+                published_at: '2026-02-17',
+                question_ja: '質問',
+                answer_ja: '回答',
+                tags: ['基本ルール'],
+                related_card_ids: ['1st_1'],
+                source_url: 'https://zutomayocard.net/qa/',
+                content_version: 1,
+                last_seen_at: '2026-07-20T00:00:00.000Z',
+                translated_question: '問題',
+                translated_answer: '答案',
+                translation_status: 'verified',
+              },
+            ],
+            rowCount: 1,
+          };
+        }
+        return { rows: [], rowCount: 0 };
+      });
+
+      const res = await sendRequest('GET', '/api/official/qa?lang=zh-TW');
+      expect(res.statusCode).toBe(200);
+      expect(parseBody(res)).toMatchObject({
+        total: 1,
+        items: [
+          {
+            number: 1,
+            tagIds: ['基本ルール'],
+            tags: ['基本規則'],
+            localized: { question: '問題', answer: '答案' },
+          },
+        ],
+      });
+      expect(res.headers['cache-control']).toContain('max-age=300');
+      expect(res.headers.etag).toMatch(/^"[A-Za-z0-9_-]+"$/);
+
+      const cached = await sendRequest('GET', '/api/official/qa?lang=zh-TW', undefined, {
+        'if-none-match': String(res.headers.etag),
+      });
+      expect(cached.statusCode).toBe(304);
+      expect(cached._body).toBe('');
+    });
+
+    it('returns a public errata detail with the canonical corrected card text', async () => {
+      mockQuery.mockImplementation(async (sql: string, params?: unknown[]) => {
+        if (sql.includes('JOIN official_rulings_release_errata AS errata')) {
+          expect(params).toEqual(['en', '001']);
+          return {
+            rows: [
+              {
+                errata_id: '001',
+                card_id: '1st_6',
+                published_at: '2026-02-17',
+                affects_name: false,
+                affects_effect: true,
+                incorrect_text: 'old',
+                corrected_japanese_text: '新しい',
+                corrected_english_text: 'Corrected',
+                translated_incorrect_text: 'old',
+                translated_reason_text: 'reason',
+                translated_replacement_policy_text: 'replacement',
+                translated_usage_policy_text: 'usage',
+                translation_status: 'verified',
+                card_name_ja: 'カード',
+                card_name_en: 'Card',
+                pack: 'Pack',
+                rarity: 'UR',
+                card_number: '006/104',
+                reason_ja: '理由',
+                replacement_policy_ja: '交換',
+                usage_policy_ja: '使用',
+                source_url: 'https://zutomayocard.net/errata/001/',
+                content_version: 1,
+                last_seen_at: '2026-07-20T00:00:00.000Z',
+              },
+            ],
+            rowCount: 1,
+          };
+        }
+        return { rows: [], rowCount: 0 };
+      });
+
+      const res = await sendRequest('GET', '/api/official/errata/001?lang=en');
+      expect(res.statusCode).toBe(200);
+      expect(parseBody(res)).toMatchObject({
+        item: { errataId: '001', localized: { correctedText: 'Corrected' } },
+      });
+    });
+
+    it('serves a translated official Grand Rules document with source metadata', async () => {
+      mockQuery.mockImplementation(async (sql: string, params?: unknown[]) => {
+        if (sql.includes('FROM official_rule_active_versions active')) {
+          expect(params).toEqual(['zh-TW', 'grand']);
+          return {
+            rows: [
+              {
+                document_id: 'grand',
+                document_version: '1.0.0',
+                title_ja: 'グランドルール',
+                summary_ja: '概要',
+                published_at: '2026-07-21',
+                source_url: 'https://example.test/grand.pdf',
+                source_sha256: 'a'.repeat(64),
+                source_page_count: 8,
+                source_checked_at: '2026-07-21T08:00:00.000Z',
+                activated_at: '2026-07-21T09:00:00.000Z',
+                section_id: 'overview',
+                section_number: '',
+                parent_section_id: null,
+                level: 1,
+                sort_order: 0,
+                page_start: 1,
+                page_end: 1,
+                section_title_ja: 'グランドルール',
+                body_ja: '概要',
+                translated_title: 'Grand Rules',
+                translated_body: '官方進階規則。',
+                translation_status: 'verified',
+              },
+              {
+                document_id: 'grand',
+                document_version: '1.0.0',
+                title_ja: 'グランドルール',
+                summary_ja: '概要',
+                published_at: '2026-07-21',
+                source_url: 'https://example.test/grand.pdf',
+                source_sha256: 'a'.repeat(64),
+                source_page_count: 8,
+                source_checked_at: '2026-07-21T08:00:00.000Z',
+                activated_at: '2026-07-21T09:00:00.000Z',
+                section_id: 'overview-1',
+                section_number: '1',
+                parent_section_id: null,
+                level: 1,
+                sort_order: 1,
+                page_start: 1,
+                page_end: 1,
+                section_title_ja: 'ゲームの概要',
+                body_ja: '本文',
+                translated_title: '遊戲概要',
+                translated_body: '正文',
+                translation_status: 'verified',
+              },
+            ],
+            rowCount: 2,
+          };
+        }
+        return { rows: [], rowCount: 0 };
+      });
+      const res = await sendRequest('GET', '/api/official/rules/grand?lang=zh-TW');
+      expect(res.statusCode).toBe(200);
+      expect(parseBody(res)).toMatchObject({
+        document: {
+          id: 'grand',
+          version: '1.0.0',
+          localized: { title: 'Grand Rules' },
+          sections: [{ localized: { title: '遊戲概要' } }],
+        },
+      });
+      expect(res.headers['cache-control']).toContain('max-age=300');
+    });
+
+    it('reports the active official-rulings release bound to its build', async () => {
+      mockQuery.mockResolvedValue({
+        rows: [
+          {
+            release_id: 'a'.repeat(64),
+            source_hash: 'b'.repeat(64),
+            translation_hash: 'c'.repeat(64),
+            card_dataset_hash: 'd'.repeat(64),
+            qa_count: 74,
+            errata_count: 12,
+            locales: ['zh-TW', 'zh-CN', 'zh-HK', 'en', 'ko'],
+            app_version: '0.2.2',
+            build_id: 'e'.repeat(40),
+            source_checked_at: '2026-07-21T00:00:00.000Z',
+            activated_at: '2026-07-21T00:01:00.000Z',
+          },
+        ],
+        rowCount: 1,
+      });
+      const res = await sendRequest('GET', '/api/official/status');
+      expect(res.statusCode).toBe(200);
+      expect(parseBody(res)).toMatchObject({ qaCount: 74, errataCount: 12, appVersion: '0.2.2' });
+    });
+
+    it('lists official translation coverage for authorized administrators', async () => {
+      mockQuery.mockImplementation(async (sql: string) => {
+        if (sql.includes('FROM admin_sessions')) {
+          return { rows: [{ admin_user_id: 'admin_test', role: 'admin' }], rowCount: 1 };
+        }
+        if (sql.includes('FROM official_qa_items qa')) {
+          return {
+            rows: [
+              {
+                id: 'qa_1',
+                number: 1,
+                content_version: 1,
+                question_ja: '質問',
+                answer_ja: '回答',
+                question_text: '問題',
+                answer_text: '答案',
+                translation_status: 'verified',
+              },
+            ],
+          };
+        }
+        if (sql.includes('FROM card_official_errata errata')) return { rows: [] };
+        return { rows: [], rowCount: 0 };
+      });
+      const res = await sendRequest(
+        'GET',
+        '/api/admin/official-content/translations?locale=zh-TW&resourceType=all&status=&query=',
+        undefined,
+        adminHeaders(),
+      );
+      expect(res.statusCode).toBe(200);
+      expect(parseBody(res)).toMatchObject({ coverage: { total: 1, verified: 1 } });
+    });
+
+    it('returns persisted official source-check status', async () => {
+      mockQuery.mockImplementation(async (sql: string) => {
+        if (sql.includes('FROM admin_sessions')) {
+          return { rows: [{ admin_user_id: 'admin_test', role: 'admin' }], rowCount: 1 };
+        }
+        if (sql.includes('FROM official_rulings_sync_runs')) {
+          return {
+            rows: [
+              {
+                id: 'official_sync_1',
+                trigger_source: 'admin',
+                status: 'no_change',
+                qa_local_count: 74,
+                qa_remote_count: 74,
+                errata_local_count: 12,
+                errata_remote_count: 12,
+                diff: {},
+              },
+            ],
+          };
+        }
+        return { rows: [], rowCount: 0 };
+      });
+      const res = await sendRequest('GET', '/api/admin/official-content/sync-status', undefined, adminHeaders());
+      expect(res.statusCode).toBe(200);
+      expect(parseBody(res)).toMatchObject({ runs: [{ qaLocalCount: 74, errataRemoteCount: 12 }] });
+    });
+
+    it('fails an admin source check closed when the official site is unavailable', async () => {
+      mockFetch.mockResolvedValue({ ok: false, status: 503, text: async () => '' });
+      mockQuery.mockImplementation(async (sql: string) => {
+        if (sql.includes('FROM admin_sessions')) {
+          return { rows: [{ admin_user_id: 'admin_test', role: 'admin' }], rowCount: 1 };
+        }
+        return { rows: [], rowCount: 1 };
+      });
+      const res = await sendRequest('POST', '/api/admin/official-content/sync', {}, adminUnsafeHeaders());
+      expect(res.statusCode).toBe(502);
+      expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining("SET status = 'failed'"), expect.any(Array));
+    });
+  });
+
   describe('admin card errata', () => {
     it('returns the structured official errata comparison to authorized card maintainers', async () => {
       mockQuery.mockImplementation(async (sql: string, params?: unknown[]) => {
@@ -467,6 +738,102 @@ describe('server routes', () => {
     it('rejects unauthenticated errata detail requests', async () => {
       const res = await sendRequest('GET', '/api/admin/cards/1st_6/errata');
       expect(res.statusCode).toBe(401);
+    });
+  });
+
+  describe('deck sharing routes', () => {
+    it('allows guests to browse the public lobby', async () => {
+      const res = await sendRequest('GET', '/api/deck-shares?sort=popular&element=%E7%82%8E&limit=24');
+
+      expect(res.statusCode).toBe(200);
+      expect(parseBody(res)).toEqual({ shares: [], nextCursor: null });
+      expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining("ds.visibility = 'public'"), ['炎', 24]);
+    });
+
+    it('allows guests to open a published public or unlisted share link', async () => {
+      mockQuery.mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'ds_share_12345678',
+            name: 'Night deck',
+            card_ids: ['1st_1', '1st_2'],
+            visibility: 'unlisted',
+            publication_status: 'published',
+            moderation_status: 'visible',
+            published_rules_version: '2026-07',
+            published_at: '2026-07-20T00:00:00.000Z',
+            updated_at: '2026-07-20T01:00:00.000Z',
+            owner_user_id: 'u_owner',
+            owner_nickname: 'Owner',
+            elements: ['闇'],
+            character_count: 1,
+            representative_card_ids: ['1st_1'],
+            like_count: '3',
+            copy_count: '2',
+            viewer_has_liked: false,
+          },
+        ],
+        rowCount: 1,
+      });
+
+      const res = await sendRequest('GET', '/api/deck-shares/ds_share_12345678');
+
+      expect(res.statusCode).toBe(200);
+      expect(parseBody(res)).toMatchObject({
+        id: 'ds_share_12345678',
+        name: 'Night deck',
+        visibility: 'unlisted',
+        cardIds: ['1st_1', '1st_2'],
+        owner: { userId: 'u_owner', nickname: 'Owner' },
+        likeCount: 3,
+        copyCount: 2,
+      });
+    });
+
+    it('rejects malformed lobby queries and publish bodies', async () => {
+      const queryRes = await sendRequest('GET', '/api/deck-shares?sort=oldest&limit=0');
+      expect(queryRes.statusCode).toBe(400);
+      expect(parseBody(queryRes)).toEqual(expect.objectContaining({ error: 'Validation failed' }));
+
+      const publishRes = await sendRequest(
+        'POST',
+        '/api/deck-shares',
+        { deckId: 'not-a-deck', visibility: 'friends' },
+        userUnsafeHeaders(),
+      );
+      expect(publishRes.statusCode).toBe(400);
+      expect(parseBody(publishRes)).toEqual(expect.objectContaining({ error: 'Validation failed' }));
+    });
+
+    it('requires an account session for publish, copy, like, and report mutations', async () => {
+      const csrfToken = 'valid-csrf-token-for-testing-1234567890';
+      const headers = { cookie: `zutomayo_csrf=${csrfToken}`, 'x-csrf-token': csrfToken };
+      const cases: Array<[string, string, unknown]> = [
+        ['POST', '/api/deck-shares', { deckId: 'd_source_1234', visibility: 'public' }],
+        ['POST', '/api/deck-shares/ds_share_12345678/copy', { name: 'Copy', idempotencyKey: 'copy-key-1234' }],
+        ['PUT', '/api/deck-shares/ds_share_12345678/like', null],
+        ['DELETE', '/api/deck-shares/ds_share_12345678/like', null],
+        ['POST', '/api/deck-shares/ds_share_12345678/reports', { reason: 'spam' }],
+      ];
+
+      for (const [method, path, body] of cases) {
+        const res = await sendRequest(method, path, body, headers);
+        expect(res.statusCode, `${method} ${path}`).toBe(401);
+      }
+    });
+
+    it('requires an admin session for share report moderation routes', async () => {
+      const listRes = await sendRequest('GET', '/api/admin/deck-share-reports');
+      expect(listRes.statusCode).toBe(401);
+
+      const csrfToken = 'valid-csrf-token-for-testing-1234567890';
+      const moderateRes = await sendRequest(
+        'PUT',
+        '/api/admin/deck-shares/ds_share_12345678/moderation',
+        { moderationStatus: 'hidden', reportStatus: 'resolved' },
+        { cookie: `zutomayo_csrf=${csrfToken}`, 'x-csrf-token': csrfToken },
+      );
+      expect(moderateRes.statusCode).toBe(401);
     });
   });
 

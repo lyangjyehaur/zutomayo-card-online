@@ -1,0 +1,30 @@
+.lobby-background-layer {
+  transition: opacity 1800ms ease-in-out;
+}
+
+.lobby-background-slide {
+  transform-origin: center;
+  animation: lobby-background-zoom-out 13s linear both;
+  will-change: transform;
+}
+
+@keyframes lobby-background-zoom-out {
+  from {
+    transform: scale(1.08);
+  }
+
+  to {
+    transform: scale(1.02);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lobby-background-layer {
+    transition: none;
+  }
+
+  .lobby-background-slide {
+    animation: none;
+    transform: scale(1.02);
+  }
+}

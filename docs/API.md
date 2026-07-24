@@ -244,6 +244,48 @@ Response:
 
 Errors: `401`, `404`.
 
+## Deck Sharing / 卡組分享
+
+Deck sharing is available only when `DECK_SHARING_ENABLED=true`. Public and unlisted shares are immutable card snapshots tied to the publishing rules version; private source decks remain owned by their authenticated users.
+
+| Method   | Path                                | Auth     | Description                                                       |
+| -------- | ----------------------------------- | -------- | ----------------------------------------------------------------- |
+| `GET`    | `/api/deck-shares`                  | Optional | List visible shares with sort, query, element, cursor, and limit. |
+| `POST`   | `/api/deck-shares`                  | User     | Publish a saved deck with `public` or `unlisted` visibility.      |
+| `GET`    | `/api/decks/:deckId/share`          | Owner    | Read the current user's share for one saved deck.                 |
+| `GET`    | `/api/deck-shares/:shareId`         | Optional | Read a visible public or directly addressed unlisted share.       |
+| `PUT`    | `/api/deck-shares/:shareId`         | Owner    | Update visibility, display metadata, or refresh the snapshot.     |
+| `DELETE` | `/api/deck-shares/:shareId`         | Owner    | Unpublish a share without deleting the source deck.               |
+| `POST`   | `/api/deck-shares/:shareId/copy`    | User     | Copy a valid share into the user's saved decks.                   |
+| `PUT`    | `/api/deck-shares/:shareId/like`    | User     | Like a visible share.                                             |
+| `DELETE` | `/api/deck-shares/:shareId/like`    | User     | Remove the current user's like.                                   |
+| `POST`   | `/api/deck-shares/:shareId/reports` | User     | Report a share for moderation.                                    |
+
+Create body:
+
+```json
+{ "deckId": "d_...", "visibility": "public" }
+```
+
+Copy requests require a new deck name and idempotency key. The API revalidates the 20-card snapshot, two-copy limit, known card IDs, block relationships, moderation state, and rules-version compatibility inside the transaction. See [deck-sharing-lobby-spec.md](deck-sharing-lobby-spec.md) for the complete visibility and moderation contract.
+
+## Official Rulings / 官方裁定
+
+Official Japanese Q&A and errata are read from the active PostgreSQL content-release snapshot. `lang` accepts `ja`, `zh-TW`, `zh-HK`, `zh-CN`, `en`, or `ko`; responses always include the Japanese `source`, displayed `localized` content, requested/effective locale, translation status, source URL, sync time, and content version. Q&A items expose source-language `tagIds` beside localized `tags`; clients must use `tagIds` for filter state and `tags` for display. The `tag` query accepts a stable source tag ID and retains localized-label compatibility for older URLs.
+
+| Method | Path                              | Query                            | Description                                |
+| ------ | --------------------------------- | -------------------------------- | ------------------------------------------ |
+| `GET`  | `/api/official/qa`                | `lang`, `query`, `tag`, `cardId` | List and filter published official Q&A.    |
+| `GET`  | `/api/official/qa/:number`        | `lang`                           | Read one Q&A item by official number.      |
+| `GET`  | `/api/official/errata`            | `lang`, `cardId`                 | List published official errata.            |
+| `GET`  | `/api/official/errata/:errataId`  | `lang`                           | Read one three-digit official errata item. |
+| `GET`  | `/api/official/rules/:documentId` | `lang`                           | Read the active `grand` or `floor` rules.  |
+| `GET`  | `/api/official/status`            |                                  | Read active content/build/hash metadata.   |
+
+Public responses use five-minute cache headers, stale-while-revalidate, and content ETags. Activation requires all five reviewed translations for every current source version, so a published non-Japanese release never relies on fallback. Repository JSON is never a runtime source. Source synchronization and release operations are documented in [official-rulings.md](official-rulings.md).
+
+Grand Rules and Floor Rules are stored as versioned PostgreSQL documents and ordered sections. The public document endpoint returns Japanese source text beside the requested reviewed translation, section hierarchy, source page numbers, the official PDF URL, and the PDF SHA-256 fingerprint.
+
 ## Matches / 對戰
 
 ### `POST /api/matches`
@@ -440,6 +482,49 @@ Except for the two session-establishment endpoints, admin endpoints require an a
 | `moderator` | Viewer access plus chat and feedback moderation.                                              |
 | `operator`  | Moderator access plus ELO, card, configuration, and season writes, and legal-hold reads.      |
 | `admin`     | All admin permissions, including granting, changing, and revoking linked-account admin roles. |
+
+Link an existing account after applying migrations:
+
+```bash
+npm run admin:link -- --email=user@example.com --role=admin
+```
+
+Supported roles are `viewer`, `moderator`, `operator`, and `admin`.
+The CLI is the bootstrap path for the first full administrator. After that, an `admin` can search registered users and manage linked roles from the **使用者** tab in `/admin`; lower roles cannot see or call the role-management controls.
+
+### Deck sharing and official-content administration
+
+| Method | Path                                                                  | Permission          | Description                                        |
+| ------ | --------------------------------------------------------------------- | ------------------- | -------------------------------------------------- |
+| `GET`  | `/api/admin/deck-share-reports`                                       | `feedback:moderate` | List deck-share reports by status and limit.       |
+| `PUT`  | `/api/admin/deck-shares/:shareId/moderation`                          | `feedback:moderate` | Hide, restore, or resolve a shared deck.           |
+| `GET`  | `/api/admin/official-content/translations`                            | `config:write`      | Filter translation coverage and review state.      |
+| `PUT`  | `/api/admin/official-content/translations/:type/:id/:locale`          | `config:write`      | Save reviewed Q&A or errata translation content.   |
+| `POST` | `/api/admin/official-content/translations/:type/:id/:locale/generate` | `config:write`      | Generate one missing translation through provider. |
+| `GET`  | `/api/admin/official-content/sync-status`                             | `config:write`      | Read recent official-source comparison results.    |
+| `POST` | `/api/admin/official-content/sync`                                    | `config:write`      | Run a fail-closed, read-only official-source diff. |
+
+Admin source checks never apply remote changes. Applying verified Japanese updates remains an explicit maintenance CLI operation.
+
+Revoke the linked role and all of its administrator sessions:
+
+```bash
+npm run admin:unlink -- --email=user@example.com
+```
+
+### `POST /api/admin/session`
+
+Exchange the current signed-in user session for an admin token. No request body fields are required. Returns `403` when the user is not linked to an enabled administrator record.
+
+Response:
+
+```json
+{
+  "token": "<admin-token>",
+  "role": "admin",
+  "expiresIn": 3600
+}
+```
 
 ### `POST /api/admin/login`
 

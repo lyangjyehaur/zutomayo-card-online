@@ -3,6 +3,7 @@ import { Sentry } from '../../sentry';
 import { acceptCardDataResponse } from './dataContract';
 
 const cardMap = new Map<string, CardDef>();
+const fallbackCardMap = new Map<string, CardDef>();
 let currentCards: CardDef[] = [];
 let currentConfig: Record<string, unknown> = {};
 let cardsRefreshPromise: Promise<CardDef[]> | null = null;
@@ -97,7 +98,15 @@ export function getGameConfig(): Record<string, unknown> {
 }
 
 export function getCardDef(id: string): CardDef | undefined {
-  return cardMap.get(id);
+  return cardMap.get(id) ?? fallbackCardMap.get(id);
+}
+
+/**
+ * Register presentation-only card definitions without marking the gameplay dataset as initialized.
+ * Real API data always wins and getAllCardDefs() remains limited to the authoritative dataset.
+ */
+export function registerCardDefFallbacks(cards: CardDef[]): void {
+  for (const card of cards) fallbackCardMap.set(card.id, card);
 }
 
 export function getAllCardDefs(): CardDef[] {

@@ -27,6 +27,76 @@ export interface DeckReservationResponse {
   expiresAt: string;
 }
 
+export type DeckShareVisibility = 'public' | 'unlisted';
+export type DeckSharePublicationStatus = 'published' | 'unpublished';
+export type DeckShareModerationStatus = 'visible' | 'hidden' | 'pending_review';
+export type DeckShareSort = 'newest' | 'popular' | 'most-copied';
+
+export interface DeckShareOwner {
+  userId: string;
+  nickname: string;
+}
+
+export interface DeckShareSummary {
+  id: string;
+  name: string;
+  visibility: DeckShareVisibility;
+  publicationStatus: DeckSharePublicationStatus;
+  moderationStatus: DeckShareModerationStatus;
+  publishedRulesVersion: string;
+  publishedAt: string | null;
+  updatedAt: string | null;
+  owner: DeckShareOwner;
+  elements: string[];
+  characterCount: number;
+  representativeCardIds: string[];
+  likeCount: number;
+  copyCount: number;
+  viewerHasLiked: boolean;
+}
+
+export interface DeckShareDetail extends DeckShareSummary {
+  cardIds: string[];
+}
+
+export interface OwnedDeckShare extends DeckShareDetail {
+  sourceDeckId: string | null;
+  sourceDeckExists: boolean;
+  sourceChanged: boolean;
+  unpublishedAt: string | null;
+  moderationReason: string;
+}
+
+export interface DeckSharePage {
+  shares: DeckShareSummary[];
+  nextCursor: string | null;
+}
+
+export type DeckShareReportReason = 'inappropriate_name' | 'impersonation_or_harassment' | 'spam' | 'other';
+
+export interface DeckShareReport {
+  id: string;
+  shareId: string;
+  reporterUserId: string | null;
+  reporterNickname: string;
+  reason: DeckShareReportReason;
+  note: string;
+  status: 'pending' | 'reviewing' | 'resolved' | 'dismissed';
+  resolutionNote: string;
+  createdAt: string | null;
+  updatedAt: string | null;
+  resolvedAt: string | null;
+  share: {
+    name: string;
+    ownerUserId: string;
+    ownerNickname: string;
+    publicationStatus: DeckSharePublicationStatus;
+    moderationStatus: DeckShareModerationStatus;
+    moderationReason: string;
+    cardIds: string[];
+  };
+}
+
 export interface ProfileResponse {
   id: string;
   email: string;
@@ -76,6 +146,26 @@ export interface Season {
   endsAt: string;
   startingRating: number;
   placementMatches: number;
+}
+
+export interface AdminTranslationSettings {
+  enabled: boolean;
+  endpoint: string;
+  provider: string;
+  model: string;
+  timeoutMs: number;
+  source: 'environment' | 'admin';
+  apiKeyConfigured: boolean;
+  apiKeySource: 'stored' | 'environment' | 'none';
+  apiKeySuffix: string;
+  updatedAt: string | null;
+}
+
+export interface AdminTranslationTestResult {
+  translatedContent: string;
+  provider: string;
+  model: string;
+  latencyMs: number;
 }
 
 export interface SeasonRating {
@@ -164,6 +254,31 @@ export interface AccountExportJob {
   downloadedAt: string | null;
   downloadCount: number;
   errorCode: string;
+}
+
+export interface AccountExport {
+  exportedAt: string;
+  account: Record<string, unknown>;
+  identities: unknown[];
+  decks: unknown[];
+  deckShares: unknown[];
+  deckShareLikes: unknown[];
+  deckShareCopies: unknown[];
+  deckShareReports: unknown[];
+  matches: unknown[];
+  friends: unknown[];
+  friendRequests: unknown[];
+  blocks: unknown[];
+  chatMessages: unknown[];
+  chatReports: unknown[];
+  feedbackPosts: unknown[];
+  feedbackComments: unknown[];
+  feedbackVotes: unknown[];
+  feedbackReactions: unknown[];
+  sanctions: unknown[];
+  seasonRatings: unknown[];
+  seasonRewards: unknown[];
+  seasonRewardEntitlements: unknown[];
 }
 
 export type OAuthProviderId = 'logto' | 'google' | 'github' | 'discord';
@@ -689,6 +804,236 @@ export interface CardOfficialErrata {
   sourceUrl: string;
 }
 
+export type OfficialTranslationStatus = 'source' | 'pending_review' | 'machine' | 'verified' | 'failed' | string;
+
+export interface OfficialQaItem {
+  id: string;
+  number: number;
+  publishedAt: string;
+  tagIds: string[];
+  tags: string[];
+  relatedCardIds: string[];
+  source: { question: string; answer: string };
+  localized: { question: string; answer: string };
+  requestedLocale: string;
+  effectiveLocale: string;
+  translationStatus: OfficialTranslationStatus;
+  sourceUrl: string;
+  lastSyncedAt: string;
+  contentVersion: number;
+}
+
+export interface OfficialErrataItem {
+  errataId: string;
+  cardId: string;
+  cardName: string;
+  cardNameJa: string;
+  pack: string;
+  rarity: string;
+  cardNumber: string;
+  publishedAt: string;
+  affectsName: boolean;
+  affectsEffect: boolean;
+  source: OfficialErrataContent;
+  localized: OfficialErrataContent;
+  requestedLocale: string;
+  effectiveLocale: string;
+  translationStatus: OfficialTranslationStatus;
+  sourceUrl: string;
+  lastSyncedAt: string;
+  contentVersion: number;
+}
+
+export interface OfficialErrataContent {
+  incorrectText: string;
+  correctedText: string;
+  reason: string;
+  replacementPolicy: string;
+  usagePolicy: string;
+}
+
+export type OfficialRuleDocumentId = 'grand' | 'floor';
+
+export interface OfficialRuleSection {
+  id: string;
+  number: string;
+  parentId: string | null;
+  level: number;
+  order: number;
+  pages: { start: number; end: number };
+  source: { title: string; body: string };
+  localized: { title: string; body: string };
+  effectiveLocale: string;
+  translationStatus: OfficialTranslationStatus;
+}
+
+export interface OfficialRuleDocument {
+  id: OfficialRuleDocumentId;
+  version: string;
+  publishedAt: string;
+  sourceUrl: string;
+  sourceSha256: string;
+  pageCount: number;
+  sourceCheckedAt: string;
+  activatedAt: string;
+  requestedLocale: string;
+  source: { title: string; summary: string };
+  localized: { title: string; summary: string };
+  translationStatus: OfficialTranslationStatus;
+  sections: OfficialRuleSection[];
+}
+
+export type AdminOfficialResourceType = 'qa' | 'errata';
+export type AdminOfficialTranslationStatus = 'pending_review' | 'machine' | 'verified' | 'failed';
+
+export interface AdminOfficialTranslationItem {
+  resourceType: AdminOfficialResourceType;
+  id: string;
+  number?: number;
+  label: string;
+  cardId?: string;
+  cardName?: string;
+  contentVersion: number;
+  source: Record<string, string>;
+  translation: Record<string, string>;
+  status: AdminOfficialTranslationStatus;
+  provider: string;
+  model: string;
+  reviewNote: string;
+  updatedAt: string;
+}
+
+export interface AdminOfficialTranslationCoverage {
+  total: number;
+  translated: number;
+  verified: number;
+  pending: number;
+  failed: number;
+}
+
+export interface AdminOfficialSyncRun {
+  id: string;
+  triggerSource: string;
+  status: 'running' | 'no_change' | 'changes' | 'failed' | string;
+  qaLocalCount: number;
+  qaRemoteCount: number;
+  errataLocalCount: number;
+  errataRemoteCount: number;
+  diff: Record<string, { added?: string[]; updated?: string[]; removed?: string[] }>;
+  error: string;
+  requestedByAdminUserId: string;
+  startedAt: string;
+  finishedAt: string;
+}
+
+export async function fetchOfficialQa(
+  language: string,
+  filters: { query?: string; tag?: string; cardId?: string } = {},
+): Promise<OfficialQaItem[]> {
+  const params = new URLSearchParams({ lang: language });
+  if (filters.query) params.set('query', filters.query);
+  if (filters.tag) params.set('tag', filters.tag);
+  if (filters.cardId) params.set('cardId', filters.cardId);
+  const data = await request<{ items: OfficialQaItem[] }>(`/official/qa?${params.toString()}`);
+  return data.items;
+}
+
+export async function fetchOfficialQaItem(number: number, language: string): Promise<OfficialQaItem> {
+  const data = await request<{ item: OfficialQaItem }>(
+    `/official/qa/${encodeURIComponent(String(number))}?${new URLSearchParams({ lang: language }).toString()}`,
+  );
+  return data.item;
+}
+
+export async function fetchOfficialErrata(
+  language: string,
+  filters: { cardId?: string } = {},
+): Promise<OfficialErrataItem[]> {
+  const params = new URLSearchParams({ lang: language });
+  if (filters.cardId) params.set('cardId', filters.cardId);
+  const data = await request<{ items: OfficialErrataItem[] }>(`/official/errata?${params.toString()}`);
+  return data.items;
+}
+
+export async function fetchOfficialErrataItem(errataId: string, language: string): Promise<OfficialErrataItem> {
+  const data = await request<{ item: OfficialErrataItem }>(
+    `/official/errata/${encodeURIComponent(errataId)}?${new URLSearchParams({ lang: language }).toString()}`,
+  );
+  return data.item;
+}
+
+export async function fetchOfficialRuleDocument(
+  documentId: OfficialRuleDocumentId,
+  language: string,
+): Promise<OfficialRuleDocument> {
+  const params = new URLSearchParams({ lang: language });
+  const data = await request<{ document: OfficialRuleDocument }>(
+    `/official/rules/${encodeURIComponent(documentId)}?${params.toString()}`,
+  );
+  return data.document;
+}
+
+export async function adminGetOfficialTranslations(filters: {
+  locale: string;
+  resourceType?: 'all' | AdminOfficialResourceType;
+  status?: '' | AdminOfficialTranslationStatus;
+  query?: string;
+}): Promise<{
+  items: AdminOfficialTranslationItem[];
+  coverage: AdminOfficialTranslationCoverage;
+  locale: string;
+}> {
+  const params = new URLSearchParams({
+    locale: filters.locale,
+    resourceType: filters.resourceType || 'all',
+    status: filters.status || '',
+    query: filters.query || '',
+  });
+  return request(`/admin/official-content/translations?${params.toString()}`, { headers: adminAuthHeaders() });
+}
+
+export async function adminUpdateOfficialTranslation(
+  item: AdminOfficialTranslationItem,
+  locale: string,
+  input: Record<string, string>,
+): Promise<void> {
+  await request(
+    `/admin/official-content/translations/${item.resourceType}/${encodeURIComponent(item.id)}/${encodeURIComponent(locale)}`,
+    {
+      method: 'PUT',
+      headers: adminAuthHeaders(),
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export async function adminGenerateOfficialTranslation(
+  item: AdminOfficialTranslationItem,
+  locale: string,
+): Promise<void> {
+  await request(
+    `/admin/official-content/translations/${item.resourceType}/${encodeURIComponent(item.id)}/${encodeURIComponent(locale)}/generate`,
+    { method: 'POST', headers: adminAuthHeaders(), body: '{}' },
+  );
+}
+
+export async function adminCheckOfficialSources(): Promise<AdminOfficialSyncRun> {
+  const data = await request<{ run: AdminOfficialSyncRun }>('/admin/official-content/sync', {
+    method: 'POST',
+    headers: adminAuthHeaders(),
+    body: '{}',
+  });
+  return data.run;
+}
+
+export async function adminGetOfficialSyncStatus(limit = 20): Promise<AdminOfficialSyncRun[]> {
+  const data = await request<{ runs: AdminOfficialSyncRun[] }>(
+    `/admin/official-content/sync-status?${new URLSearchParams({ limit: String(limit) }).toString()}`,
+    { headers: adminAuthHeaders() },
+  );
+  return data.runs;
+}
+
 export type CardTextsI18n = Record<string, Record<string, CardTextI18nEntry>>;
 
 export async function fetchAllCardTextsI18n(): Promise<CardTextsI18n> {
@@ -1026,6 +1371,91 @@ export async function updateDeck(deckId: string, name: string, cardIds: string[]
 
 export async function deleteDeck(deckId: string): Promise<{ deleted: boolean }> {
   return request<{ deleted: boolean }>(`/decks/${deckId}`, { method: 'DELETE' });
+}
+
+// ===== Deck sharing =====
+export async function listDeckShares(
+  params: {
+    sort?: DeckShareSort;
+    q?: string;
+    element?: string;
+    cursor?: string;
+    limit?: number;
+  } = {},
+): Promise<DeckSharePage> {
+  const query = new URLSearchParams();
+  if (params.sort) query.set('sort', params.sort);
+  if (params.q) query.set('q', params.q);
+  if (params.element) query.set('element', params.element);
+  if (params.cursor) query.set('cursor', params.cursor);
+  if (params.limit) query.set('limit', String(params.limit));
+  return request<DeckSharePage>(`/deck-shares${query.size > 0 ? `?${query.toString()}` : ''}`);
+}
+
+export async function getDeckShare(shareId: string): Promise<DeckShareDetail> {
+  return request<DeckShareDetail>(`/deck-shares/${encodeURIComponent(shareId)}`);
+}
+
+export async function getOwnedDeckShare(deckId: string): Promise<OwnedDeckShare> {
+  return request<OwnedDeckShare>(`/decks/${encodeURIComponent(deckId)}/share`);
+}
+
+export async function publishDeckShare(deckId: string, visibility: DeckShareVisibility): Promise<OwnedDeckShare> {
+  return request<OwnedDeckShare>('/deck-shares', {
+    method: 'POST',
+    body: JSON.stringify({ deckId, visibility }),
+  });
+}
+
+export async function updateDeckShare(
+  shareId: string,
+  input: { visibility?: DeckShareVisibility; published?: boolean; publishLatest?: boolean },
+): Promise<OwnedDeckShare> {
+  return request<OwnedDeckShare>(`/deck-shares/${encodeURIComponent(shareId)}`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function unpublishDeckShare(shareId: string): Promise<{ unpublished: boolean; shareId: string }> {
+  return request<{ unpublished: boolean; shareId: string }>(`/deck-shares/${encodeURIComponent(shareId)}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function copyDeckShare(
+  shareId: string,
+  name: string,
+  idempotencyKey: string,
+): Promise<{ deck: DeckResponse; copyCount: number }> {
+  return request<{ deck: DeckResponse; copyCount: number }>(`/deck-shares/${encodeURIComponent(shareId)}/copy`, {
+    method: 'POST',
+    body: JSON.stringify({ name, idempotencyKey }),
+  });
+}
+
+export async function likeDeckShare(shareId: string): Promise<{ liked: true; likeCount: number }> {
+  return request<{ liked: true; likeCount: number }>(`/deck-shares/${encodeURIComponent(shareId)}/like`, {
+    method: 'PUT',
+  });
+}
+
+export async function unlikeDeckShare(shareId: string): Promise<{ liked: false; likeCount: number }> {
+  return request<{ liked: false; likeCount: number }>(`/deck-shares/${encodeURIComponent(shareId)}/like`, {
+    method: 'DELETE',
+  });
+}
+
+export async function reportDeckShare(
+  shareId: string,
+  input: { reason: DeckShareReportReason; note?: string },
+): Promise<{
+  report: Pick<DeckShareReport, 'id' | 'shareId' | 'reason' | 'note' | 'status' | 'createdAt' | 'updatedAt'>;
+}> {
+  return request(`/deck-shares/${encodeURIComponent(shareId)}/reports`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
 }
 
 // ===== Matches =====
@@ -1728,6 +2158,34 @@ export async function adminReviewChatMessageModeration(
   });
 }
 
+export async function adminGetDeckShareReports(
+  token: string,
+  status: DeckShareReport['status'] = 'pending',
+  limit = 50,
+): Promise<{ reports: DeckShareReport[] }> {
+  return request<{ reports: DeckShareReport[] }>(
+    `/admin/deck-share-reports?status=${encodeURIComponent(status)}&limit=${limit}`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+}
+
+export async function adminModerateDeckShare(
+  token: string,
+  shareId: string,
+  input: {
+    moderationStatus: 'visible' | 'hidden';
+    reason?: string;
+    reportStatus: 'resolved' | 'dismissed';
+    resolutionNote?: string;
+  },
+): Promise<{ shareId: string; moderationStatus: string; moderationReason: string }> {
+  return request(`/admin/deck-shares/${encodeURIComponent(shareId)}/moderation`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(input),
+  });
+}
+
 export async function adminResetElo(token: string, userId: string, elo: number): Promise<{ id: string; elo: number }> {
   return request<{ id: string; elo: number }>(`/admin/users/${userId}/elo`, {
     method: 'PUT',
@@ -1762,6 +2220,44 @@ export async function adminUpdateConfig(key: string, value: unknown): Promise<vo
     body: JSON.stringify({ value }),
   });
   configCache = null;
+}
+
+export async function adminGetTranslationSettings(token: string): Promise<AdminTranslationSettings> {
+  const result = await request<{ settings: AdminTranslationSettings }>('/admin/translation-settings', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return result.settings;
+}
+
+export async function adminUpdateTranslationSettings(
+  token: string,
+  input: {
+    enabled: boolean;
+    endpoint: string;
+    provider: string;
+    model: string;
+    timeoutMs: number;
+    apiKeyAction: 'keep' | 'replace' | 'clear' | 'environment';
+    apiKey?: string;
+  },
+): Promise<AdminTranslationSettings> {
+  const result = await request<{ settings: AdminTranslationSettings }>('/admin/translation-settings', {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(input),
+  });
+  return result.settings;
+}
+
+export async function adminTestTranslationSettings(
+  token: string,
+  input: { text: string; sourceLanguage: string; targetLanguage: string },
+): Promise<AdminTranslationTestResult> {
+  return request<AdminTranslationTestResult>('/admin/translation-settings/test', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(input),
+  });
 }
 
 export async function adminUpdateAboutPage(value: AboutPageI18nConfig): Promise<void> {

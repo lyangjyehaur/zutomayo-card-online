@@ -701,6 +701,7 @@ export function assembleServer4CanaryEvidence(options) {
         imageDigests,
         evidenceRunId: String(options.runId),
         nowMs: checkedAt.milliseconds,
+        profile: 'production-hardening',
       }).find((check) => check.id === 'staging-canary');
       if (canaryGate?.status !== 'passed') {
         fail(`assembled evidence failed the repository canary gate: ${canaryGate?.reason ?? 'gate result missing'}`);

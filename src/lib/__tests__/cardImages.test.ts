@@ -3,6 +3,7 @@ import { initCards } from '../../game/cards/loader';
 import type { CardDef } from '../../game/types';
 import {
   getCardImageContextWidths,
+  getCardImageFallbackWidth,
   getCardImageSizes,
   getCardImageSource,
   getCardImageSrcSet,
@@ -82,5 +83,8 @@ describe('card image imgproxy builder', () => {
 
   it('exposes responsive sizes per card image context', () => {
     expect(getCardImageSizes('detail')).toContain('720px');
+    expect(getCardImageSizes('board')).toBe('(max-width: 640px) 16vw, (max-width: 1024px) 10vw, 96px');
+    expect(getCardImageFallbackWidth('board')).toBe(192);
+    expect(getCardImageContextWidths('board')).toEqual([128, 192, 320]);
   });
 });

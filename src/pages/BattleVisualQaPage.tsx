@@ -23,12 +23,14 @@ import type {
   PlayerIndex,
   SetSlot,
 } from '../game/types';
+import { t } from '../i18n';
 
 type BoardComponentProps = ComponentProps<typeof Board>;
 
 const BATTLE_QA_STATES = [
   { id: 'janken', label: 'Janken' },
   { id: 'mulligan', label: 'Mulligan' },
+  { id: 'initial-select', label: 'Initial Select' },
   { id: 'initial-set', label: 'Initial Set' },
   { id: 'turn-set', label: 'Turn Set' },
   { id: 'effect-order', label: 'Effect Order' },
@@ -101,6 +103,23 @@ const BATTLE_QA_FALLBACK_CARDS: CardDef[] = [
     attack: { night: 45, day: 45 },
     powerCost: 0,
     sendToPower: 1,
+    effect: '',
+    image: '/card-back.jpg',
+    errata: '',
+  },
+  {
+    id: '1st_46',
+    name: 'QA Day Attacker',
+    pack: 'QA',
+    song: 'Fixture',
+    illustrator: 'QA',
+    rarity: 'N',
+    element: '電気',
+    type: 'Character',
+    clock: 1,
+    attack: { night: 40, day: 80 },
+    powerCost: 2,
+    sendToPower: 0,
     effect: '',
     image: '/card-back.jpg',
     errata: '',
@@ -224,6 +243,23 @@ const BATTLE_QA_FALLBACK_CARDS: CardDef[] = [
     image: '/card-back.jpg',
     errata: '',
   },
+  {
+    id: '2nd_98',
+    name: 'QA Day Area Enchant',
+    pack: 'QA',
+    song: 'Fixture',
+    illustrator: 'QA',
+    rarity: 'R',
+    element: '電気',
+    type: 'Area Enchant',
+    clock: 2,
+    attack: null,
+    powerCost: 1,
+    sendToPower: 1,
+    effect: '昼なら攻撃力+20。昼じゃなくなったらパワーチャージャーに置く',
+    image: '/card-back.jpg',
+    errata: '',
+  },
 ];
 
 function hasRequiredQaCards(): boolean {
@@ -309,8 +345,8 @@ function createTurnOneResolvedState(parsedEffects: Map<string, ParsedEffect[]>, 
 function createTurnSetState(parsedEffects: Map<string, ParsedEffect[]>, side: BattleQaSideId): GameState {
   const G = createTurnOneResolvedState(parsedEffects, side);
   clearTransientQaOverlays(G);
-  setTurnCardFromHand(G, 0, '1st_34', 'A');
-  setTurnCardFromHand(G, 0, '2nd_86', 'B');
+  setTurnCardFromHand(G, 0, '1st_46', 'A');
+  setTurnCardFromHand(G, 0, '2nd_98', 'B');
   setTurnCardFromHand(G, 1, '1st_98', 'A');
   addQaZonePreviewStacks(G);
   return G;
@@ -397,7 +433,7 @@ function createEffectOrderState(parsedEffects: Map<string, ParsedEffect[]>, side
   const opponentEnchant = G.players[1].setZoneA;
   if (!playerArea || !opponentEnchant) throw new Error('Unable to prepare QA pending effects');
   G.pendingEffects = [
-    [createQaEffect(0, playerArea, 20, '夜なら攻撃力+20', 'setZoneC')],
+    [createQaEffect(0, playerArea, 20, '昼なら攻撃力+20', 'setZoneC')],
     [createQaEffect(1, opponentEnchant, 30, '相手のキャラクターカードが1コスト以下なら攻撃力+30', 'played')],
   ];
   G.pendingEffectPlayer = 0;
@@ -476,15 +512,17 @@ function createBattleQaState(id: BattleQaStateId, side: BattleQaSideId, time: Ba
       ? createTutorialGame()
       : id === 'mulligan'
         ? createMulliganState(side)
-        : id === 'initial-set'
-          ? createInitialSetState(side)
-          : id === 'turn-set'
-            ? createTurnSetState(parsedEffects, side)
-            : id === 'effect-order'
-              ? createEffectOrderState(parsedEffects, side)
-              : id === 'pending-choice'
-                ? createPendingChoiceState(parsedEffects, side)
-                : createGameOverState(parsedEffects, side);
+        : id === 'initial-select'
+          ? createInitialSetBase(side)
+          : id === 'initial-set'
+            ? createInitialSetState(side)
+            : id === 'turn-set'
+              ? createTurnSetState(parsedEffects, side)
+              : id === 'effect-order'
+                ? createEffectOrderState(parsedEffects, side)
+                : id === 'pending-choice'
+                  ? createPendingChoiceState(parsedEffects, side)
+                  : createGameOverState(parsedEffects, side);
   applyQaChronosTime(G, time);
   return G;
 }
@@ -649,6 +687,19 @@ export function BattleVisualQaPage() {
         isConnected
         isMultiplayer={false}
         useServerTimer
+        gameOverActions={
+          selectedState === 'game-over'
+            ? {
+                primary: { label: t('board.playAgain'), onClick: () => undefined },
+                secondary: {
+                  label: t('board.result.changeSetup'),
+                  onClick: () => undefined,
+                  variant: 'secondary',
+                },
+                tertiary: { label: t('common.backToLobby'), onClick: () => undefined, variant: 'secondary' },
+              }
+            : undefined
+        }
       />
       {showControls && (
         <QaControls selectedState={selectedState} selectedSide={selectedSide} selectedTime={selectedTime} />

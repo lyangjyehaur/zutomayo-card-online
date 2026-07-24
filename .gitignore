@@ -10,6 +10,9 @@ dist-server/
 # Test coverage
 coverage/
 
+# Generated release-gate evidence (archive through CI artifacts, not Git)
+.release-evidence/
+
 # Generated responsive/visual QA artifacts
 docs/battle-responsive-smoke-data.json
 docs/battle-responsive-smoke-screenshots/
@@ -58,7 +61,10 @@ schema.json
 
 # Card data (source of truth is PostgreSQL; source/review JSON stays local only)
 cards.json
+qa.json
 data/card*.json
+data/official-rulings-*.json
+data/official-rule-documents-*.json
 data/e2e-card-seed.json
 data/vision-ocr/
 scripts/card-english-*.json
@@ -88,3 +94,4 @@ CARD_EFFECT_AUDIT_FINAL.md
 # Playwright E2E
 playwright-report/
 test-results/
+official-rulings-sync-report.json

@@ -21,7 +21,7 @@ test.describe('認證 UI', () => {
 
   test('登入按鈕可在首頁看到', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByText('Channels', { exact: true })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('ZUTOMAYO', { timeout: 30_000 });
 
     // compact 模式的登入按鈕（header 區）
     await expect(page.getByRole('button', { name: /^登入$/ })).toBeVisible();
@@ -29,7 +29,7 @@ test.describe('認證 UI', () => {
 
   test('點擊登入開啟認證對話框', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByText('Channels', { exact: true })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('ZUTOMAYO', { timeout: 30_000 });
 
     await page.getByRole('button', { name: /^登入$/ }).click();
 
@@ -41,7 +41,7 @@ test.describe('認證 UI', () => {
 
   test('登入表單包含 email 與 password 欄位', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByText('Channels', { exact: true })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('ZUTOMAYO', { timeout: 30_000 });
 
     await page.getByRole('button', { name: /^登入$/ }).click();
     const dialog = page.getByRole('dialog');
@@ -61,7 +61,7 @@ test.describe('認證 UI', () => {
 
   test('可切換到註冊模式並顯示暱稱欄位', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByText('Channels', { exact: true })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('ZUTOMAYO', { timeout: 30_000 });
 
     await page.getByRole('button', { name: /^登入$/ }).click();
     const dialog = page.getByRole('dialog');
@@ -78,7 +78,7 @@ test.describe('認證 UI', () => {
 
   test('空提交表單顯示瀏覽器驗證（不送出 API）', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByText('Channels', { exact: true })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('ZUTOMAYO', { timeout: 30_000 });
 
     await page.getByRole('button', { name: /^登入$/ }).click();
     const dialog = page.getByRole('dialog');
@@ -114,7 +114,7 @@ test.describe('認證流程 @requires-backend', () => {
     // 這個測試驗證 HTML5 表單驗證：填了 email 但沒填 password，
     // 提交時 password 欄位應該是 :invalid 狀態。
     await page.goto('/');
-    await expect(page.getByText('Channels', { exact: true })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('ZUTOMAYO', { timeout: 30_000 });
 
     await page.getByRole('button', { name: /^登入$/ }).click();
     const dialog = page.getByRole('dialog');

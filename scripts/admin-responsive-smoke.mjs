@@ -155,6 +155,18 @@ const setupAuth = `
   const originalFetch = window.fetch.bind(window);
   window.fetch = async (input, init) => {
     const url = input instanceof Request ? input.url : String(input);
+    const cardHeaders = {
+      'Content-Type': 'application/json',
+      'X-Card-Dataset-Sha256': ${JSON.stringify(datasetSha256)},
+      'X-Card-Dataset-Release-Sha': ${JSON.stringify(releaseSha)},
+      'X-Card-Dataset-Count': '2',
+      'X-Card-Data-App-Version': ${JSON.stringify(appVersion)},
+      'X-Card-Data-Build-Id': ${JSON.stringify(buildId)},
+      'X-Card-Data-Rules-Version': ${JSON.stringify(rulesVersion)}
+    };
+    if (new URL(url, location.href).pathname === '/api/cards/texts') {
+      return new Response(JSON.stringify({}), { status: 200, headers: cardHeaders });
+    }
     if (new URL(url, location.href).pathname === '/api/cards') {
       return new Response(JSON.stringify([
         {
@@ -192,16 +204,11 @@ const setupAuth = `
         }
       ]), {
         status: 200,
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Card-Dataset-Sha256': ${JSON.stringify(datasetSha256)},
-          'X-Card-Dataset-Release-Sha': ${JSON.stringify(releaseSha)},
-          'X-Card-Dataset-Count': '2',
-          'X-Card-Data-App-Version': ${JSON.stringify(appVersion)},
-          'X-Card-Data-Build-Id': ${JSON.stringify(buildId)},
-          'X-Card-Data-Rules-Version': ${JSON.stringify(rulesVersion)}
-        }
+        headers: cardHeaders
       });
+    }
+    if (new URL(url, location.href).pathname === '/api/config') {
+      return new Response(JSON.stringify({}), { status: 200, headers: { 'content-type': 'application/json' } });
     }
     if (url.includes('/api/admin/users')) {
       return new Response(JSON.stringify({
@@ -275,6 +282,20 @@ const pageMetrics = `
     };
   };
   const visible = (selector) => [...document.querySelectorAll(selector)].filter(isVisible).map(box);
+  const hasHorizontalScrollAncestor = (element) => {
+    let current = element.parentElement;
+    while (current && current !== document.body) {
+      const style = getComputedStyle(current);
+      if (
+        current.scrollWidth > current.clientWidth + 1 &&
+        (style.overflowX === 'auto' || style.overflowX === 'scroll')
+      ) {
+        return true;
+      }
+      current = current.parentElement;
+    }
+    return false;
+  };
   const buttons = visible('button, a[href], [role="button"]');
   return {
     viewport: { width: innerWidth, height: innerHeight },
@@ -293,6 +314,7 @@ const pageMetrics = `
     smallTargets: buttons.filter((item) => item.width < 44 || item.height < 44),
     offscreen: [...document.body.querySelectorAll('*')]
       .filter((el) => !el.closest('.admin-sidebar, .admin-filter-row, .admin-tablist, .admin-card-modal-tabs'))
+      .filter((element) => !hasHorizontalScrollAncestor(element))
       .map(box)
       .filter((item) => item.visible && item.offscreenX)
       .slice(0, 20),
@@ -413,7 +435,7 @@ try {
       await new Promise((resolve) => setTimeout(resolve, 700));
       await evalChecked(
         client,
-        `[...document.querySelectorAll('.admin-nav-item')].find((button) => button.getAttribute('aria-label') === ${JSON.stringify(testCase.tab)})?.click()`,
+        `document.querySelector('.admin-nav-item[aria-label=${JSON.stringify(testCase.tab)}]')?.click()`,
       );
       await waitForSelector(client, '.admin-responsive-table tbody tr');
       await new Promise((resolve) => setTimeout(resolve, 600));

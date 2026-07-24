@@ -33,10 +33,12 @@ const {
     requiredRoleTypes: string[];
   }>;
 };
-const { REQUIRED_RUNTIME_COLUMNS, REQUIRED_RUNTIME_TABLES } = require('../../api/schemaGate.cjs') as {
-  REQUIRED_RUNTIME_COLUMNS: Record<string, string[]>;
-  REQUIRED_RUNTIME_TABLES: string[];
-};
+const { REQUIRED_RUNTIME_COLUMNS, REQUIRED_RUNTIME_TABLES, DECK_SHARING_RUNTIME_TABLES } =
+  require('../../api/schemaGate.cjs') as {
+    REQUIRED_RUNTIME_COLUMNS: Record<string, string[]>;
+    REQUIRED_RUNTIME_TABLES: string[];
+    DECK_SHARING_RUNTIME_TABLES: string[];
+  };
 
 const roleUsers = Object.freeze({
   api: 'z_api',
@@ -163,6 +165,15 @@ function successfulQuery(users: Record<string, string> = roleUsers, override?: Q
 }
 
 describe('PostgreSQL runtime role gate', () => {
+  it('includes official source-check history in the application role matrix', () => {
+    expect(APPLICATION_TABLES).toContain('official_rulings_sync_runs');
+    expect(APPLICATION_TABLES).toContain('official_rule_documents');
+    expect(APPLICATION_TABLES).toContain('official_rule_sections');
+    expect(APPLICATION_TABLES).toContain('official_rule_section_translations');
+    expect(APPLICATION_TABLES).toContain('official_rule_active_versions');
+    expect(REQUIRED_RUNTIME_TABLES).toContain('official_rulings_sync_runs');
+  });
+
   it('quotes identifiers and rejects empty role names', () => {
     expect(quoteIdentifier('app"role')).toBe('"app""role"');
     expect(() => quoteIdentifier('')).toThrow('identifier is required');
@@ -182,6 +193,8 @@ describe('PostgreSQL runtime role gate', () => {
     const statements = query.mock.calls.map(([sql]) => String(sql));
     expect(statements).toContain('GRANT SELECT, UPDATE ON TABLE public."matches" TO "z_retention"');
     expect(statements).toContain('GRANT SELECT, DELETE ON TABLE public."chat_message_translations" TO "z_retention"');
+    expect(statements).toContain('GRANT SELECT ON TABLE public."deck_shares" TO "z_retention"');
+    expect(statements).toContain('GRANT SELECT, DELETE ON TABLE public."deck_share_reports" TO "z_retention"');
     expect(statements).toContain('GRANT INSERT, UPDATE ON TABLE public."retention_runs" TO "z_retention"');
     expect(statements).toContain(
       'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public."account_export_jobs" TO "z_api"',
@@ -226,6 +239,10 @@ describe('PostgreSQL runtime role gate', () => {
           /\b(?:INSERT|UPDATE|DELETE|TRUNCATE|REFERENCES|TRIGGER)\b/.test(statement),
       ),
     ).toBe(false);
+    expect(statements).toContain('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public."official_qa_items" TO "z_api"');
+    expect(statements).toContain(
+      'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public."official_qa_translations" TO "z_api"',
+    );
     expect(statements).toContain('GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO "z_backup"');
     expect(statements).not.toContain('GRANT USAGE ON SCHEMA public TO "z_monitor"');
     expect(statements).not.toContain('GRANT CONNECT ON DATABASE "zutomayo" TO "z_wal"');
@@ -387,11 +404,10 @@ describe('PostgreSQL runtime role gate', () => {
 
 describe('PostgreSQL role provisioning contract', () => {
   it('keeps the ACL allowlist aligned with the runtime schema list', () => {
-    expect(new Set(ALL_RELATIONS.filter((table) => table !== 'schema_migrations'))).toEqual(
-      new Set(REQUIRED_RUNTIME_TABLES),
-    );
+    const runtimeTables = [...REQUIRED_RUNTIME_TABLES, ...DECK_SHARING_RUNTIME_TABLES];
+    expect(new Set(ALL_RELATIONS.filter((table) => table !== 'schema_migrations'))).toEqual(new Set(runtimeTables));
     expect(new Set(APPLICATION_TABLES)).toEqual(
-      new Set(REQUIRED_RUNTIME_TABLES.filter((table) => !PROTECTED_SCHEMA_TABLES.includes(table))),
+      new Set(runtimeTables.filter((table) => !PROTECTED_SCHEMA_TABLES.includes(table))),
     );
   });
 

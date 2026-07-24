@@ -245,6 +245,8 @@ describe('account export retries and reaping', () => {
 
 describe('account export download audit lifecycle', () => {
   it('records download_started only for an owned ready and unexpired job', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-14T12:00:00.000Z'));
     const ready = {
       id: 'export-job-12345678',
       user_id: 'user-1',

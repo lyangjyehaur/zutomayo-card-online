@@ -14,7 +14,20 @@ const REQUIRED_RUNTIME_TABLES = Object.freeze([
   'cards',
   'card_texts_i18n',
   'card_official_errata',
+  'official_qa_items',
+  'official_qa_translations',
+  'card_official_errata_translations',
+  'official_rulings_sync_runs',
+  'official_rulings_releases',
+  'official_rulings_release_qa',
+  'official_rulings_release_errata',
+  'official_rulings_active_release',
+  'official_rule_documents',
+  'official_rule_sections',
+  'official_rule_section_translations',
+  'official_rule_active_versions',
   'game_config',
+  'service_integrations',
   'preset_decks',
   'admin_audit_log',
   'feedback_posts',
@@ -122,10 +135,153 @@ const REQUIRED_RUNTIME_COLUMNS = Object.freeze({
     'incorrect_text',
     'corrected_english_status',
     'corrected_english_source',
+    'reason_ja',
+    'replacement_policy_ja',
+    'usage_policy_ja',
+    'card_number',
+    'content_hash',
+    'content_version',
+    'publication_status',
+    'last_seen_at',
     'source_url',
     'updated_at',
   ],
+  official_qa_items: [
+    'id',
+    'number',
+    'published_at',
+    'question_ja',
+    'answer_ja',
+    'tags',
+    'related_card_ids',
+    'content_hash',
+    'content_version',
+    'publication_status',
+    'last_seen_at',
+  ],
+  official_qa_translations: [
+    'qa_id',
+    'content_version',
+    'locale',
+    'question_text',
+    'answer_text',
+    'status',
+    'reviewed_at',
+  ],
+  card_official_errata_translations: [
+    'errata_id',
+    'content_version',
+    'locale',
+    'incorrect_text',
+    'reason_text',
+    'replacement_policy_text',
+    'usage_policy_text',
+    'status',
+    'reviewed_at',
+  ],
+  official_rulings_sync_runs: [
+    'id',
+    'trigger_source',
+    'status',
+    'qa_local_count',
+    'qa_remote_count',
+    'errata_local_count',
+    'errata_remote_count',
+    'diff',
+    'error_text',
+    'requested_by_admin_user_id',
+    'started_at',
+    'finished_at',
+  ],
+  official_rulings_releases: [
+    'id',
+    'source_hash',
+    'translation_hash',
+    'card_dataset_hash',
+    'qa_count',
+    'errata_count',
+    'locale_count',
+    'locales',
+    'app_version',
+    'build_id',
+    'translation_source_generated_at',
+    'source_checked_at',
+    'status',
+    'activated_at',
+  ],
+  official_rulings_release_qa: [
+    'release_id',
+    'qa_id',
+    'content_version',
+    'content_hash',
+    'number',
+    'published_at',
+    'question_ja',
+    'answer_ja',
+    'tags',
+    'related_card_ids',
+    'source_url',
+    'last_seen_at',
+  ],
+  official_rulings_release_errata: [
+    'release_id',
+    'errata_id',
+    'content_version',
+    'content_hash',
+    'card_id',
+    'published_at',
+    'card_number',
+    'incorrect_text',
+    'corrected_japanese_text',
+    'reason_ja',
+    'replacement_policy_ja',
+    'usage_policy_ja',
+    'affects_name',
+    'affects_effect',
+    'source_url',
+    'last_seen_at',
+  ],
+  official_rulings_active_release: ['key', 'release_id', 'activated_at'],
+  official_rule_documents: [
+    'document_id',
+    'document_version',
+    'title_ja',
+    'summary_ja',
+    'published_at',
+    'source_url',
+    'source_sha256',
+    'source_page_count',
+    'content_hash',
+    'publication_status',
+    'source_checked_at',
+  ],
+  official_rule_sections: [
+    'document_id',
+    'document_version',
+    'section_id',
+    'section_number',
+    'parent_section_id',
+    'level',
+    'sort_order',
+    'page_start',
+    'page_end',
+    'title_ja',
+    'body_ja',
+    'content_hash',
+  ],
+  official_rule_section_translations: [
+    'document_id',
+    'document_version',
+    'section_id',
+    'locale',
+    'title_text',
+    'body_text',
+    'status',
+    'reviewed_at',
+  ],
+  official_rule_active_versions: ['document_id', 'document_version', 'activated_at'],
   game_config: ['key', 'value'],
+  service_integrations: ['key', 'config', 'secret_ciphertext', 'updated_at'],
   preset_decks: ['id', 'card_ids'],
   admin_audit_log: [
     'id',
@@ -794,6 +950,62 @@ const REQUIRED_RUNTIME_COLUMN_CONTRACTS = Object.freeze([
     udtName: 'text',
     nullable: false,
     defaultToken: "'official_japanese_errata_translation'",
+  },
+  {
+    tableName: 'card_official_errata',
+    columnName: 'reason_ja',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: "''",
+  },
+  {
+    tableName: 'card_official_errata',
+    columnName: 'replacement_policy_ja',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: "''",
+  },
+  {
+    tableName: 'card_official_errata',
+    columnName: 'usage_policy_ja',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: "''",
+  },
+  {
+    tableName: 'card_official_errata',
+    columnName: 'card_number',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: "''",
+  },
+  {
+    tableName: 'card_official_errata',
+    columnName: 'content_hash',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: "''",
+  },
+  {
+    tableName: 'card_official_errata',
+    columnName: 'content_version',
+    udtName: 'int4',
+    nullable: false,
+    defaultToken: '1',
+  },
+  {
+    tableName: 'card_official_errata',
+    columnName: 'publication_status',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: "'published'",
+  },
+  {
+    tableName: 'card_official_errata',
+    columnName: 'last_seen_at',
+    udtName: 'timestamptz',
+    nullable: false,
+    defaultToken: 'now()',
   },
   {
     tableName: 'card_official_errata',
@@ -1665,6 +1877,122 @@ const REQUIRED_PLATFORM_RUNTIME_INDEXES = Object.freeze(
   ),
 );
 
+const DECK_SHARING_RUNTIME_TABLES = Object.freeze([
+  'deck_shares',
+  'deck_share_likes',
+  'deck_share_copy_events',
+  'deck_share_reports',
+]);
+
+const DECK_SHARING_RUNTIME_COLUMNS = Object.freeze({
+  deck_shares: [
+    'id',
+    'owner_user_id',
+    'source_deck_id',
+    'name',
+    'card_ids',
+    'visibility',
+    'publication_status',
+    'moderation_status',
+    'published_rules_version',
+    'published_at',
+    'updated_at',
+    'unpublished_at',
+  ],
+  deck_share_likes: ['share_id', 'user_id', 'created_at'],
+  deck_share_copy_events: ['id', 'share_id', 'user_id', 'copied_deck_id', 'idempotency_key', 'created_at'],
+  deck_share_reports: ['id', 'share_id', 'reporter_user_id', 'reason', 'note', 'status', 'created_at', 'updated_at'],
+});
+
+const DECK_SHARING_RUNTIME_COLUMN_CONTRACTS = Object.freeze([
+  {
+    tableName: 'deck_shares',
+    columnName: 'card_ids',
+    udtName: 'jsonb',
+    nullable: false,
+    defaultToken: null,
+  },
+  {
+    tableName: 'deck_shares',
+    columnName: 'visibility',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: "'public'",
+  },
+  {
+    tableName: 'deck_shares',
+    columnName: 'publication_status',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: "'published'",
+  },
+  {
+    tableName: 'deck_shares',
+    columnName: 'moderation_status',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: "'visible'",
+  },
+]);
+
+const DECK_SHARING_RUNTIME_CONSTRAINTS = Object.freeze([
+  { tableName: 'deck_shares', constraintType: 'p', fragments: ['primary key (id)'] },
+  {
+    tableName: 'deck_shares',
+    constraintType: 'f',
+    fragments: ['foreign key (owner_user_id)', 'references users(id)', 'on delete cascade'],
+  },
+  {
+    tableName: 'deck_shares',
+    constraintType: 'f',
+    fragments: ['foreign key (source_deck_id)', 'references decks(id)', 'on delete set null'],
+  },
+  {
+    tableName: 'deck_shares',
+    constraintType: 'c',
+    fragments: ['public', 'unlisted'],
+  },
+  {
+    tableName: 'deck_shares',
+    constraintType: 'c',
+    fragments: ['published', 'unpublished'],
+  },
+  {
+    tableName: 'deck_shares',
+    constraintType: 'c',
+    fragments: ['visible', 'hidden', 'pending_review'],
+  },
+  { tableName: 'deck_share_likes', constraintType: 'p', fragments: ['primary key (share_id, user_id)'] },
+  {
+    tableName: 'deck_share_reports',
+    constraintType: 'c',
+    fragments: ['inappropriate_name', 'impersonation_or_harassment', 'spam', 'other'],
+  },
+]);
+
+const DECK_SHARING_RUNTIME_INDEXES = Object.freeze([
+  {
+    tableName: 'deck_shares',
+    indexName: 'uq_deck_shares_source_deck',
+    fragments: ['unique index', 'source_deck_id', 'source_deck_id is not null'],
+  },
+  {
+    tableName: 'deck_shares',
+    indexName: 'idx_deck_shares_public_lobby',
+    fragments: ['publication_status', 'moderation_status', 'visibility', 'updated_at', 'id'],
+  },
+  {
+    tableName: 'deck_share_copy_events',
+    indexName: 'uq_deck_share_copy_events_idempotency',
+    fragments: ['unique index', 'share_id', 'user_id', 'idempotency_key', 'idempotency_key is not null'],
+  },
+  {
+    tableName: 'deck_share_reports',
+    indexName: 'uq_deck_share_reports_active_reporter',
+    fragments: ['unique index', 'share_id', 'reporter_user_id', 'pending', 'reviewing'],
+  },
+]);
+
 function normalizeExpectedMigration(value) {
   const migration = String(value || '').trim();
   if (!/^\d{6,}_[a-z0-9_]+$/i.test(migration)) {
@@ -1861,15 +2189,25 @@ async function assertSchemaContracts({
   }
 }
 
-async function assertRuntimeSchema({ pool, expectedMigration, expectedChecksum }) {
+async function assertRuntimeSchema({ pool, expectedMigration, expectedChecksum, requireDeckSharing = false }) {
   const expected = await assertExpectedMigration({ pool, expectedMigration, expectedChecksum });
   await assertSchemaContracts({
     pool,
-    requiredTables: REQUIRED_RUNTIME_TABLES,
-    requiredColumns: REQUIRED_RUNTIME_COLUMNS,
-    requiredColumnContracts: REQUIRED_RUNTIME_COLUMN_CONTRACTS,
-    requiredConstraints: REQUIRED_RUNTIME_CONSTRAINTS,
-    requiredIndexes: REQUIRED_RUNTIME_INDEXES,
+    requiredTables: requireDeckSharing
+      ? [...REQUIRED_RUNTIME_TABLES, ...DECK_SHARING_RUNTIME_TABLES]
+      : REQUIRED_RUNTIME_TABLES,
+    requiredColumns: requireDeckSharing
+      ? { ...REQUIRED_RUNTIME_COLUMNS, ...DECK_SHARING_RUNTIME_COLUMNS }
+      : REQUIRED_RUNTIME_COLUMNS,
+    requiredColumnContracts: requireDeckSharing
+      ? [...REQUIRED_RUNTIME_COLUMN_CONTRACTS, ...DECK_SHARING_RUNTIME_COLUMN_CONTRACTS]
+      : REQUIRED_RUNTIME_COLUMN_CONTRACTS,
+    requiredConstraints: requireDeckSharing
+      ? [...REQUIRED_RUNTIME_CONSTRAINTS, ...DECK_SHARING_RUNTIME_CONSTRAINTS]
+      : REQUIRED_RUNTIME_CONSTRAINTS,
+    requiredIndexes: requireDeckSharing
+      ? [...REQUIRED_RUNTIME_INDEXES, ...DECK_SHARING_RUNTIME_INDEXES]
+      : REQUIRED_RUNTIME_INDEXES,
   });
   await assertNoPendingLegacyTombstones(pool);
   return expected;
@@ -1928,6 +2266,11 @@ module.exports = {
   REQUIRED_PLATFORM_RUNTIME_COLUMN_CONTRACTS,
   REQUIRED_PLATFORM_RUNTIME_CONSTRAINTS,
   REQUIRED_PLATFORM_RUNTIME_INDEXES,
+  DECK_SHARING_RUNTIME_TABLES,
+  DECK_SHARING_RUNTIME_COLUMNS,
+  DECK_SHARING_RUNTIME_COLUMN_CONTRACTS,
+  DECK_SHARING_RUNTIME_CONSTRAINTS,
+  DECK_SHARING_RUNTIME_INDEXES,
   REQUIRED_RUNTIME_TABLES,
   REQUIRED_RUNTIME_COLUMNS,
   REQUIRED_RUNTIME_COLUMN_CONTRACTS,

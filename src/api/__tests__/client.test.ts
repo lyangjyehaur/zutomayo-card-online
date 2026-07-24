@@ -73,3 +73,84 @@ describe('API client admin session refresh', () => {
     ]);
   });
 });
+
+describe('API client deck sharing contracts', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.unstubAllGlobals();
+  });
+
+  it('builds the public lobby query and encoded detail URL', async () => {
+    vi.stubGlobal('localStorage', memoryStorage());
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async () => new Response(JSON.stringify({ shares: [], nextCursor: null }))),
+    );
+
+    const { getDeckShare, listDeckShares } = await import('../client');
+    await listDeckShares({
+      sort: 'most-copied',
+      q: '炎 deck',
+      element: '炎',
+      cursor: 'cursor/value',
+      limit: 24,
+    });
+    await getDeckShare('ds_share/value');
+
+    const fetchMock = vi.mocked(fetch);
+    expect(fetchMock.mock.calls.map(([input]) => String(input))).toEqual([
+      '/api/deck-shares?sort=most-copied&q=%E7%82%8E+deck&element=%E7%82%8E&cursor=cursor%2Fvalue&limit=24',
+      '/api/deck-shares/ds_share%2Fvalue',
+    ]);
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ credentials: 'include' });
+  });
+
+  it('sends deck-share mutations with JSON bodies, credentials, and CSRF', async () => {
+    const localStorage = memoryStorage();
+    const document = {} as Document;
+    Object.defineProperty(document, 'cookie', { get: () => 'zutomayo_csrf=deck-share-csrf' });
+    const fetchMock = vi.fn().mockImplementation(async () => new Response('{}'));
+    vi.stubGlobal('document', document);
+    vi.stubGlobal('localStorage', localStorage);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { copyDeckShare, likeDeckShare, publishDeckShare, reportDeckShare } = await import('../client');
+    await publishDeckShare('d_source_1234', 'unlisted');
+    await copyDeckShare('ds_share_12345678', 'Copied deck', 'copy-key-1234');
+    await likeDeckShare('ds_share_12345678');
+    await reportDeckShare('ds_share_12345678', { reason: 'spam', note: 'Repeated entry' });
+
+    expect(fetchMock.mock.calls).toHaveLength(4);
+    expect(fetchMock.mock.calls.map(([input]) => String(input))).toEqual([
+      '/api/deck-shares',
+      '/api/deck-shares/ds_share_12345678/copy',
+      '/api/deck-shares/ds_share_12345678/like',
+      '/api/deck-shares/ds_share_12345678/reports',
+    ]);
+    expect(fetchMock.mock.calls.map(([, init]) => init)).toEqual([
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ deckId: 'd_source_1234', visibility: 'unlisted' }),
+        credentials: 'include',
+        headers: expect.objectContaining({ 'X-CSRF-Token': 'deck-share-csrf' }),
+      }),
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ name: 'Copied deck', idempotencyKey: 'copy-key-1234' }),
+        credentials: 'include',
+        headers: expect.objectContaining({ 'X-CSRF-Token': 'deck-share-csrf' }),
+      }),
+      expect.objectContaining({
+        method: 'PUT',
+        credentials: 'include',
+        headers: expect.objectContaining({ 'X-CSRF-Token': 'deck-share-csrf' }),
+      }),
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ reason: 'spam', note: 'Repeated entry' }),
+        credentials: 'include',
+        headers: expect.objectContaining({ 'X-CSRF-Token': 'deck-share-csrf' }),
+      }),
+    ]);
+  });
+});

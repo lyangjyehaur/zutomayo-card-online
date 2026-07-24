@@ -348,17 +348,15 @@ jobs:
             APP_VERSION=${{ steps.pkg.outputs.version }}
             APP_BUILD_ID=${{ needs.preflight.outputs.release_sha }}
             GAME_RULES_VERSION=${{ steps.pkg.outputs.version }}
+            VITE_CARD_DATASET_SHA256=${{ vars.VITE_CARD_DATASET_SHA256 }}
             SENTRY_URL=${{ secrets.SENTRY_URL }}
             SENTRY_ORG=${{ secrets.SENTRY_ORG }}
             SENTRY_PROJECT=${{ secrets.SENTRY_PROJECT }}
             VITE_SENTRY_DSN=${{ secrets.VITE_SENTRY_DSN }}
             VITE_SENTRY_TRACES_SAMPLE_RATE=${{ secrets.VITE_SENTRY_TRACES_SAMPLE_RATE }}
             VITE_UMAMI_WEBSITE_ID=${{ secrets.VITE_UMAMI_WEBSITE_ID }}
-            VITE_UMAMI_SCRIPT_URL=${{ secrets.VITE_UMAMI_SCRIPT_URL }}
-            VITE_UMAMI_HOST_URL=${{ secrets.VITE_UMAMI_HOST_URL }}
             VITE_UMAMI_TELEMETRY_SCRIPT_URL=${{ secrets.VITE_UMAMI_TELEMETRY_SCRIPT_URL }}
             VITE_UMAMI_SECONDARY_WEBSITE_ID=${{ secrets.VITE_UMAMI_SECONDARY_WEBSITE_ID }}
-            VITE_UMAMI_SECONDARY_HOST_URL=${{ secrets.VITE_UMAMI_SECONDARY_HOST_URL }}
             VITE_IMGPROXY_BASE_URL=${{ secrets.VITE_IMGPROXY_BASE_URL }}
             # Production/staging use the same-origin gateway. Keeping this
             # empty makes the browser derive wss://<current-host> and prevents
@@ -582,6 +580,7 @@ jobs:
           set +e
           touch .env
           args=(
+            --profile beta
             --release-sha "$RELEASE_SHA"
             --release-manifest .release.env
             --evidence-dir artifacts/release-gate
@@ -697,3 +696,58 @@ jobs:
           chmod +x scripts/deploy-server4-canary.sh
           ./scripts/deploy-server4-canary.sh stage-slot --slot "$PRODUCTION_SLOT" --manifest .release.env --confirm
           echo 'Candidate slot staged and verified. This job does not switch gateway traffic or mutate OpenResty.'
+
+  authenticated-staging-evidence:
+    name: Authenticated staging evidence
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && inputs.environment == 'staging'
+    needs: [preflight, manual-release, deploy]
+    permissions:
+      contents: read
+    environment:
+      name: staging
+    timeout-minutes: 35
+    steps:
+      - name: Checkout exact release candidate
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: ${{ needs.preflight.outputs.release_sha }}
+          fetch-depth: 0
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies and Chromium
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Download verified release manifest
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: manual-release-manifest-${{ needs.preflight.outputs.release_sha }}
+          path: .
+      - name: Run five consecutive authenticated journeys
+        env:
+          E2E_BASE_URL: ${{ vars.STAGING_E2E_BASE_URL }}
+          E2E_API_URL: ${{ vars.STAGING_E2E_API_URL }}
+          E2E_PLATFORM_URL: ${{ vars.STAGING_E2E_PLATFORM_URL }}
+          E2E_AUTH_PASSWORD: ${{ secrets.STAGING_E2E_AUTH_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$E2E_BASE_URL" || { echo 'STAGING_E2E_BASE_URL is required' >&2; exit 1; }
+          test -n "$E2E_API_URL" || { echo 'STAGING_E2E_API_URL is required' >&2; exit 1; }
+          test -n "$E2E_PLATFORM_URL" || { echo 'STAGING_E2E_PLATFORM_URL is required' >&2; exit 1; }
+          set -a
+          source .release.env
+          set +a
+          export RELEASE_ENVIRONMENT=staging
+          npm run e2e:authenticated-staging -- --output .release-evidence/staging/authenticated-e2e.json
+      - name: Upload hashed authenticated evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: authenticated-staging-evidence-${{ needs.preflight.outputs.release_sha }}
+          path: .release-evidence/
+          if-no-files-found: error
+          retention-days: 30

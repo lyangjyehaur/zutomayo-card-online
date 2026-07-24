@@ -2,6 +2,97 @@
 
 本檔案記錄 ZUTOMAYO CARD Online 的所有顯著變更，格式依循 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/)，版本編號依循 [Semantic Versioning](https://semver.org/lang/zh-TW/)。
 
+## [Unreleased]
+
+## [0.2.3] - 2026-07-22
+
+官方規則與對局體驗更新：加入 Grand Rules／基本 Floor Rules 五語閱讀頁與原子發布流程，補完整 AI 結算操作、對戰記錄及首訪導覽，並修復分析代理、晝側操作和牌組建立問題。
+
+### Added
+
+- **官方規則文件**：新增 Grand Rules 與基本 Floor Rules 頁面、章節目錄、全文搜尋、來源頁碼、日文原文對照、官方 PDF 指紋與六語介面。
+- **規則文件 PostgreSQL 發布**：以版本化文件、段落、五語翻譯與 active pointer 保存內容；Server4 部署會驗證官方索引、PDF SHA-256、術語與翻譯完整性後原子啟用。
+- **結算對戰記錄**：對局結束後可直接展開本場 action log，查看卡牌、HP、Chronos 與效果處理明細。
+- **首訪教學入口**：Welcome 提示除牌組編輯器外，新增直接前往新手教學的六語入口。
+
+### Changed
+
+- **AI 賽後流程**：結算頁提供再戰、調整牌組與難度、返回大廳三個明確去向；再戰以新的本機對局 instance 啟動，不再重新整理整個頁面。
+- **AI 牌組傳遞**：本地與帳號牌組改以實際卡牌 ID 傳入 AI 對局，使再戰保留原先選擇的完整牌組內容。
+- **規則導覽與離線快取**：規則資料庫導覽擴充為 Grand Rules、基本 Floor Rules、Q&A 與勘誤，公開規則文件 API 納入 PWA `NetworkFirst` 快取。
+
+### Fixed
+
+- **Umami 同源代理**：前端改由 game service 的 `/analytics` 固定端點載入腳本及上報事件，上游地址改為 runtime `UMAMI_UPSTREAM_URL`，避免第三方腳本被 CSP 阻擋，並使更換分析服務時無須重建前端。
+- **Umami 訪客識別**：同源代理以包含 Cloudflare CIDR 的可信代理鏈解析訪客 IP，寫入 Umami 官方事件欄位並覆蓋客戶端偽造值，避免上游 CDN／反向代理將所有訪客誤判為 Server4。
+- **晝側操作辨識度**：出牌與檢視按鈕改用玩家陣營感知配色，確保在晝側淺色戰場上仍有清楚的主次層級、文字對比與鍵盤焦點。
+- **新牌組建立**：修復登入後建立空白牌組會立刻被第一副 Server 牌組覆蓋的問題，並加入明確的建立成功提示。
+- **規則文件部署映像**：補齊 migration 映像中的 Grand Rules／Floor Rules 發布器，並加入 Docker runtime contract 測試，避免規則發布閘門因缺少執行檔而中止。
+
+## [0.2.2] - 2026-07-21
+
+公開測試內容擴充版本：加入卡組分享、官方 Q&A／勘誤資料庫與完整多語閱讀流程，同時完成教學、卡圖交付、PWA 與 CI 穩定性修正。
+
+### Added
+
+- **卡組分享大廳**：支援發布、更新、取消發布、公開／不公開連結、搜尋篩選、按讚、複製、檢舉與管理隱藏／恢復。
+- **官方裁定資料庫**：將官方日文 Q&A 與勘誤直接同步至 PostgreSQL，提供清單／詳情 API、六語頁面、來源回退與內容版本控制。
+- **官方裁定發布閘門**：以單一 PostgreSQL transaction 驗證即時官方來源、卡牌資料集與五語靜態翻譯，保存 release manifest／快照並原子切換 active pointer。
+- **裁定卡名一致性**：Q&A 翻譯中的卡牌名稱改由 PostgreSQL 已複核卡名解析；provider、人工發布與 Server4 release gate 均拒絕自行重譯或缺少 canonical 卡名的內容。
+- **裁定五語複核**：74 條 Q&A 的繁中、簡中、粵語、英語與韓語正文改按完整問答語境重寫，移除逐句直譯、反義條件、簡繁混用與不自然遊戲用語。
+- **勘誤五語複核**：12 條勘誤的錯誤文本、訂正原因、換卡政策與使用政策依完整語境重寫，並重新校對 10 張效果勘誤卡的繁中、簡中、粵語及韓語 canonical 效果文本。
+- **規則術語字典**：統一 UI、教學、卡牌效果、Q&A 與勘誤用詞；完整覆蓋卡面標記、卡種、區域、屬性、Q&A 標籤、對戰流程、規則動作與勝負狀態，保留 `Power Cost`、`SEND TO POWER` 等官方標記，並統一韓語 `크로노스` 譯名。
+- **官方裁定管理**：新增翻譯覆蓋率、人工校訂、來源差異檢查、audit log、Prometheus 指標與每日唯讀來源排程。
+- **教學章節系統**：新增章節 hub、戰場預覽、卡牌元素素材與更完整的六語教學內容。
+- **翻譯設定管理**：新增共用翻譯 provider 設定、加密保存與管理介面，供官方裁定、公告與聊天共用。
+
+### Changed
+
+- **資料來源政策**：PostgreSQL 成為卡牌文本與官方裁定的唯一 runtime 來源；原始／翻譯 JSON 不再追蹤或打包進 Docker image。
+- **卡圖交付**：玩家端卡圖統一經同源 imgproxy 與尺寸化 `srcset` 載入，PWA 不再直接快取原始卡圖來源。
+- **公開測試體驗**：改善首頁、法律頁、牌組頁、教學、手機戰場、字體與 PWA 更新流程。
+- **首頁資訊架構**：將線上對戰、AI 與教學提升為開始入口，公告改為 broadcast strip，牌組、分享、規則庫、排行榜、紀錄與社群收斂為第二層頻道；背景卡圖加入預載、緩慢縮小與交叉淡化輪播。
+- **分享大廳體驗**：以手機一欄至寬螢幕四欄的等高網格呈現牌組，保留代表卡、元素、作者與互動統計，同時提高大量牌組的首屏資訊密度；登入玩家可直接選擇帳號牌組並發布，本機空資料庫則提供四副僅限開發環境的預覽牌組。
+- **牌組編輯器操作**：重新整理手機版名稱、同步、分享與儲存控制；分享入口在頁首及牌組抽屜保持可達，尚未儲存到帳號或存在未儲存變更時改為顯示明確提示。
+- **規則資料庫體驗**：Q&A 改為官方標籤計數、排序與分批載入的可掃讀清單；勘誤新增卡名／編號全文搜尋、修正範圍與卡包篩選，並在列表直接呈現修正前後差異。四個詳情與清單頁同步改善手機篩選、返回條件保留、原文核對與修正文字複製。
+- **測試覆蓋**：加入卡組分享、官方裁定、PWA 離線、可訪問性與管理流程 E2E，並以固定無效果卡牌穩定線上測試；發布前響應式矩陣擴大至 14 個主要頁面、12 種桌面／平板／手機尺寸。
+
+### Fixed
+
+- **線上流程**：修復對局同步、超時阻塞、教學隨機卡牌效果與跨服務狀態轉移問題。
+- **無障礙與版面**：修復官方規則文字對比、核心按鈕對比、手機捲動、卡圖尺寸與中文字體顯示。
+- **Q&A 分類篩選**：將中韓文的卡種與戰鬥標籤完整本地化，並改用穩定官方標籤 ID，避免切換語言後篩選結果清空。
+- **線上大廳圖標**：修復匿名名稱、聊天室與好友操作的固定尺寸按鈕因 padding 擠壓而令 SVG 圖標縮至不可見，並統一改用共用 `IconButton`。
+- **首訪操作流程**：手機線上大廳改為先選牌組再進入快速配對，AI 大廳選牌後依序帶到對手與難度設定；桌面版不做不必要的視窗跳動，並尊重減少動態效果設定。
+- **空狀態與教學**：修復實戰教學操作提示正文在手機被壓縮、返回步驟後 tooltip 遮擋確認鍵、空白對戰紀錄仍顯示無效清除／分頁、社群與個人頁未登入時缺少直接登入入口。
+- **行動觸控區**：牌組勘誤入口、分享／Q&A 排序、勘誤卡包與管理篩選統一至少 44px；管理資料表在 1024px 改用可掃讀資料卡；修正 Battle Visual QA fixture 與正式教學劇本卡牌不一致。
+- **排行榜入口**：恢復 `/leaderboard` 實際頁面路由，避免首頁 CH.06 點擊後無提示返回首頁。
+- **部署相容**：保留卡牌文本回滾相容，並讓 migration、seed、API 與 PWA build 對齊 `0.2.2` schema。
+- **Server4 部署**：自動解析最新 migration，透過 stdin 傳入未追蹤翻譯來源；官方內容不完整、過期或與部署 build 不一致時不啟動新版服務。
+
+## [0.2.1] - 2026-07-18
+
+Public Beta 生產強化版本：完成資料庫、權限、發布證據與營運閘門，將卡牌文本遷移至 PostgreSQL，並補強線上社群與管理能力。
+
+### Added
+
+- **發布與營運閘門**：新增 schema checksum、卡牌資料集、staging journey、備份／還原、alert delivery 與 release evidence 驗證。
+- **PostgreSQL 權限矩陣**：拆分 migration、game、API、platform、retention、monitor 與 backup 角色，並加入角色 smoke tests。
+- **卡牌文本維護**：新增官方日英文本、勘誤資料、多語人工複核與管理後台維護流程。
+- **社群能力**：新增公告、訪客對局聊天與管理員帳號角色維護。
+
+### Changed
+
+- **權威資料來源**：停止追蹤原始卡牌 JSON，卡牌、翻譯、勘誤與設定改由 PostgreSQL schema／匯入流程管理。
+- **生產安全**：強制 TLS PostgreSQL／Redis、最小權限角色、immutable image manifest 與 migration checksum。
+- **部署流程**：server4 更新、回滾、資料保留與帳號刪除流程改為 fail-closed 並保存可驗證證據。
+
+### Fixed
+
+- **線上對局**：修復 WebSocket 傳輸、權威同步、選牌互動、逾時恢復與跨服務一致性。
+- **CI／E2E**：修復 Compose 隔離、固定卡牌 seed、服務啟動順序、容器漏洞掃描與失敗診斷。
+- **管理與安全**：修復後台 CSRF session 續期、卡牌 migration 相容與容器檔案權限。
+
 ## [0.2.0] - 2026-07-12
 
 多人平台版本：保留 `boardgame.io` 作為權威對局引擎，新增 Colyseus 平台殼與 ChatService 持久化社交能力，並全面補強教學、戰場回饋、逾時恢復與結算可靠性。
@@ -97,6 +188,9 @@ Logto OAuth 整合與生產強化（phase 1/2）：導入帳號體系、錯誤�
 - **PWA**：可安裝至桌面/手機，支援離線可用與手動檢查更新。
 - **i18n**：支援 6 種語言（含 250 張效果卡翻譯）。
 
+[0.2.3]: https://github.com/lyangjyehaur/zutomayo-card-online/releases/tag/v0.2.3
+[0.2.2]: https://github.com/lyangjyehaur/zutomayo-card-online/releases/tag/v0.2.2
+[0.2.1]: https://github.com/lyangjyehaur/zutomayo-card-online/releases/tag/v0.2.1
 [0.2.0]: https://github.com/lyangjyehaur/zutomayo-card-online/releases/tag/v0.2.0
 [0.1.3]: https://github.com/lyangjyehaur/zutomayo-card-online/releases/tag/v0.1.3
 [0.1.2]: https://github.com/lyangjyehaur/zutomayo-card-online/releases/tag/v0.1.2

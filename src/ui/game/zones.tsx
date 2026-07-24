@@ -20,6 +20,7 @@ export interface SetZoneProps {
   state?: CardSlotState;
   onActivate?: () => void;
   onInspect?: (card: CardInstance) => void;
+  tutId?: string;
   animationZone?: string;
 }
 
@@ -32,6 +33,7 @@ export function SetZone({
   state = 'idle',
   onActivate,
   onInspect,
+  tutId,
   animationZone,
 }: SetZoneProps) {
   const visibleZoneName = slot === 'C' ? t('board.areaEnchant') : t('board.setZoneCompact' as never);
@@ -41,6 +43,7 @@ export function SetZone({
     <div
       className={`setzone setzone-${slot.toLowerCase()} setzone-${side}`}
       data-slot={slot}
+      data-tut={tutId}
       data-chronos-side={chronosSide}
       data-anim-zone={animationZone}
     >

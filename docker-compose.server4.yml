@@ -5,6 +5,8 @@ services:
     environment:
       - NODE_ENV=production
       - RELEASE_SHA=${RELEASE_SHA:?Set RELEASE_SHA from the verified release manifest}
+      - APP_VERSION=${APP_VERSION:?Set APP_VERSION from the verified release manifest}
+      - APP_BUILD_ID=${RELEASE_SHA:?Set RELEASE_SHA from the verified release manifest}
       - PG_HOST=postgresql
       - PG_PORT=5432
       - PG_USER=${PG_MIGRATION_USER:?Set PG_MIGRATION_USER in .env}
@@ -35,6 +37,8 @@ services:
       - CARD_HUMAN_REVIEWS_SOURCE=/run/card-data/card-english-human-reviews.json
       - CARD_ERRATA_SOURCE=/run/card-data/card-official-errata.json
       - CARD_OCR_OVERRIDES_SOURCE=/run/card-data/card-english-ocr-overrides.json
+      - OFFICIAL_RULINGS_TRANSLATIONS_FILE=/run/card-data/official-rulings-translations.json
+      - OFFICIAL_RULE_DOCUMENTS_FILE=/run/card-data/official-rule-documents-20260721.json
     networks:
       - default
       - 1panel-network
@@ -63,6 +67,7 @@ services:
       - APP_VERSION=${APP_VERSION:?Set APP_VERSION from the verified release manifest}
       - APP_BUILD_ID=${RELEASE_SHA:?Set RELEASE_SHA from the verified release manifest}
       - GAME_RULES_VERSION=${GAME_RULES_VERSION:?Set GAME_RULES_VERSION from the verified release manifest}
+      - UMAMI_UPSTREAM_URL=${UMAMI_UPSTREAM_URL:-}
       - PG_HOST=postgresql
       - PG_PORT=5432
       - PG_USER=${PG_GAME_USER:?Set PG_GAME_USER in .env}

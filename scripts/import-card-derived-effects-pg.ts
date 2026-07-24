@@ -16,7 +16,12 @@ const { assertPostgresExpectedRole, postgresConnectionString, postgresSslConfig 
   };
 
 const sourcePath = process.argv[2] || process.env.CARD_EFFECT_I18N_SOURCE || 'data/card-effects-i18n.json';
-const input = loadDerivedEffectsAuditInput(sourcePath);
+const input = loadDerivedEffectsAuditInput(
+  sourcePath,
+  process.env.CARD_ENGLISH_EXTRACTION_SOURCE || 'data/card-english-extraction.json',
+  process.env.CARD_OFFICIAL_ERRATA_SOURCE || 'data/card-official-errata.json',
+  process.env.CARD_DERIVED_EFFECTS_REVIEW_SOURCE || 'data/card-derived-effects-review.json',
+);
 const problems = auditDerivedEffects(input);
 if (problems.length > 0) {
   throw new Error(`Refusing derived-effect import:\n${problems.join('\n')}`);
@@ -88,6 +93,7 @@ async function main(): Promise<void> {
        WHERE lang = ANY($1::text[])
          AND card_id = ANY($2::text[])
          AND NULLIF(BTRIM(name_text), '') IS NOT NULL
+         AND review_status <> 'verified'
        ORDER BY card_id, lang`,
       [[...DERIVED_EFFECT_LANGS], effectCardIds],
     );
@@ -97,7 +103,7 @@ async function main(): Promise<void> {
         .map((row) => `${String(row.card_id)}/${String(row.lang)}`)
         .join(', ');
       throw new Error(
-        `Refusing import: review_status covers the whole card-text row, but unreviewed translated names exist (${examples})`,
+        `Refusing import: review_status covers the whole card-text row, but unverified translated names exist (${examples})`,
       );
     }
 

@@ -12,6 +12,12 @@
 
 後續每一項分開記錄四層證據：`code`、`automated test`、`staging evidence`、`production evidence`。只有必要層級全數完成才可勾選；舊版 [`release-review.md`](./release-review.md) 只作歷史快照，其中 auth、Feedback semantics、modal focus 與 E2E 等部分 finding 已有新實作，必須以當前分支重新跑視覺／service-backed E2E 後判定。
 
+## 2026-07-24 0.2.3 integration evidence
+
+- 已將 `master@bc3cb051` 的 0.2.3 正式規則文件、卡牌／規則內容發布、對局與介面修正整合進隔離 worktree；所有 merge conflict 已解決。卡牌與官方裁定原始 JSON 仍只從 `/run/card-data` 的私有唯讀掛載讀取，不由 Git、image 或 release artifact 攜帶。
+- 當前 merge tree 的 `npm run verify` 通過：199 個 test files、1636 tests、coverage、dependency patch、tracked-file format、資料／圖片／版本政策、release／ops config、ESLint、兩套 typecheck、i18n，以及 production PWA build。整合驗證同時修復舊原圖 PWA cache 回歸、migration release metadata 契約、hardening canary gate profile 與時間敏感帳號匯出 fixture。
+- 部署與官方內容聚焦測試另有 8 個 test files／137 tests 通過，release gate 25/25 通過；本次 merge commit 與 remote CI 尚未產生，因此 signed-image staging 與全部外部 evidence gates 仍維持 blocked。
+
 ## 2026-07-19 P0-P5 integration evidence
 
 - 已將本地 `master` 的 `13d60742` 卡牌多語契約同步進隔離 worktree，保留 immutable manifest、signed dataset、七映像與九角色 gate；current release schema 綁定更新為 `000036_harden_card_i18n_contract` 與 checksum `41115b0039694cd7eed955276d659b455e25f5a053dfdb13f815577b4a6045e9`。
@@ -143,7 +149,7 @@
 
 ## 最終驗收
 
-- [x] `npm run verify`：2026-07-19 P0-P5 integration tree 通過，Vitest 166 test files / 1447 tests / production-PWA build；先前 pushed hardening commit `8de8a86c` 的 GitHub CI run `29635089382` 四個 jobs 全部通過，本次 `codex/p0-p5-completion` 尚未推送，remote CI 仍待執行。
+- [x] `npm run verify`：2026-07-24 的 0.2.3 merge tree 通過，Vitest 199 test files / 1636 tests / coverage / production-PWA build；先前 pushed hardening commit `8de8a86c` 的 GitHub CI run `29635089382` 四個 jobs 全部通過，本次 `codex/p0-p5-completion` 尚未推送，remote CI 仍待執行。
 - [x] `npm run test:coverage`：166 test files / 1447 tests，repository coverage thresholds 通過。
 - [x] Compose-backed Chromium E2E：current-tree fresh images/volumes、migration/seed 後 40/40，含自然完成 authenticated 對局與獨立重新登入跨裝置 history。
 - [x] `npm run rule:audit`：422 cards／250 effect cards／267 effect lines，unsupported/partial/false-draw 全為 0。
@@ -155,7 +161,7 @@
 
 ## 單一 Release Gate
 
-使用 `npm run release:gate -- --evidence-dir artifacts/release` 執行集中式發布檢查。Gate 會逐項執行完整 `verify`、release/operational config、Compose render/role environment，以及 Docker runtime image contract；結果會寫入 `release-gate.json` 與 `release-gate.md`。
+使用 `npm run release:gate -- --evidence-dir artifacts/release` 執行 Public Beta 集中式發布檢查。Beta profile 只把正式卡牌資料、一次完整認證雙玩家旅程與備份還原列為外部 blocker；完整 chaos、load/soak、canary、告警、provider lifecycle、五次連續對戰與部署復原改由 `npm run release:gate:hardening` 驗證。兩種 profile 都會執行完整 `verify`、release/operational config、Compose render，以及 Docker runtime image contract，結果寫入 `release-gate.json` 與 `release-gate.md`。
 
 Gate 狀態嚴格區分：`passed` 代表所有必要檢查通過，`failed` 代表本機或設定檢查失敗，`blocked` 代表本機檢查沒有失敗但仍缺 staging-only 證據。缺證據永遠不會被當成通過；沒有 `--staging-evidence-dir` 時 staging gate 必然是 `blocked`。若有 staging 證據，放在該目錄的 `staging/` 下，且每份 JSON 必須包含 `schemaVersion: 1`、對應的 `evidenceType`、`status: "passed"`、`environment: "staging"`、與目前（或 `--release-sha` 指定）release 相同的 40 字元 `releaseSha`、七個完整 `game/api/platform/migrate/retention/gateway/ops` `@sha256` image digest，以及 `startedAt`、`finishedAt`、正確相等於兩者差值的 `durationMs` 與過去 168 小時內且不得為未來時間的 `checkedAt`。每種 evidence 還必須提供該 gate 要求的數值 `metrics`、數值 `thresholds` 與全數為 true 的 `results`；Gate 會實際比較 metric/threshold。
 

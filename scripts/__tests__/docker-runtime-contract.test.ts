@@ -80,6 +80,25 @@ describe('game runtime image contract', () => {
     expect(dockerfile).toContain('RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force');
   });
 
+  it('keeps the Umami upstream address out of the frontend bundle', () => {
+    const dockerfile = readFileSync(resolve(root, 'Dockerfile'), 'utf8');
+    const compose = readFileSync(resolve(root, 'docker-compose.server4.yml'), 'utf8');
+    const analytics = readFileSync(resolve(root, 'src/analytics.ts'), 'utf8');
+
+    expect(compose).toContain('UMAMI_UPSTREAM_URL=${UMAMI_UPSTREAM_URL:-}');
+    expect(analytics).toContain("const SCRIPT_URL = '/analytics/script.js'");
+    expect(analytics).toContain("const HOST_URL = '/analytics'");
+    for (const removedBuildVariable of [
+      'VITE_UMAMI_SCRIPT_URL',
+      'VITE_UMAMI_HOST_URL',
+      'VITE_UMAMI_SECONDARY_HOST_URL',
+    ]) {
+      expect(dockerfile).not.toContain(removedBuildVariable);
+      expect(compose).not.toContain(removedBuildVariable);
+      expect(analytics).not.toContain(removedBuildVariable);
+    }
+  });
+
   it('ships the server-owned deck helper despite the API source ignore rule', () => {
     const dockerfile = readFileSync(resolve(root, 'Dockerfile'), 'utf8');
     const dockerignore = readFileSync(resolve(root, '.dockerignore'), 'utf8');
@@ -90,7 +109,7 @@ describe('game runtime image contract', () => {
   it('keeps the account-locked refresh session helper in API build contexts', () => {
     const apiDockerfile = readFileSync(resolve(root, 'api/Dockerfile'), 'utf8');
     const apiDockerignore = readFileSync(resolve(root, 'api/.dockerignore'), 'utf8');
-    expect(apiDockerfile).toContain('COPY ./*.cjs ./');
+    expect(apiDockerfile).toContain('COPY api/*.cjs ./');
     expect(apiDockerignore).not.toContain('*.cjs');
     expect(readFileSync(resolve(root, 'api/authSessionService.cjs'), 'utf8')).toContain('issueAccountRefreshToken');
   });
@@ -99,6 +118,18 @@ describe('game runtime image contract', () => {
     const dockerfile = readFileSync(resolve(root, 'Dockerfile.migrate'), 'utf8');
     const dockerignore = readFileSync(resolve(root, '.dockerignore'), 'utf8');
     expect(dockerfile).toContain('COPY api/schemaGate.cjs ./api/schemaGate.cjs');
+    expect(dockerfile).toContain('COPY api/deckSharingConfig.cjs ./api/deckSharingConfig.cjs');
+    expect(dockerignore).toContain('!api/deckSharingConfig.cjs');
+    expect(dockerfile).not.toContain('official-rulings-translations.json');
+    expect(dockerfile).not.toContain('COPY qa.json');
+    expect(dockerfile).toContain('COPY scripts/release-official-content.sh');
+    expect(dockerfile).toContain('COPY scripts/release-official-rulings.ts');
+    expect(dockerfile).toContain('COPY scripts/release-official-rule-documents.ts');
+    expect(dockerfile).toContain('COPY scripts/officialRulingsData.ts');
+    expect(dockerfile).toContain('COPY scripts/cardDerivedEffects.ts');
+    expect(dockerfile).toContain('COPY scripts/import-card-derived-effects-pg.ts');
+    expect(dockerfile).toContain('COPY src/rulesTerminology.ts');
+    expect(dockerignore).toContain('data/official-rulings-*.json');
     expect(dockerfile).toContain('COPY api/runtimeSecurityConfig.cjs ./api/runtimeSecurityConfig.cjs');
     expect(dockerignore).toContain('!api/runtimeSecurityConfig.cjs');
     expect(dockerfile).toContain('COPY api/relationshipEvents.cjs ./api/relationshipEvents.cjs');
@@ -228,5 +259,6 @@ describe('API runtime image contract', () => {
     const chmod = 'RUN chmod 0444 package.json package-lock.json ./*.cjs';
     expect(dockerfile).toContain(chmod);
     expect(dockerfile.indexOf(chmod)).toBeLessThan(dockerfile.indexOf('USER node'));
+    expect(dockerfile).not.toContain('COPY qa.json');
   });
 });

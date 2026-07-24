@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { Menu, X } from 'lucide-react';
-import { BrowserRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { identifyAnalytics, trackPageView } from './analytics';
 import { formatAnonymousDisplayName } from './anonymousIdentity';
 import { getDecks, getProfile, isLoggedIn, reserveDeck, type DeckResponse } from './api/client';
@@ -11,15 +11,10 @@ import { PwaStatusPrompt } from './components/PwaStatusPrompt';
 import { Sentry } from './sentry';
 import { Button, IconButton } from './ui';
 import { hasStoredCustomDeck } from './game/cards/customDeck';
+import { getGameConfig as getLoadedGameConfig } from './game/cards/loader';
 import type { ZutomayoSetupData } from './game/types';
 import type { AIDifficulty } from './game/ai';
-import {
-  LobbyPage,
-  aiOpponentDeckName,
-  onlineDeckName,
-  selectedDeckName,
-  serverDeckIdFromOption,
-} from './pages/LobbyPage';
+import { LobbyPage, aiOpponentDeckName, onlineDeckName, serverDeckIdFromOption } from './pages/LobbyPage';
 import { t, translate, useLocale, type TranslationKey } from './i18n';
 import {
   clearStoredOnlineSession,
@@ -45,8 +40,17 @@ const TutorialGamePage = lazy(() =>
 const DeckEditorPage = lazy(() =>
   import('./pages/DeckEditorPage').then((module) => ({ default: module.DeckEditorPage })),
 );
+const DeckShareLobbyPage = lazy(() =>
+  import('./pages/DeckShareLobbyPage').then((module) => ({ default: module.DeckShareLobbyPage })),
+);
+const DeckShareDetailPage = lazy(() =>
+  import('./pages/DeckShareDetailPage').then((module) => ({ default: module.DeckShareDetailPage })),
+);
 const MatchHistoryPage = lazy(() =>
   import('./pages/MatchHistoryPage').then((module) => ({ default: module.MatchHistoryPage })),
+);
+const LeaderboardPage = lazy(() =>
+  import('./pages/LeaderboardPage').then((module) => ({ default: module.LeaderboardPage })),
 );
 const OnlineGamePage = lazy(() =>
   import('./pages/OnlineGamePage').then((module) => ({ default: module.OnlineGamePage })),
@@ -55,11 +59,24 @@ const OnlineLobbyPage = lazy(() =>
   import('./pages/OnlineLobbyPage').then((module) => ({ default: module.OnlineLobbyPage })),
 );
 const CommunityPage = lazy(() => import('./pages/CommunityPage').then((module) => ({ default: module.CommunityPage })));
-const LeaderboardPage = lazy(() =>
-  import('./pages/LeaderboardPage').then((module) => ({ default: module.LeaderboardPage })),
-);
 const FeedbackPage = lazy(() => import('./pages/FeedbackPage').then((module) => ({ default: module.FeedbackPage })));
 const ProfilePage = lazy(() => import('./pages/ProfilePage').then((module) => ({ default: module.ProfilePage })));
+const LegalPage = lazy(() => import('./pages/LegalPage').then((module) => ({ default: module.LegalPage })));
+const OfficialQaPage = lazy(() =>
+  import('./pages/OfficialQaPage').then((module) => ({ default: module.OfficialQaPage })),
+);
+const OfficialQaDetailPage = lazy(() =>
+  import('./pages/OfficialQaDetailPage').then((module) => ({ default: module.OfficialQaDetailPage })),
+);
+const OfficialErrataPage = lazy(() =>
+  import('./pages/OfficialErrataPage').then((module) => ({ default: module.OfficialErrataPage })),
+);
+const OfficialErrataDetailPage = lazy(() =>
+  import('./pages/OfficialErrataDetailPage').then((module) => ({ default: module.OfficialErrataDetailPage })),
+);
+const OfficialRuleDocumentPage = lazy(() =>
+  import('./pages/OfficialRuleDocumentPage').then((module) => ({ default: module.OfficialRuleDocumentPage })),
+);
 const VerifyEmailPage = lazy(() =>
   import('./pages/AccountActionPage').then((module) => ({ default: module.VerifyEmailPage })),
 );
@@ -90,11 +107,15 @@ function isFullscreenRoute(pathname: string): boolean {
     pathname === '/community' ||
     pathname === '/ai' ||
     pathname === '/deck-builder' ||
+    pathname === '/deck-shares' ||
+    pathname.startsWith('/deck-shares/') ||
     pathname === '/feedback' ||
     pathname === '/tutorial' ||
     pathname === '/history' ||
     pathname === '/leaderboard' ||
     pathname === '/profile' ||
+    pathname.startsWith('/rules') ||
+    pathname.startsWith('/legal') ||
     pathname === '/verify-email' ||
     pathname === '/forgot-password' ||
     pathname === '/reset-password'
@@ -189,7 +210,7 @@ async function joinMatch(
   };
 }
 
-function NavBar() {
+function NavBar({ deckSharingEnabled }: { deckSharingEnabled: boolean }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [open, setOpen] = useState(false);
@@ -205,6 +226,7 @@ function NavBar() {
     { path: '/community', label: t('community.title') },
     { path: '/ai', label: t('lobby.aiBattle') },
     { path: '/deck-builder', label: t('nav.deckBuilder') },
+    ...(deckSharingEnabled ? [{ path: '/deck-shares', label: t('deckShare.lobbyTitle') }] : []),
     { path: '/feedback', label: t('nav.feedback') },
     { path: '/profile', label: t('nav.profile') },
     { path: '/tutorial', label: t('nav.tutorial') },
@@ -430,6 +452,7 @@ function RouterShell() {
   const [appResourcesReady, setAppResourcesReady] = useState(false);
   // 卡牌資料載入狀態；失敗時保留可恢復的錯誤狀態，絕不把空卡池當成 ready。
   const [cardResourceState, setCardResourceState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [deckSharingEnabled, setDeckSharingEnabled] = useState(false);
   // 預設不選中任何牌組，玩家每次必須主動選擇才能開始遊戲。
   const [deck0Name, setDeck0Name] = useState('');
   const [deck1Name, setDeck1Name] = useState('');
@@ -518,6 +541,7 @@ function RouterShell() {
         withBootTimeout(waitForFonts(), 2500),
       ]);
       if (cancelled) return;
+      setDeckSharingEnabled(getLoadedGameConfig().deck_sharing_enabled === true);
       setAppResourcesReady(true);
     };
     void boot().catch(() => {
@@ -618,7 +642,7 @@ function RouterShell() {
     clearOnlineSession();
   };
 
-  const deck0 = selectedDeckName(deck0Name, customDeckAvailable);
+  const aiPlayerDeck = onlineDeckName(0, deck0Name, serverDecks);
   const deck1 = aiOpponentDeckName(deck1Name);
   const cardsReady = cardResourceState === 'ready';
   const cardsLoadError = cardResourceState === 'error';
@@ -629,11 +653,14 @@ function RouterShell() {
 
   return (
     <div className={`app-shell ${hideNav ? 'play-shell' : 'has-nav'}`} data-locale={locale}>
-      {!hideNav && <NavBar />}
+      {!hideNav && <NavBar deckSharingEnabled={deckSharingEnabled} />}
       <div className="route-content">
         <Suspense fallback={<RouteFallback />}>
           <Routes>
-            <Route path="/" element={<LobbyPage onAuthChanged={refreshServerDecks} />} />
+            <Route
+              path="/"
+              element={<LobbyPage onAuthChanged={refreshServerDecks} deckSharingEnabled={deckSharingEnabled} />}
+            />
             <Route path="/community" element={<CommunityPage onAuthChanged={refreshServerDecks} />} />
             <Route
               path="/online"
@@ -674,7 +701,8 @@ function RouterShell() {
               path="/play/ai"
               element={
                 <AIGamePage
-                  deck0Name={deck0}
+                  deck0Name={aiPlayerDeck.deck0Name}
+                  deck0Ids={aiPlayerDeck.deck0Ids}
                   deck1Name={deck1}
                   cardsReady={cardsReady}
                   cardsLoadError={cardsLoadError}
@@ -707,6 +735,7 @@ function RouterShell() {
               element={
                 <DeckEditorPage
                   serverDecks={serverDecks}
+                  deckSharingEnabled={deckSharingEnabled}
                   onServerDecksLoaded={setServerDecks}
                   onDeckSaved={(deck) => {
                     setCustomDeckAvailable(hasStoredCustomDeck());
@@ -718,10 +747,34 @@ function RouterShell() {
                 />
               }
             />
+            {deckSharingEnabled && <Route path="/deck-shares" element={<DeckShareLobbyPage />} />}
+            {deckSharingEnabled && (
+              <Route
+                path="/deck-shares/:shareId"
+                element={
+                  <DeckShareDetailPage
+                    onServerDeckCopied={(deck) =>
+                      setServerDecks((current) => [deck, ...current.filter((item) => item.id !== deck.id)])
+                    }
+                  />
+                }
+              />
+            )}
             <Route path="/history" element={<MatchHistoryPage />} />
             <Route path="/leaderboard" element={<LeaderboardPage />} />
             <Route path="/feedback" element={<FeedbackPage />} />
             <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/rules" element={<Navigate to="/rules/grand" replace />} />
+            <Route path="/rules/qa" element={<OfficialQaPage />} />
+            <Route path="/rules/qa/:number" element={<OfficialQaDetailPage />} />
+            <Route path="/rules/errata" element={<OfficialErrataPage />} />
+            <Route path="/rules/errata/:errataId" element={<OfficialErrataDetailPage />} />
+            <Route path="/rules/grand" element={<OfficialRuleDocumentPage documentId="grand" />} />
+            <Route path="/rules/floor" element={<OfficialRuleDocumentPage documentId="floor" />} />
+            <Route path="/legal" element={<LegalPage documentId="overview" />} />
+            <Route path="/legal/privacy" element={<LegalPage documentId="privacy" />} />
+            <Route path="/legal/terms" element={<LegalPage documentId="terms" />} />
+            <Route path="/legal/contact" element={<LegalPage documentId="contact" />} />
             <Route path="/verify-email" element={<VerifyEmailPage />} />
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />

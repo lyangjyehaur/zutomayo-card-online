@@ -130,6 +130,18 @@ export async function registerAuthenticatedOnlineAccount(
     throw new Error('Registration did not return a complete authenticated account');
   }
 
+  // Registration proves account creation; establish the returning-player path
+  // before creating the server-side deck used by the authenticated journey.
+  await context.clearCookies();
+  const loginResponse = await context.request.post('/api/login', {
+    data: { email, password: authenticatedTestPassword() },
+  });
+  if (!loginResponse.ok()) throw await responseError(loginResponse);
+  const loginBody = (await loginResponse.json()) as { user?: Partial<AuthenticatedOnlineAccount> };
+  if (loginBody.user?.id !== body.user.id) {
+    throw new Error('Login did not restore the account created for authenticated E2E');
+  }
+
   await configureAuthenticatedBrowserContext(context);
 
   const cardsResponse = await context.request.get('/api/cards');
@@ -201,6 +213,37 @@ export async function loginAuthenticatedOnlineAccount(
   const body = (await response.json()) as { user?: { id?: unknown } };
   if (body.user?.id !== account.id) throw new Error('Independent authenticated login returned the wrong account');
   await configureAuthenticatedBrowserContext(context);
+}
+
+export async function assertSecureAuthenticatedCookies(context: BrowserContext, baseURL: string): Promise<void> {
+  const cookies = await context.cookies();
+  const expectedHost = new URL(baseURL).hostname;
+  const matchesExpectedHost = (domain: string) => {
+    const normalized = domain.replace(/^\./, '');
+    return expectedHost === normalized || expectedHost.endsWith(`.${normalized}`);
+  };
+  const session = cookies.find((cookie) => cookie.name === 'zutomayo_session');
+  const refresh = cookies.find((cookie) => cookie.name === 'zutomayo_refresh');
+  const csrf = cookies.find((cookie) => cookie.name === 'zutomayo_csrf');
+  const failures: string[] = [];
+  if (!session) failures.push('zutomayo_session is missing');
+  else {
+    if (!matchesExpectedHost(session.domain)) failures.push('zutomayo_session domain is invalid');
+    if (!session.httpOnly) failures.push('zutomayo_session is not HttpOnly');
+    if (!session.secure) failures.push('zutomayo_session is not Secure');
+  }
+  if (!refresh) failures.push('zutomayo_refresh is missing');
+  else {
+    if (!matchesExpectedHost(refresh.domain)) failures.push('zutomayo_refresh domain is invalid');
+    if (!refresh.httpOnly) failures.push('zutomayo_refresh is not HttpOnly');
+    if (!refresh.secure) failures.push('zutomayo_refresh is not Secure');
+  }
+  if (!csrf) failures.push('zutomayo_csrf is missing');
+  else {
+    if (!matchesExpectedHost(csrf.domain)) failures.push('zutomayo_csrf domain is invalid');
+    if (!csrf.secure) failures.push('zutomayo_csrf is not Secure');
+  }
+  if (failures.length > 0) throw new Error(`Authenticated cookie gate failed: ${failures.join('; ')}`);
 }
 
 export async function establishAuthenticatedFriendship(

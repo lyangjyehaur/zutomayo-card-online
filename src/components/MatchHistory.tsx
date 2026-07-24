@@ -511,21 +511,22 @@ export function MatchHistory({ initialChatSourceMatchId }: MatchHistoryProps) {
         title={t('history.title')}
         backTo="/"
         actions={
-          <Button
-            className="min-h-11 whitespace-nowrap px-3"
-            variant="danger"
-            size="sm"
-            type="button"
-            disabled={localRecords.length === 0}
-            onClick={clearHistory}
-          >
-            {t('history.clear')}
-          </Button>
+          localRecords.length > 0 ? (
+            <Button
+              className="min-h-11 whitespace-nowrap px-3"
+              variant="danger"
+              size="sm"
+              type="button"
+              onClick={clearHistory}
+            >
+              {t('history.clear')}
+            </Button>
+          ) : undefined
         }
       />
       <main className="relative z-[var(--z-dropdown)] h-full overflow-y-auto px-4 pb-10 pt-20 md:pt-24">
         <div className="mx-auto flex w-full max-w-5xl flex-col gap-5">
-          <StatsGrid>
+          <StatsGrid className="grid-cols-2 md:grid-cols-4">
             <StatCard label={t('history.total')} value={stats.totalMatches} />
             <StatCard label={t('history.p0Wins')} value={stats.wins[0]} />
             <StatCard label={t('history.p1Wins')} value={stats.wins[1]} />
@@ -537,31 +538,33 @@ export function MatchHistory({ initialChatSourceMatchId }: MatchHistoryProps) {
               className="sm:flex-row sm:items-center sm:justify-between"
               primary={<h2>{t('history.title')}</h2>}
               actions={
-                <ActionBar mobileLayout="pagination">
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    type="button"
-                    className="!min-h-11 tracking-[var(--tracking-control)] xl:tracking-[var(--tracking-kicker)]"
-                    disabled={currentPage === 0}
-                    onClick={() => setPage((value) => Math.max(0, value - 1))}
-                  >
-                    {t('common.prev')}
-                  </Button>
-                  <span className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/50">
-                    {currentPage + 1}/{totalPages} {t('common.page')}
-                  </span>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    type="button"
-                    className="!min-h-11 tracking-[var(--tracking-control)] xl:tracking-[var(--tracking-kicker)]"
-                    disabled={currentPage >= totalPages - 1}
-                    onClick={() => setPage((value) => Math.min(totalPages - 1, value + 1))}
-                  >
-                    {t('common.next')}
-                  </Button>
-                </ActionBar>
+                records.length > PAGE_SIZE ? (
+                  <ActionBar mobileLayout="pagination">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      type="button"
+                      className="!min-h-11 tracking-[var(--tracking-control)] xl:tracking-[var(--tracking-kicker)]"
+                      disabled={currentPage === 0}
+                      onClick={() => setPage((value) => Math.max(0, value - 1))}
+                    >
+                      {t('common.prev')}
+                    </Button>
+                    <span className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/50">
+                      {currentPage + 1}/{totalPages} {t('common.page')}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      type="button"
+                      className="!min-h-11 tracking-[var(--tracking-control)] xl:tracking-[var(--tracking-kicker)]"
+                      disabled={currentPage >= totalPages - 1}
+                      onClick={() => setPage((value) => Math.min(totalPages - 1, value + 1))}
+                    >
+                      {t('common.next')}
+                    </Button>
+                  </ActionBar>
+                ) : undefined
               }
             />
 

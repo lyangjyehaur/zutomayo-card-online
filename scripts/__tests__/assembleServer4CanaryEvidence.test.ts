@@ -25,6 +25,7 @@ type GateModule = {
       imageDigests: Record<string, string>;
       evidenceRunId: string;
       nowMs: number;
+      profile: 'production-hardening';
     },
   ): GateCheck[];
 };
@@ -228,6 +229,7 @@ function canaryGate(outputDir: string, imageDigests: Record<string, string>) {
     imageDigests,
     evidenceRunId: '123',
     nowMs: Date.parse(CHECKED_AT),
+    profile: 'production-hardening',
   }).find((candidate) => candidate.id === 'staging-canary');
   if (!check) throw new Error('staging canary gate was not returned');
   return check;

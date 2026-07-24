@@ -2,7 +2,7 @@
 
 **言語 / Languages：** [繁體中文](README.md) | [日本語](README.ja.md) | [English](README.en.md)
 
-現在のバージョン：**0.2.0**
+現在のバージョン：**0.2.3**
 
 > ZUTOMAYO CARD（ずっと真夜中でいいのに。公式 TCG）の非公式デジタル対戦プラットフォームです。
 > ローカル 2 人対戦、AI 練習、インタラクティブチュートリアル、リアルタイムオンライン対戦に対応します。
@@ -10,6 +10,8 @@
 ## プロジェクトの現状
 
 0.2.0 では、単体の対戦アプリからマルチプレイヤープラットフォームへ拡張しました。カード状態の権威は引き続き `boardgame.io` が持ち、Colyseus がロビー、マッチング、ルーム、招待、観戦 presence を担当し、ChatService が永続チャット、未読、翻訳、通報、モデレーションを担当します。
+
+0.2.3 では、PostgreSQL のアトミックな公開フローに対応したグランドルール／基本フロアルールの多言語ページを追加し、AI 対戦後の導線、対戦ログ、初回チュートリアル入口、デッキ作成体験を改善しました。
 
 ### ゲームと対戦
 
@@ -38,7 +40,8 @@
 ### その他の機能
 
 - 6 言語 UI：繁体字中国語、広東語、簡体字中国語、日本語、英語、韓国語。
-- デッキエディター、ランキング、端末間戦績、プロフィール、OAuth identity、フィードバックボード。
+- デッキエディター、共有デッキロビー、ランキング、端末間戦績、プロフィール、OAuth identity、フィードバックボード。
+- 公式グランドルール／基本フロアルール、日本語 Q&A／訂正情報、多言語閲覧ページ、管理レビュー、公式ソース同期。
 - PWA インストール／更新通知と app、build、rules の 3 層バージョン互換チェック。
 - カード、翻訳、ユーザー、ELO、チャット証拠、制裁、フィードバックの管理画面。
 - Playwright core E2E、k6 API／WebSocket／認証／matchmaking 負荷テスト、staging／production CD pipeline。
@@ -105,26 +108,29 @@ npm run dev
 
 ### 主なコマンド
 
-| コマンド                            | 用途                                                           |
-| ----------------------------------- | -------------------------------------------------------------- |
-| `npm run verify`                    | format、version、lint、2 種の typecheck、unit test、本番 build |
-| `npm test` / `npm run test:watch`   | Vitest の単発実行／watch mode                                  |
-| `npm run typecheck`                 | app と server の TypeScript 検査                               |
-| `npm run typecheck:scripts`         | scripts の TypeScript 検査                                     |
-| `npm run lint`                      | ESLint                                                         |
-| `npm run format:check:tracked`      | Git 管理ファイルだけを Prettier 検査                           |
-| `npm run build`                     | typecheck 後に本番 frontend bundle を作成                      |
-| `npm run server`                    | game／boardgame.io サーバーを起動                              |
-| `npm run platform`                  | Colyseus platform サービスを起動                               |
-| `npm run db:migrate`                | PostgreSQL migration を適用                                    |
-| `npm run smoke`                     | コアゲームフロー smoke                                         |
-| `npm run smoke:api`                 | REST API integration smoke                                     |
-| `npm run smoke:online`              | boardgame.io オンライン対戦 smoke                              |
-| `npm run smoke:platform-deployment` | platform health と実 lobby WebSocket join/leave を検証         |
-| `npm run smoke:responsive`          | 全レスポンシブ browser smoke                                   |
-| `npm run rule:audit`                | カード効果 parser の coverage 監査                             |
-| `npm run e2e` / `npm run e2e:ui`    | Playwright 全 E2E／interactive UI                              |
-| `npm run load:api` / `load:ws`      | k6 API／WebSocket 負荷テスト（k6 は別途インストール）          |
+| コマンド                                       | 用途                                                        |
+| ---------------------------------------------- | ----------------------------------------------------------- |
+| `npm run verify`                               | format、policy、設定、lint、typecheck、coverage、本番 build |
+| `npm test` / `npm run test:watch`              | Vitest の単発実行／watch mode                               |
+| `npm run typecheck`                            | app と server の TypeScript 検査                            |
+| `npm run typecheck:scripts`                    | scripts の TypeScript 検査                                  |
+| `npm run lint`                                 | ESLint                                                      |
+| `npm run format:check:tracked`                 | Git 管理ファイルだけを Prettier 検査                        |
+| `npm run build`                                | typecheck 後に本番 frontend bundle を作成                   |
+| `npm run server`                               | game／boardgame.io サーバーを起動                           |
+| `npm run platform`                             | Colyseus platform サービスを起動                            |
+| `npm run db:migrate`                           | PostgreSQL migration を適用                                 |
+| `npm run import:official-rulings-translations` | 未追跡の公式裁定翻訳を PostgreSQL に import                 |
+| `npm run sync:official-rulings`                | 公式 Q&A／訂正情報ソースを読み取り専用で比較                |
+| `npm run translate:official-rulings`           | 不足している公式裁定の派生翻訳を生成                        |
+| `npm run smoke`                                | コアゲームフロー smoke                                      |
+| `npm run smoke:api`                            | REST API integration smoke                                  |
+| `npm run smoke:online`                         | boardgame.io オンライン対戦 smoke                           |
+| `npm run smoke:platform-deployment`            | platform health と実 lobby WebSocket join/leave を検証      |
+| `npm run smoke:responsive`                     | 全レスポンシブ browser smoke                                |
+| `npm run rule:audit`                           | カード効果 parser の coverage 監査                          |
+| `npm run e2e` / `npm run e2e:ui`               | Playwright 全 E2E／interactive UI                           |
+| `npm run load:api` / `load:ws`                 | k6 API／WebSocket 負荷テスト（k6 は別途インストール）       |
 
 ## Docker デプロイ
 
@@ -137,7 +143,7 @@ docker compose ps
 
 Compose は `postgres`、`redis`、一度だけ実行する `migrate`、`game`、`api`、`platform` の 6 unit で構成されます。
 
-さらに `docker-compose.e2e.yml`、`docker-compose.load-test.yml`、port／DB を分離した `docker-compose.staging.yml` を提供します。CD は master 更新時に GHCR staging image、version tag で production image を build し、SSH deploy は `workflow_dispatch` で明示的に実行します。
+さらに `docker-compose.e2e.yml`、`docker-compose.load-test.yml`、port／DB を分離した `docker-compose.staging.yml` を提供します。Production-hardening CD は現在 `codex/deferred-production-hardening` に分離され、staging／production の SSH deploy は検証済み artifact を使って `workflow_dispatch` で明示的に実行します。
 
 | Port   | サービス | 用途                                             |
 | ------ | -------- | ------------------------------------------------ |
@@ -145,7 +151,7 @@ Compose は `postgres`、`redis`、一度だけ実行する `migrate`、`game`�
 | `3001` | api      | REST API、ChatService、アカウント、管理          |
 | `3002` | platform | Colyseus WebSocket rooms、`/health`、`/ready`    |
 
-本番環境、外部 PostgreSQL／Redis、backup、migration、水平スケールについては [デプロイガイド](docs/DEPLOYMENT.md) を参照してください。
+本番環境、外部 PostgreSQL／Redis、backup、migration、水平スケールについては [デプロイガイド](docs/DEPLOYMENT.md) を参照してください。公式 Q&A／訂正情報の同期、import、翻訳手順は [公式裁定データベースガイド](docs/official-rulings.md) に記載しています。
 
 ## リポジトリ構成
 
@@ -165,7 +171,7 @@ load-tests/           k6 API、WebSocket、認証、matchmaking 負荷テスト
 docs/                 architecture、API、deployment、multiplayer、UI/UX 文書
 ```
 
-主なページは `/online`、`/ai`、`/tutorial`、`/deck-builder`、`/history`、`/leaderboard`、`/feedback`、`/profile`、`/admin` です。
+主なページは `/online`、`/ai`、`/tutorial`、`/deck-builder`、`/deck-shares`、`/history`、`/leaderboard`、`/feedback`、`/profile`、`/rules/grand`、`/rules/floor`、`/rules/qa`、`/rules/errata`、`/admin` です。
 
 ## セキュリティと運用
 
@@ -181,13 +187,14 @@ docs/                 architecture、API、deployment、multiplayer、UI/UX 文�
 - [完全なアーキテクチャ](docs/ARCHITECTURE.md)
 - [REST API](docs/API.md)
 - [カードテキスト i18n メンテナンスガイド（繁体字中国語）](docs/card-text-i18n.md)
+- [公式裁定データベースガイド](docs/official-rulings.md)
 - [デプロイガイド](docs/DEPLOYMENT.md)
 - [マルチプレイヤープラットフォーム設計](docs/MULTIPLAYER_PLATFORM_ARCHITECTURE.md)
 - [マルチプレイヤー整合性監査](docs/MULTIPLAYER_PLATFORM_ALIGNMENT_AUDIT.md)
 - [コントリビューションガイド](CONTRIBUTING.md)
 - [変更履歴](CHANGELOG.md)
 - [負荷テスト](load-tests/README.md)
-- [ゲームルール](rules.md) / [公式 Q&A](qa.json)
+- [ゲームルール](rules.md) / [公式 Q&A](https://battle.zutomayocard.online/rules/qa) / [公式訂正情報](https://battle.zutomayocard.online/rules/errata)
 
 ## ライセンス
 

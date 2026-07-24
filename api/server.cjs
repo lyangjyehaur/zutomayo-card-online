@@ -87,7 +87,7 @@ const {
   validateProductionRuntimeSecurity,
 } = require('./runtimeSecurityConfig.cjs');
 const { metricsRequestAuthorized } = require('./metricsAuth.cjs');
-const { decryptAdminTotpSecret } = require('./adminSecretCrypto.cjs');
+const { decryptAdminTotpSecret, decryptSecretEnvelope, encryptSecretEnvelope } = require('./adminSecretCrypto.cjs');
 const {
   logger,
   attachRequestObservability,
@@ -137,6 +137,21 @@ const {
   sendChatMessage,
 } = require('./chatService.cjs');
 const { createUserDeck, deleteUserDeck, listUserDecks, reserveUserDeck, updateUserDeck } = require('./deckService.cjs');
+const { deckSharingEnabled } = require('./deckSharingConfig.cjs');
+const {
+  copyDeckShare,
+  getDeckShare,
+  getOwnedDeckShare,
+  likeDeckShare,
+  listAdminDeckShareReports,
+  listDeckShares,
+  moderateDeckShare,
+  publishDeckShare,
+  reportDeckShare,
+  unpublishDeckShare,
+  unlikeDeckShare,
+  updateDeckShare,
+} = require('./deckShareService.cjs');
 const { countOnlinePresence, heartbeatOnlinePresence } = require('./presenceService.cjs');
 const { getAdminMatches, getLeaderboard, getMatchActionLog, getUserMatches } = require('./matchQueries.cjs');
 const { submitMatchResult } = require('./matchSubmission.cjs');
@@ -190,10 +205,30 @@ const {
   listPublicAnnouncements,
   updateAnnouncement,
 } = require('./announcementService.cjs');
-const { createTranslationServiceFromEnv } = require('./translationService.cjs');
+const {
+  createRuntimeTranslationService,
+  getAdminTranslationSettings,
+  testAdminTranslationSettings,
+  updateAdminTranslationSettings,
+} = require('./translationSettingsService.cjs');
+const {
+  getPublicErrata,
+  getPublicQa,
+  getOfficialRulingsReleaseStatus,
+  listPublicErrata,
+  listPublicQa,
+  upsertOfficialErrataTranslation,
+  upsertOfficialQaTranslation,
+} = require('./officialRulingsService.cjs');
+const { getPublicRuleDocument } = require('./officialRuleDocumentsService.cjs');
+const {
+  checkOfficialSources,
+  generateOfficialTranslation,
+  getOfficialSyncStatus,
+  listOfficialTranslations,
+} = require('./officialRulingsAdminService.cjs');
 
 const pbkdf2 = util.promisify(crypto.pbkdf2);
-const translateText = createTranslationServiceFromEnv(process.env);
 
 function readPackageVersion() {
   for (const packagePath of ['../package.json', './package.json']) {
@@ -213,6 +248,8 @@ const JWT_SECRET = process.env.JWT_SECRET;
 // B4：OAuth token 加密金鑰獨立於 JWT_SECRET，避免金鑰輪換時 OAuth token 失效。
 const OAUTH_TOKEN_ENCRYPTION_KEY = process.env.OAUTH_TOKEN_ENCRYPTION_KEY || '';
 const ADMIN_TOTP_ENCRYPTION_KEY = process.env.ADMIN_TOTP_ENCRYPTION_KEY || '';
+const SERVICE_CONFIG_ENCRYPTION_KEY =
+  process.env.SERVICE_CONFIG_ENCRYPTION_KEY || ADMIN_TOTP_ENCRYPTION_KEY || JWT_SECRET || '';
 const ADMIN_SESSION_TTL_SECONDS = Number(process.env.ADMIN_SESSION_TTL_SECONDS) || 60 * 60;
 const PACKAGE_VERSION = readPackageVersion();
 const APP_VERSION = process.env.APP_VERSION || PACKAGE_VERSION;
@@ -222,6 +259,7 @@ const GAME_RULES_VERSION = process.env.GAME_RULES_VERSION || APP_VERSION;
 // seat-identity trust chain has been verified.
 const RANKED_MATCHES_ENABLED = process.env.RANKED_MATCHES_ENABLED === 'true';
 const API_BACKGROUND_WORKERS_ENABLED = resolveBackgroundWorkersEnabled(process.env, 'API_BACKGROUND_WORKERS_ENABLED');
+const DECK_SHARING_ENABLED = deckSharingEnabled(process.env);
 const IMGPROXY_INTERNAL_BASE_URL = process.env.IMGPROXY_INTERNAL_BASE_URL || process.env.IMGPROXY_BASE_URL || '';
 const IMGPROXY_KEY = process.env.IMGPROXY_KEY || '';
 const IMGPROXY_SALT = process.env.IMGPROXY_SALT || '';
@@ -430,6 +468,12 @@ const pool = new Pool({
   connectionTimeoutMillis: 5_000,
   ssl: postgresSslConfig(process.env),
 });
+const translationRuntime = createRuntimeTranslationService({
+  pool,
+  env: process.env,
+  decryptSecret: decryptSecretEnvelope,
+  encryptionKey: SERVICE_CONFIG_ENCRYPTION_KEY,
+});
 
 const redis = new Redis(REDIS_URL, {
   db: REDIS_DB,
@@ -550,6 +594,73 @@ async function initSchema() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )`,
     `CREATE INDEX IF NOT EXISTS idx_decks_user ON decks(user_id)`,
+
+    `CREATE TABLE IF NOT EXISTS deck_shares (
+      id TEXT PRIMARY KEY CHECK (id ~ '^ds_[A-Za-z0-9_-]{8,128}$'),
+      owner_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      source_deck_id TEXT REFERENCES decks(id) ON DELETE SET NULL,
+      name TEXT NOT NULL,
+      card_ids JSONB NOT NULL CHECK (jsonb_typeof(card_ids) = 'array'),
+      visibility TEXT NOT NULL DEFAULT 'public' CHECK (visibility IN ('public', 'unlisted')),
+      publication_status TEXT NOT NULL DEFAULT 'published'
+        CHECK (publication_status IN ('published', 'unpublished')),
+      moderation_status TEXT NOT NULL DEFAULT 'visible'
+        CHECK (moderation_status IN ('visible', 'hidden', 'pending_review')),
+      moderation_reason TEXT NOT NULL DEFAULT '',
+      published_rules_version TEXT NOT NULL DEFAULT 'legacy',
+      published_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      unpublished_at TIMESTAMPTZ,
+      moderated_at TIMESTAMPTZ,
+      moderated_by_admin_user_id TEXT
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS uq_deck_shares_source_deck
+      ON deck_shares(source_deck_id) WHERE source_deck_id IS NOT NULL`,
+    `CREATE INDEX IF NOT EXISTS idx_deck_shares_owner_updated
+      ON deck_shares(owner_user_id, updated_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_deck_shares_public_lobby
+      ON deck_shares(publication_status, moderation_status, visibility, updated_at DESC, id)`,
+    `CREATE TABLE IF NOT EXISTS deck_share_likes (
+      share_id TEXT NOT NULL REFERENCES deck_shares(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (share_id, user_id)
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_deck_share_likes_user_created
+      ON deck_share_likes(user_id, created_at DESC)`,
+    `CREATE TABLE IF NOT EXISTS deck_share_copy_events (
+      id BIGSERIAL PRIMARY KEY,
+      share_id TEXT NOT NULL REFERENCES deck_shares(id) ON DELETE CASCADE,
+      user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+      copied_deck_id TEXT REFERENCES decks(id) ON DELETE SET NULL,
+      idempotency_key TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_deck_share_copy_events_share_created
+      ON deck_share_copy_events(share_id, created_at DESC)`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS uq_deck_share_copy_events_idempotency
+      ON deck_share_copy_events(share_id, user_id, idempotency_key)
+      WHERE user_id IS NOT NULL AND idempotency_key IS NOT NULL`,
+    `CREATE TABLE IF NOT EXISTS deck_share_reports (
+      id TEXT PRIMARY KEY CHECK (id ~ '^dsr_[A-Za-z0-9_-]{8,128}$'),
+      share_id TEXT NOT NULL REFERENCES deck_shares(id) ON DELETE CASCADE,
+      reporter_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+      reason TEXT NOT NULL
+        CHECK (reason IN ('inappropriate_name', 'impersonation_or_harassment', 'spam', 'other')),
+      note TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'reviewing', 'resolved', 'dismissed')),
+      resolution_note TEXT NOT NULL DEFAULT '',
+      reviewed_by_admin_user_id TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      resolved_at TIMESTAMPTZ
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_deck_share_reports_status_created
+      ON deck_share_reports(status, created_at DESC)`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS uq_deck_share_reports_active_reporter
+      ON deck_share_reports(share_id, reporter_user_id)
+      WHERE reporter_user_id IS NOT NULL AND status IN ('pending', 'reviewing')`,
 
     `CREATE TABLE IF NOT EXISTS user_friends (
       user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -676,6 +787,226 @@ async function initSchema() {
     `ALTER TABLE card_official_errata
       ADD COLUMN IF NOT EXISTS corrected_english_source TEXT NOT NULL
       DEFAULT 'official_japanese_errata_translation'`,
+    `ALTER TABLE card_official_errata
+      ADD COLUMN IF NOT EXISTS reason_ja TEXT NOT NULL DEFAULT '',
+      ADD COLUMN IF NOT EXISTS replacement_policy_ja TEXT NOT NULL DEFAULT '',
+      ADD COLUMN IF NOT EXISTS usage_policy_ja TEXT NOT NULL DEFAULT '',
+      ADD COLUMN IF NOT EXISTS card_number TEXT NOT NULL DEFAULT '',
+      ADD COLUMN IF NOT EXISTS content_hash TEXT NOT NULL DEFAULT '',
+      ADD COLUMN IF NOT EXISTS content_version INTEGER NOT NULL DEFAULT 1,
+      ADD COLUMN IF NOT EXISTS publication_status TEXT NOT NULL DEFAULT 'published',
+      ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
+
+    `CREATE TABLE IF NOT EXISTS official_qa_items (
+      id TEXT PRIMARY KEY,
+      number INTEGER NOT NULL UNIQUE,
+      published_at DATE NOT NULL,
+      question_ja TEXT NOT NULL,
+      answer_ja TEXT NOT NULL,
+      tags TEXT[] NOT NULL DEFAULT '{}'::text[],
+      related_card_ids TEXT[] NOT NULL DEFAULT '{}'::text[],
+      source_url TEXT NOT NULL,
+      content_hash TEXT NOT NULL,
+      content_version INTEGER NOT NULL DEFAULT 1,
+      publication_status TEXT NOT NULL DEFAULT 'published',
+      source_updated_at TIMESTAMPTZ,
+      last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CHECK (number > 0 AND content_version > 0),
+      CHECK (publication_status IN ('published', 'inactive')),
+      CHECK (question_ja <> '' AND answer_ja <> '')
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_official_qa_publication_number
+      ON official_qa_items(publication_status, number ASC)`,
+    `CREATE INDEX IF NOT EXISTS idx_official_qa_related_cards
+      ON official_qa_items USING GIN(related_card_ids)`,
+    `CREATE TABLE IF NOT EXISTS official_qa_translations (
+      qa_id TEXT NOT NULL REFERENCES official_qa_items(id) ON DELETE CASCADE,
+      content_version INTEGER NOT NULL,
+      locale TEXT NOT NULL,
+      question_text TEXT NOT NULL DEFAULT '',
+      answer_text TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'pending_review',
+      provider TEXT NOT NULL DEFAULT '',
+      model TEXT NOT NULL DEFAULT '',
+      review_note TEXT NOT NULL DEFAULT '',
+      reviewed_by_user_id TEXT,
+      reviewed_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (qa_id, content_version, locale),
+      CHECK (locale IN ('zh-TW', 'zh-CN', 'zh-HK', 'en', 'ko')),
+      CHECK (status IN ('pending_review', 'machine', 'verified', 'failed'))
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_official_qa_translations_locale_status
+      ON official_qa_translations(locale, status)`,
+    `CREATE TABLE IF NOT EXISTS card_official_errata_translations (
+      errata_id TEXT NOT NULL REFERENCES card_official_errata(errata_id) ON DELETE CASCADE,
+      content_version INTEGER NOT NULL,
+      locale TEXT NOT NULL,
+      incorrect_text TEXT NOT NULL DEFAULT '',
+      reason_text TEXT NOT NULL DEFAULT '',
+      replacement_policy_text TEXT NOT NULL DEFAULT '',
+      usage_policy_text TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'pending_review',
+      provider TEXT NOT NULL DEFAULT '',
+      model TEXT NOT NULL DEFAULT '',
+      review_note TEXT NOT NULL DEFAULT '',
+      reviewed_by_user_id TEXT,
+      reviewed_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (errata_id, content_version, locale),
+      CHECK (locale IN ('zh-TW', 'zh-CN', 'zh-HK', 'en', 'ko')),
+      CHECK (status IN ('pending_review', 'machine', 'verified', 'failed'))
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_card_official_errata_translations_locale_status
+      ON card_official_errata_translations(locale, status)`,
+    `CREATE TABLE IF NOT EXISTS official_rulings_sync_runs (
+      id TEXT PRIMARY KEY,
+      trigger_source TEXT NOT NULL DEFAULT 'admin',
+      status TEXT NOT NULL DEFAULT 'running',
+      qa_local_count INTEGER NOT NULL DEFAULT 0,
+      qa_remote_count INTEGER NOT NULL DEFAULT 0,
+      errata_local_count INTEGER NOT NULL DEFAULT 0,
+      errata_remote_count INTEGER NOT NULL DEFAULT 0,
+      diff JSONB NOT NULL DEFAULT '{}'::jsonb,
+      error_text TEXT NOT NULL DEFAULT '',
+      requested_by_admin_user_id TEXT,
+      started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      finished_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CHECK (trigger_source IN ('admin', 'schedule', 'cli')),
+      CHECK (status IN ('running', 'no_change', 'changes', 'failed')),
+      CHECK (qa_local_count >= 0 AND qa_remote_count >= 0),
+      CHECK (errata_local_count >= 0 AND errata_remote_count >= 0)
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_official_rulings_sync_runs_started
+      ON official_rulings_sync_runs(started_at DESC)`,
+    `CREATE TABLE IF NOT EXISTS official_rulings_releases (
+      id TEXT PRIMARY KEY,
+      source_hash TEXT NOT NULL CHECK (source_hash ~ '^[a-f0-9]{64}$'),
+      translation_hash TEXT NOT NULL CHECK (translation_hash ~ '^[a-f0-9]{64}$'),
+      card_dataset_hash TEXT NOT NULL CHECK (card_dataset_hash ~ '^[a-f0-9]{64}$'),
+      qa_count INTEGER NOT NULL CHECK (qa_count > 0),
+      errata_count INTEGER NOT NULL CHECK (errata_count > 0),
+      locale_count INTEGER NOT NULL CHECK (locale_count = 5),
+      locales TEXT[] NOT NULL CHECK (cardinality(locales) = 5),
+      app_version TEXT NOT NULL,
+      build_id TEXT NOT NULL,
+      translation_source_generated_at TIMESTAMPTZ NOT NULL,
+      source_checked_at TIMESTAMPTZ NOT NULL,
+      status TEXT NOT NULL DEFAULT 'candidate' CHECK (status IN ('candidate', 'active', 'superseded')),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      activated_at TIMESTAMPTZ
+    )`,
+    `CREATE TABLE IF NOT EXISTS official_rulings_release_qa (
+      release_id TEXT NOT NULL REFERENCES official_rulings_releases(id) ON DELETE CASCADE,
+      qa_id TEXT NOT NULL REFERENCES official_qa_items(id) ON DELETE RESTRICT,
+      content_version INTEGER NOT NULL,
+      content_hash TEXT NOT NULL,
+      number INTEGER NOT NULL,
+      published_at DATE NOT NULL,
+      question_ja TEXT NOT NULL,
+      answer_ja TEXT NOT NULL,
+      tags TEXT[] NOT NULL,
+      related_card_ids TEXT[] NOT NULL,
+      source_url TEXT NOT NULL,
+      last_seen_at TIMESTAMPTZ NOT NULL,
+      PRIMARY KEY (release_id, qa_id)
+    )`,
+    `CREATE TABLE IF NOT EXISTS official_rulings_release_errata (
+      release_id TEXT NOT NULL REFERENCES official_rulings_releases(id) ON DELETE CASCADE,
+      errata_id TEXT NOT NULL REFERENCES card_official_errata(errata_id) ON DELETE RESTRICT,
+      content_version INTEGER NOT NULL,
+      content_hash TEXT NOT NULL,
+      card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE RESTRICT,
+      published_at DATE NOT NULL,
+      card_number TEXT NOT NULL,
+      incorrect_text TEXT NOT NULL,
+      corrected_japanese_text TEXT NOT NULL,
+      reason_ja TEXT NOT NULL,
+      replacement_policy_ja TEXT NOT NULL,
+      usage_policy_ja TEXT NOT NULL,
+      affects_name BOOLEAN NOT NULL,
+      affects_effect BOOLEAN NOT NULL,
+      source_url TEXT NOT NULL,
+      last_seen_at TIMESTAMPTZ NOT NULL,
+      PRIMARY KEY (release_id, errata_id)
+    )`,
+    `CREATE TABLE IF NOT EXISTS official_rulings_active_release (
+      key TEXT PRIMARY KEY DEFAULT 'active' CHECK (key = 'active'),
+      release_id TEXT NOT NULL REFERENCES official_rulings_releases(id) ON DELETE RESTRICT,
+      activated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS official_rule_documents (
+      document_id TEXT NOT NULL CHECK (document_id IN ('grand', 'floor')),
+      document_version TEXT NOT NULL,
+      title_ja TEXT NOT NULL,
+      summary_ja TEXT NOT NULL,
+      published_at DATE NOT NULL,
+      source_url TEXT NOT NULL,
+      source_sha256 TEXT NOT NULL,
+      source_page_count INTEGER NOT NULL,
+      content_hash TEXT NOT NULL,
+      publication_status TEXT NOT NULL DEFAULT 'candidate'
+        CHECK (publication_status IN ('candidate', 'active', 'superseded')),
+      source_checked_at TIMESTAMPTZ NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (document_id, document_version)
+    )`,
+    `CREATE TABLE IF NOT EXISTS official_rule_sections (
+      document_id TEXT NOT NULL,
+      document_version TEXT NOT NULL,
+      section_id TEXT NOT NULL,
+      section_number TEXT NOT NULL DEFAULT '',
+      parent_section_id TEXT,
+      level INTEGER NOT NULL,
+      sort_order INTEGER NOT NULL,
+      page_start INTEGER NOT NULL,
+      page_end INTEGER NOT NULL,
+      title_ja TEXT NOT NULL,
+      body_ja TEXT NOT NULL,
+      content_hash TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (document_id, document_version, section_id),
+      FOREIGN KEY (document_id, document_version)
+        REFERENCES official_rule_documents(document_id, document_version) ON DELETE CASCADE
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_official_rule_sections_order
+      ON official_rule_sections(document_id, document_version, sort_order)`,
+    `CREATE TABLE IF NOT EXISTS official_rule_section_translations (
+      document_id TEXT NOT NULL,
+      document_version TEXT NOT NULL,
+      section_id TEXT NOT NULL,
+      locale TEXT NOT NULL CHECK (locale IN ('zh-TW', 'zh-CN', 'zh-HK', 'en', 'ko')),
+      title_text TEXT NOT NULL,
+      body_text TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending_review'
+        CHECK (status IN ('pending_review', 'machine', 'verified', 'failed')),
+      provider TEXT NOT NULL DEFAULT '',
+      model TEXT NOT NULL DEFAULT '',
+      review_note TEXT NOT NULL DEFAULT '',
+      reviewed_by_user_id TEXT,
+      reviewed_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (document_id, document_version, section_id, locale),
+      FOREIGN KEY (document_id, document_version, section_id)
+        REFERENCES official_rule_sections(document_id, document_version, section_id) ON DELETE CASCADE
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_official_rule_section_translations_locale_status
+      ON official_rule_section_translations(locale, status)`,
+    `CREATE TABLE IF NOT EXISTS official_rule_active_versions (
+      document_id TEXT PRIMARY KEY CHECK (document_id IN ('grand', 'floor')),
+      document_version TEXT NOT NULL,
+      activated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      FOREIGN KEY (document_id, document_version)
+        REFERENCES official_rule_documents(document_id, document_version) ON DELETE RESTRICT
+    )`,
 
     `CREATE TABLE IF NOT EXISTS card_texts_i18n (
       card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
@@ -757,6 +1088,15 @@ async function initSchema() {
       key TEXT PRIMARY KEY,
       value JSONB NOT NULL,
       description TEXT DEFAULT '',
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS service_integrations (
+      key TEXT PRIMARY KEY,
+      config JSONB NOT NULL DEFAULT '{}'::jsonb,
+      secret_ciphertext TEXT,
+      updated_by_user_id TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )`,
 
@@ -1072,6 +1412,7 @@ async function runMigrations() {
       pool,
       expectedMigration: process.env.EXPECTED_SCHEMA_MIGRATION,
       expectedChecksum: process.env.EXPECTED_SCHEMA_CHECKSUM,
+      requireDeckSharing: DECK_SHARING_ENABLED,
     });
   }
   let runner;
@@ -3134,6 +3475,19 @@ function handleRequest(req, res) {
     }
     return json(result, status);
   };
+  const publicServiceJson = (result, status = 200) => {
+    if (!result || typeof result !== 'object' || !result.ok) return serviceJson(result, status);
+    const payload = JSON.stringify(result.body ?? {});
+    const etag = `"${crypto.createHash('sha256').update(payload).digest('base64url')}"`;
+    res.setHeader('ETag', etag);
+    if (req.headers['if-none-match'] === etag) {
+      res.writeHead(304);
+      res.end();
+      return;
+    }
+    res.writeHead(status, { 'Content-Type': 'application/json' });
+    res.end(payload);
+  };
 
   const readBody = (maxBytes = 3 * 1024 * 1024) =>
     new Promise((resolve) => {
@@ -4326,6 +4680,107 @@ function handleRequest(req, res) {
 
     // ===== Deck Routes =====
 
+    const ownedDeckShareRoute = pathname.match(/^\/api\/decks\/(d_[A-Za-z0-9_-]{4,128})\/share$/);
+    const publicDeckShareRoute = pathname.match(/^\/api\/deck-shares\/(ds_[A-Za-z0-9_-]{8,128})$/);
+    const deckShareCopyRoute = pathname.match(/^\/api\/deck-shares\/(ds_[A-Za-z0-9_-]{8,128})\/copy$/);
+    const deckShareLikeRoute = pathname.match(/^\/api\/deck-shares\/(ds_[A-Za-z0-9_-]{8,128})\/like$/);
+    const deckShareReportRoute = pathname.match(/^\/api\/deck-shares\/(ds_[A-Za-z0-9_-]{8,128})\/reports$/);
+    const isDeckShareRequest = pathname.startsWith('/api/deck-shares') || Boolean(ownedDeckShareRoute);
+    if (isDeckShareRequest && !DECK_SHARING_ENABLED) {
+      return json({ error: 'Deck sharing is not available' }, 404);
+    }
+
+    if (pathname === '/api/deck-shares' && method === 'GET') {
+      const parsed = validateBody(S.deckShareListQuerySchema, {
+        sort: url.searchParams.get('sort') || undefined,
+        q: url.searchParams.get('q') || undefined,
+        element: url.searchParams.get('element') || undefined,
+        cursor: url.searchParams.get('cursor') || undefined,
+        limit: url.searchParams.get('limit') || undefined,
+      });
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      const viewerUserId = await getAuthUserId(req);
+      serviceJson(await listDeckShares(pool, viewerUserId, parsed.data));
+      return;
+    }
+
+    if (pathname === '/api/deck-shares' && method === 'POST') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const body = await readBody(32 * 1024);
+      const parsed = validateBody(S.deckShareCreateSchema, body);
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      serviceJson(
+        await publishDeckShare(pool, userId, parsed.data.deckId, parsed.data.visibility, GAME_RULES_VERSION),
+        201,
+      );
+      return;
+    }
+
+    if (ownedDeckShareRoute && method === 'GET') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      serviceJson(await getOwnedDeckShare(pool, userId, ownedDeckShareRoute[1]));
+      return;
+    }
+
+    if (publicDeckShareRoute && method === 'GET') {
+      const viewerUserId = await getAuthUserId(req);
+      serviceJson(await getDeckShare(pool, viewerUserId, publicDeckShareRoute[1]));
+      return;
+    }
+
+    if (publicDeckShareRoute && method === 'PUT') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const body = await readBody(32 * 1024);
+      const parsed = validateBody(S.deckShareUpdateSchema, body);
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      serviceJson(await updateDeckShare(pool, userId, publicDeckShareRoute[1], parsed.data, GAME_RULES_VERSION));
+      return;
+    }
+
+    if (publicDeckShareRoute && method === 'DELETE') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      serviceJson(await unpublishDeckShare(pool, userId, publicDeckShareRoute[1]));
+      return;
+    }
+
+    if (deckShareCopyRoute && method === 'POST') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const body = await readBody(32 * 1024);
+      const parsed = validateBody(S.deckShareCopySchema, body);
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      serviceJson(await copyDeckShare(pool, userId, deckShareCopyRoute[1], parsed.data), 201);
+      return;
+    }
+
+    if (deckShareLikeRoute && method === 'PUT') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      serviceJson(await likeDeckShare(pool, userId, deckShareLikeRoute[1]));
+      return;
+    }
+
+    if (deckShareLikeRoute && method === 'DELETE') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      serviceJson(await unlikeDeckShare(pool, userId, deckShareLikeRoute[1]));
+      return;
+    }
+
+    if (deckShareReportRoute && method === 'POST') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const body = await readBody(32 * 1024);
+      const parsed = validateBody(S.deckShareReportCreateSchema, body);
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      serviceJson(await reportDeckShare(pool, userId, deckShareReportRoute[1], parsed.data), 201);
+      return;
+    }
+
     // List user's decks
     if (pathname === '/api/decks' && method === 'GET') {
       const userId = await getAuthUserId(req);
@@ -4456,10 +4911,77 @@ function handleRequest(req, res) {
         pool,
         language: url.searchParams.get('lang'),
         limit: url.searchParams.get('limit'),
-        translateText,
+        translateText: await translationRuntime.getTranslateText(),
       });
       res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
       serviceJson(result);
+      return;
+    }
+
+    if (pathname === '/api/official/qa' && method === 'GET') {
+      res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=1800');
+      publicServiceJson(
+        await listPublicQa({
+          pool,
+          language: url.searchParams.get('lang'),
+          query: url.searchParams.get('query'),
+          tag: url.searchParams.get('tag'),
+          cardId: url.searchParams.get('cardId'),
+        }),
+      );
+      return;
+    }
+
+    if (pathname === '/api/official/status' && method === 'GET') {
+      res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+      publicServiceJson(await getOfficialRulingsReleaseStatus({ pool }));
+      return;
+    }
+
+    const publicOfficialRuleDocumentRoute = pathname.match(/^\/api\/official\/rules\/(grand|floor)$/);
+    if (publicOfficialRuleDocumentRoute && method === 'GET') {
+      res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=1800');
+      publicServiceJson(
+        await getPublicRuleDocument({
+          pool,
+          language: url.searchParams.get('lang'),
+          documentId: publicOfficialRuleDocumentRoute[1],
+        }),
+      );
+      return;
+    }
+
+    const publicOfficialQaRoute = pathname.match(/^\/api\/official\/qa\/(\d+)$/);
+    if (publicOfficialQaRoute && method === 'GET') {
+      res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=1800');
+      publicServiceJson(
+        await getPublicQa({ pool, language: url.searchParams.get('lang'), number: publicOfficialQaRoute[1] }),
+      );
+      return;
+    }
+
+    if (pathname === '/api/official/errata' && method === 'GET') {
+      res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=1800');
+      publicServiceJson(
+        await listPublicErrata({
+          pool,
+          language: url.searchParams.get('lang'),
+          cardId: url.searchParams.get('cardId'),
+        }),
+      );
+      return;
+    }
+
+    const publicOfficialErrataRoute = pathname.match(/^\/api\/official\/errata\/(\d{3})$/);
+    if (publicOfficialErrataRoute && method === 'GET') {
+      res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=1800');
+      publicServiceJson(
+        await getPublicErrata({
+          pool,
+          language: url.searchParams.get('lang'),
+          errataId: publicOfficialErrataRoute[1],
+        }),
+      );
       return;
     }
 
@@ -4566,7 +5088,7 @@ function handleRequest(req, res) {
         messageId: chatTranslationRoute[1],
         body: __parsed.data,
         sanitizeText,
-        translateText,
+        translateText: await translationRuntime.getTranslateText(),
         providerName: process.env.CHAT_TRANSLATION_PROVIDER || '',
         modelName: process.env.CHAT_TRANSLATION_MODEL || '',
         enforceDirectFriendship: true,
@@ -4815,6 +5337,55 @@ function handleRequest(req, res) {
       return;
     }
 
+    if (pathname === '/api/admin/translation-settings' && method === 'GET') {
+      if (!(await authorizeAdmin(req, 'config:write'))) return json({ error: 'Unauthorized' }, 401);
+      res.setHeader('Cache-Control', 'no-store');
+      serviceJson(
+        await getAdminTranslationSettings({
+          pool,
+          env: process.env,
+          decryptSecret: decryptSecretEnvelope,
+          encryptionKey: SERVICE_CONFIG_ENCRYPTION_KEY,
+        }),
+      );
+      return;
+    }
+
+    if (pathname === '/api/admin/translation-settings' && method === 'PUT') {
+      const admin = await authorizeAdmin(req, 'config:write');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
+      const body = await readBody(32 * 1024);
+      const parsed = validateBody(S.adminTranslationSettingsSchema, body);
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      const result = await updateAdminTranslationSettings({
+        pool,
+        env: process.env,
+        body: parsed.data,
+        adminUserId: admin.adminUserId,
+        encryptSecret: encryptSecretEnvelope,
+        decryptSecret: decryptSecretEnvelope,
+        encryptionKey: SERVICE_CONFIG_ENCRYPTION_KEY,
+      });
+      translationRuntime.invalidate({ enableDatabaseSettings: true });
+      serviceJson(result);
+      return;
+    }
+
+    if (pathname === '/api/admin/translation-settings/test' && method === 'POST') {
+      if (!(await authorizeAdmin(req, 'config:write'))) return json({ error: 'Unauthorized' }, 401);
+      const body = await readBody(16 * 1024);
+      const parsed = validateBody(S.adminTranslationTestSchema, body);
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      translationRuntime.invalidate({ enableDatabaseSettings: true });
+      serviceJson(
+        await testAdminTranslationSettings({
+          translateText: await translationRuntime.getTranslateText(),
+          body: parsed.data,
+        }),
+      );
+      return;
+    }
+
     if (pathname === '/api/admin/announcements' && method === 'GET') {
       if (!(await authorizeAdmin(req, 'config:write'))) return json({ error: 'Unauthorized' }, 401);
       serviceJson(await listAdminAnnouncements({ pool }));
@@ -4862,6 +5433,131 @@ function handleRequest(req, res) {
     if (adminAnnouncementRoute && method === 'DELETE') {
       if (!(await authorizeAdmin(req, 'config:write'))) return json({ error: 'Unauthorized' }, 401);
       serviceJson(await deleteAnnouncement({ pool, id: decodeURIComponent(adminAnnouncementRoute[1]) }));
+      return;
+    }
+
+    if (pathname === '/api/admin/official-content/sync-status' && method === 'GET') {
+      if (!(await authorizeAdmin(req, 'config:write'))) return json({ error: 'Unauthorized' }, 401);
+      serviceJson(await getOfficialSyncStatus({ pool, limit: url.searchParams.get('limit') }));
+      return;
+    }
+
+    if (pathname === '/api/admin/official-content/sync' && method === 'POST') {
+      const admin = await authorizeAdmin(req, 'config:write');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
+      serviceJson(
+        await checkOfficialSources({
+          pool,
+          adminUserId: admin.adminUserId,
+          fetchImpl: globalThis.fetch,
+        }),
+      );
+      return;
+    }
+
+    if (pathname === '/api/admin/official-content/translations' && method === 'GET') {
+      if (!(await authorizeAdmin(req, 'config:write'))) return json({ error: 'Unauthorized' }, 401);
+      const parsed = validateBody(S.officialTranslationListQuerySchema, Object.fromEntries(url.searchParams.entries()));
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      serviceJson(
+        await listOfficialTranslations({
+          pool,
+          language: parsed.data.locale,
+          resourceType: parsed.data.resourceType,
+          status: parsed.data.status,
+          query: parsed.data.query,
+        }),
+      );
+      return;
+    }
+
+    const adminOfficialTranslationGenerateRoute = pathname.match(
+      /^\/api\/admin\/official-content\/translations\/(qa|errata)\/([^/]+)\/([^/]+)\/generate$/,
+    );
+    if (adminOfficialTranslationGenerateRoute && method === 'POST') {
+      const admin = await authorizeAdmin(req, 'config:write');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
+      serviceJson(
+        await generateOfficialTranslation({
+          pool,
+          resourceType: adminOfficialTranslationGenerateRoute[1],
+          resourceId: decodeURIComponent(adminOfficialTranslationGenerateRoute[2]),
+          language: decodeURIComponent(adminOfficialTranslationGenerateRoute[3]),
+          adminUserId: admin.adminUserId,
+          translateText: await translationRuntime.getTranslateText(),
+        }),
+      );
+      return;
+    }
+
+    const adminOfficialTranslationWriteRoute = pathname.match(
+      /^\/api\/admin\/official-content\/translations\/(qa|errata)\/([^/]+)\/([^/]+)$/,
+    );
+    if (adminOfficialTranslationWriteRoute && method === 'PUT') {
+      const admin = await authorizeAdmin(req, 'config:write');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
+      const resourceType = adminOfficialTranslationWriteRoute[1];
+      const body = await readBody(64 * 1024);
+      const schema =
+        resourceType === 'qa' ? S.officialQaTranslationWriteSchema : S.officialErrataTranslationWriteSchema;
+      const parsed = validateBody(schema, body);
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      const shared = {
+        pool,
+        body: { ...parsed.data, locale: decodeURIComponent(adminOfficialTranslationWriteRoute[3]) },
+        reviewerUserId: admin.adminUserId,
+      };
+      serviceJson(
+        resourceType === 'qa'
+          ? await upsertOfficialQaTranslation({
+              ...shared,
+              qaId: decodeURIComponent(adminOfficialTranslationWriteRoute[2]),
+            })
+          : await upsertOfficialErrataTranslation({
+              ...shared,
+              errataId: decodeURIComponent(adminOfficialTranslationWriteRoute[2]),
+            }),
+      );
+      return;
+    }
+
+    const adminOfficialQaTranslationRoute = pathname.match(
+      /^\/api\/admin\/official-content\/qa\/([^/]+)\/translations\/([^/]+)$/,
+    );
+    if (adminOfficialQaTranslationRoute && method === 'PUT') {
+      const admin = await authorizeAdmin(req, 'config:write');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
+      const body = await readBody(64 * 1024);
+      const parsed = validateBody(S.officialQaTranslationWriteSchema, body);
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      serviceJson(
+        await upsertOfficialQaTranslation({
+          pool,
+          qaId: decodeURIComponent(adminOfficialQaTranslationRoute[1]),
+          body: { ...parsed.data, locale: decodeURIComponent(adminOfficialQaTranslationRoute[2]) },
+          reviewerUserId: admin.adminUserId,
+        }),
+      );
+      return;
+    }
+
+    const adminOfficialErrataTranslationRoute = pathname.match(
+      /^\/api\/admin\/official-content\/errata\/(\d{3})\/translations\/([^/]+)$/,
+    );
+    if (adminOfficialErrataTranslationRoute && method === 'PUT') {
+      const admin = await authorizeAdmin(req, 'config:write');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
+      const body = await readBody(64 * 1024);
+      const parsed = validateBody(S.officialErrataTranslationWriteSchema, body);
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      serviceJson(
+        await upsertOfficialErrataTranslation({
+          pool,
+          errataId: adminOfficialErrataTranslationRoute[1],
+          body: { ...parsed.data, locale: decodeURIComponent(adminOfficialErrataTranslationRoute[2]) },
+          reviewerUserId: admin.adminUserId,
+        }),
+      );
       return;
     }
 
@@ -4984,6 +5680,33 @@ function handleRequest(req, res) {
       return;
     }
 
+    if (pathname === '/api/admin/deck-share-reports' && method === 'GET') {
+      if (!DECK_SHARING_ENABLED) return json({ error: 'Deck sharing is not available' }, 404);
+      const admin = await authorizeAdmin(req, 'feedback:moderate');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
+      const parsed = validateBody(S.adminDeckShareReportListSchema, {
+        status: url.searchParams.get('status') || undefined,
+        limit: url.searchParams.get('limit') || undefined,
+      });
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      serviceJson(await listAdminDeckShareReports(pool, parsed.data));
+      return;
+    }
+
+    const adminDeckShareModerationRoute = pathname.match(
+      /^\/api\/admin\/deck-shares\/(ds_[A-Za-z0-9_-]{8,128})\/moderation$/,
+    );
+    if (adminDeckShareModerationRoute && method === 'PUT') {
+      if (!DECK_SHARING_ENABLED) return json({ error: 'Deck sharing is not available' }, 404);
+      const admin = await authorizeAdmin(req, 'feedback:moderate');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
+      const body = await readBody(32 * 1024);
+      const parsed = validateBody(S.adminDeckShareModerationSchema, body);
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      serviceJson(await moderateDeckShare(pool, admin.adminUserId, adminDeckShareModerationRoute[1], parsed.data));
+      return;
+    }
+
     // ===== Card Data Routes =====
 
     const sendVersionedCardData = async (loadData, validateData = () => true) => {
@@ -5041,7 +5764,7 @@ function handleRequest(req, res) {
 
     if (pathname === '/api/config' && method === 'GET') {
       res.setHeader('Cache-Control', 'no-store');
-      json(await getGameConfig(pool));
+      json({ ...(await getGameConfig(pool)), deck_sharing_enabled: DECK_SHARING_ENABLED });
       return;
     }
 

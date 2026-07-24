@@ -8,6 +8,7 @@ type GateCheck = { id: string; category: string; status: string; reason: string 
 type GateResult = { status: string; reason: string };
 type GateModule = {
   aggregateStatus(checks: Array<{ status: string }>): string;
+  composeFixtureEnv(): Record<string, string>;
   runReleaseGate(
     options?: { evidenceDir?: string; releaseSha?: string; format?: string },
     dependencies?: {
@@ -25,6 +26,7 @@ type GateModule = {
       expectedSchemaMigration?: string;
       expectedSchemaChecksum?: string;
       evidenceRunId?: string;
+      profile?: 'beta' | 'production-hardening';
     },
   ): GateCheck[];
   renderMarkdown(summary: {
@@ -32,13 +34,15 @@ type GateModule = {
     generatedAt: string;
     repository: string;
     commit: string;
+    profile?: 'beta' | 'production-hardening';
     checks: Array<{ category: string; title: string; status: string; reason: string }>;
   }): string;
 };
 
 // @ts-expect-error The runtime MJS module intentionally has no generated declarations.
 const releaseGateModule = await import('../release-gate.mjs');
-const { aggregateStatus, inspectStagingGates, renderMarkdown, runReleaseGate } = releaseGateModule as GateModule;
+const { aggregateStatus, composeFixtureEnv, inspectStagingGates, renderMarkdown, runReleaseGate } =
+  releaseGateModule as GateModule;
 
 function authenticatedEvidence(directory: string) {
   const artifactPath = 'staging/authenticated-e2e-report.json';
@@ -60,9 +64,23 @@ function authenticatedEvidence(directory: string) {
     finishedAt: '2026-07-12T23:50:00.000Z',
     durationMs: 20 * 60 * 1000,
     checkedAt: '2026-07-13T00:00:00.000Z',
-    metrics: { completedJourneys: 2, failedSteps: 0 },
-    thresholds: { minCompletedJourneys: 2, maxFailedSteps: 0 },
-    results: { authenticatedJourneyPassed: true, historyVerified: true },
+    metrics: { completedJourneys: 10, consecutiveRuns: 5, skippedTests: 0, failedTests: 0, flakyTests: 0 },
+    thresholds: {
+      minCompletedJourneys: 10,
+      requiredConsecutiveRuns: 5,
+      maxSkippedTests: 0,
+      maxFailedTests: 0,
+      maxFlakyTests: 0,
+    },
+    results: {
+      authenticatedJourneyPassed: true,
+      historyVerified: true,
+      friendInviteVerified: true,
+      spectatorHiddenInformationVerified: true,
+      secureCookieVerified: true,
+      httpsTopologyVerified: true,
+      zeroConditionalSkips: true,
+    },
     artifacts: [
       {
         path: artifactPath,
@@ -201,9 +219,14 @@ function restoreEvidence(directory: string) {
         deletedSocialViolations: 0,
       },
     },
-    metrics: { rpoMinutes: 10, rtoMinutes: 20 },
-    thresholds: { maxRpoMinutes: 15, maxRtoMinutes: 30 },
-    results: { schemaGatePassed: true, fixtureRoundTripPassed: true, legalHoldInvariantPassed: true },
+    metrics: { rpoMinutes: 10, rtoMinutes: 20, deploymentRecoverySeconds: 720 },
+    thresholds: { maxRpoMinutes: 15, maxRtoMinutes: 30, maxDeploymentRecoverySeconds: 1_800 },
+    results: {
+      schemaGatePassed: true,
+      fixtureRoundTripPassed: true,
+      legalHoldInvariantPassed: true,
+      deploymentRecoveryPassed: true,
+    },
   });
   const offsiteArtifact = writeEvidenceArtifact(
     directory,
@@ -379,9 +402,23 @@ function alertEvidence(directory: string) {
         },
       ],
     },
-    metrics: { firingDeliverySeconds: 120, resolvedDeliverySeconds: 90 },
-    thresholds: { maxFiringDeliverySeconds: 300, maxResolvedDeliverySeconds: 300 },
-    results: { firingDelivered: true, resolvedDelivered: true },
+    metrics: { firingDeliverySeconds: 120, resolvedDeliverySeconds: 90, scenariosDelivered: 6, failedScenarios: 0 },
+    thresholds: {
+      maxFiringDeliverySeconds: 300,
+      maxResolvedDeliverySeconds: 300,
+      minScenariosDelivered: 6,
+      maxFailedScenarios: 0,
+    },
+    results: {
+      firingDelivered: true,
+      resolvedDelivered: true,
+      apiFailureDelivered: true,
+      platformFailureDelivered: true,
+      reconnectSpikeDelivered: true,
+      databaseOutageDelivered: true,
+      resourcePressureDelivered: true,
+      outboxBacklogDelivered: true,
+    },
   });
 }
 
@@ -408,6 +445,7 @@ function inspectOperationalEvidence(directory: string, evidence: OperationalEvid
     expectedSchemaChecksum: '9'.repeat(64),
     evidenceRunId: '123',
     nowMs: Date.parse('2026-07-13T04:00:00.000Z'),
+    profile: 'production-hardening',
   }).find((candidate) => candidate.id === OPERATIONAL_GATE_IDS[evidence.evidenceType]);
   if (!check) throw new Error(`missing operational gate ${evidence.evidenceType}`);
   return check;
@@ -698,6 +736,7 @@ function inspectCanaryEvidence(directory: string, evidence: ReturnType<typeof ca
     imageDigests: evidence.imageDigests,
     evidenceRunId: '123',
     nowMs: Date.parse('2026-07-13T01:00:00.000Z'),
+    profile: 'production-hardening',
   });
   const canary = checks.find((check) => check.id === 'staging-canary');
   if (!canary) throw new Error('staging canary gate was not returned');
@@ -705,6 +744,13 @@ function inspectCanaryEvidence(directory: string, evidence: ReturnType<typeof ca
 }
 
 describe('single release gate evidence model', () => {
+  it('renders production compose with one immutable release identity', () => {
+    const fixture = composeFixtureEnv();
+    expect(fixture.APP_BUILD_ID).toMatch(/^[a-f0-9]{40}$/);
+    expect(fixture.APP_BUILD_ID).toBe(fixture.RELEASE_SHA);
+    expect(fixture.APP_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
+  });
+
   it('prioritizes failed over blocked and passed checks', () => {
     expect(aggregateStatus([{ status: 'passed' }, { status: 'blocked' }])).toBe('blocked');
     expect(aggregateStatus([{ status: 'blocked' }, { status: 'failed' }])).toBe('failed');
@@ -735,10 +781,27 @@ describe('single release gate evidence model', () => {
   });
 
   it('marks every staging-only gate blocked when external evidence is absent', () => {
-    const checks = inspectStagingGates(undefined);
+    const checks = inspectStagingGates(undefined, { profile: 'production-hardening' });
     expect(checks.length).toBeGreaterThan(4);
     expect(checks.every((check) => check.category === 'staging' && check.status === 'blocked')).toBe(true);
     expect(checks[0].reason).toContain('staging-only gate requires external evidence');
+  });
+
+  it('keeps the Beta profile narrow and production hardening explicit', () => {
+    const betaChecks = inspectStagingGates(undefined);
+    expect(betaChecks.map((check) => check.id)).toEqual([
+      'staging-card-dataset',
+      'staging-authenticated-e2e',
+      'staging-restore',
+    ]);
+    expect(betaChecks.every((check) => check.category === 'staging' && check.status === 'blocked')).toBe(true);
+    expect(betaChecks[0].reason).toContain('staging-only gate requires external evidence');
+
+    const hardeningChecks = inspectStagingGates(undefined, { profile: 'production-hardening' });
+    expect(hardeningChecks).toHaveLength(10);
+    expect(hardeningChecks.some((check) => check.id === 'staging-chaos')).toBe(true);
+    expect(hardeningChecks.some((check) => check.id === 'staging-provider-account')).toBe(true);
+    expect(() => inspectStagingGates(undefined, { profile: 'unknown' as 'beta' })).toThrow('release profile');
   });
 
   it('accepts only an explicit, attributable staging evidence contract', () => {
@@ -758,8 +821,9 @@ describe('single release gate evidence model', () => {
       releaseSha: 'a'.repeat(40),
       nowMs: Date.parse('2026-07-13T01:00:00.000Z'),
     });
-    expect(legacyChecks[0].status).toBe('blocked');
-    expect(legacyChecks[0].reason).toContain('schemaVersion: 1');
+    const legacyAuthenticated = legacyChecks.find((check) => check.id === 'staging-authenticated-e2e');
+    expect(legacyAuthenticated?.status).toBe('blocked');
+    expect(legacyAuthenticated?.reason).toContain('schemaVersion: 1');
 
     const completeEvidence = authenticatedEvidence(directory);
     writeFileSync(
@@ -779,11 +843,12 @@ describe('single release gate evidence model', () => {
       releaseSha: 'a'.repeat(40),
       nowMs: Date.parse('2026-07-13T01:00:00.000Z'),
     });
-    expect(minimalChecks[0].status).toBe('blocked');
-    expect(minimalChecks[0].reason).toContain('startedAt');
-    expect(minimalChecks[0].reason).toContain('durationMs');
-    expect(minimalChecks[0].reason).toContain('metrics object');
-    expect(minimalChecks[0].reason).toContain('artifacts[]');
+    const minimalAuthenticated = minimalChecks.find((check) => check.id === 'staging-authenticated-e2e');
+    expect(minimalAuthenticated?.status).toBe('blocked');
+    expect(minimalAuthenticated?.reason).toContain('startedAt');
+    expect(minimalAuthenticated?.reason).toContain('durationMs');
+    expect(minimalAuthenticated?.reason).toContain('metrics object');
+    expect(minimalAuthenticated?.reason).toContain('artifacts[]');
 
     writeFileSync(evidencePath, JSON.stringify(completeEvidence));
     const checks = inspectStagingGates(directory, {
@@ -792,9 +857,45 @@ describe('single release gate evidence model', () => {
       imageDigests: completeEvidence.imageDigests,
       evidenceRunId: '123',
     });
-    expect(checks[0].status).toBe('passed');
-    expect(checks[0].reason).toContain('validated staging evidence contract');
-    expect(checks[1].status).toBe('blocked');
+    const authenticatedCheck = checks.find((check) => check.id === 'staging-authenticated-e2e');
+    expect(authenticatedCheck?.status).toBe('passed');
+    expect(authenticatedCheck?.reason).toContain('validated staging evidence contract');
+    expect(checks.find((check) => check.id === 'staging-card-dataset')?.status).toBe('blocked');
+
+    const insufficientRuns = authenticatedEvidence(directory);
+    insufficientRuns.metrics.completedJourneys = 2;
+    insufficientRuns.metrics.consecutiveRuns = 1;
+    writeFileSync(evidencePath, JSON.stringify(insufficientRuns));
+    const insufficientChecks = inspectStagingGates(directory, {
+      releaseSha: 'a'.repeat(40),
+      nowMs: Date.parse('2026-07-13T01:00:00.000Z'),
+    });
+    const insufficientAuthenticated = insufficientChecks.find((check) => check.id === 'staging-authenticated-e2e');
+    expect(insufficientAuthenticated?.status).toBe('blocked');
+    expect(insufficientAuthenticated?.reason).toContain('metrics.completedJourneys >= thresholds.minCompletedJourneys');
+    expect(insufficientAuthenticated?.reason).toContain(
+      'metrics.consecutiveRuns >= thresholds.requiredConsecutiveRuns',
+    );
+
+    const betaEvidence = authenticatedEvidence(directory);
+    betaEvidence.metrics.completedJourneys = 2;
+    betaEvidence.metrics.consecutiveRuns = 1;
+    betaEvidence.thresholds.minCompletedJourneys = 2;
+    betaEvidence.thresholds.requiredConsecutiveRuns = 1;
+    writeFileSync(evidencePath, JSON.stringify(betaEvidence));
+    const betaChecks = inspectStagingGates(directory, {
+      releaseSha: 'a'.repeat(40),
+      nowMs: Date.parse('2026-07-13T01:00:00.000Z'),
+    });
+    expect(betaChecks.find((check) => check.id === 'staging-authenticated-e2e')?.status).toBe('passed');
+    const hardeningChecks = inspectStagingGates(directory, {
+      releaseSha: 'a'.repeat(40),
+      nowMs: Date.parse('2026-07-13T01:00:00.000Z'),
+      profile: 'production-hardening',
+    });
+    expect(hardeningChecks.find((check) => check.id === 'staging-authenticated-e2e-hardening')?.reason).toContain(
+      'thresholds.requiredConsecutiveRuns >= 5',
+    );
 
     const mismatchedRelease = JSON.parse(readFileSync(evidencePath, 'utf8'));
     mismatchedRelease.releaseSha = 'b'.repeat(40);
@@ -803,8 +904,9 @@ describe('single release gate evidence model', () => {
       releaseSha: 'a'.repeat(40),
       nowMs: Date.parse('2026-07-13T01:00:00.000Z'),
     });
-    expect(mismatchChecks[0].status).toBe('blocked');
-    expect(mismatchChecks[0].reason).toContain('releaseSha matching');
+    const mismatchAuthenticated = mismatchChecks.find((check) => check.id === 'staging-authenticated-e2e');
+    expect(mismatchAuthenticated?.status).toBe('blocked');
+    expect(mismatchAuthenticated?.reason).toContain('releaseSha matching');
 
     const digestMismatch = JSON.parse(readFileSync(evidencePath, 'utf8'));
     digestMismatch.releaseSha = 'a'.repeat(40);
@@ -816,8 +918,9 @@ describe('single release gate evidence model', () => {
       evidenceRunId: '123',
       nowMs: Date.parse('2026-07-13T01:00:00.000Z'),
     });
-    expect(digestChecks[0].status).toBe('blocked');
-    expect(digestChecks[0].reason).toContain('matching the release manifest');
+    const digestAuthenticated = digestChecks.find((check) => check.id === 'staging-authenticated-e2e');
+    expect(digestAuthenticated?.status).toBe('blocked');
+    expect(digestAuthenticated?.reason).toContain('matching the release manifest');
 
     digestMismatch.imageDigests.game = completeEvidence.imageDigests.game;
     digestMismatch.provenance.runId = '456';
@@ -828,8 +931,9 @@ describe('single release gate evidence model', () => {
       evidenceRunId: '123',
       nowMs: Date.parse('2026-07-13T01:00:00.000Z'),
     });
-    expect(provenanceChecks[0].status).toBe('blocked');
-    expect(provenanceChecks[0].reason).toContain('provenance.runId matching 123');
+    const provenanceAuthenticated = provenanceChecks.find((check) => check.id === 'staging-authenticated-e2e');
+    expect(provenanceAuthenticated?.status).toBe('blocked');
+    expect(provenanceAuthenticated?.reason).toContain('provenance.runId matching 123');
   });
 
   it('rejects stale, future, and incomplete immutable release evidence', () => {
@@ -844,8 +948,9 @@ describe('single release gate evidence model', () => {
       maxEvidenceAgeHours: 1,
       nowMs: Date.parse('2026-07-13T00:00:00.000Z'),
     });
-    expect(stale[0].status).toBe('blocked');
-    expect(stale[0].reason).toContain('no older than 1 hours');
+    const staleAuthenticated = stale.find((check) => check.id === 'staging-authenticated-e2e');
+    expect(staleAuthenticated?.status).toBe('blocked');
+    expect(staleAuthenticated?.reason).toContain('no older than 1 hours');
 
     evidence.checkedAt = '2026-07-13T01:00:00.000Z';
     writeFileSync(evidencePath, JSON.stringify(evidence));
@@ -853,8 +958,9 @@ describe('single release gate evidence model', () => {
       releaseSha: evidence.releaseSha,
       nowMs: Date.parse('2026-07-13T00:00:00.000Z'),
     });
-    expect(future[0].status).toBe('blocked');
-    expect(future[0].reason).toContain('not in the future');
+    const futureAuthenticated = future.find((check) => check.id === 'staging-authenticated-e2e');
+    expect(futureAuthenticated?.status).toBe('blocked');
+    expect(futureAuthenticated?.reason).toContain('not in the future');
 
     evidence.checkedAt = '2026-07-13T00:00:00.000Z';
     evidence.imageDigests.game = 'ghcr.io/example/game:latest';
@@ -863,8 +969,9 @@ describe('single release gate evidence model', () => {
       releaseSha: evidence.releaseSha,
       nowMs: Date.parse('2026-07-13T00:30:00.000Z'),
     });
-    expect(mutableImage[0].status).toBe('blocked');
-    expect(mutableImage[0].reason).toContain('imageDigests.game');
+    const mutableAuthenticated = mutableImage.find((check) => check.id === 'staging-authenticated-e2e');
+    expect(mutableAuthenticated?.status).toBe('blocked');
+    expect(mutableAuthenticated?.reason).toContain('imageDigests.game');
 
     evidence.imageDigests.game = `ghcr.io/example/game@sha256:${'0'.repeat(64)}`;
     evidence.artifacts[0].sha256 = 'f'.repeat(64);
@@ -873,8 +980,33 @@ describe('single release gate evidence model', () => {
       releaseSha: evidence.releaseSha,
       nowMs: Date.parse('2026-07-13T00:30:00.000Z'),
     });
-    expect(wrongArtifactHash[0].status).toBe('blocked');
-    expect(wrongArtifactHash[0].reason).toContain('sha256 matching file contents');
+    const wrongArtifactAuthenticated = wrongArtifactHash.find((check) => check.id === 'staging-authenticated-e2e');
+    expect(wrongArtifactAuthenticated?.status).toBe('blocked');
+    expect(wrongArtifactAuthenticated?.reason).toContain('sha256 matching file contents');
+  });
+
+  it('accepts only complete RR-07 restore, deployment recovery, and six-scenario alert evidence', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'release-gate-operations-'));
+    mkdirSync(join(directory, 'staging'));
+    const restore = restoreEvidence(directory);
+    const alerts = alertEvidence(directory);
+    writeFileSync(join(directory, 'staging', 'restore-drill.json'), JSON.stringify(restore));
+    writeFileSync(join(directory, 'staging', 'alertmanager-delivery.json'), JSON.stringify(alerts));
+    const checks = inspectStagingGates(directory, {
+      releaseSha: restore.releaseSha,
+      imageDigests: restore.imageDigests,
+      expectedSchemaMigration: '000035_remove_card_text_rollback_compat',
+      expectedSchemaChecksum: '9'.repeat(64),
+      evidenceRunId: '123',
+      nowMs: Date.parse('2026-07-13T04:00:00.000Z'),
+      profile: 'production-hardening',
+    });
+    const restoreCheck = checks.find((check) => check.id === 'staging-restore');
+    const deploymentRecoveryCheck = checks.find((check) => check.id === 'staging-deployment-recovery');
+    const alertsCheck = checks.find((check) => check.id === 'staging-alerts');
+    expect(restoreCheck?.status, restoreCheck?.reason).toBe('passed');
+    expect(deploymentRecoveryCheck?.status, deploymentRecoveryCheck?.reason).toBe('passed');
+    expect(alertsCheck?.status, alertsCheck?.reason).toBe('passed');
   });
 
   it('accepts hash-verified operational artifacts under repository-owned policies', () => {
@@ -1360,9 +1492,11 @@ describe('single release gate evidence model', () => {
       generatedAt: '2026-07-13T00:00:00.000Z',
       repository: 'zutomayo-card-online',
       commit: 'abc123',
+      profile: 'beta',
       checks: [{ category: 'staging', title: 'Restore drill', status: 'blocked', reason: 'missing evidence' }],
     });
     expect(markdown).toContain('**BLOCKED**');
+    expect(markdown).toContain('Profile: `beta`');
     expect(markdown).toContain('blocked is not a release approval');
   });
 });

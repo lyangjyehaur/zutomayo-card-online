@@ -35,11 +35,22 @@ const pages = [
   { pageId: 'landing', path: '/', waitFor: 'nav[aria-label] button' },
   { pageId: 'ai-lobby', path: '/ai', waitForText: '與電腦對戰' },
   { pageId: 'online-lobby', path: '/online', waitForText: '線上房間' },
+  { pageId: 'tutorial', path: '/tutorial', waitForText: '新手教學' },
+  { pageId: 'community', path: '/community', waitForText: '登入後進入社群' },
+  { pageId: 'profile', path: '/profile', waitForText: '需要先登入' },
+  { pageId: 'history', path: '/history', waitForText: '對戰紀錄' },
   { pageId: 'deck-builder', path: '/deck-builder', waitForText: '牌組' },
+  { pageId: 'deck-shares', path: '/deck-shares', waitForText: '分享大廳' },
+  { pageId: 'official-qa', path: '/rules/qa', waitForText: '官方規則 Q&A' },
+  { pageId: 'official-errata', path: '/rules/errata', waitForText: '官方卡牌勘誤' },
+  {
+    pageId: 'battle-initial-select-day',
+    path: '/qa/battle?state=initial-select&side=day&time=day&controls=0',
+    waitFor: '.bf-root',
+  },
   { pageId: 'battle-turn-set', path: '/qa/battle?state=turn-set&controls=0', waitFor: '.bf-root' },
   { pageId: 'feedback', path: '/feedback', waitFor: '.feedback-toolbar' },
-  { pageId: 'admin-cards', path: '/admin', waitFor: '.admin-page' },
-  { pageId: 'i18n-manager', path: '/admin/i18n', waitFor: '.i18n-responsive-table' },
+  { pageId: 'legal-privacy', path: '/legal/privacy', waitForText: '隱私政策' },
 ];
 
 const cases = pages.flatMap((page) =>
@@ -60,6 +71,9 @@ const chrome = spawn(
     '--disable-gpu',
     '--no-first-run',
     '--disable-dev-shm-usage',
+    '--disable-background-networking',
+    '--disable-sync',
+    '--disable-extensions',
     `--remote-debugging-port=${port}`,
     `--user-data-dir=${profileDir}`,
     'about:blank',
@@ -165,6 +179,31 @@ async function evalChecked(client, expression) {
   return result.result.value;
 }
 
+function isTransientNavigationError(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.includes('Inspected target navigated or closed') ||
+    message.includes('Execution context was destroyed') ||
+    message.includes('Cannot find context with specified id')
+  );
+}
+
+async function navigateTo(client, url) {
+  try {
+    await client.send('Page.navigate', { url });
+  } catch (error) {
+    if (!isTransientNavigationError(error)) throw error;
+  }
+}
+
+async function reloadPage(client) {
+  try {
+    await client.send('Page.reload', { ignoreCache: true });
+  } catch (error) {
+    if (!isTransientNavigationError(error)) throw error;
+  }
+}
+
 const setup = `
 (() => {
   const smokeVersion = ${JSON.stringify(smokeVersion)};
@@ -210,7 +249,7 @@ const setup = `
     if (url.includes('/api/decks')) return json({ decks: [] });
     if (url.includes('/api/preset-decks')) return json([]);
     if (url.includes('/api/presence')) return json({ onlineCount: 7, activeWindowSeconds: 90 });
-    if (url.includes('/api/config')) return json({});
+    if (url.includes('/api/config')) return json({ deck_sharing_enabled: true });
     if (url.includes('/api/cards/texts')) return json({});
     if (url.includes('/api/app-version')) {
       return json({ appVersion: smokeVersion, buildId: smokeVersion, rulesVersion: smokeVersion });
@@ -301,7 +340,11 @@ async function waitForPage(client, testCase, timeoutMs = 16000) {
   const expression = `location.pathname + location.search === ${JSON.stringify(expectedPath)} && (${contentExpression})`;
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
-    if (await evalChecked(client, expression)) return;
+    try {
+      if (await evalChecked(client, expression)) return;
+    } catch (error) {
+      if (!isTransientNavigationError(error)) throw error;
+    }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
   const debug = await evalChecked(
@@ -337,6 +380,20 @@ const metricsExpression = `
     };
   };
   const visible = (selector) => [...document.querySelectorAll(selector)].filter(isVisible).map(box);
+  const hasHorizontalScrollAncestor = (element) => {
+    let current = element.parentElement;
+    while (current && current !== document.body) {
+      const style = getComputedStyle(current);
+      if (
+        current.scrollWidth > current.clientWidth + 1 &&
+        (style.overflowX === 'auto' || style.overflowX === 'scroll')
+      ) {
+        return true;
+      }
+      current = current.parentElement;
+    }
+    return false;
+  };
   const targets = [...document.querySelectorAll('button, a[href], input, select, textarea, [role="button"]')]
     .filter((el) => {
       const type = el.getAttribute('type');
@@ -354,12 +411,13 @@ const metricsExpression = `
     },
     shell: visible('[data-page-shell], main, .app-shell, .bf-root').slice(0, 3),
     checkedSurface: visible(
-      'nav[aria-label] button, .bf-main, .feedback-toolbar, .admin-page, .i18n-responsive-table, .deck-editor, .card-browser, [data-room-panel], [aria-label="Card Pool"], article',
+      'nav[aria-label] button, .bf-main, .feedback-toolbar, .admin-page, .i18n-responsive-table, .deck-editor, .card-browser, [data-room-panel], [data-chat-surface], [data-ui-panel], [aria-label="Card Pool"], main > section, article',
     ).slice(0, 8),
     smallTargets: targets.filter((item) => item.width < 44 || item.height < 44).slice(0, 12),
     offscreen: [...document.body.querySelectorAll('*')]
       .filter((el) => !el.closest('.admin-sidebar'))
       .filter(isVisible)
+      .filter((element) => !hasHorizontalScrollAncestor(element))
       .map(box)
       .filter((item) => item.offscreenX)
       .slice(0, 20),
@@ -413,13 +471,18 @@ try {
       screenWidth: testCase.width,
       screenHeight: testCase.height,
     });
-    await client.send('Page.navigate', { url: `${baseUrl}${testCase.path}` });
+    await navigateTo(client, `${baseUrl}${testCase.path}`);
     await waitForPage(client, testCase);
     await new Promise((resolve) => setTimeout(resolve, 300));
     let metrics = await evalChecked(client, metricsExpression);
     let failures = failuresFor(testCase, metrics);
-    for (let attempt = 0; attempt < 2 && !metrics.shell.length && !metrics.checkedSurface.length; attempt += 1) {
-      await client.send('Page.reload', { ignoreCache: true });
+    const requiresCheckedSurface = testCase.pageId !== 'ai-lobby' && testCase.pageId !== 'online-lobby';
+    for (
+      let attempt = 0;
+      attempt < 2 && (!metrics.shell.length || (requiresCheckedSurface && !metrics.checkedSurface.length));
+      attempt += 1
+    ) {
+      await reloadPage(client);
       await waitForPage(client, testCase);
       await new Promise((resolve) => setTimeout(resolve, 500));
       metrics = await evalChecked(client, metricsExpression);

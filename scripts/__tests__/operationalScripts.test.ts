@@ -16,6 +16,7 @@ const scripts = [
   'postgres-role-smoke.sh',
   'compose-chaos-drill.sh',
   'deploy-server4.sh',
+  'server4-recovery-drill.sh',
 ];
 const hasDockerCompose = spawnSync('docker', ['compose', 'version'], { stdio: 'ignore' }).status === 0;
 
@@ -45,6 +46,24 @@ describe('operational shell scripts', () => {
     });
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('explicitly pinned @sha256 image reference');
+  });
+
+  it('requires attributable fixtures before a release restore drill can start Docker', () => {
+    const result = spawnSync('bash', [resolve('scripts/pg-restore-drill.sh'), '/tmp/example.dump.age'], {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        PG_RESTORE_DRILL_IMAGE: `postgres@sha256:${'a'.repeat(64)}`,
+        PG_RESTORE_RELEASE_EVIDENCE: 'true',
+        RELEASE_SHA: 'b'.repeat(40),
+        EXPECTED_SCHEMA_MIGRATION: '000041_official_rule_documents',
+        EXPECTED_SCHEMA_CHECKSUM: 'c'.repeat(64),
+        MIGRATE_IMAGE: `ghcr.io/example/zutomayo-card-online-migrate@sha256:${'d'.repeat(64)}`,
+      },
+      timeout: 5_000,
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('evidence_output is required');
   });
 
   it('routes logical and physical backups through separate PostgreSQL roles', () => {
@@ -127,16 +146,11 @@ describe('operational shell scripts', () => {
     expect(workflow).toContain('"${compose[@]}" run --rm e2e');
     expect(workflow).toContain('PG_BOOTSTRAP_USER: zutomayo_e2e_bootstrap');
     expect(workflow).toContain('CARD_DATA_DIR: /tmp/zutomayo-card-data');
-    expect(workflow).toContain('EXPECTED_SCHEMA_MIGRATION: 000036_harden_card_i18n_contract');
-    expect(workflow).toContain(
-      'EXPECTED_SCHEMA_CHECKSUM: 41115b0039694cd7eed955276d659b455e25f5a053dfdb13f815577b4a6045e9',
-    );
+    expect(workflow).toContain('export EXPECTED_SCHEMA_MIGRATION="$(find migrations');
+    expect(workflow).toContain('export EXPECTED_SCHEMA_CHECKSUM="$(sha256sum');
     expect(browserMatrix).toContain('PG_BOOTSTRAP_USER: zutomayo_e2e_bootstrap');
-    expect(browserMatrix).toContain('EXPECTED_SCHEMA_MIGRATION: 000036_harden_card_i18n_contract');
-    expect(browserMatrix).toContain(
-      'EXPECTED_SCHEMA_CHECKSUM: 41115b0039694cd7eed955276d659b455e25f5a053dfdb13f815577b4a6045e9',
-    );
-    expect(browserMatrix).not.toContain('export EXPECTED_SCHEMA_MIGRATION=');
+    expect(browserMatrix).toContain('export EXPECTED_SCHEMA_MIGRATION="$(find migrations');
+    expect(browserMatrix).toContain('export EXPECTED_SCHEMA_CHECKSUM="$(sha256sum');
     expect(workflow).not.toContain('--abort-on-container-exit');
     expect(workflow).not.toContain('--exit-code-from e2e');
   });
@@ -231,7 +245,7 @@ describe('operational shell scripts', () => {
     expect(pwaSmoke).toContain("location.pathname === '/play/ai'");
     expect(pwaSmoke).toContain('X-Card-Dataset-Sha256');
     expect(adminSmoke).toContain("waitForSelector(client, '.admin-card-list')");
-    expect(adminSmoke).toContain("document.querySelectorAll('.admin-nav-item')");
+    expect(adminSmoke).toContain("document.querySelector('.admin-nav-item[aria-label=");
     expect(adminSmoke).not.toContain('.admin-card-grid');
     expect(uiSmoke).toContain("client.send('Page.addScriptToEvaluateOnNewDocument', { source: setup })");
     expect(uiSmoke).not.toContain('evalChecked(client, setup)');
@@ -250,6 +264,31 @@ describe('operational shell scripts', () => {
     expect(deploy).toContain('node --import tsx "$SCRIPT_DIR/platform-deployment-smoke.ts"');
     expect(deploy).toContain('--expected-public-address "$platform_public_address"');
     expect(deploy).toContain('--bootstrap');
+  });
+
+  it('publishes reviewed official content with the signed migration image before rollout smoke', () => {
+    const deploy = readFileSync(resolve('scripts/deploy-server4.sh'), 'utf8');
+    const canary = readFileSync(resolve('scripts/deploy-server4-canary.sh'), 'utf8');
+    const release = readFileSync(resolve('scripts/release-official-content.sh'), 'utf8');
+    const composeFiles = [
+      'docker-compose.server4.yml',
+      'docker-compose.server4-slot.yml',
+      'docker-compose.staging.yml',
+    ].map((path) => readFileSync(resolve(path), 'utf8'));
+
+    expect(deploy).toContain(
+      "docker compose -f '$COMPOSE_FILE' run --rm --no-deps -T migrate sh scripts/release-official-content.sh",
+    );
+    expect(canary).toContain('compose run --rm --no-deps -T migrate sh scripts/release-official-content.sh');
+    expect(release).toContain('/run/card-data/*');
+    expect(release).toContain('release-official-rulings.ts');
+    expect(release).toContain('release-official-rule-documents.ts');
+    expect(release).toContain('< "$OFFICIAL_RULINGS_TRANSLATIONS_FILE"');
+    for (const compose of composeFiles) {
+      expect(compose).toContain('OFFICIAL_RULINGS_TRANSLATIONS_FILE');
+      expect(compose).toContain('OFFICIAL_RULE_DOCUMENTS_FILE');
+      expect(compose).toContain('${CARD_DATA_DIR:?Set CARD_DATA_DIR to the private reviewed card-data directory}');
+    }
   });
 
   it('ships private battle assets alongside every immutable deployment', () => {
@@ -274,6 +313,8 @@ describe('operational shell scripts', () => {
       expect(compose).toContain('${BATTLE_ASSET_DIR:-./public/battle}');
       expect(compose).toContain('/app/dist/battle');
     }
+    expect(smoke).toContain('if (checkBattleAssets)');
+    expect(smoke).toContain('/api/official/status');
     expect(assetChecksums).toHaveLength(22);
     expect(assetChecksums.every((line) => /^[a-f0-9]{64} {2}[A-Za-z0-9._/-]+\.(png|svg)$/.test(line))).toBe(true);
   });
@@ -384,6 +425,17 @@ describe('operational shell scripts', () => {
     );
     expect(rollback).not.toContain("docker compose -f '$COMPOSE_FILE' run --rm migrate");
     expect(rollback).not.toContain("docker compose -f '$COMPOSE_FILE' up -d --wait");
+  });
+
+  it('keeps source recovery staging-only and reuses the normal deploy path', () => {
+    const recovery = readFileSync(resolve('scripts/server4-recovery-drill.sh'), 'utf8');
+    expect(recovery).toContain('DEPLOY_ENVIRONMENT=staging');
+    expect(recovery).toContain('RECOVERY_CONFIRM=source-redeploy-staging');
+    expect(recovery).toContain("!= '149.104.6.238'");
+    expect(recovery).toContain('stop game api platform');
+    expect(recovery).toContain('deploy-server4.sh');
+    expect(recovery).toContain('sourceCheckoutVerified');
+    expect(recovery).toContain('smokePassed');
   });
 
   it('rejects an unknown migration subcommand instead of defaulting to up', () => {

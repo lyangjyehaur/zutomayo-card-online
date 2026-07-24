@@ -14,6 +14,7 @@ function assertEqual(label, actual, expected) {
 
 const errors = [];
 const rootPackage = readJson('package.json');
+const rootPackageLock = readJson('package-lock.json');
 const apiPackage = readJson('api/package.json');
 const apiPackageLock = readJson('api/package-lock.json');
 
@@ -23,9 +24,43 @@ if (typeof rootPackage.version !== 'string' || !rootPackage.version.trim()) {
 
 const releaseVersion = rootPackage.version;
 
+assertEqual('package-lock.json version', rootPackageLock.version, releaseVersion);
+assertEqual('package-lock.json packages[""].version', rootPackageLock.packages?.['']?.version, releaseVersion);
 assertEqual('api/package.json version', apiPackage.version, releaseVersion);
 assertEqual('api/package-lock.json version', apiPackageLock.version, releaseVersion);
 assertEqual('api/package-lock.json packages[""].version', apiPackageLock.packages?.['']?.version, releaseVersion);
+
+const currentVersionDocuments = [
+  { path: 'README.md', pattern: /目前版本：\*\*([^*]+)\*\*/ },
+  { path: 'README.en.md', pattern: /Current version: \*\*([^*]+)\*\*/ },
+  { path: 'README.ja.md', pattern: /現在のバージョン：\*\*([^*]+)\*\*/ },
+  { path: 'docs/PLAN.md', pattern: /Current release: ([^\s]+)/ },
+];
+
+for (const document of currentVersionDocuments) {
+  const content = readFileSync(document.path, 'utf8');
+  const match = content.match(document.pattern);
+  if (!match) {
+    fail(`${document.path} is missing its current-version marker`);
+    continue;
+  }
+  assertEqual(`${document.path} current version`, match[1].trim(), releaseVersion);
+}
+
+const changelog = readFileSync('CHANGELOG.md', 'utf8');
+const firstRelease = changelog.match(/^## \[([^\]]+)\] - \d{4}-\d{2}-\d{2}$/m);
+if (!firstRelease) {
+  fail('CHANGELOG.md is missing a dated release heading');
+} else {
+  assertEqual('CHANGELOG.md latest release', firstRelease[1], releaseVersion);
+}
+
+const escapedReleaseVersion = releaseVersion.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const releaseLinkPattern = new RegExp(
+  `^\\[${escapedReleaseVersion}\\]: https://github\\.com/.+/releases/tag/v${escapedReleaseVersion}$`,
+  'm',
+);
+if (!releaseLinkPattern.test(changelog)) fail(`CHANGELOG.md is missing the v${releaseVersion} release link`);
 
 const managedFallbackFiles = [
   '.env.example',

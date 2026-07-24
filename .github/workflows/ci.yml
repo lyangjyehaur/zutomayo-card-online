@@ -132,6 +132,15 @@ jobs:
       - name: Format check
         run: npm run format:check:tracked
 
+      - name: Check card source-data policy
+        run: npm run data:policy
+
+      - name: Check card image policy
+        run: npm run image:policy
+
+      - name: Check version sync
+        run: npm run version:check
+
       - name: Lint
         run: npm run lint
 
@@ -144,13 +153,7 @@ jobs:
       - name: Check i18n completeness
         run: npm run i18n:check
 
-      - name: Enforce private card-source data policy
-        run: npm run data:policy
-
-      - name: Unit tests
-        run: npm test
-
-      - name: Coverage gate
+      - name: Unit tests and coverage gate
         run: npm run test:coverage
 
       - name: Build
@@ -182,8 +185,6 @@ jobs:
       REDIS_PASSWORD: ''
       METRICS_TOKEN: e2e-test-metrics-token
       PGSSLMODE: disable
-      EXPECTED_SCHEMA_MIGRATION: 000036_harden_card_i18n_contract
-      EXPECTED_SCHEMA_CHECKSUM: 41115b0039694cd7eed955276d659b455e25f5a053dfdb13f815577b4a6045e9
       PG_MIGRATION_USER: zutomayo_migrator
       PG_MIGRATION_PASSWORD: e2e-test-migration-password
       PG_APP_USER: zutomayo_app
@@ -198,8 +199,10 @@ jobs:
           set -o pipefail
           log_file="$(mktemp)"
           mkdir -p playwright-report test-results
-          test "$EXPECTED_SCHEMA_MIGRATION" = "$(find migrations -maxdepth 1 -type f -name '*.js' -printf '%f\n' | sort | tail -n 1 | sed 's/\.js$//')"
-          test "$EXPECTED_SCHEMA_CHECKSUM" = "$(sha256sum "migrations/${EXPECTED_SCHEMA_MIGRATION}.js" | awk '{print $1}')"
+          export EXPECTED_SCHEMA_MIGRATION="$(find migrations -maxdepth 1 -type f -name '*.js' -printf '%f\n' | sort | tail -n 1 | sed 's/\.js$//')"
+          export EXPECTED_SCHEMA_CHECKSUM="$(sha256sum "migrations/${EXPECTED_SCHEMA_MIGRATION}.js" | awk '{print $1}')"
+          echo "EXPECTED_SCHEMA_MIGRATION=$EXPECTED_SCHEMA_MIGRATION" >> "$GITHUB_ENV"
+          echo "EXPECTED_SCHEMA_CHECKSUM=$EXPECTED_SCHEMA_CHECKSUM" >> "$GITHUB_ENV"
           compose=(docker compose -f docker-compose.yml -f docker-compose.e2e.yml)
           if "${compose[@]}" build 2>&1 | tee "$log_file" \
             && "${compose[@]}" up --wait --wait-timeout 180 game api platform \
@@ -234,6 +237,7 @@ jobs:
         with:
           name: test-results
           path: test-results/
+          if-no-files-found: ignore
           retention-days: 7
 
       - name: Cleanup

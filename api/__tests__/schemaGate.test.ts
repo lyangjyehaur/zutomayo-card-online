@@ -17,6 +17,7 @@ const {
   REQUIRED_RUNTIME_COLUMN_CONTRACTS,
   REQUIRED_RUNTIME_CONSTRAINTS,
   REQUIRED_RUNTIME_INDEXES,
+  DECK_SHARING_RUNTIME_TABLES,
 } = require('../schemaGate.cjs') as {
   assertBoardgameRuntimeSchema: (options: {
     pool: { query: ReturnType<typeof vi.fn> };
@@ -57,10 +58,12 @@ const {
     fragments: string[];
   }>;
   REQUIRED_RUNTIME_INDEXES: Array<{ tableName: string; indexName: string; fragments: string[] }>;
+  DECK_SHARING_RUNTIME_TABLES: string[];
   assertRuntimeSchema: (options: {
     pool: { query: ReturnType<typeof vi.fn> };
     expectedMigration: string;
     expectedChecksum: string;
+    requireDeckSharing?: boolean;
   }) => Promise<{ expectedMigration: string; expectedChecksum: string }>;
 };
 
@@ -349,10 +352,34 @@ describe('production schema gate', () => {
     expect(REQUIRED_RUNTIME_TABLES).not.toContain('card_effects_i18n');
     expect(REQUIRED_RUNTIME_TABLES).toContain('card_texts_i18n');
     expect(REQUIRED_RUNTIME_TABLES).toContain('card_official_errata');
+    expect(REQUIRED_RUNTIME_TABLES).toContain('official_qa_items');
+    expect(REQUIRED_RUNTIME_TABLES).toContain('official_qa_translations');
+    expect(REQUIRED_RUNTIME_TABLES).toContain('card_official_errata_translations');
+    expect(REQUIRED_RUNTIME_TABLES).toContain('official_rulings_sync_runs');
+    expect(REQUIRED_RUNTIME_TABLES).toContain('official_rule_documents');
+    expect(REQUIRED_RUNTIME_TABLES).toContain('official_rule_sections');
+    expect(REQUIRED_RUNTIME_TABLES).toContain('official_rule_section_translations');
+    expect(REQUIRED_RUNTIME_TABLES).toContain('official_rule_active_versions');
     expect(REQUIRED_RUNTIME_COLUMNS.cards).toContain('en_name_official');
     expect(REQUIRED_RUNTIME_COLUMNS.cards).toContain('has_official_errata');
     expect(REQUIRED_RUNTIME_COLUMNS.card_texts_i18n).toEqual(
       expect.arrayContaining(['card_id', 'lang', 'review_status', 'review_note', 'updated_at']),
+    );
+    expect(REQUIRED_RUNTIME_COLUMNS.card_official_errata).toContain('corrected_english_source');
+    expect(REQUIRED_RUNTIME_COLUMNS.card_official_errata).toContain('content_version');
+    expect(REQUIRED_RUNTIME_COLUMNS.official_qa_items).toContain('question_ja');
+    expect(REQUIRED_RUNTIME_COLUMNS.official_qa_translations).toContain('question_text');
+    expect(REQUIRED_RUNTIME_COLUMNS.official_rulings_sync_runs).toContain('diff');
+    expect(REQUIRED_RUNTIME_COLUMNS.official_rule_documents).toContain('source_sha256');
+    expect(REQUIRED_RUNTIME_COLUMNS.official_rule_sections).toContain('body_ja');
+    expect(REQUIRED_RUNTIME_COLUMNS.official_rule_section_translations).toContain('body_text');
+    expect(REQUIRED_RUNTIME_COLUMNS.card_official_errata).not.toContain('corrected_japanese_text');
+    expect(REQUIRED_RUNTIME_COLUMNS.card_official_errata).not.toContain('corrected_english_text');
+    expect(REQUIRED_RUNTIME_CONSTRAINTS).toContainEqual(
+      expect.objectContaining({
+        tableName: 'card_texts_i18n',
+        constraintName: 'card_texts_i18n_derived_lang_check',
+      }),
     );
     expect(REQUIRED_RUNTIME_COLUMNS.card_official_errata).toEqual(
       expect.arrayContaining([
@@ -461,6 +488,31 @@ describe('production schema gate', () => {
         expectedChecksum: CHECKSUM,
       }),
     ).rejects.toThrow('bjg_matches');
+  });
+
+  it('requires deck-sharing tables only when the guarded feature is enabled', async () => {
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({ rows: [{ '?column?': 1 }] })
+      .mockResolvedValueOnce({ rows: [{ sha256: CHECKSUM }] })
+      .mockResolvedValueOnce({
+        rows: [
+          ...allTablesPresent(),
+          ...DECK_SHARING_RUNTIME_TABLES.map((table_name) => ({
+            table_name,
+            present: table_name !== 'deck_shares',
+          })),
+        ],
+      });
+
+    await expect(
+      assertRuntimeSchema({
+        pool: { query },
+        expectedMigration: '000038_deck_sharing',
+        expectedChecksum: CHECKSUM,
+        requireDeckSharing: true,
+      }),
+    ).rejects.toThrow('deck_shares');
   });
 
   it('accepts a fully migrated runtime schema without issuing DDL', async () => {

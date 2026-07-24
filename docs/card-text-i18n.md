@@ -2,7 +2,7 @@
 
 本文件描述卡牌名稱與效果文本的資料來源、PostgreSQL 結構、前端顯示規則，以及英文 OCR、人工複核、勘誤與衍生翻譯的維護流程。
 
-這套資料流與一般介面文案 i18n 不同。介面文案位於 `src/i18n/*.ts`；卡牌名稱和效果由 PostgreSQL 提供，不應加入介面文案檔案。
+這套資料流與一般介面文案 i18n 不同。介面文案位於 `src/i18n/*.ts`；卡牌名稱和效果由 PostgreSQL 提供，不應加入介面文案檔案。兩條資料流的規則專有名詞都必須遵守[規則術語 i18n 字典](./rules-terminology.md)。
 
 ## 不可破壞的資料契約
 
@@ -224,7 +224,7 @@ npm run audit:card-official-texts
 
 官方來源為 <https://zutomayocard.net/errata/>。新增或修改勘誤時：
 
-1. 更新 `data/card-official-errata.json`，保留官方編號、日期、受影響欄位、錯誤文本、修正後日文和來源網址。
+1. 先依 [官方 Q&A 與勘誤資料庫指南](./official-rulings.md) 執行官方來源 diff 與 PostgreSQL 同步。若卡牌官方文本匯入也需要相同勘誤證據，再更新本機未追蹤的 `data/card-official-errata.json`；該檔不得提交 GitHub，也不是 runtime fallback。
 2. 確認 `correctedJapaneseText` 與 `cards.name` 或 `cards.effect` 中的官方修正後日文完全一致。
 3. 逐欄判斷英文來源類型。能沿用卡面英文語序時作最小修正，不要無理由整段重寫；官方日文刪除 `すべて` 等語義時，英文也必須刪除對應的 `all`。
 4. 卡面使用英文數字單詞時，修正文本延續官方風格，例如 `one card`，不要擅自改成 `1 card` 或 `a card`。
@@ -275,7 +275,7 @@ npm run audit:card-derived-effects
 npm run import:card-derived-effects
 ```
 
-腳本會拒絕來源雜湊、卡牌 ID、官方日文、人工校對卡面英文或勘誤集合不一致的資料，也會拒絕任何已填入但尚未複核的衍生卡名，避免共用的 `review_status` 誤把卡名標記為已複核。匯入成功後會：
+腳本會拒絕來源雜湊、卡牌 ID、官方日文、人工校對卡面英文或勘誤集合不一致的資料，也會拒絕任何已填入但尚未標記為 `verified` 的衍生卡名，避免共用的 `review_status` 誤把卡名標記為已複核；既有 `verified` 卡名會原樣保留。匯入成功後會：
 
 - 寫入 4 種語言共 1,000 條效果並標記為 `verified`。
 - 一般卡使用 `admin_bilingual_translation`；效果勘誤卡使用 `official_japanese_errata_translation`。

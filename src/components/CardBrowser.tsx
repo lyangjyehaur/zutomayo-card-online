@@ -139,7 +139,7 @@ function CardBrowserDetailContent({
         </div>
       )}
       {effect && <p className="mt-2.5 text-body-sm leading-relaxed text-content-primary/80">{effect}</p>}
-      {footer && <div className="mt-2 font-mono text-minutia text-content-primary/30">{footer}</div>}
+      {footer && <div className="mt-2 font-mono text-minutia text-content-muted">{footer}</div>}
     </>
   );
 }

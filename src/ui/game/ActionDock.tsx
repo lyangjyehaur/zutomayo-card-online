@@ -38,7 +38,12 @@ export function ActionDock({
         <p>{hintBody}</p>
       </div>
       {canSetSelected && (
-        <button type="button" className="actiondock-btn actiondock-btn-set" onClick={onSetSelected}>
+        <button
+          type="button"
+          className="actiondock-btn actiondock-btn-set"
+          data-tut="set-selected-card"
+          onClick={onSetSelected}
+        >
           {t('board.setInspectedCard')}
         </button>
       )}

@@ -55,6 +55,19 @@ describe('derived card-effect review data', () => {
     expect(problems).toContain('card_1/ko: effect contains Japanese/Chinese text or punctuation');
   });
 
+  it('rejects localized aliases for protected labels and untranslated zones', () => {
+    const input = auditInput();
+    delete input.effects.card_1.en;
+    input.effects.card_1['zh-TW'] = '充能成本足夠時，放到 Power Charger';
+    input.effects.card_1.ko = '파워 코스트가 충분하면 파워 차저에 놓는다';
+
+    const problems = auditDerivedEffects(input);
+
+    expect(problems).toContain('card_1/zh-TW: non-canonical rules terminology (Power Charger -> 充能區)');
+    expect(problems).toContain('card_1/zh-TW: non-canonical rules terminology (充能成本 -> Power Cost)');
+    expect(problems).toContain('card_1/ko: non-canonical rules terminology (파워 코스트 -> Power Cost)');
+  });
+
   it('assigns errata provenance only to cards whose effects were corrected', () => {
     const input = auditInput();
     delete input.effects.card_1.en;

@@ -14,7 +14,9 @@ COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts
 COPY migrations ./migrations
 COPY api/schemaGate.cjs ./api/schemaGate.cjs
+COPY api/deckSharingConfig.cjs ./api/deckSharingConfig.cjs
 COPY api/runtimeSecurityConfig.cjs ./api/runtimeSecurityConfig.cjs
+COPY api/officialRulingsSource.cjs ./api/officialRulingsSource.cjs
 COPY api/relationshipEvents.cjs ./api/relationshipEvents.cjs
 COPY api/observability.cjs ./api/observability.cjs
 COPY api/accountMutationLock.cjs ./api/accountMutationLock.cjs
@@ -44,6 +46,13 @@ COPY scripts/create-admin.cjs ./scripts/create-admin.cjs
 COPY scripts/relationship-outbox-pg-smoke.cjs ./scripts/relationship-outbox-pg-smoke.cjs
 COPY scripts/admin-credential-pg-smoke.cjs ./scripts/admin-credential-pg-smoke.cjs
 COPY scripts/redrive-relationship-outbox.cjs ./scripts/redrive-relationship-outbox.cjs
+COPY scripts/officialRulingsData.ts ./scripts/officialRulingsData.ts
+COPY scripts/release-official-content.sh ./scripts/release-official-content.sh
+COPY scripts/release-official-rulings.ts ./scripts/release-official-rulings.ts
+COPY scripts/release-official-rule-documents.ts ./scripts/release-official-rule-documents.ts
+COPY scripts/cardDerivedEffects.ts ./scripts/cardDerivedEffects.ts
+COPY scripts/import-card-derived-effects-pg.ts ./scripts/import-card-derived-effects-pg.ts
+COPY src/rulesTerminology.ts ./src/rulesTerminology.ts
 
 USER node
 CMD ["npm", "run", "db:migrate:release"]

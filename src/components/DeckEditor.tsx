@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { Link } from 'react-router-dom';
 import type { CardDef, CardType, Element } from '../game/types';
 import { getAllCardDefs, isCardsInitialized, refreshCards } from '../game/cards/loader';
 import {
@@ -65,6 +66,8 @@ interface DeckEditorProps {
   synced?: boolean;
   syncLabel?: string;
   errorMessage?: string;
+  headerActions?: ReactNode;
+  deckSheetActions?: ReactNode;
 }
 
 interface DeckLibraryOption {
@@ -139,6 +142,8 @@ export function DeckEditor({
   synced = false,
   syncLabel,
   errorMessage,
+  headerActions,
+  deckSheetActions,
 }: DeckEditorProps) {
   const [allCards, setAllCards] = useState<CardDef[]>(() => getAllCardDefs());
   const locale = useLocale();
@@ -324,11 +329,7 @@ export function DeckEditor({
 
   const characterCount = deckCards.filter((card) => card.type === 'Character').length;
   const copyLimitValid = [...deckCounts.values()].every((count) => count <= MAX_COPIES);
-  const isValid =
-    deck.length === DECK_SIZE &&
-    deckCards.length === deck.length &&
-    characterCount >= Math.ceil(DECK_SIZE * 0.5) &&
-    copyLimitValid;
+  const isValid = deck.length === DECK_SIZE && deckCards.length === deck.length && copyLimitValid;
 
   const totalPages = Math.max(1, Math.ceil(filteredCards.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages - 1);
@@ -368,76 +369,97 @@ export function DeckEditor({
     if (!hasDeckLibraryActions) return null;
 
     return (
-      <div className="mb-3 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2 rounded-sm border border-content-primary/10 bg-surface-base/55 p-2">
-        <label className="grid min-w-0 gap-1">
-          <span className="font-mono text-minutia uppercase tracking-[var(--tracking-control)] text-content-dim">
-            {t('deckEditor.deckLibrary')}
-          </span>
-          <div className="relative min-w-0">
-            <Select
-              value={selectedDeckLibraryId}
-              disabled={!onSelectDeckLibrary || deckLibraryOptions.length === 0}
-              onChange={(event) => onSelectDeckLibrary?.(event.target.value)}
-              aria-label={t('deckEditor.selectDeck')}
-              className="min-h-11 appearance-none truncate border-border-soft bg-surface-canvas py-2 pl-3 pr-10 text-body-sm"
-            >
-              {deckLibraryOptions.length === 0 ? (
-                <option value="">{t('deckEditor.currentDraft')}</option>
-              ) : (
-                deckLibraryOptions.map((option) => (
-                  <option key={option.id} value={option.id}>
-                    {option.name}
-                  </option>
-                ))
+      <div className="mb-3 grid gap-2 rounded-sm border border-content-primary/10 bg-surface-base/55 p-2">
+        {onDeckNameChange && (
+          <label className="grid min-w-0 gap-1 sm:hidden">
+            <span className="flex items-center justify-between gap-2 font-mono text-minutia uppercase tracking-[var(--tracking-control)] text-content-muted">
+              <span>{t('deckEditor.deckName')}</span>
+              {syncLabel && (
+                <span className={synced ? 'text-accent-primary' : 'text-accent-action'} aria-live="polite">
+                  {syncLabel}
+                </span>
               )}
-            </Select>
-            <ChevronDown
-              className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-content-primary/35"
-              aria-hidden="true"
+            </span>
+            <Input
+              value={deckName ?? ''}
+              aria-label={t('deckEditor.deckName')}
+              placeholder={t('deck.custom')}
+              onChange={(event) => onDeckNameChange(event.target.value)}
+              className="min-h-11 px-3 py-2 text-body-sm"
             />
+          </label>
+        )}
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2">
+          <label className="grid min-w-0 gap-1">
+            <span className="font-mono text-minutia uppercase tracking-[var(--tracking-control)] text-content-muted">
+              {t('deckEditor.deckLibrary')}
+            </span>
+            <div className="relative min-w-0">
+              <Select
+                value={selectedDeckLibraryId}
+                disabled={!onSelectDeckLibrary || deckLibraryOptions.length === 0}
+                onChange={(event) => onSelectDeckLibrary?.(event.target.value)}
+                aria-label={t('deckEditor.selectDeck')}
+                className="min-h-11 appearance-none truncate border-border-soft bg-surface-canvas py-2 pl-3 pr-10 text-body-sm"
+              >
+                {deckLibraryOptions.length === 0 ? (
+                  <option value="">{t('deckEditor.currentDraft')}</option>
+                ) : (
+                  deckLibraryOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.name}
+                    </option>
+                  ))
+                )}
+              </Select>
+              <ChevronDown
+                className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-content-primary/35"
+                aria-hidden="true"
+              />
+            </div>
+          </label>
+          <div className="deck-library-actions flex items-end gap-2">
+            {onNewDeck && (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="deck-library-action size-touch !px-0 md:w-auto md:!px-3"
+                onClick={onNewDeck}
+                aria-label={t('deckEditor.newDeck')}
+              >
+                <Plus className="size-3.5" aria-hidden="true" />
+                <span className="hidden md:inline">{t('deckEditor.newDeck')}</span>
+              </Button>
+            )}
+            {onImportDeck && (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="deck-library-action size-touch !px-0 md:w-auto md:!px-3"
+                onClick={onImportDeck}
+                aria-label={t('deckEditor.importDeck')}
+              >
+                <Upload className="size-3.5" aria-hidden="true" />
+                <span className="hidden md:inline">{t('deckEditor.importDeck')}</span>
+              </Button>
+            )}
+            {onExportDeck && (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="deck-library-action size-touch !px-0 md:w-auto md:!px-3"
+                onClick={() => onExportDeck(deck)}
+                disabled={deck.length === 0}
+                aria-label={t('deckEditor.exportDeck')}
+              >
+                <Download className="size-3.5" aria-hidden="true" />
+                <span className="hidden md:inline">{t('deckEditor.exportDeck')}</span>
+              </Button>
+            )}
           </div>
-        </label>
-        <div className="deck-library-actions flex shrink-0 items-end gap-2">
-          {onNewDeck && (
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              className="deck-library-action min-h-11 min-w-11 shrink-0 !px-0 sm:!px-3"
-              onClick={onNewDeck}
-              aria-label={t('deckEditor.newDeck')}
-            >
-              <Plus className="size-3.5" aria-hidden="true" />
-              <span className="hidden md:inline">{t('deckEditor.newDeck')}</span>
-            </Button>
-          )}
-          {onImportDeck && (
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              className="deck-library-action min-h-11 min-w-11 shrink-0 !px-0 sm:!px-3"
-              onClick={onImportDeck}
-              aria-label={t('deckEditor.importDeck')}
-            >
-              <Upload className="size-3.5" aria-hidden="true" />
-              <span className="hidden md:inline">{t('deckEditor.importDeck')}</span>
-            </Button>
-          )}
-          {onExportDeck && (
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              className="deck-library-action min-h-11 min-w-11 shrink-0 !px-0 sm:!px-3"
-              onClick={() => onExportDeck(deck)}
-              disabled={deck.length === 0}
-              aria-label={t('deckEditor.exportDeck')}
-            >
-              <Download className="size-3.5" aria-hidden="true" />
-              <span className="hidden md:inline">{t('deckEditor.exportDeck')}</span>
-            </Button>
-          )}
         </div>
       </div>
     );
@@ -447,8 +469,8 @@ export function DeckEditor({
     const compact = mode === 'compact';
     const fieldsetClass = compact ? 'flex min-w-0 items-center gap-2' : 'flex flex-wrap items-center gap-3';
     const legendClass = compact
-      ? 'shrink-0 text-minutia uppercase tracking-[var(--tracking-control)] text-content-dim'
-      : 'w-full text-caption uppercase tracking-[var(--tracking-kicker)] text-content-dim sm:w-auto';
+      ? 'shrink-0 text-minutia uppercase tracking-[var(--tracking-control)] text-content-muted'
+      : 'w-full text-caption uppercase tracking-[var(--tracking-kicker)] text-content-muted sm:w-auto';
     const chipGroupClass = compact ? 'deck-filter-chip-group gap-1' : 'deck-filter-chip-group';
     const chipOptionClass = compact ? 'px-2' : undefined;
     const chipSize = compact ? 'sm' : 'md';
@@ -559,10 +581,10 @@ export function DeckEditor({
         </div>
       </div>
 
-      <div className="mb-3 space-y-1 font-mono text-caption uppercase tracking-normal text-content-dim">
+      <div className="mb-3 space-y-1 font-mono text-caption uppercase tracking-normal text-content-muted">
         <div className="flex items-center justify-between">
           <span>{t('deckEditor.ruleCharacters')}</span>
-          <span className={characterCount >= Math.ceil(DECK_SIZE * 0.5) ? 'text-accent-primary' : 'text-accent-action'}>
+          <span className={characterCount >= Math.ceil(DECK_SIZE * 0.5) ? 'text-accent-primary' : 'text-content-dim'}>
             {characterCount}
           </span>
         </div>
@@ -578,7 +600,12 @@ export function DeckEditor({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto" role="list" aria-label={t('deckEditor.currentDeck')}>
+      <div
+        className="min-h-0 flex-1 space-y-1.5 overflow-y-auto"
+        role="list"
+        aria-label={t('deckEditor.currentDeck')}
+        tabIndex={0}
+      >
         {deckEntries.map(({ card, count, firstIndex }) => (
           <div
             key={`${card.id}-${firstIndex}`}
@@ -598,7 +625,7 @@ export function DeckEditor({
             </div>
             <div className="flex shrink-0 items-center gap-2">
               <span
-                className="font-mono text-caption text-content-dim"
+                className="font-mono text-caption text-content-primary/40"
                 aria-label={`${t('deckEditor.copyCount')} ${count}`}
               >
                 ×{count}
@@ -615,7 +642,7 @@ export function DeckEditor({
         {Array.from({ length: emptySlotCount }, (_, index) => (
           <div
             key={`empty-${index}`}
-            className="rounded-xs border border-dashed border-content-primary/10 px-3 py-2 text-caption text-content-dim"
+            className="rounded-xs border border-dashed border-content-primary/10 px-3 py-2 text-caption text-content-muted"
             role="listitem"
             aria-label={t('deckEditor.emptySlot')}
           >
@@ -691,17 +718,18 @@ export function DeckEditor({
                   aria-label={t('deck.custom')}
                   placeholder={t('deck.custom')}
                   onChange={(event) => onDeckNameChange(event.target.value)}
-                  className="min-h-11 w-32 px-3 py-2 text-body-sm sm:w-40"
+                  className="hidden min-h-11 w-40 px-3 py-2 text-body-sm sm:block"
                 />
               )}
               {syncLabel && (
                 <span
-                  className={`hidden font-mono text-caption uppercase tracking-[var(--tracking-kicker)] sm:inline ${synced ? 'text-accent-primary' : 'text-content-dim'}`}
+                  className={`hidden font-mono text-caption uppercase tracking-[var(--tracking-kicker)] sm:inline ${synced ? 'text-accent-primary' : 'text-content-primary/40'}`}
                   aria-live="polite"
                 >
                   {syncLabel}
                 </span>
               )}
+              {headerActions}
               <Button
                 type="button"
                 disabled={!isValid || saving}
@@ -709,7 +737,7 @@ export function DeckEditor({
                 size="sm"
                 variant="primary"
                 aria-label={saveLabel ?? t('deckEditor.saveDeck')}
-                className="deck-save-action min-h-11 min-w-11 shrink-0 px-3"
+                className="deck-save-action size-touch shrink-0 px-0 sm:w-auto sm:px-3"
               >
                 <Save className="size-3.5" aria-hidden="true" />
                 <span className="hidden sm:inline">{saveLabel ?? t('deckEditor.saveDeck')}</span>
@@ -797,8 +825,8 @@ export function DeckEditor({
               className="flex min-h-6 flex-wrap items-center gap-x-3 gap-y-1 font-mono text-minutia uppercase tracking-[var(--tracking-control)] lg:hidden"
               aria-live="polite"
             >
-              <span className={isValid ? 'text-accent-primary/70' : 'text-accent-action'}>{deckStatusLabel}</span>
-              <span className="min-w-0 truncate text-content-dim">{filterSummary}</span>
+              <span className={isValid ? 'text-accent-primary/70' : 'text-accent-action/70'}>{deckStatusLabel}</span>
+              <span className="min-w-0 truncate text-content-muted">{filterSummary}</span>
             </div>
           }
         />
@@ -807,7 +835,7 @@ export function DeckEditor({
 
         <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <span
-            className="font-mono text-caption uppercase tracking-[var(--tracking-control)] text-content-dim md:tracking-[var(--tracking-kicker)]"
+            className="font-mono text-caption uppercase tracking-[var(--tracking-control)] text-content-muted md:tracking-[var(--tracking-kicker)]"
             aria-live="polite"
           >
             {t('deck.foundCards').replace('{count}', String(filteredCards.length))} · {currentPage + 1}/{totalPages}
@@ -877,12 +905,15 @@ export function DeckEditor({
                       ×{count}
                     </span>
                   )}
-                  {card.hasOfficialErrata && (
-                    <span className="absolute bottom-1 left-1 rounded-xs bg-accent-action/90 px-1.5 py-0.5 font-mono text-minutia leading-none text-surface-canvas">
-                      {t('card.officialErrata')}
-                    </span>
-                  )}
                 </button>
+                {card.hasOfficialErrata && card.officialErrataId && (
+                  <Link
+                    className="absolute bottom-1 left-1 z-[var(--z-dropdown)] inline-flex min-h-11 items-center rounded-xs bg-accent-action/90 px-2 font-mono text-minutia leading-none text-surface-canvas transition hover:bg-accent-action focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--focus-ring-color] lg:min-h-0 lg:px-1.5 lg:py-1"
+                    to={`/rules/errata/${card.officialErrataId}`}
+                  >
+                    {t('card.officialErrata')}
+                  </Link>
+                )}
                 <IconButton
                   className="absolute bottom-1 right-1 z-[var(--z-dropdown)] bg-surface-canvas/90 text-content-primary/70 ring-1 ring-content-primary/20 backdrop-blur hover:text-accent-primary md:hidden"
                   label={`Preview ${localizedName}`}
@@ -937,16 +968,19 @@ export function DeckEditor({
         title={deckName?.trim() || t('deckEditor.currentDeck')}
         closeLabel={t('common.close')}
         footer={
-          <Button
-            type="button"
-            disabled={!isValid || saving}
-            onClick={() => void saveDeck()}
-            fullWidth
-            variant="primary"
-            className="min-h-11"
-          >
-            <Save className="size-3.5" aria-hidden="true" /> {saveLabel ?? t('deckEditor.saveDeck')}
-          </Button>
+          <div className="grid w-full gap-2 sm:grid-cols-2">
+            {deckSheetActions}
+            <Button
+              type="button"
+              disabled={!isValid || saving}
+              onClick={() => void saveDeck()}
+              fullWidth
+              variant="primary"
+              className={deckSheetActions ? 'min-h-11' : 'min-h-11 sm:col-span-2'}
+            >
+              <Save className="size-3.5" aria-hidden="true" /> {saveLabel ?? t('deckEditor.saveDeck')}
+            </Button>
+          </div>
         }
       >
         {renderActiveDeckContent()}

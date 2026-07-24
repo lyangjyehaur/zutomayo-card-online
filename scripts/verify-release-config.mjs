@@ -114,14 +114,14 @@ function assertDigestInputs(relativePath) {
   if (checksumInputs.length !== 4) {
     throw new Error(`${relativePath} must pass EXPECTED_SCHEMA_CHECKSUM to migrate and all app services`);
   }
-  for (const [variable, expectedInput] of [
-    ['APP_VERSION', 'APP_VERSION=${APP_VERSION:?'],
-    ['APP_BUILD_ID', 'APP_BUILD_ID=${RELEASE_SHA:?'],
-    ['GAME_RULES_VERSION', 'GAME_RULES_VERSION=${GAME_RULES_VERSION:?'],
+  for (const [variable, expectedInput, expectedCount, services] of [
+    ['APP_VERSION', 'APP_VERSION=${APP_VERSION:?', 4, 'migrate and all app services'],
+    ['APP_BUILD_ID', 'APP_BUILD_ID=${RELEASE_SHA:?', 4, 'migrate and all app services'],
+    ['GAME_RULES_VERSION', 'GAME_RULES_VERSION=${GAME_RULES_VERSION:?', 3, 'all app services'],
   ]) {
     const matches = lines.filter((line) => line.includes(expectedInput));
-    if (matches.length !== 3) {
-      throw new Error(`${relativePath} must bind ${variable} to verified release metadata for all app services`);
+    if (matches.length !== expectedCount) {
+      throw new Error(`${relativePath} must bind ${variable} to verified release metadata for ${services}`);
     }
   }
 }

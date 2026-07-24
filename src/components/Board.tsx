@@ -50,6 +50,7 @@ import {
 } from '../game/GameLogic';
 import { getLocale, t, useLocale } from '../i18n';
 import { getLocalizedCardEffect, getLocalizedCardName, getTranslatedEffect } from '../game/cards/i18n';
+import { getCardElementTranslationKey, getCardTypeTranslationKey } from '../game/cards/taxonomy';
 import { pendingChoiceSelectionError } from '../game/pendingChoices';
 import { canSubmitOnlineTimeout, onlinePhaseTimerStartedAt } from '../onlineTimeout';
 import {
@@ -58,6 +59,7 @@ import {
   useOnlineMatchSubmission,
 } from './board/useOnlineMatchSubmission';
 import { handSelectionResetKey } from './board/handSelection';
+import { getChoiceInstruction, getPhaseInstruction } from './board/phaseInstruction';
 
 export type PopoverPlacement = 'right' | 'left' | 'top' | 'bottom';
 
@@ -130,7 +132,7 @@ function CardPopover({
     <aside className={`card-popover popover-${position.placement}`} style={style} aria-hidden="true">
       <strong>{localizedName}</strong>
       <span className="popover-meta">
-        {t(`card.element.${def.element}` as never)} • {t(`card.type.${def.type}` as never)}
+        {t(getCardElementTranslationKey(def.element))} • {t(getCardTypeTranslationKey(def.type))}
       </span>
       <div className="popover-rule" />
       {def.attack && (
@@ -185,7 +187,10 @@ export type BoardGameOverActions = {
   helperText?: string;
   primary: BoardGameOverAction;
   secondary?: BoardGameOverAction;
+  tertiary?: BoardGameOverAction;
 };
+
+export type TutorialBoardAction = 'mulligan-select' | 'set-select' | 'set-play';
 
 type Props = BoardProps<GameState> & {
   gameOverActions?: BoardGameOverActions;
@@ -199,6 +204,10 @@ type Props = BoardProps<GameState> & {
   opponentLabel?: string;
   // 我方顯示名稱 override（如 AI 對戰時傳入「玩家」），未傳則用 player.zero i18n key。
   selfLabel?: string;
+  // 教學模式：前置流程只放行劇本指定操作。
+  tutorialMode?: boolean;
+  // 教學模式：真實 UI 操作成功後通知劇本引擎推進。
+  onTutorialAction?: (action: TutorialBoardAction, cardDefId: string) => void;
   // 教學模式：隱藏 janken/mulligan 浮層，等教學進度到了才顯示
   hideSetupOverlay?: boolean;
   // 教學模式：setupFeedback 彈窗（如猜拳結果）確認按鈕點擊時的通知
@@ -211,6 +220,12 @@ type Props = BoardProps<GameState> & {
   tutorialRequiredSetCardDefIds?: string[];
   // 教學模式：只在指定操作步驟開放出牌與確認，避免導覽步驟提早推進戰局。
   tutorialSetInteractionEnabled?: boolean;
+  // 教學回溯正在由固定劇本重建安全檢查點，不顯示前置階段回饋。
+  tutorialAutoReplay?: 'flow' | 'turn2' | 'effects';
+  // 快速重放時略過歷史時計／HP 通知，避免抵達檢查點後重新播放舊事件。
+  tutorialSuppressNotices?: boolean;
+  // 教學先完成角色替換、充能與區域附魔說明，第 13 步才顯示效果選擇層。
+  tutorialEffectOverlayVisible?: boolean;
 };
 
 type FeedbackTone = 'phase' | 'success' | 'danger' | 'neutral';
@@ -735,11 +750,13 @@ function GameNoticeOverlay({
   me,
   onNoticeDismiss,
   onActivityChange,
+  suppress = false,
 }: {
   G: GameState;
   me?: PlayerIndex;
   onNoticeDismiss?: () => void;
   onActivityChange?: (active: boolean) => void;
+  suppress?: boolean;
 }) {
   const lastSeenIdRef = useRef<number>(-1);
   const [queue, setQueue] = useState<GameNotice[]>([]);
@@ -755,8 +772,20 @@ function GameNoticeOverlay({
   const noticeCount = notices.length;
 
   useEffect(() => {
+    if (!suppress) return;
+    lastSeenIdRef.current = lastNoticeId;
+    setQueue([]);
+    setCurrent(null);
+    setBusy(false);
+  }, [lastNoticeId, noticeCount, suppress]);
+
+  useEffect(() => {
     const arr = G.recentGameNotices ?? [];
     const maxId = arr.reduce((max, n) => Math.max(max, n.id), 0);
+    if (suppress) {
+      lastSeenIdRef.current = maxId;
+      return;
+    }
     if (lastSeenIdRef.current === -1) {
       lastSeenIdRef.current = maxId;
       return;
@@ -767,7 +796,7 @@ function GameNoticeOverlay({
     setBusy(true);
     setQueue((prev) => [...prev, ...newOnes]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lastNoticeId, noticeCount]);
+  }, [lastNoticeId, noticeCount, suppress]);
 
   useEffect(() => {
     if (current || queue.length === 0) return;
@@ -818,7 +847,7 @@ function GameNoticeOverlay({
     };
   }, []);
 
-  if (!current) return null;
+  if (suppress || !current) return null;
 
   let content: ReactNode;
   try {
@@ -924,6 +953,8 @@ function MulliganScreen({
   focusedCard,
   onFocusCard,
   floating = false,
+  tutorialMode = false,
+  onTutorialAction,
 }: Props & {
   onMulliganFeedback: (redrawCount: number) => void;
   focusedCard?: FocusedCard;
@@ -952,11 +983,12 @@ function MulliganScreen({
   };
   const activateCard = (card: CardInstance, index: number) => {
     if (done) return;
-    if (touchLike) {
+    if (touchLike && !tutorialMode) {
       openCardDetail(card);
       return;
     }
     toggle(index);
+    if (tutorialMode) onTutorialAction?.('mulligan-select', card.defId);
   };
 
   useEffect(() => {
@@ -1009,6 +1041,7 @@ function MulliganScreen({
                 } ${done ? 'opacity-70' : ''}`}
                 data-tut-mulligan-card={card.defId}
                 data-card-defid={card.defId}
+                data-tut-selected={selected.includes(index) ? 'true' : 'false'}
               >
                 <CardView
                   card={card}
@@ -1075,7 +1108,11 @@ function MulliganScreen({
                   className={focusedSelected ? secondaryActionClass('w-full') : primaryActionClass('w-full')}
                   type="button"
                   variant={focusedSelected ? 'secondary' : 'primary'}
-                  onClick={() => toggle(focusedIndex)}
+                  data-tut="mulligan-toggle-redraw"
+                  onClick={() => {
+                    toggle(focusedIndex);
+                    setDetailSheetOpen(false);
+                  }}
                 >
                   {focusedSelected
                     ? `${t('common.cancel')} ${t('board.redraw')}`
@@ -1156,6 +1193,7 @@ function ResultCell({ label, value, accent }: { label: string; value: string; ac
 }
 
 function GameOverScreen({ G, ctx, playerID, matchID, gameOverActions, spectator = false }: Props) {
+  const [logOpen, setLogOpen] = useState(false);
   const eloState = useOnlineMatchSubmission({
     G,
     gameover: ctx.gameover as { winner?: string | number; draw?: boolean } | undefined,
@@ -1213,7 +1251,7 @@ function GameOverScreen({ G, ctx, playerID, matchID, gameOverActions, spectator 
         <div className="absolute inset-0 opacity-[0.04] [background-image:var(--pattern-dot)] [background-size:var(--pattern-dot-size)]" />
       </div>
 
-      <main className="relative z-[var(--z-dropdown)] flex w-full max-w-3xl flex-col items-center justify-center px-8 text-center">
+      <main className="relative z-[var(--z-dropdown)] flex max-h-full w-full max-w-3xl flex-col items-center overflow-y-auto px-2 py-6 text-center sm:px-8">
         <div
           className={`font-mono text-caption uppercase tracking-[var(--tracking-hero)] ${win ? 'text-accent-primary' : 'text-accent-action'}`}
         >
@@ -1228,59 +1266,86 @@ function GameOverScreen({ G, ctx, playerID, matchID, gameOverActions, spectator 
           {title} · {t('board.turn')} {G.turnNumber}
         </div>
 
-        <div className="mt-10 grid w-full grid-cols-2 gap-3 border-y border-content-primary/10 py-6 md:grid-cols-4">
-          <ResultCell
-            label={t('auth.eloChange')}
-            value={eloState.message}
-            accent={win && eloState.status === 'rated'}
-          />
+        <div className="mt-6 grid w-full grid-cols-3 gap-3 border-y border-content-primary/10 py-4 sm:mt-10 sm:py-6">
           <ResultCell label={t('board.result.duration')} value={formatDuration(durationSeconds)} />
           <ResultCell label={t('board.result.turns')} value={String(G.turnNumber)} />
           <ResultCell label={t('board.result.reason')} value={reason} />
         </div>
 
         {eloState.status === 'failed' && eloState.retry && (
-          <Button className="mt-4" type="button" variant="secondary" onClick={eloState.retry}>
-            {t('common.retry')}
-          </Button>
+          <div className="mt-4 flex flex-col items-center gap-2 text-body-sm text-content-muted">
+            <span>{t('auth.matchSubmitFailed')}</span>
+            <Button type="button" variant="secondary" onClick={eloState.retry}>
+              {t('common.retry')}
+            </Button>
+          </div>
         )}
 
-        {ctx.gameover &&
-          (gameOverActions ? (
-            <div className="mt-10 flex flex-col items-center gap-3 md:flex-row">
-              {gameOverActions.helperText && (
-                <p className="text-xs text-content-primary/45">{gameOverActions.helperText}</p>
-              )}
-              <Button
-                className={gameOverActionClass(gameOverActions.primary)}
-                type="button"
-                variant={gameOverActions.primary.variant === 'secondary' ? 'secondary' : 'primary'}
-                onClick={gameOverActions.primary.onClick}
-              >
-                {gameOverActions.primary.label}
-              </Button>
-              {gameOverActions.secondary && (
-                <Button
-                  className={gameOverActionClass(gameOverActions.secondary)}
-                  type="button"
-                  variant={gameOverActions.secondary.variant === 'secondary' ? 'secondary' : 'primary'}
-                  onClick={gameOverActions.secondary.onClick}
-                >
-                  {gameOverActions.secondary.label}
-                </Button>
-              )}
-            </div>
-          ) : (
-            <Button
-              className={primaryActionClass('mt-10')}
-              type="button"
-              variant="primary"
-              onClick={() => window.location.reload()}
-            >
-              {t('board.playAgain')}
+        {ctx.gameover && (
+          <div className="mt-6 grid justify-items-center gap-3 sm:mt-8">
+            <Button type="button" variant="secondary" onClick={() => setLogOpen(true)}>
+              <BookOpen className="size-4" aria-hidden="true" />
+              {t('board.result.viewLog')}
             </Button>
-          ))}
+            {gameOverActions ? (
+              <div className="flex flex-wrap items-center justify-center gap-3">
+                {gameOverActions.helperText && (
+                  <p className="w-full text-xs text-content-primary/45">{gameOverActions.helperText}</p>
+                )}
+                <Button
+                  className={gameOverActionClass(gameOverActions.primary)}
+                  type="button"
+                  variant={gameOverActions.primary.variant === 'secondary' ? 'secondary' : 'primary'}
+                  onClick={gameOverActions.primary.onClick}
+                >
+                  {gameOverActions.primary.label}
+                </Button>
+                {gameOverActions.secondary && (
+                  <Button
+                    className={gameOverActionClass(gameOverActions.secondary)}
+                    type="button"
+                    variant={gameOverActions.secondary.variant === 'secondary' ? 'secondary' : 'primary'}
+                    onClick={gameOverActions.secondary.onClick}
+                  >
+                    {gameOverActions.secondary.label}
+                  </Button>
+                )}
+                {gameOverActions.tertiary && (
+                  <Button
+                    className={gameOverActionClass(gameOverActions.tertiary)}
+                    type="button"
+                    variant={gameOverActions.tertiary.variant === 'secondary' ? 'secondary' : 'primary'}
+                    onClick={gameOverActions.tertiary.onClick}
+                  >
+                    {gameOverActions.tertiary.label}
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <Button
+                className={primaryActionClass()}
+                type="button"
+                variant="primary"
+                onClick={() => window.location.reload()}
+              >
+                {t('board.playAgain')}
+              </Button>
+            )}
+          </div>
+        )}
       </main>
+      <Sheet
+        open={logOpen}
+        onOpenChange={setLogOpen}
+        title={t('board.result.battleLog')}
+        closeLabel={t('common.close')}
+        side="right"
+        className="max-w-xl"
+      >
+        <div className="flex h-full min-h-[20rem]">
+          <BattleLogSidebarPanel G={G} />
+        </div>
+      </Sheet>
     </div>
   );
 }
@@ -1317,78 +1382,6 @@ function translatedChoicePrompt(G: GameState, locale: string): string | null {
   return (def ? getLocalizedCardEffect(def, locale) : null) || choice.prompt;
 }
 
-function choiceInstruction(type: string): string {
-  if (type === 'handToDeckBottomThenDraw') return t('board.choiceHintDeckBottomDraw');
-  if (type === 'reorderOpponentDeckTop') return t('board.choiceHintReorder');
-  if (type === 'opponentPowerCharacterSwap') return t('board.choiceHintSwap');
-  if (type === 'abyssToDeckBottomOrLose') return t('board.choiceHintAbyss');
-  if (type === 'handAbyssSwap') return t('board.choiceHintHandAbyssSwap');
-  if (type.includes('Hand') || type.includes('hand')) return t('board.choiceHintHand');
-  return t('board.choiceHintDefault');
-}
-
-function phaseInstruction(
-  G: GameState,
-  meIndex: PlayerIndex,
-  required: number,
-  minimum: number,
-): { title: string; body: string; meta: { text: string; done: boolean }[] } {
-  const me = G.players[meIndex];
-  if (G.pendingChoice) {
-    const mine = G.pendingChoice.player === meIndex;
-    return {
-      title: mine ? t('board.phaseChoiceTitle') : t('board.phaseChoiceWaitingTitle'),
-      body: mine
-        ? choiceInstruction(G.pendingChoice.type)
-        : `${playerName(G.pendingChoice.player)} ${t('board.phaseChoosing')}`,
-      meta: [
-        {
-          text: `${t('board.choiceRequired')} ${G.pendingChoice.min}–${G.pendingChoice.max}`,
-          done: false,
-        },
-      ],
-    };
-  }
-  if (G.step === 'effectOrder') {
-    const player = G.pendingEffectPlayer;
-    const pendingCount = player === null ? 0 : G.pendingEffects[player].length;
-    return {
-      title: player === meIndex ? t('board.phaseEffectTitle') : t('board.phaseEffectWaitingTitle'),
-      body:
-        player === meIndex
-          ? t('board.phaseEffectBody')
-          : player === null
-            ? t('board.phaseEffectResolving')
-            : `${playerName(player)} ${t('board.phaseResolvingEffects')}`,
-      meta: [{ text: `${t('board.phasePendingEffects')} ${pendingCount}`, done: false }],
-    };
-  }
-  if (G.step === 'initialSet') {
-    return {
-      title: t('board.phaseInitialSetTitle'),
-      body: G.ready[meIndex] ? t('board.phaseWaitingOpponentReady') : t('board.phaseInitialSetBody'),
-      meta: [{ text: `${t('board.phaseSetCount')} ${me.cardsSetThisTurn}/1`, done: me.cardsSetThisTurn >= 1 }],
-    };
-  }
-  if (G.step === 'turnSet') {
-    return {
-      title: G.ready[meIndex] ? t('board.phaseWaitingTitle') : t('board.phaseTurnSetTitle'),
-      body: G.ready[meIndex] ? t('board.phaseWaitingOpponentReady') : t('board.phaseTurnSetBody'),
-      meta: [
-        {
-          text: `${t('board.phaseSetCount')} ${me.cardsSetThisTurn} ${t('board.cardsUnit')}`,
-          done: me.cardsSetThisTurn >= minimum,
-        },
-        { text: `${t('board.phaseMinimum')} ${minimum}`, done: me.cardsSetThisTurn >= minimum },
-        ...(required > minimum
-          ? [{ text: `${t('board.phaseMaximum')} ${required}`, done: me.cardsSetThisTurn <= required }]
-          : []),
-      ],
-    };
-  }
-  return { title: t('board.gameOver'), body: t('online.gameOverHelper'), meta: [] };
-}
-
 function EffectOrderPanel({
   G,
   moves,
@@ -1422,6 +1415,7 @@ function EffectOrderPanel({
                 key={effect.id}
                 className="effect-order-item"
                 type="button"
+                data-tut-effect-card={effect.cardDefId}
                 onClick={() => moves.resolvePendingEffect(index)}
               >
                 <span className="effect-order-card">
@@ -1464,7 +1458,7 @@ function PendingChoicePanel({
   const selectionError = pendingChoiceSelectionError(choice, selected);
   const canSubmit = selectionError === null;
   const semanticError = selectionError === 'handAbyssPair' ? t('board.choiceInvalidHandAbyssPair') : '';
-  const prompt = translatedChoicePrompt(G, locale) ?? choiceInstruction(choice.type);
+  const prompt = translatedChoicePrompt(G, locale) ?? getChoiceInstruction(choice.type);
   const toggle = (optionId: string) => {
     setSelected((current) => {
       if (current.includes(optionId)) return current.filter((item) => item !== optionId);
@@ -1839,9 +1833,13 @@ function BattleBoard({
   opponentLabel,
   selfLabel,
   onNoticeDismiss,
+  onTutorialAction,
+  tutorialMode,
   tutorialAllowedSetCardDefIds,
   tutorialRequiredSetCardDefIds,
   tutorialSetInteractionEnabled = true,
+  tutorialSuppressNotices,
+  tutorialEffectOverlayVisible,
   onNoticeActivityChange,
   onBattleAnimationChange,
   onPause,
@@ -2037,7 +2035,7 @@ function BattleBoard({
   }, [G.lastBattleResult, G.turnNumber]);
 
   const time = getChronosTime(G);
-  const currentInstruction = phaseInstruction(G, meIndex, required, minimum);
+  const currentInstruction = getPhaseInstruction(G, meIndex, required, minimum, playerName);
   const canAct =
     !spectator &&
     tutorialSetInteractionEnabled &&
@@ -2067,6 +2065,7 @@ function BattleBoard({
     else moves.setTurnCard(handIndex, me.setZoneA ? 'B' : 'A');
     setInteractionMessage('');
     setSelectedHandIndex(null);
+    onTutorialAction?.('set-play', card.defId);
   };
   const canConfirm =
     !spectator &&
@@ -2133,10 +2132,12 @@ function BattleBoard({
         return;
       }
       setSelectedHandIndex(index);
+      onTutorialAction?.('set-select', card.defId);
       return;
     }
     // 桌面與觸控統一採兩段式：先選中／預覽，再由 ActionDock 明確打出，避免單擊誤出牌。
     setSelectedHandIndex(index);
+    onTutorialAction?.('set-select', card.defId);
   };
 
   const zoneNames = {
@@ -2180,6 +2181,7 @@ function BattleBoard({
       <button
         className="mobile-zone-button mobile-zone-button-abyss"
         type="button"
+        data-tut={owner === meIndex ? 'player-abyss' : 'opponent-abyss'}
         data-chronos-side={setZoneChronosSide(owner)}
         aria-label={`${playerName(owner)} ${zoneNames.abyss}: ${count}`}
         onClick={() => setZoneSheet({ kind: 'abyss', owner })}
@@ -2281,6 +2283,7 @@ function BattleBoard({
                     cards={opponent.abyss}
                     chronosSide={setZoneChronosSide(opponentIndex)}
                     onOpen={() => setZoneSheet({ kind: 'abyss', owner: opponentIndex })}
+                    tutId="opponent-abyss"
                     animationZone={`p${opponentIndex}:abyss`}
                   />
                 </>
@@ -2361,6 +2364,7 @@ function BattleBoard({
                   state={meSlotUndo('C', me.setZoneC) ? 'undoable' : 'idle'}
                   onActivate={meSlotUndo('C', me.setZoneC) ?? detailActivate(me.setZoneC, meIndex, zoneNames.C)}
                   onInspect={(card) => inspect(card, meIndex, zoneNames.C)}
+                  tutId="player-area-enchant"
                   animationZone={`p${meIndex}:setZoneC`}
                 />
               </div>
@@ -2370,6 +2374,7 @@ function BattleBoard({
                     side="me"
                     count={me.deck.length}
                     chronosSide={setZoneChronosSide(meIndex)}
+                    tutId="player-deck"
                     animationZone={`p${meIndex}:deck`}
                   />
                   <AbyssZone
@@ -2401,9 +2406,10 @@ function BattleBoard({
                 selectedIndex={selectedHandIndex}
                 canAct={canAct}
                 allowedCardDefIds={playableCardDefIds}
-                onCardTap={handleHandTap}
+                tutId="player-hand"
+                onCardTap={spectator ? undefined : handleHandTap}
                 onCardHover={
-                  touchLike
+                  touchLike || spectator
                     ? undefined
                     : (index) => {
                         if (index === null) return;
@@ -2444,15 +2450,17 @@ function BattleBoard({
       </div>
 
       {/* 效果結算 — 居中覆蓋層 */}
-      {!spectator && (G.step === 'effectOrder' || G.pendingChoice) && (
-        <BattleOverlayLayer>
-          {G.pendingChoice ? (
-            <PendingChoicePanel G={G} moves={moves} playerID={playerID} />
-          ) : (
-            <EffectOrderPanel G={G} moves={moves} playerID={playerID} />
-          )}
-        </BattleOverlayLayer>
-      )}
+      {!spectator &&
+        (G.step === 'effectOrder' || G.pendingChoice) &&
+        (!tutorialMode || tutorialEffectOverlayVisible !== false) && (
+          <BattleOverlayLayer>
+            {G.pendingChoice ? (
+              <PendingChoicePanel G={G} moves={moves} playerID={playerID} />
+            ) : (
+              <EffectOrderPanel G={G} moves={moves} playerID={playerID} />
+            )}
+          </BattleOverlayLayer>
+        )}
 
       <BattleSideSheet
         activePanel={activeSidePanel}
@@ -2496,6 +2504,7 @@ function BattleBoard({
         me={meIndex}
         onNoticeDismiss={onNoticeDismiss}
         onActivityChange={onNoticeActivityChange}
+        suppress={tutorialSuppressNotices}
       />
       <BattleAnimationLayer G={G} me={meIndex} onAnimatingChange={onBattleAnimationChange} />
     </BoardLayout>
@@ -2601,6 +2610,11 @@ export function Board(props: Props) {
   }, [clearGameOverTimers, props.G.step, revealGameOver, scheduleGameOverWhenIdle]);
 
   useEffect(() => {
+    if (props.tutorialAutoReplay) {
+      setSetupFeedback(null);
+      previousStep.current = props.G.step;
+      return;
+    }
     if (
       previousStep.current === 'janken' &&
       props.G.step === 'mulligan' &&
@@ -2617,7 +2631,7 @@ export function Board(props: Props) {
       });
     }
     previousStep.current = props.G.step;
-  }, [props.G.step, props.G.jankenChoices, props.G.chronos.nightSidePlayer, me]);
+  }, [props.G.step, props.G.jankenChoices, props.G.chronos.nightSidePlayer, props.tutorialAutoReplay, me]);
 
   // 猜拳平手提示：resolveJanken 平手時不改 step，僅遞增 jankenDrawCount 並重置 choices。
   // 以 ref 記錄上次 drawCount，變化時顯示短暫提示，避免與「初次進入 janken」混淆。

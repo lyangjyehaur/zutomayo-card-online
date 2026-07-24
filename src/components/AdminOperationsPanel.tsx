@@ -34,6 +34,7 @@ import {
 const SUBJECT_TYPES: LegalHoldSubjectType[] = ['account', 'match', 'conversation', 'message', 'report', 'feedback'];
 
 type HoldStatus = 'active' | 'released' | 'expired' | 'all';
+const SEASONS_UI_ENABLED = false;
 
 function adminRoleFromToken(token: string): string {
   try {
@@ -109,7 +110,7 @@ export function AdminOperationsPanel({ token }: { token: string }) {
     setLoading(true);
     setError('');
     try {
-      await Promise.all([refreshSeasons(), refreshHolds()]);
+      await Promise.all([...(SEASONS_UI_ENABLED ? [refreshSeasons()] : []), refreshHolds()]);
     } catch {
       setError(t('operations.loadError'));
     } finally {
@@ -224,7 +225,7 @@ export function AdminOperationsPanel({ token }: { token: string }) {
         </Alert>
       )}
 
-      <Panel size="lg">
+      <Panel size="lg" hidden={!SEASONS_UI_ENABLED}>
         <div className="mb-4 flex items-center gap-2">
           <CalendarClock className="size-5 text-accent-primary" aria-hidden="true" />
           <h2 className="font-display text-title-sm font-bold">{t('operations.seasons')}</h2>

@@ -803,7 +803,7 @@
   .admin-responsive-table input,
   .admin-responsive-table select,
   .admin-responsive-table button {
-    min-height: 2.75rem;
+    min-height: var(--touch-target-min);
   }
 
   .admin-responsive-table input {
@@ -840,7 +840,7 @@
   }
 }
 
-@media (max-width: 899px) {
+@media (max-width: 1099px) {
   .card-admin-page.admin-page {
     overflow: hidden;
   }

@@ -62,9 +62,94 @@ test.describe('核心頁面無障礙 @a11y', () => {
       localStorage.setItem('zutomayo_deck_intro_seen', 'true');
       localStorage.setItem('zutomayo_locale', 'zh-TW');
     });
+    await page.route('**/api/config', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ deck_sharing_enabled: true }),
+      }),
+    );
+    await page.route('**/api/official/**', async (route) => {
+      const url = new URL(route.request().url());
+      const qa = {
+        id: 'qa_1',
+        number: 1,
+        publishedAt: '2026-02-17',
+        tags: ['基本ルール'],
+        relatedCardIds: [],
+        source: { question: '質問', answer: '回答' },
+        localized: { question: '問題', answer: '答案' },
+        requestedLocale: 'zh-TW',
+        effectiveLocale: 'zh-TW',
+        translationStatus: 'verified',
+        sourceUrl: 'https://zutomayocard.net/qa/',
+        lastSyncedAt: '2026-07-20T00:00:00.000Z',
+        contentVersion: 1,
+      };
+      const errata = {
+        errataId: '001',
+        cardId: '1st_6',
+        cardName: '測試卡牌',
+        cardNameJa: 'カード',
+        pack: 'THE WORLD IS CHANGING',
+        rarity: 'UR',
+        cardNumber: '006/104',
+        publishedAt: '2026-02-17',
+        affectsName: false,
+        affectsEffect: true,
+        source: {
+          incorrectText: '誤り',
+          correctedText: '修正',
+          reason: '理由',
+          replacementPolicy: '交換',
+          usagePolicy: '使用',
+        },
+        localized: {
+          incorrectText: '錯誤',
+          correctedText: '修正',
+          reason: '原因',
+          replacementPolicy: '交換政策',
+          usagePolicy: '使用方式',
+        },
+        requestedLocale: 'zh-TW',
+        effectiveLocale: 'zh-TW',
+        translationStatus: 'machine',
+        sourceUrl: 'https://zutomayocard.net/errata/001/',
+        lastSyncedAt: '2026-07-20T00:00:00.000Z',
+        contentVersion: 1,
+      };
+      const body = url.pathname.endsWith('/qa/1')
+        ? { item: qa }
+        : url.pathname.endsWith('/qa')
+          ? { items: [qa], total: 1 }
+          : url.pathname.endsWith('/errata/001')
+            ? { item: errata }
+            : { items: [errata], total: 1 };
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    });
   });
 
-  for (const route of ['/', '/online', '/deck-builder', '/feedback', '/profile', '/leaderboard']) {
+  for (const route of [
+    '/',
+    '/ai',
+    '/online',
+    '/community',
+    '/deck-builder',
+    '/deck-shares',
+    '/feedback',
+    '/history',
+    '/leaderboard',
+    '/profile',
+    '/tutorial',
+    '/legal',
+    '/legal/privacy',
+    '/legal/terms',
+    '/legal/contact',
+    '/rules/qa',
+    '/rules/qa/1',
+    '/rules/errata',
+    '/rules/errata/001',
+  ]) {
     test(`沒有 serious/critical axe violations: ${route}`, async ({ page }) => {
       await page.goto(route, { waitUntil: 'domcontentloaded' });
       await page.waitForLoadState('networkidle').catch(() => undefined);
@@ -88,7 +173,7 @@ test.describe('登入 dialog 無障礙 @a11y', () => {
       });
     });
     await page.goto('/');
-    await expect(page.getByText('Channels', { exact: true })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('ZUTOMAYO', { timeout: 30_000 });
 
     const trigger = page.getByRole('button', { name: /^登入$/ }).first();
     await trigger.focus();
@@ -162,6 +247,31 @@ test.describe('Feedback 詳情 dialog 無障礙 @a11y @requires-backend', () => 
   });
 });
 
+test.describe('實戰教學覆蓋層無障礙 @a11y @requires-backend', () => {
+  test('手機操作步驟通過 axe，焦點只在提示卡與允許的目標間移動', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('zutomayo_deck_intro_seen', 'true');
+      localStorage.setItem('zutomayo_locale', 'zh-TW');
+    });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/tutorial');
+    await page.getByTestId('tutorial-chapter-tab-preparation').click();
+    await page.getByRole('button', { name: '開始戰鬥準備', exact: true }).click();
+
+    const overlay = page.locator('.tutorial-game-overlay');
+    await expect(overlay).toHaveAttribute('data-tutorial-phase', 'janken', { timeout: 30_000 });
+    await expect(overlay.getByTestId('tutorial-fixed-instruction')).toBeVisible();
+    await expectNoBlockingAxeViolations(page, 'Tutorial janken overlay');
+
+    const tooltip = page.locator('.tutorial-tooltip');
+    await expect(tooltip).toBeFocused();
+    await page.keyboard.press('Tab');
+    await expect(page.getByRole('button', { name: '關閉', exact: true })).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    await expect(tooltip).toBeFocused();
+  });
+});
+
 test.describe('線上 Battle/Result 無障礙 @a11y @requires-backend', () => {
   test('正式 Battle 與結算 Result 通過 axe，且 Battle drawer 維持焦點隔離', async ({ browser, page }) => {
     test.setTimeout(120_000);
@@ -196,8 +306,8 @@ test.describe('線上 Battle/Result 無障礙 @a11y @requires-backend', () => {
       await expect(guestPage.locator('[data-game-step="initialSet"]')).toBeVisible({ timeout: 20_000 });
 
       await Promise.all([
-        page.locator('[data-zone="hand"] button').first().click(),
-        guestPage.locator('[data-zone="hand"] button').first().click(),
+        page.locator('[data-zone="hand"] [data-tut-card^="e2e_"]').first().click(),
+        guestPage.locator('[data-zone="hand"] [data-tut-card^="e2e_"]').first().click(),
       ]);
       await Promise.all([
         page.getByRole('button', { name: /打出檢視中的牌/ }).click(),

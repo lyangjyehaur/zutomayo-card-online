@@ -468,6 +468,10 @@ async function collectAccountData({
     const [
       identities,
       decks,
+      deckShares,
+      deckShareLikes,
+      deckShareCopies,
+      deckShareReports,
       matches,
       friends,
       friendRequests,
@@ -489,6 +493,35 @@ async function collectAccountData({
       ),
       queryCollection(
         'SELECT id, name, card_ids, created_at, updated_at FROM decks WHERE user_id = $1 ORDER BY created_at LIMIT $2',
+      ),
+      queryCollection(
+        `SELECT id, source_deck_id, name, card_ids, visibility, publication_status,
+                moderation_status, published_rules_version, published_at, updated_at, unpublished_at
+           FROM deck_shares
+          WHERE owner_user_id = $1
+          ORDER BY published_at DESC
+          LIMIT $2`,
+      ),
+      queryCollection(
+        `SELECT share_id, created_at
+           FROM deck_share_likes
+          WHERE user_id = $1
+          ORDER BY created_at DESC
+          LIMIT $2`,
+      ),
+      queryCollection(
+        `SELECT share_id, copied_deck_id, created_at
+           FROM deck_share_copy_events
+          WHERE user_id = $1
+          ORDER BY created_at DESC
+          LIMIT $2`,
+      ),
+      queryCollection(
+        `SELECT id, share_id, reason, note, status, created_at, updated_at, resolved_at
+           FROM deck_share_reports
+          WHERE reporter_user_id = $1
+          ORDER BY created_at DESC
+          LIMIT $2`,
       ),
       queryCollection(
         `SELECT id, source_match_id, player0_id, player1_id, winner_id, loser_id,
@@ -567,6 +600,10 @@ async function collectAccountData({
     const collections = {
       identities,
       decks,
+      deckShares,
+      deckShareLikes,
+      deckShareCopies,
+      deckShareReports,
       matches,
       friends,
       friendRequests,
@@ -597,6 +634,10 @@ async function collectAccountData({
       account: user,
       identities: identities.rows,
       decks: decks.rows,
+      deckShares: deckShares.rows,
+      deckShareLikes: deckShareLikes.rows,
+      deckShareCopies: deckShareCopies.rows,
+      deckShareReports: deckShareReports.rows,
       matches: matches.rows,
       friends: friends.rows,
       friendRequests: friendRequests.rows,
@@ -771,6 +812,10 @@ async function deleteAccount({
 
     await client.query('DELETE FROM user_identities WHERE user_id = $1', [userId]);
     await client.query('DELETE FROM deck_reservations WHERE user_id = $1', [userId]);
+    await client.query('DELETE FROM deck_share_likes WHERE user_id = $1', [userId]);
+    await client.query('UPDATE deck_share_copy_events SET user_id = NULL WHERE user_id = $1', [userId]);
+    await client.query('UPDATE deck_share_reports SET reporter_user_id = NULL WHERE reporter_user_id = $1', [userId]);
+    await client.query('DELETE FROM deck_shares WHERE owner_user_id = $1', [userId]);
     await client.query('DELETE FROM decks WHERE user_id = $1', [userId]);
     await client.query('DELETE FROM user_friends WHERE user_id = $1 OR friend_user_id = $1', [userId]);
     await client.query('DELETE FROM friend_requests WHERE requester_user_id = $1 OR recipient_user_id = $1', [userId]);

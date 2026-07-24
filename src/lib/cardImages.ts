@@ -39,9 +39,9 @@ export const CARD_IMAGE_CONTEXTS: Record<CardImageContext, CardImageContextConfi
     sizes: '(max-width: 640px) 34vw, (max-width: 1024px) 18vw, 320px',
   },
   board: {
-    fallbackWidth: 480,
-    widths: [320, 480, 720],
-    sizes: '(max-width: 640px) 30vw, (max-width: 1024px) 20vw, 480px',
+    fallbackWidth: 192,
+    widths: [128, 192, 320],
+    sizes: '(max-width: 640px) 16vw, (max-width: 1024px) 10vw, 96px',
   },
   preview: {
     fallbackWidth: 720,

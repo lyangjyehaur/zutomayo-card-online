@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { rulesTerminologyViolations } from '../src/rulesTerminology';
 
 export const DERIVED_EFFECT_LANGS = ['zh-TW', 'zh-CN', 'zh-HK', 'ko'] as const;
 export type DerivedEffectLang = (typeof DERIVED_EFFECT_LANGS)[number];
@@ -170,6 +171,9 @@ export function auditDerivedEffects(input: DerivedEffectsAuditInput): string[] {
       }
       if (lang === 'ko' && /[\p{Script=Han}ぁ-ゖァ-ヺ，。；：！？（）【】「」]/u.test(text)) {
         problems.push(`${card.id}/ko: effect contains Japanese/Chinese text or punctuation`);
+      }
+      for (const violation of rulesTerminologyViolations(lang, text)) {
+        problems.push(`${card.id}/${lang}: non-canonical rules terminology (${violation})`);
       }
       const japaneseNumbers = mechanicNumbers(card.japaneseEffect, 'ja');
       const translatedNumbers = mechanicNumbers(text, lang);

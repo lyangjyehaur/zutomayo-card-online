@@ -169,6 +169,27 @@ export PG_PITR_DRILL_ARTIFACT_DIR="artifacts/pg-pitr-drill/$PG_PITR_RUN_ID"
 
 Release gate 分別重算 physical RPO（`targetAt - recoveredThroughAt`）與 off-site RPO（restore `startedAt - recoveryPointAt`），以及兩邊各自的 RTO（各 artifact `finishedAt - startedAt`）；外層 `rpoMinutes`、`rtoMinutes` 必須各自填兩條路徑的最差值。任一最差值超過 repository threshold、手動修改 summary、缺少 metadata 或獨立 off-site proof 時都維持 `blocked`。
 
+### Public Beta release evidence mode
+
+For the release rehearsal, create one known account with a saved deck, completed match/history row, and non-zero leaderboard participation before the fresh encrypted backup. Then run the same isolated restore with exact fixture and schema identifiers:
+
+```bash
+export PG_RESTORE_RELEASE_EVIDENCE=true
+export PG_RESTORE_EVIDENCE_OUTPUT=artifacts/recovery/restore-drill.json
+export RELEASE_SHA="$(git rev-parse HEAD)"
+export PG_RESTORE_BACKUP_COMPLETED_AT=2026-07-19T01:00:00.000Z
+export PG_RESTORE_INCIDENT_AT=2026-07-19T01:10:00.000Z
+export PG_RESTORE_EXPECT_ACCOUNT_ID=u_release_fixture
+export PG_RESTORE_EXPECT_DECK_ID=deck_release_fixture
+export PG_RESTORE_EXPECT_MATCH_ID=match_release_fixture
+export PG_RESTORE_EXPECT_LEADERBOARD_USER_ID=u_release_fixture
+export EXPECTED_SCHEMA_MIGRATION=000036_harden_card_i18n_contract
+export EXPECTED_SCHEMA_CHECKSUM="$(shasum -a 256 migrations/000036_harden_card_i18n_contract.js | awk '{print $1}')"
+./scripts/pg-restore-drill.sh s3://zutomayo-staging-backups/zutomayo_<timestamp>.dump.age
+```
+
+Release mode includes artifact download/decryption in the measured RTO and fails unless the exact account, deck, match-history, leaderboard user, migration, migration checksum, and legal-hold invariants survive the restore. It emits the raw JSON consumed by `npm run release:operational-evidence`; do not hand-edit a failed report.
+
 ## Point-in-time recovery
 
 1. 宣告 incident，停止寫入入口並記錄 UTC restore target。保留故障 DB snapshot、timeline 與 release digest。
