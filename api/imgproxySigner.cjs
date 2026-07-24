@@ -1,5 +1,4 @@
 /* global module, require, Buffer */
-/* eslint-disable @typescript-eslint/no-require-imports */
 const crypto = require('crypto');
 
 const CARD_IMAGE_WIDTH_PATTERN = '(?:128|192|320|480|720|960)';
