@@ -12,6 +12,14 @@
 
 後續每一項分開記錄四層證據：`code`、`automated test`、`staging evidence`、`production evidence`。只有必要層級全數完成才可勾選；舊版 [`release-review.md`](./release-review.md) 只作歷史快照，其中 auth、Feedback semantics、modal focus 與 E2E 等部分 finding 已有新實作，必須以當前分支重新跑視覺／service-backed E2E 後判定。
 
+## 2026-07-26 local completion evidence
+
+- `codex/p0-p5-completion` 維持在獨立 worktree；相對本機 `master` 為 0 behind／56 ahead。本輪未 merge、push、建立 PR 或部署，`master` 與 server4 均未改動。
+- 以 current-tree game/API/platform/PostgreSQL/Redis image 跑完整 Chromium service-backed E2E：95 項中 93 passed、2 項依環境條件 skipped、0 failed。Authenticated multiplayer 3/3 通過，涵蓋真登入、server deck、Quick Match、聊天、重連、觀戰隱藏資訊、自然完賽、雙方及新裝置 canonical history；牌組分享與官方規則 16/16 通過。
+- E2E mock 現在會先讀取受測服務的 app/build/rules version，再產生符合 release-bound 卡牌資料契約的 response headers；測試不再放寬 production loader，也不把 query string、synthetic card ID、舊大廳文案或錯誤的「充能成本」譯名當成產品契約。HTTP 本機流程保留 cookie domain/HttpOnly 驗證，Secure cookie 與同源 WSS 僅在 HTTPS staging 強制。
+- 另以全新 Compose project 與空 PostgreSQL volume，刻意不提供 `PG_MIGRATION_USER`，證明 postgres、migrate、seed 都使用一致的 `zutomayo` 預設；migration 與 seed 均 exit 0，並成功寫入 92 張合成 E2E 卡。一次性容器、network 與 volume 已在驗證後清除。
+- 本機 production-hardening gate 仍維持 18 passed／10 blocked／0 failed；blocked 項目是 signed-image staging、off-site restore/PITR、HA/chaos、2x/2h load/soak、alert delivery、canary/rollback 與 provider account 等外部證據，不以本機 E2E 代替，也不構成本階段合併或部署條件。
+
 ## 2026-07-24 0.2.3 integration evidence
 
 - 已將 `master@bc3cb051` 的 0.2.3 正式規則文件、卡牌／規則內容發布、對局與介面修正整合進隔離 worktree；所有 merge conflict 已解決。卡牌與官方裁定原始 JSON 仍只從 `/run/card-data` 的私有唯讀掛載讀取，不由 Git、image 或 release artifact 攜帶。
@@ -90,7 +98,7 @@
 
 ## P1：發布與供應鏈
 
-- [x] Base、E2E、staging、legacy server4、parallel slot、gateway、monitoring Compose 靜態 config gate 全部通過並進 CI；current-tree fresh-volume runtime images、migration/seed 與 Chromium 40/40 亦已重跑。
+- [x] Base、E2E、staging、legacy server4、parallel slot、gateway、monitoring Compose 靜態 config gate 全部通過並進 CI；current-tree fresh-volume runtime images、migration/seed 與完整 Chromium suite（93 passed／2 conditional skips／0 failed）亦已重跑。
 - [x] CI 與 E2E job、CD 的 successful-CI SHA gate 已存在；GitHub `master` branch protection 要求 strict `Lint & Test`／`E2E Tests`、PR、linear history 與 resolved conversations，套用至管理員且禁止 force-push／刪除。
 - [x] Migration 使用同一 release digest，失敗時 app 不啟動。
 - [x] Deploy `--sha`、health port 與 post-deploy smoke 正確。
@@ -127,8 +135,8 @@
 - [x] E2E 已覆蓋 refresh、斷網重連、觀戰、隱藏資訊與真實 platform 配對；跨 instance full-sync shared-lock race 有真 PG smoke；terminal transaction 失敗由 patched Master 整合測試證明不會先行 broadcast；fresh-volume authenticated smoke 亦實際重啟 game/platform process，原雙 browser 重連同一 `turnSet`、完成結算且 history 無重複。
 - [x] 登入玩家的 server match history 為 source of truth；同一自然完成對局已由雙方原 session 與兩個獨立重新登入 context 查詢，並證明四個視角都只對應同一 canonical history ID。
 - [x] Replay 使用伺服器 authoritative action log 並綁定 rules version。
-- [x] Core routes、Login、Feedback detail、Battle/Result 的 service-backed axe spec 已以 current-tree fresh images/volumes 重跑並包含在 Chromium 40/40。
-- [x] 共用 modal focus/inert、Battle drawer 與 Feedback detail dialog test 已有；手牌／mulligan 卡牌 accessible name 包含名稱、充能成本與區域內唯一位置，選取型卡牌暴露 `aria-pressed`。Fresh-volume authenticated E2E 已以 Enter 鍵完成匹配、猜拳、mulligan、選牌、出牌與確認的自然完整對局，並保留雙方與重新登入裝置只對應同一 canonical history 的證據。
+- [x] Core routes、Login、Feedback detail、Battle/Result 的 service-backed axe spec 已以 current-tree images/volumes 重跑並包含在完整 Chromium suite（93 passed／2 conditional skips／0 failed）。
+- [x] 共用 modal focus/inert、Battle drawer 與 Feedback detail dialog test 已有；手牌／mulligan 卡牌 accessible name 包含名稱、官方 `Power Cost` 術語與區域內唯一位置，選取型卡牌暴露 `aria-pressed`。Fresh-volume authenticated E2E 已以 Enter 鍵完成匹配、猜拳、mulligan、選牌、出牌與確認的自然完整對局，並保留雙方與重新登入裝置只對應同一 canonical history 的證據。
 - [ ] Chromium PR job、每週兩次多瀏覽器 matrix，以及 production-build 的 PWA standalone／responsive CI job 已定義；本機 production preview 已驗證 Chrome app standalone display mode、service worker control、offline cached-shell reload 與離線 AI 對局，deterministic responsive smoke 也以 44px 觸控下限覆蓋 360/390px 與 Battle 多狀態，並驗證 `/community` 全域／私訊聊天經未讀入口導向 `/online` 房間聊天。成熟度分支的 GitHub CI run `29630633113` 已遠端通過 Responsive & PWA gate；`master` 目前只要求既有 CI/E2E checks，新增 gate 仍待日後合併並加入 required checks。
 - [x] 離線支援明確限定為已暖機卡牌資料後的本機 AI 對戰；Workbox card-data cache 依 build/rules 隔離，API response 綁 signed dataset SHA、dataset release SHA、card count 與 app/build/rules，完整 SHA build 另要求 dataset release SHA 相同。Production PWA smoke 會同時將 page 與 service-worker target 真斷網，驗證 versioned cache response、離線 `/ai` 選牌並進入 `.bf-root` 對局；在線服務不承諾離線使用或寫入同步。
 
@@ -149,9 +157,9 @@
 
 ## 最終驗收
 
-- [x] `npm run verify`：2026-07-24 的 0.2.3 merge tree 通過，Vitest 199 test files / 1636 tests / coverage / production-PWA build；先前 pushed hardening commit `8de8a86c` 的 GitHub CI run `29635089382` 四個 jobs 全部通過，本次 `codex/p0-p5-completion` 尚未推送，remote CI 仍待執行。
-- [x] `npm run test:coverage`：166 test files / 1447 tests，repository coverage thresholds 通過。
-- [x] Compose-backed Chromium E2E：current-tree fresh images/volumes、migration/seed 後 40/40，含自然完成 authenticated 對局與獨立重新登入跨裝置 history。
+- [x] `npm run verify`：2026-07-26 的 current implementation tree 通過，Vitest 199 test files / 1636 tests / coverage / production-PWA build；先前 pushed hardening commit `8de8a86c` 的 GitHub CI run `29635089382` 四個 jobs 全部通過，本次 `codex/p0-p5-completion` 尚未推送，remote CI 仍待執行。
+- [x] `npm run test:coverage`：199 test files / 1636 tests，repository coverage thresholds 通過。
+- [x] Compose-backed Chromium E2E：current-tree migration/seed 後完整 suite 93 passed／2 conditional skips／0 failed，含自然完成 authenticated 對局與獨立重新登入跨裝置 history。
 - [x] `npm run rule:audit`：422 cards／250 effect cards／267 effect lines，unsupported/partial/false-draw 全為 0。
 - [x] Production/development Compose 靜態 config、fresh role matrix、platform least-privilege schema gate 與 fresh-volume E2E 均由 current tree 通過。
 - [ ] Migration up / app start / rollback compatibility rehearsal：fresh canonical、card-first deferred lineage、422-card production-copy clone、signed dataset ledger/data gate、第二次 strict/idempotent release 與 reviewed legacy tombstone backfill均已本機通過；仍缺 immutable signed image 的真 staging app start、三次 deploy 與 N+1 rollback smoke。

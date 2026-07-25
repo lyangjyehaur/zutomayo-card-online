@@ -217,7 +217,9 @@ export async function loginAuthenticatedOnlineAccount(
 
 export async function assertSecureAuthenticatedCookies(context: BrowserContext, baseURL: string): Promise<void> {
   const cookies = await context.cookies();
-  const expectedHost = new URL(baseURL).hostname;
+  const expectedURL = new URL(baseURL);
+  const expectedHost = expectedURL.hostname;
+  const requireSecure = expectedURL.protocol === 'https:';
   const matchesExpectedHost = (domain: string) => {
     const normalized = domain.replace(/^\./, '');
     return expectedHost === normalized || expectedHost.endsWith(`.${normalized}`);
@@ -230,18 +232,18 @@ export async function assertSecureAuthenticatedCookies(context: BrowserContext, 
   else {
     if (!matchesExpectedHost(session.domain)) failures.push('zutomayo_session domain is invalid');
     if (!session.httpOnly) failures.push('zutomayo_session is not HttpOnly');
-    if (!session.secure) failures.push('zutomayo_session is not Secure');
+    if (requireSecure && !session.secure) failures.push('zutomayo_session is not Secure');
   }
   if (!refresh) failures.push('zutomayo_refresh is missing');
   else {
     if (!matchesExpectedHost(refresh.domain)) failures.push('zutomayo_refresh domain is invalid');
     if (!refresh.httpOnly) failures.push('zutomayo_refresh is not HttpOnly');
-    if (!refresh.secure) failures.push('zutomayo_refresh is not Secure');
+    if (requireSecure && !refresh.secure) failures.push('zutomayo_refresh is not Secure');
   }
   if (!csrf) failures.push('zutomayo_csrf is missing');
   else {
     if (!matchesExpectedHost(csrf.domain)) failures.push('zutomayo_csrf domain is invalid');
-    if (!csrf.secure) failures.push('zutomayo_csrf is not Secure');
+    if (requireSecure && !csrf.secure) failures.push('zutomayo_csrf is not Secure');
   }
   if (failures.length > 0) throw new Error(`Authenticated cookie gate failed: ${failures.join('; ')}`);
 }

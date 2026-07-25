@@ -53,16 +53,7 @@ function requireAuthenticatedMultiplayer(baseURL: string, requireRankedHistory: 
 }
 
 async function expectAuthenticatedLobby(page: Page, nickname: string): Promise<void> {
-  await expect(page.getByText(`${nickname} · ELO`).first()).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByRole('button', { name: '開始匹配' })).toBeDisabled({ timeout: 30_000 });
-}
-
-async function selectFirstAvailableDeck(page: Page): Promise<void> {
-  const deckPanel = page.getByRole('heading', { name: '我的牌組' }).locator('xpath=ancestor::section[1]');
-  const deck = deckPanel.locator('button:not([disabled])').first();
-  await expect(deck).toBeVisible({ timeout: 30_000 });
-  await deck.click();
-  await expect(deck).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByText(nickname, { exact: true }).first()).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole('button', { name: '開始匹配' })).toBeEnabled({ timeout: 30_000 });
 }
 
@@ -77,14 +68,19 @@ async function activateWithKeyboard(locator: Locator): Promise<void> {
   await locator.press('Enter');
 }
 
-async function expectProductionWebSocket(page: Page, websocketUrls: string[]): Promise<void> {
-  await expect.poll(() => websocketUrls.find((value) => value.startsWith('wss://')), { timeout: 30_000 }).toBeTruthy();
+async function expectAuthenticatedWebSocketTopology(page: Page, websocketUrls: string[]): Promise<void> {
   const base = new URL(process.env.E2E_BASE_URL || page.url());
-  for (const value of websocketUrls) {
-    const socket = new URL(value);
-    if (socket.protocol === 'wss:' && socket.host !== base.host) {
-      throw new Error(`WebSocket ${socket.host} is not routed through the app origin ${base.host}`);
-    }
+  const expectedProtocol = base.protocol === 'https:' ? 'wss:' : 'ws:';
+  const configuredPlatform = new URL(process.env.E2E_PLATFORM_URL || `${expectedProtocol}//${base.host}`);
+  await expect
+    .poll(() => websocketUrls.find((value) => new URL(value).protocol === expectedProtocol), { timeout: 30_000 })
+    .toBeTruthy();
+  const socket = new URL(websocketUrls.find((value) => new URL(value).protocol === expectedProtocol)!);
+  if (socket.host !== configuredPlatform.host) {
+    throw new Error(`WebSocket ${socket.host} does not match the configured platform ${configuredPlatform.host}`);
+  }
+  if (expectedProtocol === 'wss:' && socket.host !== base.host) {
+    throw new Error(`WebSocket ${socket.host} is not routed through the app origin ${base.host}`);
   }
 }
 
@@ -177,7 +173,7 @@ async function setFirstAvailableCard(page: Page): Promise<void> {
   await waitForSettledOnlineState(page);
   const card = page.locator('[data-zone="hand"] button').first();
   await expect(card).toBeVisible({ timeout: 20_000 });
-  await expect(card).toHaveAttribute('aria-label', /充能成本 \d+ · \d+\/\d+/);
+  await expect(card).toHaveAttribute('aria-label', /Power Cost \d+ · \d+\/\d+/);
   await activateWithKeyboard(card);
   const setCard = page.getByRole('button', { name: /打出檢視中的牌/ });
   await expect(setCard).toBeEnabled({ timeout: 10_000 });
@@ -286,14 +282,12 @@ test.describe('Authenticated 雙瀏覽器線上流程 @requires-backend', () => 
         expectAuthenticatedLobby(page, hostAccount.nickname),
         expectAuthenticatedLobby(guestPage, guestAccount.nickname),
       ]);
-      await Promise.all([selectFirstAvailableDeck(page), selectFirstAvailableDeck(guestPage)]);
-
       await Promise.all([
         activateWithKeyboard(page.getByRole('button', { name: '開始匹配' })),
         activateWithKeyboard(guestPage.getByRole('button', { name: '開始匹配' })),
       ]);
       const matchID = await expectSharedOnlineMatch(page, guestPage);
-      await expectProductionWebSocket(page, websocketUrls);
+      await expectAuthenticatedWebSocketTopology(page, websocketUrls);
 
       const spectatorPage = await spectatorContext.newPage();
       const spectatorMatchSubmissions: string[] = [];
@@ -510,8 +504,6 @@ test.describe('Authenticated 雙瀏覽器線上流程 @requires-backend', () => 
         expectAuthenticatedLobby(page, inviter.nickname),
         expectAuthenticatedLobby(guestPage, recipient.nickname),
       ]);
-      await Promise.all([selectFirstAvailableDeck(page), selectFirstAvailableDeck(guestPage)]);
-
       const sendInvite = page.locator(`[data-friend-invite-action="send"][data-friend-user-id="${recipient.id}"]`);
       const acceptInvite = guestPage.locator(
         `[data-friend-invite-action="accept"][data-friend-user-id="${inviter.id}"]`,

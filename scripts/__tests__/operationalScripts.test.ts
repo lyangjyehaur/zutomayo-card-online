@@ -114,7 +114,7 @@ describe('operational shell scripts', () => {
     expect(logicalRestore).toContain('[[ "$official_errata_count" == 12 ]]');
   });
 
-  it.skipIf(!hasDockerCompose)('renders the E2E PostgreSQL healthcheck against the overlay database', () => {
+  it.skipIf(!hasDockerCompose)('renders aligned E2E PostgreSQL defaults against the overlay database', () => {
     const result = spawnSync(
       'docker',
       [
@@ -133,6 +133,9 @@ describe('operational shell scripts', () => {
     expect(result.status, result.stderr).toBe(0);
     const config = JSON.parse(result.stdout);
     expect(config.services.postgres.environment).toContain('POSTGRES_DB=zutomayo_e2e');
+    expect(config.services.postgres.environment).toContain('PG_MIGRATION_USER=${PG_MIGRATION_USER:-zutomayo}');
+    expect(config.services.migrate.environment).toContain('PG_USER=${PG_MIGRATION_USER:-zutomayo}');
+    expect(config.services.seed.environment).toContain('PG_USER=${PG_MIGRATION_USER:-zutomayo}');
     expect(config.services.postgres.healthcheck.test).toEqual([
       'CMD-SHELL',
       'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"',

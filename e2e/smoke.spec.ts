@@ -85,7 +85,7 @@ test.describe('首頁煙霧測試', () => {
     await expect(page.getByRole('heading', { level: 1 })).toContainText('ZUTOMAYO', { timeout: 30_000 });
 
     // 點擊 Hero 區的教學按鈕
-    await page.getByRole('button', { name: '新手教學', exact: true }).click();
+    await page.getByRole('button', { name: /新手教學/ }).click();
     await expect(page).toHaveURL(/\/tutorial/);
   });
 

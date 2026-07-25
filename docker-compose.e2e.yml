@@ -50,7 +50,7 @@ services:
       - APP_BUILD_ID=${APP_BUILD_ID:-}
       - PG_HOST=postgres
       - PG_PORT=5432
-      - PG_USER=${PG_MIGRATION_USER:-zutomayo_migrator}
+      - PG_USER=${PG_MIGRATION_USER:-zutomayo}
       - PG_PASSWORD=${PG_MIGRATION_PASSWORD:-${PG_PASSWORD:?Set PG_MIGRATION_PASSWORD or PG_PASSWORD in your environment or .env file}}
       - PG_DATABASE=zutomayo_e2e
       - SEED_CARD_FIXTURE_FILE=/tmp/e2e-card-seed.json

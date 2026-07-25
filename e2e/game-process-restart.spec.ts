@@ -17,7 +17,7 @@ test.skip(
 );
 
 async function expectLobby(page: Page, nickname: string): Promise<void> {
-  await expect(page.getByText(`${nickname} · ELO`).first()).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText(nickname, { exact: true }).first()).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole('button', { name: '開始匹配' })).toBeEnabled({ timeout: 30_000 });
 }
 
