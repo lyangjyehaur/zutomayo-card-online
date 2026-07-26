@@ -227,6 +227,7 @@ describe('operational shell scripts', () => {
       expect(source, file).toContain("from 'node:os'");
       expect(source, file).toContain('tmpdir()');
       expect(source, file).toContain('--disable-dev-shm-usage');
+      expect(source, file).toContain('Date.now() - started < 30000');
       expect(source, file).not.toContain('/private/tmp');
     }
     for (const file of [

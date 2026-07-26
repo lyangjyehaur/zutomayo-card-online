@@ -105,7 +105,7 @@ function getJson(path) {
 
 async function waitForCdp() {
   const started = Date.now();
-  while (Date.now() - started < 10000) {
+  while (Date.now() - started < 30000) {
     try {
       await getJson('/json/version');
       return;
