@@ -266,8 +266,9 @@ try {
       };
     })()`,
   );
+  const warmedCardDataEntries = [...warmedCardData.entries].sort();
   if (
-    warmedCardData.entries.length !== 3 ||
+    JSON.stringify(warmedCardDataEntries) !== JSON.stringify(['/api/cards', '/api/cards/texts']) ||
     warmedCardData.cardCount !== 40 ||
     warmedCardData.storedDataset !== datasetSha256
   ) {
