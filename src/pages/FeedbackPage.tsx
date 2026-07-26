@@ -336,7 +336,7 @@ export function FeedbackPage() {
               onChange={setSort}
               ariaLabel={t('feedback.sortTop')}
               size="sm"
-              optionClassName="!min-h-11 px-3"
+              optionClassName="!min-h-11 !min-w-11 px-3"
             />
             <Select
               className="status-filter min-h-11 w-full text-body-sm md:w-44"
