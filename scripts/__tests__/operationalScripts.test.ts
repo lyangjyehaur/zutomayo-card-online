@@ -226,6 +226,7 @@ describe('operational shell scripts', () => {
       const source = readFileSync(resolve(file), 'utf8');
       expect(source, file).toContain("from 'node:os'");
       expect(source, file).toContain('tmpdir()');
+      expect(source, file).toContain('--disable-dev-shm-usage');
       expect(source, file).not.toContain('/private/tmp');
     }
     for (const file of [

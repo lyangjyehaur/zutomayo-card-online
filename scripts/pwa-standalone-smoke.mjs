@@ -23,6 +23,7 @@ const chrome = spawn(
   [
     '--headless=new',
     '--disable-gpu',
+    '--disable-dev-shm-usage',
     '--disable-background-networking',
     '--disable-extensions',
     '--disable-sync',
