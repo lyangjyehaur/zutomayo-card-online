@@ -36,16 +36,17 @@ const CANONICAL_CARD_MIGRATIONS = [
   '000030_card_official_errata_english_source',
 ];
 const LEGACY_OFFICIAL_CARD_DATA_MIGRATION = '000031_official_card_data_releases';
-const POST_CARD_MIGRATIONS = [
-  '000031_user_linked_admins',
-  '000032_announcements',
-  '000032_official_card_data_releases',
-  '000033_admin_linked_auth_contract',
-  '000033_card_text_authority',
-  '000034_card_text_rollback_compat',
-  '000035_remove_card_text_rollback_compat',
-  '000036_harden_card_i18n_contract',
-];
+const LAST_CANONICAL_CARD_MIGRATION = CANONICAL_CARD_MIGRATIONS[CANONICAL_CARD_MIGRATIONS.length - 1];
+// Keep the historical fixture pinned immediately after the canonical card
+// migrations. Every later canonical migration must be applied by the real
+// wrapper, not accidentally during fixture setup as new files are added.
+const POST_CARD_MIGRATIONS = readdirSync(MIGRATIONS_DIR)
+  .filter((name) => name.endsWith('.js'))
+  .map((name) => name.replace(/\.js$/, ''))
+  .filter(
+    (name) => name.localeCompare(LAST_CANONICAL_CARD_MIGRATION) > 0 && name !== LEGACY_OFFICIAL_CARD_DATA_MIGRATION,
+  )
+  .sort();
 
 function migrationFilePattern(names) {
   return `(?:${names.join('|')})\\.js`;

@@ -411,7 +411,7 @@ const metricsExpression = `
     },
     shell: visible('[data-page-shell], main, .app-shell, .bf-root').slice(0, 3),
     checkedSurface: visible(
-      'nav[aria-label] button, .bf-main, .feedback-toolbar, .admin-page, .i18n-responsive-table, .deck-editor, .card-browser, [data-room-panel], [data-chat-surface], [data-ui-panel], [aria-label="Card Pool"], main > section, article',
+      'nav[aria-label] button, .bf-main, .feedback-toolbar, .admin-page, .i18n-responsive-table, .deck-editor, .card-browser, [data-room-panel], [data-chat-surface], [data-ui-panel], [aria-label="Card Pool"], section[aria-label], main > section, article',
     ).slice(0, 8),
     smallTargets: targets.filter((item) => item.width < 44 || item.height < 44).slice(0, 12),
     offscreen: [...document.body.querySelectorAll('*')]
