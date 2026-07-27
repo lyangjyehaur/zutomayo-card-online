@@ -17,6 +17,24 @@ function readMigrations(): string {
 }
 
 describe('schema migrations', () => {
+  it('persists reviewed card synergy groups and recommendation relations', () => {
+    const migration = readRepoFile('migrations/000044_card_synergies.js');
+    const initSchema = readRepoFile('api/server.cjs');
+    const schemaGate = readRepoFile('api/schemaGate.cjs');
+    for (const artifact of [
+      'card_synergy_groups',
+      'card_synergy_relations',
+      'recommendation_eligible',
+      'rationale_i18n',
+      'source_version',
+      'rules_version',
+    ]) {
+      expect(migration).toContain(artifact);
+      expect(initSchema).toContain(artifact);
+      expect(schemaGate).toContain(artifact);
+    }
+  });
+
   it('keeps durable chat and platform evidence schema aligned with initSchema fallback', () => {
     const initSchema = readRepoFile('api/server.cjs');
     const migrations = readMigrations();
@@ -179,6 +197,25 @@ describe('schema migrations', () => {
     expect(migration).toContain("document_id IN ('grand', 'floor')");
     expect(migration).toContain("locale IN ('zh-TW', 'zh-CN', 'zh-HK', 'en', 'ko')");
     expect(migration).toContain('export const down = false');
+  });
+
+  it('keeps card catalog and playability metadata aligned across migration and runtime schema', () => {
+    const migration = readRepoFile('migrations/000043_card_catalog_sources.js');
+    const schemaGate = readRepoFile('api/schemaGate.cjs');
+    const initSchema = readRepoFile('api/server.cjs');
+    for (const artifact of [
+      'catalog_status',
+      'distribution_type',
+      'publication_status',
+      'play_status',
+      'play_status_reason',
+      'source_sha256',
+    ]) {
+      expect(migration).toContain(artifact);
+      expect(schemaGate).toContain(artifact);
+      expect(initSchema).toContain(artifact);
+    }
+    expect(migration).toContain("play_status IN ('playable', 'display_only', 'disabled')");
   });
 
   it('backfills the reward entitlement ledger for every existing grant', () => {

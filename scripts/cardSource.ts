@@ -45,13 +45,25 @@ type CardRow = {
   official_errata_affects_name?: boolean | null;
   official_errata_affects_effect?: boolean | null;
   official_errata_url?: string | null;
+  catalog_status?: CardDef['catalogStatus'] | null;
+  distribution_type?: CardDef['distributionType'] | null;
+  publication_status?: CardDef['publicationStatus'] | null;
+  play_status?: CardDef['playStatus'] | null;
+  play_status_reason?: string | null;
+  source_url?: string | null;
+  source_note?: string | null;
+  source_sha256?: string | null;
 };
 
 const CARD_SELECT = `SELECT id, name, en_name_official, pack, song, illustrator, rarity, element, type, clock,
                     attack_night, attack_day, power_cost, send_to_power, effect,
                     en_effect_official, image, errata, has_official_errata, official_errata_id,
-                    official_errata_affects_name, official_errata_affects_effect, official_errata_url
-                    FROM cards ORDER BY id`;
+                    official_errata_affects_name, official_errata_affects_effect, official_errata_url,
+                    catalog_status, distribution_type, publication_status, play_status, play_status_reason,
+                    source_url, source_note, source_sha256
+                    FROM cards
+                    WHERE publication_status = 'published' AND play_status = 'playable'
+                    ORDER BY id`;
 
 function cardRowToDef(row: CardRow): CardDef {
   const def: CardDef = {
@@ -79,6 +91,14 @@ function cardRowToDef(row: CardRow): CardDef {
     hasOfficialErrata: Boolean(row.has_official_errata),
     officialErrataAffectsName: Boolean(row.official_errata_affects_name),
     officialErrataAffectsEffect: Boolean(row.official_errata_affects_effect),
+    catalogStatus: row.catalog_status || 'listed',
+    distributionType: row.distribution_type || 'standard',
+    publicationStatus: row.publication_status || 'published',
+    playStatus: row.play_status || 'playable',
+    playStatusReason: row.play_status_reason || '',
+    sourceUrl: row.source_url || '',
+    sourceNote: row.source_note || '',
+    sourceSha256: row.source_sha256 || '',
   };
   if (row.en_name_official) def.enNameOfficial = row.en_name_official;
   if (row.en_effect_official) def.enEffectOfficial = row.en_effect_official;

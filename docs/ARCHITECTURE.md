@@ -106,9 +106,17 @@ flowchart LR
 ### React + Vite SPA
 
 - **入口**：`src/main.tsx` → `src/App.tsx`（路由 + NavBar + 教學 overlay + 重連提示）。
-- **路由**：React Router 7，路徑定義於 `src/pages/`（大廳、AI/線上/教學對戰、牌組編輯／分享、官方 Q&A／勘誤、對戰紀錄、排行榜、反饋、個人頁、管理後台）。
+- **路由**：React Router 7；公開頁面主要位於 `src/pages/`，管理後台位於 `src/admin/` 並由 Refine 5 headless 管理 `/admin/*` 的資源、認證、存取控制與 CRUD data provider。
 - **建構**：Vite 7，Strict TypeScript。`npm run build` 會先跑 `typecheck` + `typecheck:scripts` 再 `vite build`。
 - **Design System v1**：`src/ui/` 提供 `primitives/`、`layout/`、`game/`、`feedback/`、`forms/`、`tokens/`（colors / spacing / typography / z-index / motion）。
+
+### Refine 管理後台
+
+- `src/admin/RefineAdminApp.tsx` 宣告資源與 `/admin/*` 子路由；`AdminLayout.tsx` 提供桌面側欄及手機抽屜。
+- `src/admin/providers.ts` 連接既有管理員 session、角色權限及 PostgreSQL API。Refine 不取代 API 的權限檢查，前後端會同時依角色限制資源。
+- 卡牌是標準 Refine resource，支援 list/create/edit；官方裁定、聊天審核、營運及公告等專用流程以 custom resource page 掛入同一殼層。
+- 新卡預設 `unlisted + draft + disabled`。卡圖只接受來源 URL 並顯示預覽，不提供 R2 上傳動作。
+- 完整資源與角色矩陣見 [admin-console.md](admin-console.md)。
 
 ### boardgame.io Client
 

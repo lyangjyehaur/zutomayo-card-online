@@ -41,7 +41,7 @@ Version 0.2.3 adds localized Grand Rules and Basic Floor Rules backed by an atom
 
 - Six UI languages: Traditional Chinese, Cantonese, Simplified Chinese, Japanese, English, and Korean.
 - Deck editor, shared-deck lobby, leaderboard, cross-device match history, profile, OAuth identities, and feedback board.
-- Official Grand Rules, Basic Floor Rules, Japanese Q&A and errata, localized reading pages, admin review, and source synchronization.
+- Official Grand Rules, Basic Floor Rules, Japanese Q&A and errata, localized reading pages, and a Refine 5 admin console for review and source synchronization.
 - PWA install/update prompts plus app, build, and rules compatibility checks.
 - Admin tooling for cards, translations, users, ELO, chat evidence, sanctions, and feedback.
 - Playwright core E2E, k6 API/WebSocket/auth/matchmaking load tests, and staging/production CD pipelines.

@@ -43,7 +43,7 @@
 - 牌組編輯器、卡組分享大廳、排行榜、跨裝置戰績、個人頁、OAuth 身份與反饋看板。
 - 官方 Grand Rules／基本 Floor Rules、日文 Q&A／勘誤、在地化閱讀頁面，以及人工校訂與來源同步後台。
 - PWA 安裝／更新提示與 app、build、rules 三層版本相容檢查。
-- 卡牌、翻譯、使用者、ELO、聊天證據、處分與反饋管理後台。
+- Refine 5 管理後台，統一維護卡牌／限定卡、翻譯、使用者、ELO、聊天證據、處分、公告與官方裁定。
 - Playwright 核心 E2E、k6 API／WebSocket／認證／配對負載測試，以及 staging／production CD pipeline。
 
 ## 架構

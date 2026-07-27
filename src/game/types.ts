@@ -4,6 +4,10 @@ export type Element = '闇' | '炎' | '電気' | '風' | 'カオス';
 export type CardType = 'Character' | 'Enchant' | 'Area Enchant';
 export type Rarity = 'N' | 'R' | 'SR' | 'UR' | 'SE';
 export type ChronosTime = 'night' | 'day';
+export type CardCatalogStatus = 'listed' | 'pending_listing' | 'unlisted';
+export type CardDistributionType = 'standard' | 'bonus' | 'collaboration' | 'live' | 'event' | 'regional';
+export type CardPublicationStatus = 'draft' | 'reviewed' | 'published' | 'retired';
+export type CardPlayStatus = 'playable' | 'display_only' | 'disabled';
 
 // 官方場地墊：クロノス共 18 刻度，夜（青）晝（赤）各 9 格平分；
 // 真夜中（0）為夜弧中心、正午（9）為晝弧中心，順時針推進。
@@ -211,6 +215,14 @@ export interface CardDef {
   officialErrataAffectsName?: boolean;
   officialErrataAffectsEffect?: boolean;
   officialErrataUrl?: string;
+  catalogStatus?: CardCatalogStatus;
+  distributionType?: CardDistributionType;
+  publicationStatus?: CardPublicationStatus;
+  playStatus?: CardPlayStatus;
+  playStatusReason?: string;
+  sourceUrl?: string;
+  sourceNote?: string;
+  sourceSha256?: string;
   pack: string;
   song: string;
   illustrator: string;

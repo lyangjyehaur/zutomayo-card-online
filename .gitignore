@@ -75,7 +75,7 @@ scripts/card-english-*.json
 !.env.example
 
 # Standalone admin HTML (replaced by React admin)
-admin/
+/admin/
 
 # Meta-tooling
 .omh/

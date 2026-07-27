@@ -1,5 +1,4 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
-import { Menu, X } from 'lucide-react';
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { identifyAnalytics, trackPageView } from './analytics';
 import { formatAnonymousDisplayName } from './anonymousIdentity';
@@ -9,7 +8,7 @@ import { NetworkStatusNotifier } from './components/NetworkStatusNotifier';
 import { PwaInstallPrompt } from './components/PwaInstallPrompt';
 import { PwaStatusPrompt } from './components/PwaStatusPrompt';
 import { Sentry } from './sentry';
-import { Button, IconButton } from './ui';
+import { Button } from './ui';
 import { hasStoredCustomDeck } from './game/cards/customDeck';
 import { getGameConfig as getLoadedGameConfig } from './game/cards/loader';
 import type { ZutomayoSetupData } from './game/types';
@@ -31,8 +30,9 @@ import './App.css';
 import './ui/tokens/index.css';
 import './ui/game/game.css';
 
-const AdminPage = lazy(() => import('./pages/AdminPage').then((module) => ({ default: module.AdminPage })));
-const I18nManager = lazy(() => import('./pages/I18nManager').then((module) => ({ default: module.I18nManager })));
+const RefineAdminApp = lazy(() =>
+  import('./admin/RefineAdminApp').then((module) => ({ default: module.RefineAdminApp })),
+);
 const AIGamePage = lazy(() => import('./pages/AIGamePage').then((module) => ({ default: module.AIGamePage })));
 const AILobbyPage = lazy(() => import('./pages/AILobbyPage').then((module) => ({ default: module.AILobbyPage })));
 const TutorialGamePage = lazy(() =>
@@ -40,6 +40,9 @@ const TutorialGamePage = lazy(() =>
 );
 const DeckEditorPage = lazy(() =>
   import('./pages/DeckEditorPage').then((module) => ({ default: module.DeckEditorPage })),
+);
+const CardCatalogPage = lazy(() =>
+  import('./pages/CardCatalogPage').then((module) => ({ default: module.CardCatalogPage })),
 );
 const DeckShareLobbyPage = lazy(() =>
   import('./pages/DeckShareLobbyPage').then((module) => ({ default: module.DeckShareLobbyPage })),
@@ -108,6 +111,8 @@ function isFullscreenRoute(pathname: string): boolean {
     pathname === '/community' ||
     pathname === '/ai' ||
     pathname === '/deck-builder' ||
+    pathname === '/cards' ||
+    pathname.startsWith('/cards/') ||
     pathname === '/deck-shares' ||
     pathname.startsWith('/deck-shares/') ||
     pathname === '/feedback' ||
@@ -119,7 +124,8 @@ function isFullscreenRoute(pathname: string): boolean {
     pathname.startsWith('/legal') ||
     pathname === '/verify-email' ||
     pathname === '/forgot-password' ||
-    pathname === '/reset-password'
+    pathname === '/reset-password' ||
+    pathname.startsWith('/admin')
   );
 }
 
@@ -209,121 +215,6 @@ async function joinMatch(
     ...(data.platformUserId ? { platformUserId: data.platformUserId } : {}),
     platformDisplayName: playerName,
   };
-}
-
-function NavBar({ deckSharingEnabled }: { deckSharingEnabled: boolean }) {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const [open, setOpen] = useState(false);
-
-  // 全螢幕單屏頁面有自己的 Header，不需要 NavBar
-  if (isFullscreenRoute(location.pathname)) {
-    return null;
-  }
-
-  const navItems = [
-    { path: '/', label: t('nav.lobby') },
-    { path: '/online', label: t('lobby.onlineTitle') },
-    { path: '/community', label: t('community.title') },
-    { path: '/ai', label: t('lobby.aiBattle') },
-    { path: '/deck-builder', label: t('nav.deckBuilder') },
-    ...(deckSharingEnabled ? [{ path: '/deck-shares', label: t('deckShare.lobbyTitle') }] : []),
-    { path: '/feedback', label: t('nav.feedback') },
-    { path: '/profile', label: t('nav.profile') },
-    { path: '/tutorial', label: t('nav.tutorial') },
-  ];
-
-  const activeItem = navItems.find((item) => item.path === location.pathname) ?? navItems[0];
-  const navButtonClass = (path: string) =>
-    `!min-h-11 min-w-touch px-2 py-0 tracking-[var(--tracking-label)] md:tracking-[var(--tracking-kicker)] ${
-      location.pathname === path ? 'text-accent-primary' : 'text-content-primary/50 hover:text-content-primary'
-    }`;
-
-  const goTo = (path: string) => {
-    setOpen(false);
-    navigate(path);
-  };
-
-  return (
-    <nav className="relative z-[var(--z-header)] px-3 pt-3 md:px-4 md:pt-4" aria-label={t('nav.primary')}>
-      <div className="hidden items-center justify-between md:flex">
-        <div className="flex items-center gap-1 rounded-md border border-border-soft bg-surface-base/80 px-2 py-1.5 backdrop-blur-md">
-          <span className="mx-2 size-2 rounded-full bg-accent-primary shadow-status-dot" aria-hidden="true" />
-          {navItems.slice(0, 6).map((item) => (
-            <Button
-              key={item.path}
-              className={navButtonClass(item.path)}
-              variant="ghost"
-              size="sm"
-              type="button"
-              onClick={() => goTo(item.path)}
-            >
-              {item.label}
-            </Button>
-          ))}
-        </div>
-        <div className="rounded-md border border-border-soft bg-surface-base/80 px-2 py-1.5 backdrop-blur-md">
-          <Button
-            className={navButtonClass('/profile')}
-            variant="ghost"
-            size="sm"
-            type="button"
-            onClick={() => goTo('/profile')}
-          >
-            {t('nav.profile')}
-          </Button>
-          <Button
-            className={navButtonClass('/tutorial')}
-            variant="ghost"
-            size="sm"
-            type="button"
-            onClick={() => goTo('/tutorial')}
-          >
-            {t('nav.tutorial')}
-          </Button>
-        </div>
-      </div>
-      <div className="flex items-center justify-between gap-2 rounded-md border border-border-soft bg-surface-base/80 px-2 py-1.5 backdrop-blur-md md:hidden">
-        <Button
-          className="!min-h-11 font-display text-base font-bold normal-case tracking-normal text-content-primary"
-          variant="ghost"
-          size="sm"
-          type="button"
-          onClick={() => goTo('/')}
-        >
-          ZUTOMAYO
-        </Button>
-        <span className="min-w-0 truncate font-mono text-caption uppercase tracking-[var(--tracking-label)] text-accent-primary">
-          {activeItem.label}
-        </span>
-        <IconButton
-          variant="secondary"
-          label={open ? t('common.close') : t('nav.primary')}
-          icon={open ? <X className="size-4" aria-hidden="true" /> : <Menu className="size-4" aria-hidden="true" />}
-          aria-expanded={open}
-          onClick={() => setOpen((current) => !current)}
-        />
-      </div>
-      {open && (
-        <div className="fixed inset-0 top-16 z-[var(--z-modal)] bg-surface-canvas/80 p-4 backdrop-blur md:hidden">
-          <div className="grid gap-2 rounded-md bg-surface-base p-3 ring-1 ring-content-primary/10 shadow-raised">
-            {navItems.map((item) => (
-              <Button
-                key={item.path}
-                className="justify-between text-left"
-                fullWidth
-                variant={location.pathname === item.path ? 'primary' : 'ghost'}
-                type="button"
-                onClick={() => goTo(item.path)}
-              >
-                {item.label}
-              </Button>
-            ))}
-          </div>
-        </div>
-      )}
-    </nav>
-  );
 }
 
 function resumeErrorTitle(reason: OnlineSessionValidationReason): TranslationKey {
@@ -646,14 +537,13 @@ function RouterShell() {
   const deck1 = aiOpponentDeckName(deck1Name);
   const cardsReady = cardResourceState === 'ready';
   const cardsLoadError = cardResourceState === 'error';
-  // 新版沉浸頁面有自己的 AppHeader，不需要外層 NavBar 和 padding。
-  const hideNav = isFullscreenRoute(location.pathname);
+  // 沉浸頁面暫不顯示跨頁的對局恢復提示；全域舊 NavBar 已移除。
+  const suppressResumePrompt = isFullscreenRoute(location.pathname);
 
   if (!appResourcesReady) return <AppBootLoader />;
 
   return (
-    <div className={`app-shell ${hideNav ? 'play-shell' : 'has-nav'}`} data-locale={locale}>
-      {!hideNav && <NavBar deckSharingEnabled={deckSharingEnabled} />}
+    <div className="app-shell play-shell" data-locale={locale}>
       <div className="route-content">
         <Suspense fallback={<RouteFallback />}>
           <Routes>
@@ -747,6 +637,8 @@ function RouterShell() {
                 />
               }
             />
+            <Route path="/cards" element={<CardCatalogPage />} />
+            <Route path="/cards/:cardId" element={<CardCatalogPage />} />
             {deckSharingEnabled && <Route path="/deck-shares" element={<DeckShareLobbyPage />} />}
             {deckSharingEnabled && (
               <Route
@@ -778,14 +670,13 @@ function RouterShell() {
             <Route path="/verify-email" element={<VerifyEmailPage />} />
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
-            <Route path="/admin" element={<AdminPage />} />
-            <Route path="/admin/i18n" element={<I18nManager />} />
+            <Route path="/admin/*" element={<RefineAdminApp />} />
             <Route path="/qa/battle" element={<BattleVisualQaPage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
         </Suspense>
       </div>
-      {resumePromptSession && !hideNav && (
+      {resumePromptSession && !suppressResumePrompt && (
         <OnlineResumePrompt
           session={resumePromptSession}
           status={resumePromptStatus}

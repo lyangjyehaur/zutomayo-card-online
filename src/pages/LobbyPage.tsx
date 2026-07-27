@@ -9,6 +9,7 @@ import {
   Github,
   GraduationCap,
   LayoutGrid,
+  LibraryBig,
   Medal,
   Megaphone,
   Menu,
@@ -63,7 +64,7 @@ interface LobbyPageProps {
  * 首頁「夜間放送 Night Broadcast」— Design System v2 從零設計。
  *
  * 構圖：浮動膠囊頁首（同對戰 HUD）＋ 模糊卡圖環境層 ＋ 主視覺（wordmark × ChronosDial 待機儀表）
- * ＋ 底部頻道列（CH.01–05 模式入口）。沒有通欄 header、沒有滿版卡片牆。
+ * ＋ 依瀏覽順序排列的 CH.01–10 功能入口。沒有通欄 header、沒有滿版卡片牆。
  */
 type Channel = {
   to: string;
@@ -78,38 +79,39 @@ const START_CHANNELS: Channel[] = [
   { to: '/ai', no: '02', titleKey: 'lobby.aiBattle', captionKey: 'lobby.homeAiCaption', Icon: Bot },
 ];
 
+const TUTORIAL_CHANNEL_NO = '03';
+
+const CARD_WORKSPACE_CHANNELS = {
+  catalog: '04',
+  deckEditor: '05',
+  deckShare: '06',
+} as const;
+
 const UTILITY_CHANNELS: Channel[] = [
   {
-    to: '/deck-builder',
-    no: '03',
-    titleKey: 'lobby.deckEditor',
-    captionKey: 'lobby.homeDeckCaption',
-    Icon: LayoutGrid,
-  },
-  {
     to: '/rules/qa',
-    no: '05',
+    no: '07',
     titleKey: 'officialRules.channelTitle',
     captionKey: 'officialRules.channelCaption',
     Icon: BookOpenCheck,
   },
   {
     to: '/leaderboard',
-    no: '06',
+    no: '08',
     titleKey: 'leaderboard.title',
     captionKey: 'lobby.homeLeaderboardCaption',
     Icon: Medal,
   },
   {
     to: '/history',
-    no: '07',
+    no: '09',
     titleKey: 'lobby.matchHistory',
     captionKey: 'lobby.homeHistoryCaption',
     Icon: ScrollText,
   },
   {
     to: '/community',
-    no: '08',
+    no: '10',
     titleKey: 'community.title',
     captionKey: 'community.caption',
     Icon: MessageCircle,
@@ -140,6 +142,20 @@ function randomLobbyBackgroundImage(images: string[], currentImage?: string): st
   const candidates = images.filter((image) => image !== currentImage);
   if (candidates.length === 0) return null;
   return candidates[Math.floor(Math.random() * candidates.length)];
+}
+
+function randomCatalogPreviewCards(cards: CardDef[], retainedIds: string[] = []): CardDef[] {
+  const cardsById = new Map(cards.filter((card) => Boolean(card.image)).map((card) => [card.id, card]));
+  const retainedCards = retainedIds.map((id) => cardsById.get(id)).filter((card): card is CardDef => Boolean(card));
+  const retainedCardIds = new Set(retainedCards.map((card) => card.id));
+  const candidates = [...cardsById.values()].filter((card) => !retainedCardIds.has(card.id));
+
+  for (let index = candidates.length - 1; index > 0; index -= 1) {
+    const randomIndex = Math.floor(Math.random() * (index + 1));
+    [candidates[index], candidates[randomIndex]] = [candidates[randomIndex], candidates[index]];
+  }
+
+  return [...retainedCards, ...candidates].slice(0, 3);
 }
 
 function AboutFeatureLink({ link, Icon }: { link: AboutPageLink; Icon: typeof Github }) {
@@ -261,6 +277,7 @@ export function LobbyPage({ onAuthChanged, deckSharingEnabled }: LobbyPageProps)
   const [aboutOpen, setAboutOpen] = useState(false);
   const [aboutConfig, setAboutConfig] = useState<AboutPageConfig>(DEFAULT_ABOUT_PAGE_I18N_CONFIG[locale]);
   const [backgroundImages, setBackgroundImages] = useState(() => lobbyBackgroundImages(getAllCardDefs()));
+  const [catalogCards, setCatalogCards] = useState(() => randomCatalogPreviewCards(getAllCardDefs()));
   const [backgroundImage, setBackgroundImage] = useState(
     () => randomLobbyBackgroundImage(lobbyBackgroundImages(getAllCardDefs())) ?? LOBBY_BACKGROUND_FALLBACK_IMAGE,
   );
@@ -307,7 +324,14 @@ export function LobbyPage({ onAuthChanged, deckSharingEnabled }: LobbyPageProps)
     let cancelled = false;
     void refreshCards().then((cards) => {
       const images = lobbyBackgroundImages(cards);
-      if (cancelled || images.length === 0) return;
+      if (cancelled) return;
+      setCatalogCards((current) =>
+        randomCatalogPreviewCards(
+          cards,
+          current.map((card) => card.id),
+        ),
+      );
+      if (images.length === 0) return;
       setBackgroundImages(images);
       setBackgroundImage((current) =>
         !current || current === LOBBY_BACKGROUND_FALLBACK_IMAGE
@@ -373,19 +397,7 @@ export function LobbyPage({ onAuthChanged, deckSharingEnabled }: LobbyPageProps)
       { labelKey: 'lobby.projectDiscord', href: aboutConfig.community.discordUrl, Icon: MessageCircle },
     ] satisfies Array<{ labelKey: TranslationKey; href: string; Icon: typeof Users }>
   ).filter(({ href }) => isActionableCommunityUrl(href));
-  const utilityChannels: Channel[] = deckSharingEnabled
-    ? [
-        UTILITY_CHANNELS[0],
-        {
-          to: '/deck-shares',
-          no: '04',
-          titleKey: 'deckShare.lobbyTitle',
-          captionKey: 'deckShare.lobbyDescription',
-          Icon: Share2,
-        },
-        ...UTILITY_CHANNELS.slice(1),
-      ]
-    : UTILITY_CHANNELS;
+  const utilityChannels = UTILITY_CHANNELS;
 
   return (
     <PageShell>
@@ -593,7 +605,7 @@ export function LobbyPage({ onAuthChanged, deckSharingEnabled }: LobbyPageProps)
                   data-umami-event="home-hero-online"
                 >
                   <span className="relative z-10 flex h-full max-w-[60%] flex-col items-start">
-                    <span className="font-mono text-caption text-accent-primary/80">CH.01</span>
+                    <span className="font-mono text-caption text-accent-primary/80">CH.{START_CHANNELS[0].no}</span>
                     <span className="mt-5 font-display text-2xl font-bold leading-tight text-content-primary sm:text-3xl">
                       {t(START_CHANNELS[0].titleKey)}
                     </span>
@@ -626,7 +638,7 @@ export function LobbyPage({ onAuthChanged, deckSharingEnabled }: LobbyPageProps)
                     <Bot className="size-5" strokeWidth={1.5} aria-hidden="true" />
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="font-mono text-caption text-accent-primary/75">CH.02</span>
+                    <span className="font-mono text-caption text-accent-primary/75">CH.{START_CHANNELS[1].no}</span>
                     <span className="mt-1 block font-display text-body-lg font-bold text-content-primary">
                       {t(START_CHANNELS[1].titleKey)}
                     </span>
@@ -647,7 +659,7 @@ export function LobbyPage({ onAuthChanged, deckSharingEnabled }: LobbyPageProps)
                     <BookOpenCheck className="size-5" strokeWidth={1.5} aria-hidden="true" />
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="font-mono text-caption text-accent-primary/75">GUIDE</span>
+                    <span className="font-mono text-caption text-accent-primary/75">CH.{TUTORIAL_CHANNEL_NO}</span>
                     <span className="mt-1 block font-display text-body-lg font-bold text-content-primary">
                       {t('lobby.tutorial')}
                     </span>
@@ -660,6 +672,120 @@ export function LobbyPage({ onAuthChanged, deckSharingEnabled }: LobbyPageProps)
               </nav>
 
               <HomeAnnouncements announcements={announcements} loading={announcementsLoading} locale={locale} />
+            </div>
+          </section>
+
+          <section className="border-t border-border-soft py-8" aria-labelledby="home-card-workspace-title">
+            <div className="mb-5 max-w-2xl">
+              <span className="font-mono text-caption uppercase tracking-normal text-accent-primary/75">
+                {t('lobby.cardWorkspaceKicker')}
+              </span>
+              <h2 id="home-card-workspace-title" className="mt-1 font-display text-xl font-bold text-content-primary">
+                {t('lobby.cardWorkspaceTitle')}
+              </h2>
+              <p className="mt-2 text-caption leading-relaxed text-content-muted">
+                {t('lobby.cardWorkspaceDescription')}
+              </p>
+            </div>
+
+            <div className="grid overflow-hidden rounded-md border border-border-soft bg-surface-base/55 lg:grid-cols-[minmax(0,1.2fr)_minmax(22rem,0.8fr)]">
+              <button
+                type="button"
+                className="group relative min-h-60 overflow-hidden border-b border-border-soft p-5 text-left transition hover:bg-surface-base/75 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[--focus-ring-color] sm:p-6 lg:min-h-64 lg:border-b-0 lg:border-r"
+                onClick={() => navigate('/cards')}
+                data-umami-event="home-card-catalog"
+              >
+                <span className="relative z-10 flex h-full max-w-[58%] flex-col items-start sm:max-w-[48%]">
+                  <span className="flex items-center gap-3">
+                    <span className="flex size-11 items-center justify-center rounded-sm border border-accent-primary/35 bg-surface-panel-strong text-accent-primary">
+                      <LibraryBig className="size-5" strokeWidth={1.5} aria-hidden="true" />
+                    </span>
+                    <span className="font-mono text-caption text-accent-primary/75">
+                      CH.{CARD_WORKSPACE_CHANNELS.catalog}
+                    </span>
+                  </span>
+                  <strong className="mt-4 block font-display text-2xl font-bold text-content-primary">
+                    {t('cardCatalog.nav')}
+                  </strong>
+                  <span className="mt-2 block text-body-sm leading-relaxed text-content-muted">
+                    {t('cardCatalog.navCaption')}
+                  </span>
+                  <span className="mt-auto inline-flex items-center gap-2 pt-4 font-mono text-control font-semibold uppercase text-accent-primary">
+                    {t('cardCatalog.browseAction')}
+                    <ArrowRight
+                      className="size-4 transition-transform group-hover:translate-x-1"
+                      strokeWidth={1.5}
+                      aria-hidden="true"
+                    />
+                  </span>
+                </span>
+
+                <span
+                  className="catalog-card-showcase absolute -bottom-8 -right-5 h-52 w-[48%] sm:-bottom-10 sm:right-4 sm:h-60"
+                  aria-hidden="true"
+                >
+                  <span className="catalog-card-aura" />
+                  {catalogCards.map((card, index) => (
+                    <span key={card.id} className={`catalog-card-slot catalog-card-slot-${index + 1}`}>
+                      <span className="catalog-card-frame">
+                        <CardImage cardId={card.id} context="thumbnail" alt="" className="h-full w-full object-cover" />
+                      </span>
+                    </span>
+                  ))}
+                  <span className="catalog-card-platform" />
+                </span>
+              </button>
+
+              <nav className="grid" aria-label={t('lobby.cardWorkspaceTitle')}>
+                <button
+                  type="button"
+                  className="group grid min-h-28 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-4 border-b border-border-soft p-5 text-left transition hover:bg-surface-base/75 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[--focus-ring-color] lg:min-h-32"
+                  onClick={() => navigate('/deck-builder')}
+                >
+                  <span className="flex size-10 items-center justify-center rounded-sm border border-border-soft bg-surface-raised text-accent-primary">
+                    <LayoutGrid className="size-5" strokeWidth={1.5} aria-hidden="true" />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="font-mono text-caption text-accent-primary/75">
+                      CH.{CARD_WORKSPACE_CHANNELS.deckEditor}
+                    </span>
+                    <strong className="mt-1 block font-display text-body-lg text-content-primary">
+                      {t('lobby.deckEditor')}
+                    </strong>
+                    <span className="mt-1 block text-caption leading-relaxed text-content-dim">
+                      {t('lobby.homeDeckCaption')}
+                    </span>
+                  </span>
+                  <ArrowRight className="size-4 text-content-dim group-hover:text-accent-primary" aria-hidden="true" />
+                </button>
+
+                {deckSharingEnabled && (
+                  <button
+                    type="button"
+                    className="group grid min-h-28 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-4 p-5 text-left transition hover:bg-surface-base/75 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[--focus-ring-color] lg:min-h-32"
+                    onClick={() => navigate('/deck-shares')}
+                  >
+                    <span className="flex size-10 items-center justify-center rounded-sm border border-border-soft bg-surface-raised text-accent-primary">
+                      <Share2 className="size-5" strokeWidth={1.5} aria-hidden="true" />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="font-mono text-caption text-accent-primary/75">
+                        CH.{CARD_WORKSPACE_CHANNELS.deckShare}
+                      </span>
+                      <strong className="mt-1 block font-display text-body-lg text-content-primary">
+                        {t('deckShare.lobbyTitle')}
+                      </strong>
+                      <span className="mt-1 line-clamp-2 block text-caption leading-relaxed text-content-dim">
+                        {t('deckShare.lobbyDescription')}
+                      </span>
+                    </span>
+                    <ArrowRight
+                      className="size-4 text-content-dim group-hover:text-accent-primary"
+                      aria-hidden="true"
+                    />
+                  </button>
+                )}
+              </nav>
             </div>
           </section>
 
@@ -678,7 +804,7 @@ export function LobbyPage({ onAuthChanged, deckSharingEnabled }: LobbyPageProps)
               </span>
             </div>
             <nav aria-label={t('lobby.homeChannels')}>
-              <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+              <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 {utilityChannels.map((channel) => (
                   <UtilityChannel key={channel.to} channel={channel} onOpen={navigate} />
                 ))}

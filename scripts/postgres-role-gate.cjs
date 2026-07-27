@@ -16,6 +16,8 @@ const APPLICATION_TABLES = Object.freeze([
   'matches',
   'cards',
   'card_texts_i18n',
+  'card_synergy_groups',
+  'card_synergy_relations',
   'card_official_errata',
   'official_qa_items',
   'official_qa_translations',

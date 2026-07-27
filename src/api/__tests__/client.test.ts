@@ -154,3 +154,50 @@ describe('API client deck sharing contracts', () => {
     ]);
   });
 });
+
+describe('API client official Q&A compatibility', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.unstubAllGlobals();
+  });
+
+  it('normalizes legacy Q&A responses that predate stable tag IDs', async () => {
+    vi.stubGlobal('localStorage', memoryStorage());
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            items: [
+              {
+                id: 'qa_1',
+                number: 1,
+                publishedAt: '2026-02-16',
+                tags: ['基本規則', '對戰準備'],
+                relatedCardIds: [],
+                source: { question: 'source question', answer: 'source answer' },
+                localized: { question: 'question', answer: 'answer' },
+                requestedLocale: 'zh-TW',
+                effectiveLocale: 'zh-TW',
+                translationStatus: 'verified',
+                sourceUrl: 'https://zutomayocard.net/qa/',
+                lastSyncedAt: '2026-07-21T04:34:14.479Z',
+                contentVersion: 1,
+              },
+            ],
+          }),
+        ),
+      ),
+    );
+
+    const { fetchOfficialQa } = await import('../client');
+
+    await expect(fetchOfficialQa('zh-TW')).resolves.toMatchObject([
+      {
+        tagIds: ['基本規則', '對戰準備'],
+        tags: ['基本規則', '對戰準備'],
+        relatedCardIds: [],
+      },
+    ]);
+  });
+});

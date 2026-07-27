@@ -83,6 +83,14 @@ const SCHEMA_SQL = `
     official_errata_affects_name BOOLEAN NOT NULL DEFAULT FALSE,
     official_errata_affects_effect BOOLEAN NOT NULL DEFAULT FALSE,
     official_errata_url TEXT NOT NULL DEFAULT '',
+    catalog_status TEXT NOT NULL DEFAULT 'listed',
+    distribution_type TEXT NOT NULL DEFAULT 'standard',
+    publication_status TEXT NOT NULL DEFAULT 'published',
+    play_status TEXT NOT NULL DEFAULT 'playable',
+    play_status_reason TEXT NOT NULL DEFAULT '',
+    source_url TEXT NOT NULL DEFAULT '',
+    source_note TEXT NOT NULL DEFAULT '',
+    source_sha256 TEXT NOT NULL DEFAULT '',
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
   ALTER TABLE cards ADD COLUMN IF NOT EXISTS en_name_official TEXT NOT NULL DEFAULT '';
@@ -92,7 +100,17 @@ const SCHEMA_SQL = `
   ALTER TABLE cards ADD COLUMN IF NOT EXISTS official_errata_affects_name BOOLEAN NOT NULL DEFAULT FALSE;
   ALTER TABLE cards ADD COLUMN IF NOT EXISTS official_errata_affects_effect BOOLEAN NOT NULL DEFAULT FALSE;
   ALTER TABLE cards ADD COLUMN IF NOT EXISTS official_errata_url TEXT NOT NULL DEFAULT '';
+  ALTER TABLE cards ADD COLUMN IF NOT EXISTS catalog_status TEXT NOT NULL DEFAULT 'listed';
+  ALTER TABLE cards ADD COLUMN IF NOT EXISTS distribution_type TEXT NOT NULL DEFAULT 'standard';
+  ALTER TABLE cards ADD COLUMN IF NOT EXISTS publication_status TEXT NOT NULL DEFAULT 'published';
+  ALTER TABLE cards ADD COLUMN IF NOT EXISTS play_status TEXT NOT NULL DEFAULT 'playable';
+  ALTER TABLE cards ADD COLUMN IF NOT EXISTS play_status_reason TEXT NOT NULL DEFAULT '';
+  ALTER TABLE cards ADD COLUMN IF NOT EXISTS source_url TEXT NOT NULL DEFAULT '';
+  ALTER TABLE cards ADD COLUMN IF NOT EXISTS source_note TEXT NOT NULL DEFAULT '';
+  ALTER TABLE cards ADD COLUMN IF NOT EXISTS source_sha256 TEXT NOT NULL DEFAULT '';
   CREATE INDEX IF NOT EXISTS idx_cards_has_official_errata ON cards(has_official_errata);
+  CREATE INDEX IF NOT EXISTS idx_cards_public_game_pool ON cards(publication_status, play_status);
+  CREATE INDEX IF NOT EXISTS idx_cards_catalog_source ON cards(catalog_status, distribution_type);
 
   CREATE TABLE IF NOT EXISTS card_official_errata (
     errata_id TEXT PRIMARY KEY,
@@ -204,6 +222,14 @@ function cardParams(card: CardDef): unknown[] {
     Boolean(card.officialErrataAffectsName),
     Boolean(card.officialErrataAffectsEffect),
     card.officialErrataUrl ?? '',
+    card.catalogStatus ?? 'listed',
+    card.distributionType ?? 'standard',
+    card.publicationStatus ?? 'published',
+    card.playStatus ?? 'playable',
+    card.playStatusReason ?? '',
+    card.sourceUrl ?? '',
+    card.sourceNote ?? '',
+    card.sourceSha256 ?? '',
   ];
 }
 
@@ -250,10 +276,12 @@ async function main(): Promise<void> {
            id, name, en_name_official, pack, song, illustrator, rarity, element, type, clock,
            attack_night, attack_day, power_cost, send_to_power, effect,
            en_effect_official, image, errata, has_official_errata, official_errata_id,
-           official_errata_affects_name, official_errata_affects_effect, official_errata_url
+           official_errata_affects_name, official_errata_affects_effect, official_errata_url,
+           catalog_status, distribution_type, publication_status, play_status, play_status_reason,
+           source_url, source_note, source_sha256
          )
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18,
-                 $19, $20, $21, $22, $23)
+                 $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31)
          ON CONFLICT (id) DO UPDATE SET
            name = EXCLUDED.name,
            en_name_official = EXCLUDED.en_name_official,
@@ -277,6 +305,14 @@ async function main(): Promise<void> {
            official_errata_affects_name = EXCLUDED.official_errata_affects_name,
            official_errata_affects_effect = EXCLUDED.official_errata_affects_effect,
            official_errata_url = EXCLUDED.official_errata_url,
+           catalog_status = EXCLUDED.catalog_status,
+           distribution_type = EXCLUDED.distribution_type,
+           publication_status = EXCLUDED.publication_status,
+           play_status = EXCLUDED.play_status,
+           play_status_reason = EXCLUDED.play_status_reason,
+           source_url = EXCLUDED.source_url,
+           source_note = EXCLUDED.source_note,
+           source_sha256 = EXCLUDED.source_sha256,
            updated_at = NOW()`,
         cardParams(card),
       );

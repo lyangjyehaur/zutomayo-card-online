@@ -352,6 +352,47 @@ const legalHoldListQuerySchema = z
   })
   .strict();
 
+const cardSynergyCategorySchema = z.enum([
+  'named_card_song',
+  'element',
+  'zone_resource',
+  'chronos',
+  'hp_damage',
+  'hand_draw',
+  'card_stats_type',
+  'deck_flow',
+  'area_enchant',
+  'event_trigger',
+  'other',
+]);
+const cardSynergyWriteSchema = z
+  .object({
+    groupId: z.string().trim().max(160).optional().default(''),
+    sourceCardId: z.string().trim().min(1).max(80),
+    targetCardId: z.string().trim().min(1).max(80),
+    kind: z.enum(['enables', 'conflicts']),
+    primaryCategory: cardSynergyCategorySchema,
+    categories: z.array(cardSynergyCategorySchema).max(12).default([]),
+    confidence: z.enum(['high', 'medium', 'low']),
+    score: z.coerce.number().int().min(-1000).max(1000),
+    rationaleJa: z.string().trim().min(1).max(3000),
+    rationaleI18n: z.record(z.string(), z.string().max(3000)).default({}),
+    evidence: z.array(z.unknown()).max(100).default([]),
+    reviewStatus: z.enum(['candidate', 'approved', 'rejected', 'needs_changes']),
+    recommendationEligible: z.boolean(),
+    sourceVersion: z.string().trim().min(1).max(120),
+    rulesVersion: z.string().trim().min(1).max(120),
+  })
+  .strict();
+const cardSynergyListQuerySchema = z
+  .object({
+    status: z.enum(['candidate', 'approved', 'rejected', 'needs_changes']).optional(),
+    category: cardSynergyCategorySchema.optional(),
+    query: z.string().trim().max(200).optional(),
+    limit: z.coerce.number().int().min(1).max(500).optional(),
+  })
+  .strict();
+
 // ===== Feedback =====
 const feedbackPostCreateSchema = z
   .object({
@@ -438,6 +479,8 @@ module.exports = {
   legalHoldCreateSchema,
   legalHoldReleaseSchema,
   legalHoldListQuerySchema,
+  cardSynergyWriteSchema,
+  cardSynergyListQuerySchema,
   feedbackPostCreateSchema,
   feedbackCommentCreateSchema,
   feedbackStatusSchema,

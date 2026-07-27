@@ -171,7 +171,7 @@ load-tests/           k6 API、WebSocket、認証、matchmaking 負荷テスト
 docs/                 architecture、API、deployment、multiplayer、UI/UX 文書
 ```
 
-主なページは `/online`、`/ai`、`/tutorial`、`/deck-builder`、`/deck-shares`、`/history`、`/leaderboard`、`/feedback`、`/profile`、`/rules/grand`、`/rules/floor`、`/rules/qa`、`/rules/errata`、`/admin` です。
+主なページは `/online`、`/ai`、`/tutorial`、`/deck-builder`、`/deck-shares`、`/history`、`/leaderboard`、`/feedback`、`/profile`、`/rules/grand`、`/rules/floor`、`/rules/qa`、`/rules/errata`、Refine 5 ベースの `/admin/*` です。
 
 ## セキュリティと運用
 

@@ -385,7 +385,7 @@ OFFICIAL_RULE_DOCUMENTS_FILE=data/official-rule-documents-20260721.json \
 
 The command fetches the live official Japanese sources and validates every local translation source hash before opening a serializable PostgreSQL transaction. That transaction verifies canonical cards, reviewed localized card names, and the card-dataset hash; Q&A card-name tokens are resolved from PostgreSQL and re-translated card names fail closed. It then writes every source and five-locale translation, checks completeness, records immutable snapshots and hashes, and switches the singleton active pointer. Any error rolls back the whole release.
 
-`scripts/deploy-server4.sh` performs these gates after migration and before starting the new services. Set local `OFFICIAL_TRANSLATIONS_SOURCE` or `OFFICIAL_RULE_DOCUMENTS_SOURCE` when a reviewed file is outside the checkout. Their bytes travel over SSH stdin directly into the one-shot migration container; the JSON is never committed, copied into an image, or stored in the remote checkout. The rule-document gate verifies that the official rules index still advertises both source PDFs, checks each live PDF SHA-256, and rejects incomplete locale coverage before switching the active versions. The post-start smoke requires `/api/official/status` to reference the deployed build. Operational details are documented in [`official-rulings.md`](./official-rulings.md).
+`scripts/deploy-server4.sh` performs these gates after migration and before starting the new services. Set local `OFFICIAL_TRANSLATIONS_SOURCE` or `OFFICIAL_RULE_DOCUMENTS_SOURCE` when a reviewed file is outside the checkout. Their bytes travel over SSH stdin directly into the one-shot migration container; the JSON is never committed, copied into an image, or stored in the remote checkout. The rule-document gate verifies that the official rules index still advertises both source PDFs, checks each live PDF SHA-256, and rejects incomplete locale coverage before switching the active versions. For Grand Rules it additionally rejects chapter-only summaries, requires the official chapters 1 through 10 and full numbered source coverage, and checks that every locale preserves the source rule-number sequence. For Floor Rules it requires all ten official chapters, every reviewed role/procedure/penalty subsection, full source and translation lengths, and the same list/step marker sequence in all five locales. The post-start smoke requires `/api/official/status` to reference the deployed build. Operational details are documented in [`official-rulings.md`](./official-rulings.md).
 
 同一部署階段也會將 `CARD_DERIVED_EFFECTS_DIR`（預設為本機 `data/`）中的卡牌效果、複核 manifest、官方日英來源及勘誤來源以 tar/stdin 串流至一次性 migration container，通過完整 audit 後以 transaction 更新 `card_texts_i18n`。檔案不會寫入 Server4 checkout 或容器映像；缺少任一來源、雜湊不符或術語違規時，部署會在啟動新服務前中止。
 
@@ -796,7 +796,8 @@ docker compose -f docker-compose.server4.yml run --rm --no-deps migrate \
 
 可用角色為 `viewer`、`moderator`、`operator`、`admin`；卡牌 i18n 編輯至少需要
 `operator` 的 `cards:write`，完整管理權限使用 `admin`。帳號仍以一般登入流程登入，進入
-`/admin` 或 `/admin/i18n` 時會自動交換管理員 session，不另設管理員密碼或 TOTP。
+`/admin` 或任一 `/admin/*` resource 時會透過 Refine auth provider 自動交換管理員 session。
+部署仍保留 `/admin/login` 的傳統管理員密碼 + TOTP 相容入口，但已連結的站內帳號不需要再次輸入。
 第一位完整管理員必須用上述 CLI 啟動；之後可由 `admin` 在 `/admin` 的「使用者」分頁
 搜尋帳號、設定角色或撤回權限。頁面不允許管理員修改自己的角色。
 
