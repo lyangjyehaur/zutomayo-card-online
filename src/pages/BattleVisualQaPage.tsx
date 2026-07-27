@@ -2,8 +2,19 @@ import { useEffect, useMemo, type ComponentProps } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Board } from '../components/Board';
 import { TUTORIAL_DECK0_IDS, TUTORIAL_DECK1_IDS } from '../data/tutorialScenario';
-import { confirmReady, finishMulligan, resolveJanken, setInitialCard, setTurnCard, setupGame } from '../game/GameLogic';
+import {
+  advanceChronos,
+  confirmReady,
+  finishMulligan,
+  resolveBattle,
+  resolveJanken,
+  revealCards,
+  setInitialCard,
+  setTurnCard,
+  setupGame,
+} from '../game/GameLogic';
 import { parseAllEffects, type ParsedEffect } from '../game/effects';
+import { pushGameNotice } from '../game/gameNotices';
 import {
   createInstance,
   getAllCardDefs,
@@ -33,6 +44,23 @@ const BATTLE_QA_STATES = [
   { id: 'initial-select', label: 'Initial Select' },
   { id: 'initial-set', label: 'Initial Set' },
   { id: 'turn-set', label: 'Turn Set' },
+  { id: 'clock-resolution', label: 'Clock Resolution' },
+  { id: 'chronos-effect-advance', label: 'Chronos Effect +' },
+  { id: 'chronos-effect-rewind', label: 'Chronos Effect −' },
+  { id: 'chronos-effect-set', label: 'Chronos Effect Set' },
+  { id: 'chronos-effect-cycle', label: 'Chronos Effect Full Cycle' },
+  { id: 'chronos-effect-queue', label: 'Chronos Effect Queue' },
+  { id: 'chronos-position-choice', label: 'Chronos Position Choice' },
+  { id: 'battle-resolution', label: 'Battle Resolution' },
+  { id: 'battle-modifiers', label: 'Battle Modifiers' },
+  { id: 'battle-insufficient', label: 'Battle Power 0' },
+  { id: 'battle-draw', label: 'Battle Draw' },
+  { id: 'battle-zero-damage', label: 'Battle Guard' },
+  { id: 'battle-double-zero', label: 'Battle 0 = 0' },
+  { id: 'battle-negative', label: 'Battle Negative' },
+  { id: 'resolution-timeline', label: 'Resolution Timeline' },
+  { id: 'game-over-resolution', label: 'Game Over Resolution' },
+  { id: 'cross-turn-resolution', label: 'Cross-turn Resolution' },
   { id: 'effect-order', label: 'Effect Order' },
   { id: 'pending-choice', label: 'Pending Choice' },
   { id: 'game-over', label: 'Game Over' },
@@ -352,6 +380,206 @@ function createTurnSetState(parsedEffects: Map<string, ParsedEffect[]>, side: Ba
   return G;
 }
 
+/** 第二回合公開後、卡牌移出設置區前的時計合計瞬間。 */
+function createClockResolutionState(parsedEffects: Map<string, ParsedEffect[]>, side: BattleQaSideId): GameState {
+  const G = createTurnSetState(parsedEffects, side);
+  G.ready = [true, true];
+  revealCards(G);
+  advanceChronos(G, parsedEffects);
+  return G;
+}
+
+function createChronosEffectState(
+  parsedEffects: Map<string, ParsedEffect[]>,
+  side: BattleQaSideId,
+  mode: 'advance' | 'rewind' | 'set',
+): GameState {
+  const G = createTurnSetState(parsedEffects, side);
+  clearTransientQaOverlays(G);
+  const sourceCard = G.players[0].battleZone;
+  if (!sourceCard) throw new Error('Unable to prepare Chronos effect source card');
+  sourceCard.faceUp = true;
+  const from = mode === 'advance' ? 2 : mode === 'rewind' ? 8 : 3;
+  const to = mode === 'advance' ? 7 : mode === 'rewind' ? 5 : 13;
+  G.chronos.position = to;
+  G.step = 'effectOrder';
+  G.ready = [true, true];
+  G.pendingEffects = [[], []];
+  G.pendingEffectPlayer = null;
+  pushGameNotice(G, {
+    kind: 'chronosChange',
+    tone: 'phase',
+    titleKey: 'board.notice.chronosCardEffect',
+    player: 0,
+    chronosFrom: from,
+    chronosTo: to,
+    chronosDelta: mode === 'advance' ? 5 : mode === 'rewind' ? -3 : -8,
+    chronosSourceKind: 'cardEffect',
+    chronosSourceCardDefId: sourceCard.defId,
+    chronosSourceCardInstanceId: sourceCard.instanceId,
+    chronosEffectMode: mode,
+    ...(mode === 'set' ? {} : { chronosMoveAmount: mode === 'advance' ? 5 : 3 }),
+  });
+  return G;
+}
+
+function createChronosEffectCycleState(parsedEffects: Map<string, ParsedEffect[]>, side: BattleQaSideId): GameState {
+  const G = createTurnSetState(parsedEffects, side);
+  clearTransientQaOverlays(G);
+  const sourceCard = G.players[0].battleZone;
+  if (!sourceCard) throw new Error('Unable to prepare Chronos full-cycle effect source card');
+  sourceCard.faceUp = true;
+  G.chronos.position = 2;
+  G.step = 'effectOrder';
+  G.ready = [true, true];
+  G.pendingEffects = [[], []];
+  G.pendingEffectPlayer = null;
+  pushGameNotice(G, {
+    kind: 'chronosChange',
+    tone: 'phase',
+    titleKey: 'board.notice.chronosCardEffect',
+    player: 0,
+    chronosFrom: 2,
+    chronosTo: 2,
+    chronosDelta: 0,
+    chronosSourceKind: 'cardEffect',
+    chronosSourceCardDefId: sourceCard.defId,
+    chronosSourceCardInstanceId: sourceCard.instanceId,
+    chronosEffectMode: 'advance',
+    chronosMoveAmount: CHRONOS_MAPPING.positions,
+  });
+  return G;
+}
+
+function createChronosEffectQueueState(parsedEffects: Map<string, ParsedEffect[]>, side: BattleQaSideId): GameState {
+  const G = createTurnSetState(parsedEffects, side);
+  clearTransientQaOverlays(G);
+  const sourceCard = G.players[0].battleZone;
+  if (!sourceCard) throw new Error('Unable to prepare queued Chronos effect source card');
+  sourceCard.faceUp = true;
+  G.chronos.position = 13;
+  G.step = 'effectOrder';
+  G.ready = [true, true];
+  G.pendingEffects = [[], []];
+  G.pendingEffectPlayer = null;
+  const notices = [
+    { from: 2, to: 7, mode: 'advance' as const, moveAmount: 5, delta: 5 },
+    { from: 7, to: 4, mode: 'rewind' as const, moveAmount: 3, delta: -3 },
+    { from: 4, to: 13, mode: 'set' as const, moveAmount: undefined, delta: -9 },
+  ];
+  for (const notice of notices) {
+    pushGameNotice(G, {
+      kind: 'chronosChange',
+      tone: 'phase',
+      titleKey: 'board.notice.chronosCardEffect',
+      player: 0,
+      chronosFrom: notice.from,
+      chronosTo: notice.to,
+      chronosDelta: notice.delta,
+      chronosSourceKind: 'cardEffect',
+      chronosSourceCardDefId: sourceCard.defId,
+      chronosSourceCardInstanceId: sourceCard.instanceId,
+      chronosEffectMode: notice.mode,
+      ...(notice.moveAmount === undefined ? {} : { chronosMoveAmount: notice.moveAmount }),
+    });
+  }
+  return G;
+}
+
+/** 獨立重播攻擊力比較、卡牌交鋒與 HP 扣減，不混入時計動畫。 */
+function createBattleResolutionState(
+  parsedEffects: Map<string, ParsedEffect[]>,
+  side: BattleQaSideId,
+  time: BattleQaTimeId,
+  variant: 'standard' | 'modifiers' | 'insufficient' | 'draw' | 'zero-damage' | 'double-zero' | 'negative' = 'standard',
+): GameState {
+  const G = createTurnSetState(parsedEffects, side);
+  clearTransientQaOverlays(G);
+  const player0Card = variant === 'insufficient' || variant === 'double-zero' ? '1st_2' : '1st_34';
+  const player1Card = variant === 'double-zero' ? '1st_2' : '1st_46';
+  G.players[0].battleZone = createInstance(player0Card, true);
+  G.players[1].battleZone = createInstance(player1Card, true);
+  G.players[0].setZoneA = null;
+  G.players[0].setZoneB = null;
+  G.players[1].setZoneA = null;
+  G.players[1].setZoneB = null;
+  G.players[0].hp = 100;
+  G.players[1].hp = 100;
+  G.ready = [true, true];
+  G.setCardsThisTurn = [[], []];
+  G.pendingEffects = [[], []];
+  G.pendingEffectPlayer = null;
+  G.pendingChoice = null;
+  G.modifiers.attack = variant === 'modifiers' ? [20, 0] : variant === 'negative' ? [-20, 0] : [0, 0];
+  G.modifiers.attackSetTo = variant === 'draw' ? [40, 40] : [null, null];
+  G.modifiers.damageReduction = variant === 'modifiers' ? [0, 10] : variant === 'zero-damage' ? [0, 99] : [0, 0];
+  G.modifiers.damageReductionSources = [
+    [],
+    variant === 'modifiers' || variant === 'zero-damage'
+      ? [
+          {
+            cardInstanceId: G.players[1].battleZone.instanceId,
+            cardDefId: G.players[1].battleZone.defId,
+            amount: variant === 'zero-damage' ? 99 : 10,
+          },
+        ]
+      : [],
+  ];
+  G.modifiers.powerCostReduction = variant === 'insufficient' ? [0, 99] : variant === 'double-zero' ? [0, 0] : [99, 99];
+  if (variant === 'insufficient' || variant === 'double-zero') G.players[0].powerCharger = [];
+  if (variant === 'double-zero') G.players[1].powerCharger = [];
+  applyQaChronosTime(G, time);
+  resolveBattle(G, new Map());
+  return G;
+}
+
+function createResolutionTimelineState(
+  parsedEffects: Map<string, ParsedEffect[]>,
+  side: BattleQaSideId,
+  time: BattleQaTimeId,
+): GameState {
+  const G = createBattleResolutionState(parsedEffects, side, time);
+  const affectedPlayer: PlayerIndex = 1;
+  const hpBeforeHeal = G.players[affectedPlayer].hp;
+  const hpAfterHeal = Math.min(100, hpBeforeHeal + 10);
+  G.players[affectedPlayer].hp = hpAfterHeal;
+  pushGameNotice(G, {
+    kind: 'hpChange',
+    tone: 'success',
+    titleKey: 'board.hpChange.healBoth',
+    player: affectedPlayer,
+    delta: hpAfterHeal - hpBeforeHeal,
+    hpBefore: hpBeforeHeal,
+    hpAfter: hpAfterHeal,
+    reason: 'healBoth',
+    sourceCardDefId: G.players[0].battleZone?.defId,
+  });
+  const chronosFrom = G.chronos.position;
+  const chronosTo = (chronosFrom + 2) % CHRONOS_MAPPING.positions;
+  G.chronos.position = chronosTo;
+  pushGameNotice(G, {
+    kind: 'chronosChange',
+    tone: 'phase',
+    titleKey: 'board.notice.chronosCardEffect',
+    player: 0,
+    chronosFrom,
+    chronosTo,
+    chronosDelta: 2,
+    chronosSourceKind: 'cardEffect',
+    chronosSourceCardDefId: G.players[0].battleZone?.defId,
+    chronosSourceCardInstanceId: G.players[0].battleZone?.instanceId,
+    chronosEffectMode: 'advance',
+    chronosMoveAmount: 2,
+  });
+  pushGameNotice(G, {
+    kind: 'turnStart',
+    tone: 'phase',
+    titleKey: 'board.notice.turnStart',
+    turn: G.turnNumber + 1,
+  });
+  return G;
+}
+
 function createZonePreviewCards(defIds: string[]): CardInstance[] {
   return defIds.filter((defId) => Boolean(getCardDef(defId))).map((defId) => createInstance(defId, true));
 }
@@ -430,10 +658,16 @@ function createQaEffect(
 function createEffectOrderState(parsedEffects: Map<string, ParsedEffect[]>, side: BattleQaSideId): GameState {
   const G = prepareEffectField(createTurnSetState(parsedEffects, side));
   const playerArea = G.players[0].setZoneC;
+  const playerCharacter = G.players[0].battleZone;
   const opponentEnchant = G.players[1].setZoneA;
-  if (!playerArea || !opponentEnchant) throw new Error('Unable to prepare QA pending effects');
+  if (!playerArea || !playerCharacter || !opponentEnchant) throw new Error('Unable to prepare QA pending effects');
+  G.chronos.position = G.chronosAtTurnStart;
+  advanceChronos(G, parsedEffects);
   G.pendingEffects = [
-    [createQaEffect(0, playerArea, 20, '昼なら攻撃力+20', 'setZoneC')],
+    [
+      createQaEffect(0, playerArea, 20, '昼なら攻撃力+20', 'setZoneC'),
+      createQaEffect(0, playerCharacter, 10, 'このターン中、自分の攻撃力+10', 'battleZone'),
+    ],
     [createQaEffect(1, opponentEnchant, 30, '相手のキャラクターカードが1コスト以下なら攻撃力+30', 'played')],
   ];
   G.pendingEffectPlayer = 0;
@@ -468,6 +702,27 @@ function createPendingChoiceState(parsedEffects: Map<string, ParsedEffect[]>, si
   return G;
 }
 
+function createChronosPositionChoiceState(parsedEffects: Map<string, ParsedEffect[]>, side: BattleQaSideId): GameState {
+  const G = createEffectOrderState(parsedEffects, side);
+  const sourceCard = G.players[0].setZoneC ?? G.players[0].battleZone;
+  G.pendingChoice = {
+    id: 'qa-choice-chronos-position',
+    type: 'clockPosition',
+    player: 0,
+    options: Array.from({ length: CHRONOS_MAPPING.positions }, (_, position) => ({
+      id: `chronos-${position}`,
+      label: `${position}`,
+      value: position,
+    })),
+    min: 1,
+    max: 1,
+    prompt: 'QA fixture: choose any Chronos target position.',
+    ...(sourceCard ? { sourceCardDefId: sourceCard.defId, sourceCardInstanceId: sourceCard.instanceId } : {}),
+    payload: {},
+  };
+  return G;
+}
+
 function createGameOverState(parsedEffects: Map<string, ParsedEffect[]>, side: BattleQaSideId): GameState {
   const G = prepareEffectField(createTurnSetState(parsedEffects, side));
   G.step = 'gameOver';
@@ -481,6 +736,35 @@ function createGameOverState(parsedEffects: Map<string, ParsedEffect[]>, side: B
   G.pendingEffectPlayer = null;
   G.pendingChoice = null;
   G.log.push(G.gameoverReason);
+  return G;
+}
+
+function createGameOverResolutionState(
+  parsedEffects: Map<string, ParsedEffect[]>,
+  side: BattleQaSideId,
+  time: BattleQaTimeId,
+): GameState {
+  const G = createBattleResolutionState(parsedEffects, side, time);
+  G.step = 'gameOver';
+  G.ready = [true, true];
+  G.winner = 0;
+  G.players[1].hp = 0;
+  G.gameoverReason = 'QA: final battle resolution must finish before the result screen.';
+  G.matchEndedAt = G.matchStartedAt + 95_000;
+  return G;
+}
+
+function createCrossTurnResolutionState(
+  parsedEffects: Map<string, ParsedEffect[]>,
+  side: BattleQaSideId,
+  time: BattleQaTimeId,
+): GameState {
+  const G = createBattleResolutionState(parsedEffects, side, time);
+  G.turnNumber += 1;
+  G.players[0].battleZone = createInstance('1st_66', true);
+  G.players[1].battleZone = createInstance('1st_67', true);
+  G.lastBattleResult = { winner: 1, damage: 5, winnerAttack: 45, loserAttack: 40 };
+  G.log.push('QA fixture: advanced to the next turn before the previous battle animation played.');
   return G;
 }
 
@@ -518,11 +802,45 @@ function createBattleQaState(id: BattleQaStateId, side: BattleQaSideId, time: Ba
             ? createInitialSetState(side)
             : id === 'turn-set'
               ? createTurnSetState(parsedEffects, side)
-              : id === 'effect-order'
-                ? createEffectOrderState(parsedEffects, side)
-                : id === 'pending-choice'
-                  ? createPendingChoiceState(parsedEffects, side)
-                  : createGameOverState(parsedEffects, side);
+              : id === 'clock-resolution'
+                ? createClockResolutionState(parsedEffects, side)
+                : id === 'chronos-effect-advance'
+                  ? createChronosEffectState(parsedEffects, side, 'advance')
+                  : id === 'chronos-effect-rewind'
+                    ? createChronosEffectState(parsedEffects, side, 'rewind')
+                    : id === 'chronos-effect-set'
+                      ? createChronosEffectState(parsedEffects, side, 'set')
+                      : id === 'chronos-effect-cycle'
+                        ? createChronosEffectCycleState(parsedEffects, side)
+                        : id === 'chronos-effect-queue'
+                          ? createChronosEffectQueueState(parsedEffects, side)
+                          : id === 'chronos-position-choice'
+                            ? createChronosPositionChoiceState(parsedEffects, side)
+                            : id === 'battle-resolution'
+                              ? createBattleResolutionState(parsedEffects, side, time)
+                              : id === 'battle-modifiers'
+                                ? createBattleResolutionState(parsedEffects, side, time, 'modifiers')
+                                : id === 'battle-insufficient'
+                                  ? createBattleResolutionState(parsedEffects, side, time, 'insufficient')
+                                  : id === 'battle-draw'
+                                    ? createBattleResolutionState(parsedEffects, side, time, 'draw')
+                                    : id === 'battle-zero-damage'
+                                      ? createBattleResolutionState(parsedEffects, side, time, 'zero-damage')
+                                      : id === 'battle-double-zero'
+                                        ? createBattleResolutionState(parsedEffects, side, time, 'double-zero')
+                                        : id === 'battle-negative'
+                                          ? createBattleResolutionState(parsedEffects, side, time, 'negative')
+                                          : id === 'resolution-timeline'
+                                            ? createResolutionTimelineState(parsedEffects, side, time)
+                                            : id === 'game-over-resolution'
+                                              ? createGameOverResolutionState(parsedEffects, side, time)
+                                              : id === 'cross-turn-resolution'
+                                                ? createCrossTurnResolutionState(parsedEffects, side, time)
+                                                : id === 'effect-order'
+                                                  ? createEffectOrderState(parsedEffects, side)
+                                                  : id === 'pending-choice'
+                                                    ? createPendingChoiceState(parsedEffects, side)
+                                                    : createGameOverState(parsedEffects, side);
   applyQaChronosTime(G, time);
   return G;
 }
@@ -666,6 +984,7 @@ export function BattleVisualQaPage() {
       data-battle-qa-time={selectedTime}
     >
       <Board
+        key={`${selectedState}-${selectedSide}-${selectedTime}`}
         G={fixture.G}
         ctx={createQaCtx(fixture.G)}
         moves={noopMoves}
@@ -688,7 +1007,7 @@ export function BattleVisualQaPage() {
         isMultiplayer={false}
         useServerTimer
         gameOverActions={
-          selectedState === 'game-over'
+          selectedState === 'game-over' || selectedState === 'game-over-resolution'
             ? {
                 primary: { label: t('board.playAgain'), onClick: () => undefined },
                 secondary: {

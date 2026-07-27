@@ -20,6 +20,7 @@ import type {
 } from './types';
 import { normalizeChronosPosition } from './chronos';
 import { getCardDef } from './cards/loader';
+import { recordAction } from './actionLog';
 
 type ChoiceType = PendingChoice['type'];
 
@@ -52,7 +53,14 @@ export interface PendingChoiceRuntime {
     position: number,
     parsedEffects?: Map<string, ParsedEffect[]>,
     logMessage?: string,
-    source?: { kind: 'turnAdvance' | 'cardEffect'; cardDefId?: string },
+    source?: {
+      kind: 'turnAdvance' | 'cardEffect';
+      cardDefId?: string;
+      cardInstanceId?: string;
+      player?: PlayerIndex;
+      effectMode?: 'advance' | 'rewind' | 'set';
+      moveAmount?: number;
+    },
     breakdown?: HpChangeBreakdown,
   ) => void;
   shuffleSelectedCards: <T>(cards: T[]) => T[];
@@ -86,7 +94,7 @@ const handToDeckBottomThenDrawHandler: ChoiceHandler = {
       const handIndex = playerState.hand.findIndex((card) => card.instanceId === optionId);
       if (handIndex < 0) return { status: 'invalid' };
       const [card] = playerState.hand.splice(handIndex, 1);
-      card.faceUp = true;
+      card.faceUp = false;
       playerState.deck.push(card);
     }
     const drawCount = Number(c.payload.drawCount ?? 0);
@@ -156,6 +164,7 @@ const optionalHandMoveThenDrawHandler: ChoiceHandler = {
             cardDefId: card.defId,
           });
         } else {
+          card.faceUp = false;
           playerState.deck.push(card);
         }
       }
@@ -243,6 +252,8 @@ const useFromAbyssHandler: ChoiceHandler = {
           player,
           cardInstanceId: selected.instanceId,
           cardDefId: selected.defId,
+          ...(c.sourceCardInstanceId ? { rulesSourceCardInstanceId: c.sourceCardInstanceId } : {}),
+          ...(c.sourceCardDefId ? { rulesSourceCardDefId: c.sourceCardDefId } : {}),
           rawText: effect.rawText,
           effect,
           source: 'played' as const,
@@ -344,6 +355,13 @@ const revealHandAttackBoostHandler: ChoiceHandler = {
     const revealed = new Set(G.revealedHandCardIds[player] ?? []);
     for (const optionId of optionIds) revealed.add(optionId);
     G.revealedHandCardIds[player] = [...revealed];
+    recordAction(G, player, 'revealCards', {
+      targetPlayer: player,
+      sourceZone: 'hand',
+      cardDefIds: optionIds
+        .map((optionId) => playerState.hand.find((card) => card.instanceId === optionId)?.defId)
+        .filter((defId): defId is string => Boolean(defId)),
+    });
     G.modifiers.attack[player] += optionIds.length * c.payload.boostPerCard;
     return { status: 'ok' };
   },
@@ -368,6 +386,11 @@ const nameGuessOpponentHandRevealHandler: ChoiceHandler = {
     const revealed = new Set(G.revealedHandCardIds[c.payload.opponentPlayer] ?? []);
     revealed.add(selected.instanceId);
     G.revealedHandCardIds[c.payload.opponentPlayer] = [...revealed];
+    recordAction(G, player, 'revealCards', {
+      targetPlayer: c.payload.opponentPlayer,
+      sourceZone: 'hand',
+      cardDefIds: [selected.defId],
+    });
     if (selected.defId === guessedDefId) {
       G.modifiers.attack[player] += c.payload.attackBoost;
     }
@@ -510,11 +533,14 @@ const clockPositionHandler: ChoiceHandler = {
     const option = choice.options.find((item) => item.id === optionIds[0]);
     if (!option || !Number.isInteger(Number(option.value))) return { status: 'invalid' };
     const value = Number(option.value);
-    const sourceCardDefId =
-      G.pendingEffectPlayer !== null ? G.pendingEffects[G.pendingEffectPlayer]?.[0]?.cardDefId : undefined;
+    const sourceCardDefId = choice.sourceCardDefId;
+    const sourceCardInstanceId = choice.sourceCardInstanceId;
     runtime.setChronosPosition(G, value, parsedEffects, `Chronos set to ${value}.`, {
       kind: 'cardEffect',
       ...(sourceCardDefId ? { cardDefId: sourceCardDefId } : {}),
+      ...(sourceCardInstanceId ? { cardInstanceId: sourceCardInstanceId } : {}),
+      player: choice.player,
+      effectMode: 'set',
     });
     return { status: 'ok' };
   },
@@ -529,14 +555,21 @@ const clockAdvanceHandler: ChoiceHandler = {
     if (!option || !Number.isInteger(Number(option.value))) return { status: 'invalid' };
     const value = Number(option.value);
     const before = G.chronos.position;
-    const sourceCardDefId =
-      G.pendingEffectPlayer !== null ? G.pendingEffects[G.pendingEffectPlayer]?.[0]?.cardDefId : undefined;
+    const sourceCardDefId = choice.sourceCardDefId;
+    const sourceCardInstanceId = choice.sourceCardInstanceId;
     runtime.setChronosPosition(
       G,
       before + value,
       parsedEffects,
       `Chronos +${value} (${before}→${normalizeChronosPosition(before + value)}).`,
-      { kind: 'cardEffect', ...(sourceCardDefId ? { cardDefId: sourceCardDefId } : {}) },
+      {
+        kind: 'cardEffect',
+        ...(sourceCardDefId ? { cardDefId: sourceCardDefId } : {}),
+        ...(sourceCardInstanceId ? { cardInstanceId: sourceCardInstanceId } : {}),
+        player: choice.player,
+        effectMode: value < 0 ? 'rewind' : 'advance',
+        moveAmount: Math.abs(value),
+      },
     );
     return { status: 'ok' };
   },

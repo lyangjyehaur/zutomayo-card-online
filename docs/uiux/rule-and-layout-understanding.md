@@ -26,16 +26,16 @@
 
 其他 UI 必須呈現的全局狀態：
 
-| 狀態              | 欄位                                                                                             | UI 職責                                     |
-| ----------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------- |
-| 當前階段          | `G.step`（janken → mulligan → initialSet → turnSet → effectOrder → battle → turnEnd → gameOver） | PhaseIndicator：目前在哪、我該做什麼        |
-| 回合數 / 回合玩家 | `G.turnNumber`、`ready[]`                                                                        | 頂欄顯示；等待對手時明確提示                |
-| 可執行行動        | 由 `step` + `ready` + `cardsSetThisTurn` + `getRequiredSetCount/getMinimumSetCount` 推導         | ActionBar 唯一主行動按鈕 + 提示             |
-| 待處理效果 / 選擇 | `pendingEffects`、`pendingChoice`（13 種型別）                                                   | 置中 Modal/Sheet 選擇介面，min/max 張數校驗 |
-| HP                | `players[i].hp`（0–100）                                                                         | 雙方 HP bar；變化時 GameNotice 明細         |
-| 計時器            | `turnStartTime`（線上權威） / 客戶端倒數                                                         | 頂欄倒數；≤10 秒警示色                      |
-| Log               | `G.actionLog`                                                                                    | 可開關的歷史面板，卡名可查看詳情            |
-| 通知              | `G.recentGameNotices`                                                                            | 佇列式置中提示（HP/時鐘含明細需確認）       |
+| 狀態              | 欄位                                                                                             | UI 職責                                                |
+| ----------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------ |
+| 當前階段          | `G.step`（janken → mulligan → initialSet → turnSet → effectOrder → battle → turnEnd → gameOver） | PhaseIndicator：目前在哪、我該做什麼                   |
+| 回合數 / 回合玩家 | `G.turnNumber`、`ready[]`                                                                        | 頂欄顯示；等待對手時明確提示                           |
+| 可執行行動        | 由 `step` + `ready` + `cardsSetThisTurn` + `getRequiredSetCount/getMinimumSetCount` 推導         | ActionBar 唯一主行動按鈕 + 提示                        |
+| 待處理效果 / 選擇 | `pendingEffects`、`pendingChoice`（13 種型別）                                                   | 置中 Modal/Sheet 選擇介面，min/max 張數校驗            |
+| HP                | `players[i].hp`（0–100）                                                                         | 雙方 HP bar；變化時 GameNotice 明細                    |
+| 計時器            | `turnStartTime`（線上權威） / 客戶端倒數                                                         | 頂欄倒數；≤10 秒警示色                                 |
+| Log               | `G.actionLog`                                                                                    | 可開關的歷史面板，卡名可查看詳情                       |
+| 通知              | `G.recentGameNotices`                                                                            | 一般對戰依 ID 分派至場上動畫／提示；教學明細可手動確認 |
 
 ## 2. Moves（UI 行動入口全表）
 

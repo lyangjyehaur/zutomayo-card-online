@@ -19,6 +19,7 @@ export type PhaseInstructionState = {
 };
 
 export function getChoiceInstruction(type: string): string {
+  if (type === 'clockPosition') return t('board.choiceChronosPositionHint');
   if (type === 'handToDeckBottomThenDraw') return t('board.choiceHintDeckBottomDraw');
   if (type === 'reorderOpponentDeckTop') return t('board.choiceHintReorder');
   if (type === 'opponentPowerCharacterSwap') return t('board.choiceHintSwap');
@@ -44,8 +45,14 @@ export function getPhaseInstruction(
   const me = G.players[meIndex];
   if (G.pendingChoice) {
     const mine = G.pendingChoice.player === meIndex;
+    const isChronosPositionChoice = G.pendingChoice.type === 'clockPosition';
     return {
-      title: mine ? t('board.phaseChoiceTitle') : t('board.phaseChoiceWaitingTitle'),
+      title:
+        mine && isChronosPositionChoice
+          ? t('board.chronosResolution.setPosition')
+          : mine
+            ? t('board.phaseChoiceTitle')
+            : t('board.phaseChoiceWaitingTitle'),
       body: mine
         ? getChoiceInstruction(G.pendingChoice.type)
         : `${playerName(G.pendingChoice.player)} ${t('board.phaseChoosing')}`,

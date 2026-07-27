@@ -3,26 +3,29 @@ export const WEB_FONT_STYLESHEET =
 
 const WEB_FONT_LINK_ID = 'zutomayo-web-fonts';
 
-function appendWebFontStylesheet(): void {
-  if (document.getElementById(WEB_FONT_LINK_ID)) return;
-  const link = document.createElement('link');
-  link.id = WEB_FONT_LINK_ID;
-  link.rel = 'stylesheet';
-  link.href = WEB_FONT_STYLESHEET;
-  document.head.append(link);
+function waitForLoadedFonts(): Promise<void> {
+  if (!('fonts' in document)) return Promise.resolve();
+  return document.fonts.ready.then(() => undefined);
 }
 
-/** Keep the remote multi-locale font catalog off the critical rendering path. */
-export function scheduleWebFonts(): void {
-  const appendWhenIdle = () => {
-    if (typeof window.requestIdleCallback === 'function') {
-      window.requestIdleCallback(appendWebFontStylesheet, { timeout: 3_000 });
-      return;
-    }
-    globalThis.setTimeout(appendWebFontStylesheet, 0);
-  };
-  const schedule = () => globalThis.setTimeout(appendWhenIdle, 5_000);
+function loadWebFonts(): Promise<void> {
+  if (typeof document === 'undefined') return Promise.resolve();
 
-  if (document.readyState === 'complete') schedule();
-  else window.addEventListener('load', schedule, { once: true });
+  const existing = document.getElementById(WEB_FONT_LINK_ID) as HTMLLinkElement | null;
+  if (existing?.sheet) return waitForLoadedFonts();
+
+  return new Promise<void>((resolve) => {
+    const link = existing ?? document.createElement('link');
+    link.addEventListener('load', () => void waitForLoadedFonts().then(resolve), { once: true });
+    link.addEventListener('error', () => resolve(), { once: true });
+
+    if (existing) return;
+    link.id = WEB_FONT_LINK_ID;
+    link.rel = 'stylesheet';
+    link.href = WEB_FONT_STYLESHEET;
+    document.head.append(link);
+  });
 }
+
+/** Start loading before React renders so the boot gate can prevent a late font swap. */
+export const webFontsReady = loadWebFonts();

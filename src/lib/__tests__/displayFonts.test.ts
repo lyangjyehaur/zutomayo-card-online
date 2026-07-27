@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 
 const typography = readFileSync('src/ui/tokens/typography.css', 'utf8');
 const viteConfig = readFileSync('vite.config.ts', 'utf8');
+const webFonts = readFileSync('src/webFonts.ts', 'utf8');
+const app = readFileSync('src/App.tsx', 'utf8');
 
 describe('display font delivery', () => {
   it('loads compact UI faces before complete same-design fallbacks', () => {
@@ -27,5 +29,12 @@ describe('display font delivery', () => {
     expect(viteConfig).toContain("'fonts/uoq-mun-then-khung-regular.woff2'");
     expect(viteConfig).toContain("'fonts/jiangcheng-jiexing-v1.3.woff2'");
     expect(viteConfig).toContain("cacheName: 'display-fonts-complete'");
+  });
+
+  it('starts remote fonts immediately and includes them in the app boot gate', () => {
+    expect(webFonts).not.toContain('requestIdleCallback');
+    expect(webFonts).not.toContain('5_000');
+    expect(webFonts).toContain('export const webFontsReady = loadWebFonts()');
+    expect(app).toContain('return webFontsReady');
   });
 });

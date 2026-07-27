@@ -25,6 +25,7 @@ import {
   type OnlineSessionValidationReason,
 } from './onlineSession';
 import { APP_VERSION_INFO } from './version';
+import { webFontsReady } from './webFonts';
 import './App.css';
 // Design System v1：semantic tokens 與對戰版面樣式（必須在 App.css 之後載入，覆寫舊層）
 import './ui/tokens/index.css';
@@ -410,8 +411,7 @@ function RouteFallback() {
 }
 
 function waitForFonts(): Promise<void> {
-  if (typeof document === 'undefined' || !('fonts' in document)) return Promise.resolve();
-  return document.fonts.ready.then(() => undefined);
+  return webFontsReady;
 }
 
 async function withBootTimeout<T>(promise: Promise<T>, timeoutMs = APP_BOOT_TIMEOUT_MS): Promise<T | null> {

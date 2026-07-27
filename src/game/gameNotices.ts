@@ -8,7 +8,7 @@ export const MAX_GAME_NOTICES_KEPT = 30;
 
 /**
  * 統一記錄遊戲事件提示（HP 變化、時鐘推進、戰鬥結果、回合切換），
- * 供 UI 單一置中 overlay 依序消費顯示。
+ * 供 UI 單一播放時間線依序分派顯示。
  *
  * 抽成獨立模組以避免 GameLogic ↔ effects/executor 之間的循環依賴，
  * 與 hpChange.ts 同理。
@@ -17,7 +17,7 @@ export function pushGameNotice(G: GameState, notice: Omit<GameNotice, 'id' | 'ti
   if (!Array.isArray(G.recentGameNotices)) G.recentGameNotices = [];
   const id =
     G.recentGameNotices.reduce((max, entry) => (Number.isInteger(entry.id) ? Math.max(max, entry.id) : max), 0) + 1;
-  G.recentGameNotices.push({ ...notice, id, timestamp: Date.now() });
+  G.recentGameNotices.push({ ...notice, id, resolutionTurn: G.turnNumber, timestamp: Date.now() });
   if (G.recentGameNotices.length > MAX_GAME_NOTICES_KEPT) {
     G.recentGameNotices.splice(0, G.recentGameNotices.length - MAX_GAME_NOTICES_KEPT);
   }

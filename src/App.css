@@ -5061,6 +5061,9 @@ button.zone:focus-visible {
 }
 
 .mulligan-hand {
+  /* 橫向捲動會連帶裁切 Y 軸；預留卡牌 hover 上浮與選取光暈的空間。 */
+  margin-top: -0.875rem;
+  padding-top: 0.875rem;
   overscroll-behavior-x: contain;
   scroll-snap-type: x proximity;
   scrollbar-width: thin;
@@ -5344,6 +5347,11 @@ button.zone:focus-visible {
 .pending-choice-panel {
   max-height: min(72dvh, 36rem) !important;
   overflow: hidden !important;
+}
+
+.pending-choice-clock-hint {
+  color: var(--gold) !important;
+  font-weight: 800;
 }
 
 .pending-choice-panel .effect-order-list {
@@ -6688,6 +6696,20 @@ button.zone:focus-visible {
 
   .battle-side-sheet .battle-focus-panel {
     display: block !important;
+  }
+}
+
+section.pending-choice-panel-clock {
+  position: fixed !important;
+  inset: auto max(1rem, env(safe-area-inset-right, 0px)) max(1rem, env(safe-area-inset-bottom, 0px)) auto !important;
+  width: min(21rem, calc(100vw - 2rem)) !important;
+}
+
+@media (max-width: 767px) {
+  section.pending-choice-panel-clock {
+    inset: auto 0.75rem 0.75rem auto !important;
+    width: min(18rem, calc(100vw - 1.5rem)) !important;
+    padding: 0.75rem !important;
   }
 }
 

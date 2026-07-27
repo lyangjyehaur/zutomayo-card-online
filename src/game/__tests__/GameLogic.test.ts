@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { initCards, isCardsInitialized, getAllCardDefs, createInstance } from '../cards/loader';
 import { parseAllEffects } from '../effects/parser';
 import { ZutomayoCard } from '../Game';
+import { CHRONOS_MAPPING, type CardDef, type CardType, type GameState, type PendingEffect } from '../types';
 import {
   setupGame,
   validateZutomayoSetupData,
@@ -14,9 +15,15 @@ import {
   confirmReady,
   timeoutSkip,
   getMinimumSetCount,
+  getResolvablePendingEffectIndexes,
   getRequiredSetCount,
   getPlayerPower,
   getEffectiveAttack,
+  resolveBattle,
+  resolveTimingEvent,
+  advanceChronos,
+  resolvePendingEffect,
+  submitPendingChoice,
   getEffectiveElement,
   getChronosTime,
   getPriorityPlayer,
@@ -25,7 +32,74 @@ import {
   emptyModifiers,
   TURN_TIMER_MS,
 } from '../GameLogic';
-import type { CardDef, CardType, GameState } from '../types';
+
+describe('getResolvablePendingEffectIndexes', () => {
+  function pendingEffect(id: string, cardInstanceId: string, priority?: 'late'): PendingEffect {
+    return {
+      id,
+      player: 0,
+      cardInstanceId,
+      cardDefId: 'test-character-1',
+      rawText: id,
+      effect: {
+        trigger: 'onUse',
+        conditions: [],
+        action: { type: 'boostAttack', params: { value: 10 } },
+        rawText: id,
+        ...(priority ? { priority } : {}),
+      },
+      source: 'battleZone',
+    };
+  }
+
+  it('offers only the first normal effect from each card', () => {
+    const G = setupGame();
+    G.step = 'effectOrder';
+    G.pendingEffectPlayer = 0;
+    G.pendingEffects = [
+      [
+        pendingEffect('card-a-1', 'card-a'),
+        pendingEffect('card-a-2', 'card-a'),
+        pendingEffect('card-b-1', 'card-b'),
+        pendingEffect('card-c-late', 'card-c', 'late'),
+      ],
+      [],
+    ];
+
+    expect(getResolvablePendingEffectIndexes(G, 0)).toEqual([0, 2]);
+    expect(getResolvablePendingEffectIndexes(G, 1)).toEqual([]);
+  });
+
+  it('offers late effects after all normal effects are gone', () => {
+    const G = setupGame();
+    G.step = 'effectOrder';
+    G.pendingEffectPlayer = 0;
+    G.pendingEffects = [
+      [pendingEffect('card-a-late-1', 'card-a', 'late'), pendingEffect('card-a-late-2', 'card-a', 'late')],
+      [],
+    ];
+
+    expect(getResolvablePendingEffectIndexes(G, 0)).toEqual([0]);
+  });
+
+  it('records an order decision only when multiple effects are legally selectable', () => {
+    const singleton = setupGame();
+    singleton.step = 'effectOrder';
+    singleton.pendingEffectPlayer = 0;
+    singleton.pendingEffects = [[pendingEffect('only-effect', 'card-a')], []];
+
+    expect(resolvePendingEffect(singleton, 0, 0)).toBe(true);
+    expect(singleton.actionLog.some((entry) => entry.action === 'chooseEffectOrder')).toBe(false);
+
+    const multiple = setupGame();
+    multiple.step = 'effectOrder';
+    multiple.pendingEffectPlayer = 0;
+    multiple.pendingEffects = [[pendingEffect('first-effect', 'card-a'), pendingEffect('second-effect', 'card-b')], []];
+
+    expect(resolvePendingEffect(multiple, 0, 1)).toBe(true);
+    expect(multiple.actionLog.some((entry) => entry.action === 'chooseEffectOrder')).toBe(true);
+  });
+});
 
 // ===== Test card definitions =====
 
@@ -53,6 +127,10 @@ function makeCard(id: string, type: CardType, overrides: Partial<CardDef> = {}):
 function testCardDefs(): CardDef[] {
   return [
     ...Array.from({ length: 15 }, (_, i) => makeCard(`test-character-${i + 1}`, 'Character')),
+    makeCard('test-character-power-hungry', 'Character', {
+      attack: { night: 130, day: 130 },
+      powerCost: 5,
+    }),
     ...Array.from({ length: 8 }, (_, i) => makeCard(`test-enchant-${i + 1}`, 'Enchant')),
     ...Array.from({ length: 2 }, (_, i) => makeCard(`test-area-enchant-${i + 1}`, 'Area Enchant')),
   ];
@@ -405,6 +483,39 @@ describe('confirmReady', () => {
     expect(G.turnNumber).toBe(2);
   });
 
+  it('records per-card clock contributions for battlefield resolution feedback', () => {
+    const G = setupGame();
+    progressToInitialSet(G);
+    setInitialCard(G, 0, 0);
+    setInitialCard(G, 1, 0);
+    const playerCard = G.players[0].battleZone;
+    const opponentCard = G.players[1].battleZone;
+    expect(playerCard).not.toBeNull();
+    expect(opponentCard).not.toBeNull();
+
+    confirmReady(G, 0, parsedEffects);
+    confirmReady(G, 1, parsedEffects);
+
+    const notice = [...G.recentGameNotices]
+      .reverse()
+      .find((item) => item.kind === 'chronosChange' && item.chronosSourceKind === 'turnAdvance');
+    expect(notice?.chronosAdvanceAmount).toBe(2);
+    expect(notice?.chronosContributions).toEqual([
+      expect.objectContaining({
+        player: 0,
+        cardInstanceId: playerCard?.instanceId,
+        appliedValue: 1,
+        nullified: false,
+      }),
+      expect.objectContaining({
+        player: 1,
+        cardInstanceId: opponentCard?.instanceId,
+        appliedValue: 1,
+        nullified: false,
+      }),
+    ]);
+  });
+
   it('rejects when already ready', () => {
     const G = setupGame();
     progressToInitialSet(G);
@@ -422,12 +533,31 @@ describe('timeoutSkip', () => {
     expect(timeoutSkip(G, 0, parsedEffects)).toBe(false);
   });
 
-  it('forces ready when timer elapsed', () => {
+  it('auto-sets one legal card before forcing ready when timer elapsed', () => {
     const G = setupGame();
     progressToTurnSet(G);
     G.turnStartTime = Date.now() - (TURN_TIMER_MS + 1000);
     expect(timeoutSkip(G, 0, parsedEffects)).toBe(true);
     expect(G.ready[0]).toBe(true);
+    expect(G.players[0].cardsSetThisTurn).toBe(1);
+    expect(G.players[0].setZoneA).not.toBeNull();
+    expect(
+      G.actionLog.some(
+        (entry) => entry.action === 'timeoutSkip' && entry.player === 0 && entry.payload?.autoSet === true,
+      ),
+    ).toBe(true);
+  });
+
+  it('ends the game instead of confirming zero cards when no legal card is available', () => {
+    const G = setupGame();
+    progressToTurnSet(G);
+    G.players[0].hand = [];
+    G.turnStartTime = Date.now() - (TURN_TIMER_MS + 1000);
+    expect(timeoutSkip(G, 0, parsedEffects)).toBe(true);
+    expect(G.step).toBe('gameOver');
+    expect(G.winner).toBe(1);
+    expect(G.ready[0]).toBe(true);
+    expect(G.gameoverReason).toContain('timeout with no legal card available to set');
   });
 
   it('rejects when not in turnSet step', () => {
@@ -485,6 +615,410 @@ describe('getPlayerPower and getEffectiveAttack', () => {
     G.modifiers.attackSetTo = [50, null];
     const card = createInstance('test-character-1');
     expect(getEffectiveAttack(card, G, 0)).toBe(50);
+  });
+
+  it('keeps the card attack in the battle breakdown when insufficient Power makes it 0', () => {
+    const G = setupGame();
+    G.chronos.position = 0;
+    G.chronos.nightSidePlayer = 0;
+    G.players[0].battleZone = createInstance('test-character-power-hungry', true);
+    G.players[1].battleZone = createInstance('test-character-1', true);
+    G.players[0].powerCharger = [];
+
+    resolveBattle(G);
+
+    const notice = G.recentGameNotices?.at(-1);
+    expect(notice?.kind).toBe('hpChange');
+    expect(notice?.breakdown?.lines).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: 'board.hpChange.loserAttack',
+          value: 'board.hpChange.insufficientPower',
+        }),
+        expect.objectContaining({ label: 'board.hpChange.loserRawAttack', value: '130' }),
+      ]),
+    );
+  });
+
+  it('records both raw attacks when insufficient Power makes both attacks 0', () => {
+    const G = setupGame();
+    G.chronos.position = 0;
+    G.chronos.nightSidePlayer = 0;
+    G.players[0].battleZone = createInstance('test-character-power-hungry', true);
+    G.players[1].battleZone = createInstance('test-character-power-hungry', true);
+    G.players[0].powerCharger = [];
+    G.players[1].powerCharger = [];
+
+    resolveBattle(G);
+
+    const notice = G.recentGameNotices?.at(-1);
+    expect(notice).toMatchObject({ kind: 'battleResult', winner: null, winnerAttack: 0, loserAttack: 0 });
+    expect(notice?.breakdown?.lines).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: 'board.hpChange.p0Attack', value: 'board.hpChange.insufficientPower' }),
+        expect.objectContaining({ label: 'board.hpChange.p0RawAttack', value: '130' }),
+        expect.objectContaining({ label: 'board.hpChange.p1Attack', value: 'board.hpChange.insufficientPower' }),
+        expect.objectContaining({ label: 'board.hpChange.p1RawAttack', value: '130' }),
+      ]),
+    );
+  });
+
+  it('pushes a no-damage battle result when reduction absorbs all damage', () => {
+    const G = setupGame();
+    G.chronos.position = 0;
+    G.chronos.nightSidePlayer = 0;
+    G.players[0].battleZone = createInstance('test-character-1', true);
+    G.players[1].battleZone = createInstance('test-character-2', true);
+    G.modifiers.attack = [20, 0];
+    G.modifiers.damageReduction = [0, 20];
+    G.modifiers.damageReductionSources = [
+      [],
+      [
+        {
+          cardInstanceId: G.players[1].battleZone.instanceId,
+          cardDefId: G.players[1].battleZone.defId,
+          amount: 20,
+        },
+      ],
+    ];
+
+    resolveBattle(G);
+
+    expect(G.players[1].hp).toBe(100);
+    expect(G.recentGameNotices?.at(-1)).toMatchObject({
+      kind: 'battleResult',
+      titleKey: 'board.notice.battleNoDamage',
+      winner: 0,
+      damage: 0,
+      hpBefore: 100,
+      hpAfter: 100,
+      damageReductionSources: [
+        {
+          cardInstanceId: G.players[1].battleZone.instanceId,
+          cardDefId: G.players[1].battleZone.defId,
+          amount: 20,
+        },
+      ],
+    });
+  });
+
+  it('keeps the battle HP snapshot when a later turn-end effect heals the loser', () => {
+    const G = setupGame();
+    const winnerCard = createInstance('test-character-1', true);
+    const loserCard = createInstance('test-character-2', true);
+    G.players[0].battleZone = winnerCard;
+    G.players[1].battleZone = loserCard;
+    G.modifiers.attack = [40, 0];
+    const timingEffects = new Map([
+      [
+        winnerCard.defId,
+        [
+          {
+            trigger: 'onTurnEnd' as const,
+            conditions: [],
+            action: { type: 'healBoth' as const, params: { value: 10 } },
+            rawText: 'Heal both players at turn end',
+          },
+        ],
+      ],
+    ]);
+
+    resolveBattle(G, timingEffects);
+    const battleNotice = G.recentGameNotices.find((notice) => notice.kind === 'hpChange' && notice.reason === 'battle');
+    expect(battleNotice).toMatchObject({ player: 1, delta: -40, hpBefore: 100, hpAfter: 60 });
+    expect(battleNotice).toMatchObject({
+      winner: 0,
+      winnerAttack: 60,
+      loserAttack: 20,
+      damage: 40,
+      resolutionTurn: G.turnNumber,
+      battleCards: [
+        expect.objectContaining({ instanceId: winnerCard.instanceId, defId: winnerCard.defId }),
+        expect.objectContaining({ instanceId: loserCard.instanceId, defId: loserCard.defId }),
+      ],
+    });
+
+    resolveTimingEvent(G, timingEffects, { type: 'turnEnd' });
+
+    expect(G.players[1].hp).toBe(70);
+    expect(battleNotice).toMatchObject({ hpBefore: 100, hpAfter: 60 });
+  });
+
+  it('getEffectiveAttack applies a negative attack modifier', () => {
+    const G = setupGame();
+    G.chronos.position = 0;
+    G.chronos.nightSidePlayer = 0;
+    G.modifiers.attack = [-10, 0];
+    const card = createInstance('test-character-1');
+    expect(getEffectiveAttack(card, G, 0)).toBe(10);
+  });
+});
+
+describe('card-effect Chronos notices', () => {
+  function resolveChronosEffect(
+    action: PendingEffect['effect']['action'],
+    startPosition: number,
+    turnStartPosition = startPosition,
+  ) {
+    const G = setupGame();
+    const sourceCard = createInstance('test-character-1', true);
+    G.players[0].battleZone = sourceCard;
+    G.chronos.position = startPosition;
+    G.chronosAtTurnStart = turnStartPosition;
+    G.step = 'effectOrder';
+    G.pendingEffectPlayer = 0;
+    G.pendingEffects = [
+      [
+        {
+          id: `chronos-${action.type}`,
+          player: 0,
+          cardInstanceId: sourceCard.instanceId,
+          cardDefId: sourceCard.defId,
+          rawText: 'QA Chronos effect',
+          effect: {
+            trigger: 'onUse',
+            conditions: [],
+            action,
+            rawText: 'QA Chronos effect',
+          },
+          source: 'played',
+        },
+      ],
+      [],
+    ];
+
+    expect(resolvePendingEffect(G, 0, 0)).toBe(true);
+    const notice = [...G.recentGameNotices]
+      .reverse()
+      .find((item) => item.kind === 'chronosChange' && item.chronosSourceKind === 'cardEffect');
+    return { G, notice, sourceCard };
+  }
+
+  it('records clockwise advance metadata', () => {
+    const { notice, sourceCard } = resolveChronosEffect({ type: 'clockAdvance', params: { value: 5 } }, 2);
+    expect(notice).toMatchObject({
+      chronosFrom: 2,
+      chronosTo: 7,
+      chronosDelta: 5,
+      chronosEffectMode: 'advance',
+      chronosMoveAmount: 5,
+      chronosSourceCardInstanceId: sourceCard.instanceId,
+      player: 0,
+    });
+  });
+
+  it('routes automatic turn-end Chronos effects through notices and timing events', () => {
+    const G = setupGame();
+    const sourceCard = createInstance('test-character-1', true);
+    G.players[0].battleZone = sourceCard;
+    G.chronos.position = 9;
+    const timingEffects = new Map([
+      [
+        sourceCard.defId,
+        [
+          {
+            trigger: 'onTurnEnd' as const,
+            conditions: [],
+            action: { type: 'clockAdvance' as const, params: { value: 2 } },
+            rawText: 'Advance Chronos 2 at turn end',
+          },
+        ],
+      ],
+    ]);
+
+    resolveTimingEvent(G, timingEffects, { type: 'turnEnd' });
+
+    expect(G.chronos.position).toBe(11);
+    expect(G.recentGameNotices.at(-1)).toMatchObject({
+      kind: 'chronosChange',
+      chronosFrom: 9,
+      chronosTo: 11,
+      chronosEffectMode: 'advance',
+      chronosMoveAmount: 2,
+      chronosSourceCardDefId: sourceCard.defId,
+      chronosSourceCardInstanceId: sourceCard.instanceId,
+      player: 0,
+    });
+    expect(G.timingEvents).toContainEqual(
+      expect.objectContaining({ type: 'chronosChanged', fromChronos: 9, toChronos: 11 }),
+    );
+  });
+
+  it('queues a triggering Chronos notice before its nested Chronos reaction', () => {
+    const G = setupGame();
+    const triggerCard = createInstance('test-character-1', true);
+    const reactionCard = createInstance('test-character-2', true);
+    G.players[0].battleZone = triggerCard;
+    G.players[1].battleZone = reactionCard;
+    G.chronos.position = 9;
+    const timingEffects = new Map([
+      [
+        triggerCard.defId,
+        [
+          {
+            trigger: 'onTurnEnd' as const,
+            conditions: [],
+            action: { type: 'clockAdvance' as const, params: { value: 2 } },
+            rawText: 'Advance Chronos 2 at turn end',
+          },
+        ],
+      ],
+      [
+        reactionCard.defId,
+        [
+          {
+            trigger: 'onChronosChanged' as const,
+            conditions: [],
+            action: { type: 'clockSet' as const, params: { value: 4 } },
+            rawText: 'Set Chronos to 4 after it changes',
+          },
+        ],
+      ],
+    ]);
+
+    resolveTimingEvent(G, timingEffects, { type: 'turnEnd' });
+
+    const notices = G.recentGameNotices.filter((notice) => notice.kind === 'chronosChange');
+    expect(notices).toHaveLength(2);
+    expect(notices[0]).toMatchObject({ chronosFrom: 9, chronosTo: 11, chronosSourceCardDefId: triggerCard.defId });
+    expect(notices[1]).toMatchObject({ chronosFrom: 11, chronosTo: 4, chronosSourceCardDefId: reactionCard.defId });
+    expect(notices[0].id).toBeLessThan(notices[1].id);
+    expect(G.chronos.position).toBe(4);
+  });
+
+  it('records rewind metadata', () => {
+    const { notice, sourceCard } = resolveChronosEffect({ type: 'clockReset', params: {} }, 8, 5);
+    expect(notice).toMatchObject({
+      chronosFrom: 8,
+      chronosTo: 5,
+      chronosDelta: -3,
+      chronosEffectMode: 'rewind',
+      chronosMoveAmount: 3,
+      chronosSourceCardInstanceId: sourceCard.instanceId,
+    });
+  });
+
+  it('records direct position metadata without treating it as stepped movement', () => {
+    const { notice, sourceCard } = resolveChronosEffect({ type: 'clockSet', params: { value: 13 } }, 3);
+    expect(notice).toMatchObject({
+      chronosFrom: 3,
+      chronosTo: 13,
+      chronosDelta: -8,
+      chronosEffectMode: 'set',
+      chronosSourceCardInstanceId: sourceCard.instanceId,
+    });
+    expect(notice?.chronosMoveAmount).toBeUndefined();
+  });
+
+  it('keeps the source card metadata when an arbitrary dial position is confirmed later', () => {
+    const G = setupGame();
+    const sourceCard = createInstance('test-character-1', true);
+    G.players[0].battleZone = sourceCard;
+    G.chronos.position = 3;
+    G.step = 'effectOrder';
+    G.pendingEffectPlayer = 0;
+    G.pendingEffects = [
+      [
+        {
+          id: 'chronos-set-any',
+          player: 0,
+          cardInstanceId: sourceCard.instanceId,
+          cardDefId: sourceCard.defId,
+          rawText: 'Choose any Chronos position',
+          effect: {
+            trigger: 'onUse',
+            conditions: [],
+            action: { type: 'clockSet', params: { value: 'any' } },
+            rawText: 'Choose any Chronos position',
+          },
+          source: 'played',
+        },
+      ],
+      [],
+    ];
+
+    expect(resolvePendingEffect(G, 0, 0)).toBe(true);
+    expect(G.pendingChoice).toMatchObject({
+      type: 'clockPosition',
+      sourceCardDefId: sourceCard.defId,
+      sourceCardInstanceId: sourceCard.instanceId,
+    });
+    expect(submitPendingChoice(G, 0, ['chronos-13'])).toBe(true);
+
+    const notice = [...G.recentGameNotices]
+      .reverse()
+      .find((item) => item.kind === 'chronosChange' && item.chronosSourceKind === 'cardEffect');
+    expect(notice).toMatchObject({
+      chronosFrom: 3,
+      chronosTo: 13,
+      chronosEffectMode: 'set',
+      chronosSourceCardDefId: sourceCard.defId,
+      chronosSourceCardInstanceId: sourceCard.instanceId,
+    });
+  });
+
+  it('records and resolves a clockwise full cycle even when the final position is unchanged', () => {
+    const { G, notice } = resolveChronosEffect(
+      { type: 'clockAdvance', params: { value: CHRONOS_MAPPING.positions } },
+      2,
+    );
+    expect(G.chronos.position).toBe(2);
+    expect(notice).toMatchObject({
+      chronosFrom: 2,
+      chronosTo: 2,
+      chronosDelta: 0,
+      chronosEffectMode: 'advance',
+      chronosMoveAmount: CHRONOS_MAPPING.positions,
+    });
+    expect(G.log).toContain('Timing chronosChanged (path: night→day).');
+    expect(G.log).toContain('Timing chronosChanged (path: day→night).');
+  });
+
+  it('records and resolves a counterclockwise full cycle', () => {
+    const { G, notice } = resolveChronosEffect(
+      { type: 'clockAdvance', params: { value: -CHRONOS_MAPPING.positions } },
+      2,
+    );
+    expect(G.chronos.position).toBe(2);
+    expect(notice).toMatchObject({
+      chronosFrom: 2,
+      chronosTo: 2,
+      chronosDelta: 0,
+      chronosEffectMode: 'rewind',
+      chronosMoveAmount: CHRONOS_MAPPING.positions,
+    });
+    expect(G.log).toContain('Timing chronosChanged (path: night→day).');
+    expect(G.log).toContain('Timing chronosChanged (path: day→night).');
+  });
+
+  it('emits turn-advance feedback for an 18-space total', () => {
+    const G = setupGame();
+    const playerCard = createInstance('test-character-1', true);
+    const opponentCard = createInstance('test-character-2', true);
+    G.chronos.position = 2;
+    G.setCardsThisTurn = [[playerCard], [opponentCard]];
+    G.modifiers.cardClockSetTo = 9;
+
+    advanceChronos(G);
+
+    const notice = [...G.recentGameNotices]
+      .reverse()
+      .find((item) => item.kind === 'chronosChange' && item.chronosSourceKind === 'turnAdvance');
+    expect(G.chronos.position).toBe(2);
+    expect(notice).toMatchObject({
+      chronosFrom: 2,
+      chronosTo: 2,
+      chronosDelta: 0,
+      chronosAdvanceAmount: CHRONOS_MAPPING.positions,
+    });
+    expect(notice?.chronosContributions).toHaveLength(2);
+    expect(G.timingEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: 'chronosChanged', fromChronosTime: 'night', toChronosTime: 'day' }),
+        expect.objectContaining({ type: 'chronosChanged', fromChronosTime: 'day', toChronosTime: 'night' }),
+        expect.objectContaining({ type: 'chronosChanged', fromChronos: 2, toChronos: 2 }),
+      ]),
+    );
   });
 });
 
@@ -548,6 +1082,15 @@ describe('endGame', () => {
     endGame(G, null, 'Both players lost');
     expect(G.step).toBe('gameOver');
     expect(G.winner).toBeNull();
+  });
+
+  it('restores deck and hand hidden information before exposing the final state', () => {
+    const G = setupGame();
+    G.players[0].deck[0].faceUp = true;
+    G.revealedHandCardIds[1] = G.players[1].hand.map((card) => card.instanceId);
+    endGame(G, 0, 'test game over');
+    expect(G.players[0].deck.every((card) => card.faceUp === false)).toBe(true);
+    expect(G.revealedHandCardIds).toEqual([[], []]);
   });
 });
 

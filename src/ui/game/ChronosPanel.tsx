@@ -11,12 +11,31 @@ export interface ChronosPanelProps {
   currentPlayer: PlayerIndex;
   size?: 'md' | 'sm';
   animationZone?: string;
+  targetablePositions?: readonly number[];
+  selectedTargetPosition?: number | null;
+  onTargetPositionSelect?: (position: number) => void;
 }
 
-export function ChronosPanel({ chronos, currentTime, currentPlayer, size = 'md', animationZone }: ChronosPanelProps) {
+export function ChronosPanel({
+  chronos,
+  currentTime,
+  currentPlayer,
+  size = 'md',
+  animationZone,
+  targetablePositions,
+  selectedTargetPosition,
+  onTargetPositionSelect,
+}: ChronosPanelProps) {
   return (
     <div className={`chronospanel chronospanel-${size}`} data-tut="chronos-clock" data-anim-zone={animationZone}>
-      <ChronosDial chronos={chronos} currentTime={currentTime} currentPlayer={currentPlayer} />
+      <ChronosDial
+        chronos={chronos}
+        currentTime={currentTime}
+        currentPlayer={currentPlayer}
+        targetablePositions={targetablePositions}
+        selectedTargetPosition={selectedTargetPosition}
+        onTargetPositionSelect={onTargetPositionSelect}
+      />
     </div>
   );
 }
