@@ -2,7 +2,7 @@
 
 最後審查：2026-07-28
 
-狀態：實作中。AI-00 至 AI-02 已落地；AI-03 已接入效果與所有 `PendingChoice` 的通用候選評分，並補上可選空集合、Chronos 選點、手牌／Abyss 交換與牌庫頂排序等戰術 fixture，仍需完成逐類覆蓋；AI-04 已完成規則驅動模擬、未知資訊 seeded sampling、可見資訊 transposition cache 與超時 fallback。Web Worker 仍列為 UI long-task 的後續產品效能項目。
+狀態：實作中。AI-00 至 AI-04 已落地；AI-03 已完成全部 13 種 `PendingChoice` 的獨立戰術 fixture 與合法 fallback 覆蓋，AI-04 已完成規則驅動模擬、未知資訊 seeded sampling、可見資訊 transposition cache、超時 fallback 及 production browser 桌面／手機基準。實測 AI 搜尋沒有造成 long task，因此目前不引入 Web Worker；AI-05 尚餘代表牌組對戰矩陣與決策檢視器。
 
 負責範圍：遊戲邏輯 / AI / QA
 
@@ -88,18 +88,20 @@
 
 ### 2.5 2026-07-28 落地狀態
 
-| 工作項目 | 狀態     | 已落地內容                                                                                                    | 待辦                                               |
-| -------- | -------- | ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| AI-00    | 完成     | seeded RNG、Fisher-Yates、統一 UX delay、`AIDecision` trace、決策時間與 fallback 原因                         | 擴充批次基準                                       |
-| AI-01    | 完成     | AI `mulligan(indices)`、五張手牌子集評估、可用角色／Power／類型／重複卡評分                                   | 重抽補牌的組成分布模型                             |
-| AI-02    | 完成     | 完整卡牌 instance id + A/B 卡位計畫、穩定 token、跨 dispatcher 更新保留計畫、效果語義與未來資源評分           | 依更多卡位專屬效果調校權重                         |
-| AI-03    | 部分完成 | 正式規則函式模擬效果順序與指定選擇、可選空集合、致命傷害／恢復／資源／Chronos／交換／排序與卡牌目標 heuristic | 每種 `PendingChoice` 的獨立戰術與 fallback fixture |
-| AI-04    | 核心完成 | 完整回合與有限下回合、18 計畫 beam、未知牌 seeded sampling、128-entry LRU、300 ms 預算、合法普通 fallback     | 瀏覽器 long-task 基準與必要時移入 Worker           |
-| AI-05    | 部分完成 | 六語難度說明、開發環境 trace、422 張正式卡表 60 場 AI 對 AI soak、延遲百分位與 fallback 報告                  | 固定代表牌組基準、決策檢視器、手機效能基準         |
+| 工作項目 | 狀態     | 已落地內容                                                                                                                       | 待辦                             |
+| -------- | -------- | -------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- |
+| AI-00    | 完成     | seeded RNG、Fisher-Yates、統一 UX delay、`AIDecision` trace、決策時間與 fallback 原因                                            | 擴充批次基準                     |
+| AI-01    | 完成     | AI `mulligan(indices)`、五張手牌子集評估、可用角色／Power／類型／重複卡評分                                                      | 重抽補牌的組成分布模型           |
+| AI-02    | 完成     | 完整卡牌 instance id + A/B 卡位計畫、穩定 token、跨 dispatcher 更新保留計畫、效果語義與未來資源評分                              | 依更多卡位專屬效果調校權重       |
+| AI-03    | 完成     | 正式規則函式模擬效果順序與指定選擇；全部 13 種 `PendingChoice` 皆有獨立戰術 fixture 與合法 fallback fixture                      | 依正式對局資料持續調校權重       |
+| AI-04    | 完成     | 完整回合與有限下回合、18 計畫 beam、未知牌 seeded sampling、128-entry LRU、300 ms 預算、合法普通 fallback、瀏覽器 long-task 基準 | Worker 僅在後續基準退化時啟用    |
+| AI-05    | 部分完成 | 六語難度說明、開發環境 trace、422 張正式卡表 60 場 AI 對 AI soak、延遲百分位與 fallback 報告、production browser 桌面／手機基準  | 固定代表牌組對戰矩陣、決策檢視器 |
 
 `playerView` 只向牌組擁有者提供已排序的剩餘牌組定義，不提供牌序；`AIKnowledgeState` 會再次遮蔽雙方牌庫順序、對手手牌與伏牌，並以跨 zone 一致的 opaque id 保留同一暗牌的身分。困難模式只從 published/playable 卡池及公開卡牌扣除後的合法最多兩張可能性抽樣，不會使用權威對手暗牌定義。對手有未公開已設置卡時取三個樣本，否則取一個樣本；相同 seed、可見狀態與計畫會重現相同結果。
 
-2026-07-28 的 422 張正式卡表擴大 soak 共完成 60/60 場、零非法 move、零卡死。困難模式 428 次決策的 `p95 = 181.90 ms`、`p99 = 260.84 ms`、最大 `324.37 ms`，其中 4 次依預算走合法 fallback；仍需在瀏覽器主執行緒與手機上量測 long task，不能只以 Node 決策時間取代 UI 證據。
+2026-07-28 的 422 張正式卡表擴大 soak 共完成 60/60 場、零非法 move、零卡死。困難模式 428 次決策的 `p95 = 181.90 ms`、`p99 = 260.84 ms`、最大 `324.37 ms`，其中 4 次依預算走合法 fallback。
+
+同日另以 production bundle 在瀏覽器內跑固定牌組開局，桌面 `1440x900` 與手機 `390x844` 各採集 5 次決策（猜拳、重抽、3 次 bounded rules simulation）。桌面決策時間為 `0.0 / 7.0 / 6.4 / 3.3 / 2.9 ms`，手機為 `0.1 / 7.0 / 3.2 / 3.2 / 8.2 ms`；三次困難搜尋的最大值分別為 `6.4 ms` 與 `8.2 ms`，且搜尋執行期間皆無 long task。初次載入、viewport 切換與 mulligan 畫面更新仍觀察到獨立 long task（最大 `130 ms`），但時間上不與 AI 搜尋重疊，移入 Worker 無法改善這些渲染工作。因此目前保留同步策略，若正式牌組瀏覽器基準或低階裝置回歸到搜尋相關 `>100 ms` long task，再啟用 Worker。
 
 ## 3. 目標難度契約
 

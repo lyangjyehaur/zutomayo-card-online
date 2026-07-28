@@ -182,6 +182,32 @@ function optionCardValue(choice: PendingChoice, optionDefId: string | undefined,
   return scoreCardDefinition(def, G, sourcePlayer).score;
 }
 
+function opponentHandGuessValue(
+  choice: Extract<PendingChoice, { type: 'nameGuessOpponentHandReveal' }>,
+  optionIds: readonly string[],
+  G: GameState,
+): number {
+  const guessedDefId = choice.options.find((option) => option.id === optionIds[0])?.value;
+  const guessed = getCardDef(typeof guessedDefId === 'string' ? guessedDefId : '');
+  if (!guessed) return 0;
+  const opponent = G.players[choice.payload.opponentPlayer];
+  const publicElements = [
+    opponent.battleZone,
+    opponent.setZoneA,
+    opponent.setZoneB,
+    opponent.setZoneC,
+    ...opponent.powerCharger,
+    ...opponent.abyss,
+  ].flatMap((card) => {
+    const definition = card?.faceUp ? getCardDef(card.defId) : undefined;
+    return definition ? [definition.element] : [];
+  });
+  const elementCounts = new Map<string, number>();
+  for (const element of publicElements) elementCounts.set(element, (elementCounts.get(element) ?? 0) + 1);
+  const likelyElement = [...elementCounts].sort((left, right) => right[1] - left[1])[0]?.[0];
+  return (guessed.type === 'Character' ? 12 : 0) + (likelyElement && guessed.element === likelyElement ? 6 : 0);
+}
+
 export function choiceOptionHeuristic(choice: PendingChoice, optionIds: string[], G: GameState): number {
   const options = optionIds.map((id) => choice.options.find((option) => option.id === id)).filter(Boolean);
   const values = options.map((option) => optionCardValue(choice, option?.cardDefId, G));
@@ -194,8 +220,9 @@ export function choiceOptionHeuristic(choice: PendingChoice, optionIds: string[]
       return -total + optionIds.length * 18;
     case 'useFromAbyss':
     case 'useFromHand':
-    case 'revealHandAttackBoost':
       return total;
+    case 'revealHandAttackBoost':
+      return optionIds.length * choice.payload.boostPerCard * 3;
     case 'opponentPowerCharacterSwap':
       return -total;
     case 'handAbyssSwap': {
@@ -220,6 +247,6 @@ export function choiceOptionHeuristic(choice: PendingChoice, optionIds: string[]
       // opponent lower-value cards before stronger cards.
       return -values.reduce((sum, value, index) => sum + value * (values.length - index), 0);
     case 'nameGuessOpponentHandReveal':
-      return 0;
+      return opponentHandGuessValue(choice, optionIds, G);
   }
 }
