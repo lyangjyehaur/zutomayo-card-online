@@ -405,6 +405,8 @@ export type PendingChoice =
 export interface PlayerState {
   hp: number;
   deck: CardInstance[];
+  /** Owner-only player-view metadata. Definitions are sorted, so deck order remains hidden. */
+  knownDeckDefIds?: string[];
   hand: CardInstance[];
   battleZone: CardInstance | null;
   setZoneA: CardInstance | null;

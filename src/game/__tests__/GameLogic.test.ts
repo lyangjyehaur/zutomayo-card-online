@@ -1345,6 +1345,7 @@ describe('playerView', () => {
     const view = ZutomayoCard.playerView?.({ G, playerID: '0' } as never) as GameState;
     // Opponent's battleZone card should be hidden (faceDown)
     expect(view.players[1].battleZone?.defId).toBe('__hidden__');
+    expect(view.players[1].battleZone?.instanceId).toBe(view.setCardsThisTurn[1][0].instanceId);
   });
 
   it('reveals own face-down set cards to owner', () => {

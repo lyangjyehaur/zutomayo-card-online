@@ -206,6 +206,8 @@ describe('rule engine invariants (property-based)', () => {
 
     expect(view.players[0].deck).toHaveLength(G.players[0].deck.length);
     expect(view.players[0].deck.every((card) => card.defId === '__hidden__')).toBe(true);
+    expect(view.players[0].knownDeckDefIds).toEqual(G.players[0].deck.map((card) => card.defId).sort());
+    expect(view.players[1].knownDeckDefIds).toBeUndefined();
     expect(view.players[0].hand[0].defId).toBe(G.players[0].hand[0].defId);
   });
 

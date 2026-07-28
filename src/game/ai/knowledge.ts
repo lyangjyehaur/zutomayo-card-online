@@ -7,51 +7,119 @@ function hiddenCard(instanceId: string): CardInstance {
   return { instanceId, defId: HIDDEN_DEF_ID, faceUp: false };
 }
 
-function redactCard(card: CardInstance | null, placeholder: string): CardInstance | null {
-  if (!card) return null;
-  return card.faceUp ? card : hiddenCard(placeholder);
+interface HiddenCardIds {
+  id(owner: PlayerIndex, card: CardInstance): string;
 }
 
-function sanitizePlayer(G: GameState, owner: PlayerIndex, viewer: PlayerIndex): PlayerState {
+function createHiddenCardIds(): HiddenCardIds {
+  const ids: [Map<string, string>, Map<string, string>] = [new Map(), new Map()];
+  const next = [0, 0];
+  return {
+    id(owner, card) {
+      const existing = ids[owner].get(card.instanceId);
+      if (existing) return existing;
+      const opaque = `ai-hidden-p${owner}-card-${next[owner]++}`;
+      ids[owner].set(card.instanceId, opaque);
+      return opaque;
+    },
+  };
+}
+
+function redactCard(
+  card: CardInstance | null,
+  owner: PlayerIndex,
+  hiddenIds: HiddenCardIds,
+  explicitlyRevealedIds: ReadonlySet<string>,
+): CardInstance | null {
+  if (!card) return null;
+  return card.faceUp || explicitlyRevealedIds.has(card.instanceId) ? card : hiddenCard(hiddenIds.id(owner, card));
+}
+
+function sanitizePlayer(
+  G: GameState,
+  owner: PlayerIndex,
+  viewer: PlayerIndex,
+  hiddenIds: HiddenCardIds,
+  explicitlyRevealedIds: ReadonlySet<string>,
+): PlayerState {
   const player = structuredClone(G.players[owner]) as PlayerState;
-  player.deck = player.deck.map((card, index) =>
-    card.faceUp ? card : hiddenCard(`ai-hidden-p${owner}-deck-${index}`),
+  if (owner !== viewer) player.knownDeckDefIds = undefined;
+  player.deck = player.deck.map((card) =>
+    card.faceUp || explicitlyRevealedIds.has(card.instanceId) ? card : hiddenCard(hiddenIds.id(owner, card)),
   );
   if (owner === viewer) return player;
 
   const revealedHandIds = new Set(G.revealedHandCardIds?.[owner] ?? []);
-  player.hand = player.hand.map((card, index) =>
-    revealedHandIds.has(card.instanceId) ? card : hiddenCard(`ai-hidden-p${owner}-hand-${index}`),
+  player.hand = player.hand.map((card) =>
+    revealedHandIds.has(card.instanceId) || explicitlyRevealedIds.has(card.instanceId)
+      ? card
+      : hiddenCard(hiddenIds.id(owner, card)),
   );
-  player.battleZone = redactCard(player.battleZone, `ai-hidden-p${owner}-battle`);
-  player.setZoneA = redactCard(player.setZoneA, `ai-hidden-p${owner}-set-a`);
-  player.setZoneB = redactCard(player.setZoneB, `ai-hidden-p${owner}-set-b`);
-  player.setZoneC = redactCard(player.setZoneC, `ai-hidden-p${owner}-set-c`);
-  player.powerCharger = player.powerCharger.map(
-    (card, index) => redactCard(card, `ai-hidden-p${owner}-power-${index}`)!,
-  );
-  player.abyss = player.abyss.map((card, index) => redactCard(card, `ai-hidden-p${owner}-abyss-${index}`)!);
+  player.battleZone = redactCard(player.battleZone, owner, hiddenIds, explicitlyRevealedIds);
+  player.setZoneA = redactCard(player.setZoneA, owner, hiddenIds, explicitlyRevealedIds);
+  player.setZoneB = redactCard(player.setZoneB, owner, hiddenIds, explicitlyRevealedIds);
+  player.setZoneC = redactCard(player.setZoneC, owner, hiddenIds, explicitlyRevealedIds);
+  player.powerCharger = player.powerCharger.map((card) => redactCard(card, owner, hiddenIds, explicitlyRevealedIds)!);
+  player.abyss = player.abyss.map((card) => redactCard(card, owner, hiddenIds, explicitlyRevealedIds)!);
   return player;
 }
 
+function visibleCard(card: CardInstance | null): object | null {
+  if (!card) return null;
+  return card.defId === HIDDEN_DEF_ID
+    ? { hidden: true, instanceId: card.instanceId }
+    : { defId: card.defId, faceUp: card.faceUp, instanceId: card.instanceId };
+}
+
+function visiblePlayer(player: PlayerState): object {
+  return {
+    hp: player.hp,
+    deck: player.deck.map(visibleCard),
+    knownDeckDefIds: player.knownDeckDefIds,
+    hand: player.hand.map(visibleCard),
+    battleZone: visibleCard(player.battleZone),
+    setZoneA: visibleCard(player.setZoneA),
+    setZoneB: visibleCard(player.setZoneB),
+    setZoneC: visibleCard(player.setZoneC),
+    powerCharger: player.powerCharger.map(visibleCard),
+    abyss: player.abyss.map(visibleCard),
+    cardsSetThisTurn: player.cardsSetThisTurn,
+    rawAttack: player.rawAttack,
+  };
+}
+
 function visibleStateKey(G: GameState, player: PlayerIndex): string {
-  const own = G.players[player];
-  const opponent = G.players[(1 - player) as PlayerIndex];
   return JSON.stringify({
+    player,
     step: G.step,
     turn: G.turnNumber,
-    chronos: G.chronos.position,
-    hp: [own.hp, opponent.hp],
-    hand: own.hand.map((card) => card.defId),
-    zones: [own.battleZone?.defId, own.setZoneA?.defId, own.setZoneB?.defId, own.setZoneC?.defId],
-    opponentZones: [
-      opponent.battleZone?.defId,
-      opponent.setZoneA?.defId,
-      opponent.setZoneB?.defId,
-      opponent.setZoneC?.defId,
-    ],
-    pendingChoice: G.pendingChoice?.id,
-    pendingEffects: G.pendingEffects[player].map((effect) => effect.id),
+    ready: G.ready,
+    chronos: G.chronos,
+    midnightRange: G.midnightRange,
+    chronosAtTurnStart: G.chronosAtTurnStart,
+    players: G.players.map(visiblePlayer),
+    lastBattleResult: G.lastBattleResult,
+    setCardsThisTurn: G.setCardsThisTurn.map((cards) => cards.map(visibleCard)),
+    pendingEffects: G.pendingEffects,
+    pendingEffectPlayer: G.pendingEffectPlayer,
+    delayedEffects: G.delayedEffects,
+    pendingChoice: G.pendingChoice,
+    lastChoiceSelectionCount: G.lastChoiceSelectionCount,
+    timingEvents: G.timingEvents,
+    swappedCardsThisTurn: G.swappedCardsThisTurn.map((cards) => cards.map(visibleCard)),
+    suppressedEffectCardIdsThisTurn: G.suppressedEffectCardIdsThisTurn,
+    drawEffectCardIdsThisTurn: G.drawEffectCardIdsThisTurn,
+    drawOccurredThisEffect: G.drawOccurredThisEffect,
+    previousTurnCharacterElements: G.previousTurnCharacterElements,
+    handSizeModifier: G.handSizeModifier,
+    areaEnchantSetLocked: G.areaEnchantSetLocked,
+    damageReducedThisTurn: G.damageReducedThisTurn,
+    jankenChoices: G.jankenChoices,
+    jankenDrawCount: G.jankenDrawCount,
+    mulliganUsed: G.mulliganUsed,
+    modifiers: G.modifiers,
+    winner: G.winner,
+    gameoverReason: G.gameoverReason,
   });
 }
 
@@ -61,20 +129,46 @@ function visibleStateKey(G: GameState, player: PlayerIndex): string {
  * opponent cards or either player's shuffled deck order to the AI.
  */
 export function createAIKnowledgeState(G: GameState, player: PlayerIndex): AIKnowledgeState {
+  const hiddenIds = createHiddenCardIds();
+  const explicitlyRevealedIds = new Set(
+    G.pendingChoice?.player === player
+      ? G.pendingChoice.options.flatMap((option) => (option.cardInstanceId ? [option.cardInstanceId] : []))
+      : [],
+  );
+  const knownOwnDeckDefIds = [
+    ...(G.players[player].knownDeckDefIds ??
+      G.players[player].deck.map((card) => card.defId).filter((id) => id !== HIDDEN_DEF_ID)),
+  ].sort();
   const game = structuredClone(G) as GameState;
-  game.players = [sanitizePlayer(G, 0, player), sanitizePlayer(G, 1, player)];
+  game.players = [
+    sanitizePlayer(G, 0, player, hiddenIds, explicitlyRevealedIds),
+    sanitizePlayer(G, 1, player, hiddenIds, explicitlyRevealedIds),
+  ];
   game.setCardsThisTurn = game.setCardsThisTurn.map((cards, owner) =>
-    cards.map((card, index) =>
-      owner === player || card.faceUp ? card : hiddenCard(`ai-hidden-p${owner}-played-${index}`),
+    cards.map((card) =>
+      owner === player || card.faceUp ? card : hiddenCard(hiddenIds.id(owner as PlayerIndex, card)),
     ),
   ) as GameState['setCardsThisTurn'];
+  game.swappedCardsThisTurn = game.swappedCardsThisTurn.map((cards, owner) =>
+    cards.map((card) =>
+      owner === player || card.faceUp ? card : hiddenCard(hiddenIds.id(owner as PlayerIndex, card)),
+    ),
+  ) as GameState['swappedCardsThisTurn'];
   if (game.pendingChoice && game.pendingChoice.player !== player) {
     game.pendingChoice = { ...game.pendingChoice, options: [] };
   }
+  if (game.jankenChoices[0] === null || game.jankenChoices[1] === null) {
+    game.jankenChoices[(1 - player) as PlayerIndex] = null;
+  }
+  game.log = [];
+  game.actionLog = [];
+  game.recentHpChanges = [];
+  game.recentGameNotices = [];
   return {
     game,
     player,
     opponent: (1 - player) as PlayerIndex,
+    knownOwnDeckDefIds,
     visibleStateKey: visibleStateKey(game, player),
   };
 }

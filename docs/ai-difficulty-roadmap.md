@@ -2,7 +2,7 @@
 
 最後審查：2026-07-28
 
-狀態：實作中。AI-00 至 AI-02 已落地；AI-03 已接入效果與所有 `PendingChoice` 的通用候選評分，仍需補齊逐類戰術 fixture；AI-04 已完成規則驅動的當前回合模擬與超時 fallback，未知資訊抽樣、transposition cache 與 Web Worker 尚未完成。
+狀態：實作中。AI-00 至 AI-02 已落地；AI-03 已接入效果與所有 `PendingChoice` 的通用候選評分，並補上可選空集合、Chronos 選點、手牌／Abyss 交換與牌庫頂排序等戰術 fixture，仍需完成逐類覆蓋；AI-04 已完成規則驅動模擬、未知資訊 seeded sampling、可見資訊 transposition cache 與超時 fallback。Web Worker 仍列為 UI long-task 的後續產品效能項目。
 
 負責範圍：遊戲邏輯 / AI / QA
 
@@ -88,16 +88,18 @@
 
 ### 2.5 2026-07-28 落地狀態
 
-| 工作項目 | 狀態     | 已落地內容                                                                                                 | 待辦                                    |
-| -------- | -------- | ---------------------------------------------------------------------------------------------------------- | --------------------------------------- |
-| AI-00    | 完成     | seeded RNG、Fisher-Yates、統一 UX delay、`AIDecision` trace、決策時間與 fallback 原因                      | 擴充批次基準                            |
-| AI-01    | 完成     | AI `mulligan(indices)`、五張手牌子集評估、可用角色／Power／類型／重複卡評分                                | 牌組組成已知時的補牌分布模型            |
-| AI-02    | 完成     | 完整卡牌 instance id + A/B 卡位計畫、穩定 token、跨 dispatcher 更新保留計畫、效果語義與未來資源評分        | 依更多卡位專屬效果調校權重              |
-| AI-03    | 部分完成 | 正式規則函式模擬效果順序與指定選擇、可選空集合、致命傷害／恢復／資源／Chronos／區域與卡牌目標 heuristic    | 每種 `PendingChoice` 的獨立戰術 fixture |
-| AI-04    | 部分完成 | 正式效果／選擇／清理／抽牌流程、有限下回合價值、300 ms 預算、合法普通 fallback                             | 未知結果 sampling、cache、Web Worker    |
-| AI-05    | 部分完成 | 六語難度說明、開發環境 `zutomayo:ai-decision` trace event、外部正式卡表的多 seed AI 對 AI soak 與 p95 報告 | 固定代表牌組基準、決策檢視器            |
+| 工作項目 | 狀態     | 已落地內容                                                                                                    | 待辦                                               |
+| -------- | -------- | ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| AI-00    | 完成     | seeded RNG、Fisher-Yates、統一 UX delay、`AIDecision` trace、決策時間與 fallback 原因                         | 擴充批次基準                                       |
+| AI-01    | 完成     | AI `mulligan(indices)`、五張手牌子集評估、可用角色／Power／類型／重複卡評分                                   | 重抽補牌的組成分布模型                             |
+| AI-02    | 完成     | 完整卡牌 instance id + A/B 卡位計畫、穩定 token、跨 dispatcher 更新保留計畫、效果語義與未來資源評分           | 依更多卡位專屬效果調校權重                         |
+| AI-03    | 部分完成 | 正式規則函式模擬效果順序與指定選擇、可選空集合、致命傷害／恢復／資源／Chronos／交換／排序與卡牌目標 heuristic | 每種 `PendingChoice` 的獨立戰術與 fallback fixture |
+| AI-04    | 核心完成 | 完整回合與有限下回合、18 計畫 beam、未知牌 seeded sampling、128-entry LRU、300 ms 預算、合法普通 fallback     | 瀏覽器 long-task 基準與必要時移入 Worker           |
+| AI-05    | 部分完成 | 六語難度說明、開發環境 trace、422 張正式卡表 60 場 AI 對 AI soak、延遲百分位與 fallback 報告                  | 固定代表牌組基準、決策檢視器、手機效能基準         |
 
-`AIKnowledgeState` 會再次遮蔽雙方牌庫順序、對手手牌與伏牌，即使呼叫端誤傳權威 `GameState` 也不會把隱藏卡交給 policy。困難模式目前把未知對手卡視為中性未知狀態；在牌組可能性抽樣完成前，不宣稱能預測對手回應。
+`playerView` 只向牌組擁有者提供已排序的剩餘牌組定義，不提供牌序；`AIKnowledgeState` 會再次遮蔽雙方牌庫順序、對手手牌與伏牌，並以跨 zone 一致的 opaque id 保留同一暗牌的身分。困難模式只從 published/playable 卡池及公開卡牌扣除後的合法最多兩張可能性抽樣，不會使用權威對手暗牌定義。對手有未公開已設置卡時取三個樣本，否則取一個樣本；相同 seed、可見狀態與計畫會重現相同結果。
+
+2026-07-28 的 422 張正式卡表擴大 soak 共完成 60/60 場、零非法 move、零卡死。困難模式 428 次決策的 `p95 = 181.90 ms`、`p99 = 260.84 ms`、最大 `324.37 ms`，其中 4 次依預算走合法 fallback；仍需在瀏覽器主執行緒與手機上量測 long task，不能只以 Node 決策時間取代 UI 證據。
 
 ## 3. 目標難度契約
 
@@ -164,6 +166,8 @@ AIDecision { action, score, reason, fallback }
 - `ai/evaluate.ts`：可解釋的狀態與行動評分。
 - `ai/mulligan.ts`：起手牌子集評估。
 - `ai/simulator.ts`：包含效果的規則驅動模擬。
+- `ai/sampling.ts`：依可知牌組構成與公開牌池產生可重播未知狀態。
+- `ai/transposition.ts`：以可見狀態、計畫、seed 與樣本數為 key 的有界數值快取。
 - `ai/policies.ts`：簡單、普通、困難 policy。
 - `ai/rng.ts`：seeded RNG、Fisher-Yates 與決策時間預算。
 - `useAIMoves.ts`：只負責派發，不再包含策略 heuristic。

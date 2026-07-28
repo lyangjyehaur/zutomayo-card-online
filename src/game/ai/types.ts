@@ -56,5 +56,7 @@ export interface AIKnowledgeState {
   readonly game: GameState;
   readonly player: PlayerIndex;
   readonly opponent: PlayerIndex;
+  /** Remaining own-deck composition. Order is deliberately destroyed. */
+  readonly knownOwnDeckDefIds: readonly string[];
   readonly visibleStateKey: string;
 }

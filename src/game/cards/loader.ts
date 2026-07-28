@@ -7,6 +7,7 @@ let currentCards: CardDef[] = [];
 let currentConfig: Record<string, unknown> = {};
 let cardsRefreshPromise: Promise<CardDef[]> | null = null;
 let _initialized = false;
+let cardsRevision = 0;
 const CARD_FETCH_TIMEOUT_MS = 2500;
 
 export function isCardsInitialized(): boolean {
@@ -24,6 +25,11 @@ export function initCards(cards: CardDef[]): void {
     cardMap.set(card.id, card);
   }
   _initialized = true;
+  cardsRevision += 1;
+}
+
+export function getCardsRevision(): number {
+  return cardsRevision;
 }
 
 function isCardDefArray(value: unknown): value is CardDef[] {
