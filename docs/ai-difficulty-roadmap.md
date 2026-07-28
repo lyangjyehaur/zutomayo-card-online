@@ -2,7 +2,7 @@
 
 最後審查：2026-07-28
 
-狀態：實作中。AI-00 至 AI-04 已落地；AI-03 已完成全部 13 種 `PendingChoice` 的獨立戰術 fixture 與合法 fallback 覆蓋，AI-04 已完成規則驅動模擬、未知資訊 seeded sampling、可見資訊 transposition cache、超時 fallback 及 production browser 桌面／手機基準。實測 AI 搜尋沒有造成 long task，因此目前不引入 Web Worker；AI-05 尚餘代表牌組對戰矩陣與決策檢視器。
+狀態：已完成。AI-00 至 AI-05 已落地；AI-03 已完成全部 13 種 `PendingChoice` 的獨立戰術 fixture 與合法 fallback 覆蓋，AI-04 已完成規則驅動模擬、未知資訊 seeded sampling、可見資訊 transposition cache、超時 fallback 及 production browser 桌面／手機基準。AI-05 已加入固定代表牌組對戰矩陣與僅開發環境顯示的決策檢視器。實測 AI 搜尋沒有造成 long task，因此目前不引入 Web Worker。
 
 負責範圍：遊戲邏輯 / AI / QA
 
@@ -88,20 +88,26 @@
 
 ### 2.5 2026-07-28 落地狀態
 
-| 工作項目 | 狀態     | 已落地內容                                                                                                                       | 待辦                             |
-| -------- | -------- | -------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- |
-| AI-00    | 完成     | seeded RNG、Fisher-Yates、統一 UX delay、`AIDecision` trace、決策時間與 fallback 原因                                            | 擴充批次基準                     |
-| AI-01    | 完成     | AI `mulligan(indices)`、五張手牌子集評估、可用角色／Power／類型／重複卡評分                                                      | 重抽補牌的組成分布模型           |
-| AI-02    | 完成     | 完整卡牌 instance id + A/B 卡位計畫、穩定 token、跨 dispatcher 更新保留計畫、效果語義與未來資源評分                              | 依更多卡位專屬效果調校權重       |
-| AI-03    | 完成     | 正式規則函式模擬效果順序與指定選擇；全部 13 種 `PendingChoice` 皆有獨立戰術 fixture 與合法 fallback fixture                      | 依正式對局資料持續調校權重       |
-| AI-04    | 完成     | 完整回合與有限下回合、18 計畫 beam、未知牌 seeded sampling、128-entry LRU、300 ms 預算、合法普通 fallback、瀏覽器 long-task 基準 | Worker 僅在後續基準退化時啟用    |
-| AI-05    | 部分完成 | 六語難度說明、開發環境 trace、422 張正式卡表 60 場 AI 對 AI soak、延遲百分位與 fallback 報告、production browser 桌面／手機基準  | 固定代表牌組對戰矩陣、決策檢視器 |
+| 工作項目 | 狀態 | 已落地內容                                                                                                                       | 待辦                          |
+| -------- | ---- | -------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
+| AI-00    | 完成 | seeded RNG、Fisher-Yates、統一 UX delay、`AIDecision` trace、決策時間與 fallback 原因                                            | 擴充批次基準                  |
+| AI-01    | 完成 | AI `mulligan(indices)`、五張手牌子集評估、可用角色／Power／類型／重複卡評分                                                      | 重抽補牌的組成分布模型        |
+| AI-02    | 完成 | 完整卡牌 instance id + A/B 卡位計畫、穩定 token、跨 dispatcher 更新保留計畫、效果語義與未來資源評分                              | 依更多卡位專屬效果調校權重    |
+| AI-03    | 完成 | 正式規則函式模擬效果順序與指定選擇；全部 13 種 `PendingChoice` 皆有獨立戰術 fixture 與合法 fallback fixture                      | 依正式對局資料持續調校權重    |
+| AI-04    | 完成 | 完整回合與有限下回合、18 計畫 beam、未知牌 seeded sampling、128-entry LRU、300 ms 預算、合法普通 fallback、瀏覽器 long-task 基準 | Worker 僅在後續基準退化時啟用 |
+| AI-05    | 完成 | 六語難度說明、422 張正式卡表 soak、production browser 基準、四元素固定牌組雙邊對戰矩陣、延遲／fallback 報告、開發用決策檢視器    | 依正式對局資料持續調校權重    |
 
 `playerView` 只向牌組擁有者提供已排序的剩餘牌組定義，不提供牌序；`AIKnowledgeState` 會再次遮蔽雙方牌庫順序、對手手牌與伏牌，並以跨 zone 一致的 opaque id 保留同一暗牌的身分。困難模式只從 published/playable 卡池及公開卡牌扣除後的合法最多兩張可能性抽樣，不會使用權威對手暗牌定義。對手有未公開已設置卡時取三個樣本，否則取一個樣本；相同 seed、可見狀態與計畫會重現相同結果。
 
 2026-07-28 的 422 張正式卡表擴大 soak 共完成 60/60 場、零非法 move、零卡死。困難模式 428 次決策的 `p95 = 181.90 ms`、`p99 = 260.84 ms`、最大 `324.37 ms`，其中 4 次依預算走合法 fallback。
 
 同日另以 production bundle 在瀏覽器內跑固定牌組開局，桌面 `1440x900` 與手機 `390x844` 各採集 5 次決策（猜拳、重抽、3 次 bounded rules simulation）。桌面決策時間為 `0.0 / 7.0 / 6.4 / 3.3 / 2.9 ms`，手機為 `0.1 / 7.0 / 3.2 / 3.2 / 8.2 ms`；三次困難搜尋的最大值分別為 `6.4 ms` 與 `8.2 ms`，且搜尋執行期間皆無 long task。初次載入、viewport 切換與 mulligan 畫面更新仍觀察到獨立 long task（最大 `130 ms`），但時間上不與 AI 搜尋重疊，移入 Worker 無法改善這些渲染工作。因此目前保留同步策略，若正式牌組瀏覽器基準或低階裝置回歸到搜尋相關 `>100 ms` long task，再啟用 Worker。
+
+`npm run benchmark:ai` 會以卡牌 ID 排序後的固定 seed 建立闇、炎、電気、風四組 20 張代表牌組，優先取 12 張角色、6 張 Enchant 與 2 張 Area Enchant；若資料源缺少某類型，則用目標元素的其他牌補滿，並在 JSON 報告列出實際組成與卡牌 ID。矩陣覆蓋 10 組不重複牌組配對、`easy-normal` 與 `normal-hard` 直接對戰，每組都交換先後手與難度座位。使用 `AI_MATRIX_CARD_FILE` 鎖定牌表快照，並用 `AI_MATRIX_GAMES` 設定每個雙邊配對的重複數。
+
+2026-07-28 以本機 92 張 synthetic E2E 卡池執行 `AI_MATRIX_GAMES=3` 的 120 場矩陣，完成 120/120、零非法 move、零卡死、零 fallback。困難決策 `p95 = 44.05 ms`、最大 `147.02 ms`。普通對簡單為 `21-24-15`（高難度勝／低難度勝／和局），困難對普通為 `23-25-12`，但困難方平均終局 HP 差為 `+8.67`。此 synthetic 卡池只有 1 張 Enchant 與 2 張 Area Enchant，四個 profile 皆為 `17/1/2`，且未觸發 `PendingChoice`；因此這份矩陣只是可重現性、對局安全與效能回歸證據，不用來宣稱難度勝率應單調上升。`PendingChoice` 品質仍由 13 種獨立戰術 fixture 驗收；上線調校應重跑鎖定版本的正式卡表矩陣。
+
+開發環境的 AI 對戰右下角有預設收合的決策檢視器，監聽 `zutomayo:ai-decision` 並保留最新 25 筆。可查看 kind、score、reason、duration、factor 與 fallback；production 和教學對局不掛載此 UI。
 
 ## 3. 目標難度契約
 

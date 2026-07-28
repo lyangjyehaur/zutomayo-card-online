@@ -30,6 +30,7 @@
     "typecheck:scripts": "tsc --noEmit -p tsconfig.scripts.json",
     "smoke": "node --import tsx scripts/game-smoke.ts",
     "smoke:ai": "node --import tsx scripts/ai-soak.ts",
+    "benchmark:ai": "node --import tsx scripts/ai-matchup-matrix.ts",
     "smoke:api": "node --import tsx scripts/api-smoke.ts",
     "smoke:online": "node --import tsx scripts/online-smoke.ts",
     "smoke:online-consistency": "ONLINE_SMOKE_MODE=consistency node --import tsx scripts/online-smoke.ts",
