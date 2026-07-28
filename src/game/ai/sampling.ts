@@ -1,21 +1,21 @@
-import { getAllCardDefs } from '../cards/loader';
+import { getAllCardDefs, getCardsRevision } from '../cards/loader';
 import type { CardInstance, GameState, PlayerIndex } from '../types';
 import { createSeededRng, seededShuffle } from './rng';
 import type { AIKnowledgeState } from './types';
 
 const HIDDEN_DEF_ID = '__hidden__';
-let playablePoolSignature = '';
+let playablePoolRevision = -1;
 let playablePool: string[] = [];
 
 function legalCardPool(): readonly string[] {
-  const cards = getAllCardDefs();
-  const signature = cards.map((card) => `${card.id}:${card.playStatus ?? 'playable'}`).join('|');
-  if (signature !== playablePoolSignature) {
+  const revision = getCardsRevision();
+  if (revision !== playablePoolRevision) {
+    const cards = getAllCardDefs();
     playablePool = cards
       .filter((card) => card.playStatus === undefined || card.playStatus === 'playable')
       .sort((left, right) => left.id.localeCompare(right.id))
       .flatMap((card) => [card.id, card.id]);
-    playablePoolSignature = signature;
+    playablePoolRevision = revision;
   }
   return playablePool;
 }

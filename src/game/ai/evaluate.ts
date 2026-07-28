@@ -1,4 +1,4 @@
-import { getAllCardDefs, getCardDef } from '../cards/loader';
+import { getAllCardDefs, getCardDef, getCardsRevision } from '../cards/loader';
 import { getChronosTimeForPosition, normalizeChronosPosition } from '../chronos';
 import { parseAllEffects } from '../effects';
 import type { EffectAction, ParsedEffect } from '../effects';
@@ -7,14 +7,14 @@ import type { CardDef, CardInstance, GameState, PendingChoice, PlayerIndex } fro
 import type { AITraceFactor } from './types';
 
 let parsedEffectsCache: Map<string, ParsedEffect[]> | null = null;
-let parsedEffectsSignature = '';
+let parsedEffectsRevision = -1;
 
 export function getAIParsedEffects(): Map<string, ParsedEffect[]> {
-  const definitions = getAllCardDefs();
-  const signature = definitions.map((card) => `${card.id}:${card.effect}`).join('|');
-  if (!parsedEffectsCache || signature !== parsedEffectsSignature) {
+  const revision = getCardsRevision();
+  if (!parsedEffectsCache || revision !== parsedEffectsRevision) {
+    const definitions = getAllCardDefs();
     parsedEffectsCache = parseAllEffects(definitions.map((card) => ({ id: card.id, effect: card.effect })));
-    parsedEffectsSignature = signature;
+    parsedEffectsRevision = revision;
   }
   return parsedEffectsCache;
 }
