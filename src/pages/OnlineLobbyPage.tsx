@@ -1453,7 +1453,7 @@ export function OnlineLobbyPage({
                     <div className="min-w-0">
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
-                          <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">
+                          <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/55">
                             {profile ? t('lobby.rank') : t('anonymous.identity')}
                           </div>
                           <div className="mt-0.5 truncate font-mono text-sm text-content-primary">
@@ -1474,7 +1474,7 @@ export function OnlineLobbyPage({
                     </div>
 
                     <div className="min-w-0 rounded-sm bg-surface-canvas/45 px-3 py-3 ring-1 ring-border-soft">
-                      <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">
+                      <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/55">
                         {t('lobby.currentDeck')}
                       </div>
                       <div className="mt-0.5 truncate font-display text-lg font-bold">
@@ -1573,7 +1573,7 @@ export function OnlineLobbyPage({
                           <h2 className="mt-1 font-display text-2xl font-bold">{t('lobby.beginMatch')}</h2>
                         </div>
                         <div className="mt-6">
-                          <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">
+                          <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/55">
                             {t('lobby.currentDeck')}
                           </div>
                           <p className="mt-1 truncate font-display text-lg font-bold text-content-primary/80">
@@ -1594,7 +1594,7 @@ export function OnlineLobbyPage({
                           {t('lobby.beginMatch')}
                         </Button>
                         {!canQuickMatch && (
-                          <p id="online-quick-match-helper" className="text-caption text-accent-action/70">
+                          <p id="online-quick-match-helper" className="text-caption text-accent-action">
                             {quickMatchDisabledReason}
                           </p>
                         )}
@@ -1677,7 +1677,7 @@ export function OnlineLobbyPage({
                     </Button>
                   </div>
 
-                  {!canStart && <p className="mb-3 text-caption text-accent-action/70">{startDisabledReason}</p>}
+                  {!canStart && <p className="mb-3 text-caption text-accent-action">{startDisabledReason}</p>}
 
                   <section aria-labelledby="available-room-list-title" className="border-y border-border-soft">
                     <div className="flex min-h-12 items-center justify-between gap-3">
@@ -1685,7 +1685,7 @@ export function OnlineLobbyPage({
                         <h3 id="available-room-list-title" className="font-display text-base font-bold">
                           {t('lobby.availableRooms')}
                         </h3>
-                        <p className="text-caption text-content-primary/40">{t('lobby.availableRoomsHint')}</p>
+                        <p className="text-caption text-content-primary/55">{t('lobby.availableRoomsHint')}</p>
                       </div>
                       <IconButton
                         type="button"
@@ -1713,11 +1713,11 @@ export function OnlineLobbyPage({
                         </div>
                       </Alert>
                     ) : roomListStatus === 'loading' && availableRooms.length === 0 ? (
-                      <p className="py-5 text-center text-caption text-content-primary/40" role="status">
+                      <p className="py-5 text-center text-caption text-content-primary/55" role="status">
                         {t('lobby.loadingRooms')}
                       </p>
                     ) : availableRooms.filter((room) => room.roomCode !== createdMatchID).length === 0 ? (
-                      <p className="py-5 text-center text-caption text-content-primary/40">
+                      <p className="py-5 text-center text-caption text-content-primary/55">
                         {t('lobby.availableRoomsEmpty')}
                       </p>
                     ) : (
@@ -1787,7 +1787,7 @@ export function OnlineLobbyPage({
                   {createdMatchID && (
                     <RoomDetails className="mt-4 !rounded-none !bg-accent-primary/5 !ring-accent-primary/20">
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">
+                        <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/55">
                           {t('online.roomCode')}
                         </span>
                         <strong className="font-mono text-sm text-accent-primary">{createdMatchID}</strong>
@@ -1863,7 +1863,7 @@ export function OnlineLobbyPage({
                             </div>
                           )}
                           {roomChatStatus === 'unavailable' && (
-                            <div className="grid min-h-full place-items-center text-caption text-accent-action/70">
+                            <div className="grid min-h-full place-items-center text-caption text-accent-action">
                               {t('chat.historyUnavailable')}
                             </div>
                           )}
@@ -1880,7 +1880,7 @@ export function OnlineLobbyPage({
                                 data-chat-message="room"
                                 className={`max-w-[86%] ${self ? 'self-end text-right' : 'self-start text-left'}`}
                               >
-                                <div className="flex items-center gap-1 px-1 pb-1 text-minutia text-content-primary/40">
+                                <div className="flex items-center gap-1 px-1 pb-1 text-minutia text-content-primary/55">
                                   <span className="min-w-0 flex-1 truncate">
                                     {message.authorDisplayName || message.authorUserId}
                                   </span>

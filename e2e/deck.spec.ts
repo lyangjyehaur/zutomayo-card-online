@@ -51,8 +51,11 @@ test.describe('牌組編輯器頁面', () => {
     await page.goto('/deck-builder');
     await expect(page.getByRole('button', { name: '新牌組' })).toBeVisible({ timeout: 30_000 });
 
-    // 彈數篩選與屬性篩選的 legend 文字
-    await expect(page.getByText('彈數', { exact: true })).toBeVisible();
+    const visiblePackFilter = page.getByText('彈數', { exact: true }).filter({ visible: true });
+    if ((await visiblePackFilter.count()) === 0) {
+      await page.getByRole('button', { name: '篩選' }).click();
+    }
+    await expect(page.getByRole('group', { name: '彈數' })).toBeVisible();
   });
 
   test('導入與導出按鈕存在', async ({ page }) => {

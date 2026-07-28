@@ -20,7 +20,7 @@ export function DifficultyButtons({
 
   return (
     <section className="flex flex-col gap-3">
-      {disabled && <p className="text-caption text-accent-action/70">{t('lobby.selectDeckFirst')}</p>}
+      {disabled && <p className="text-caption text-accent-action">{t('lobby.selectDeckFirst')}</p>}
       <div className={layout === 'row' ? 'grid gap-2 sm:grid-cols-3' : 'flex flex-col gap-2'}>
         {levels.map((level) => (
           <Button

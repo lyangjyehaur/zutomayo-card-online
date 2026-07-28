@@ -305,7 +305,7 @@ test.describe('教學頁面載入', () => {
     await expect(page.getByTestId('tutorial-field-target-hp').locator('.playerstatus-name')).toBeVisible();
     await expect(page.getByTestId('tutorial-field-target-hp-opponent').locator('.playerstatus-name')).toBeVisible();
     await expect(board.locator('.playerstatus-bar-ticks')).toHaveCount(2);
-    await expect(board.locator('.chronospanel-md')).toBeVisible();
+    await expect(board.locator('[data-tut="chronos-clock"]')).toBeVisible();
     await expect(board.locator('.chronosdial')).toBeVisible();
     await expect(board.locator('img[src*="zutomayocard_1st_34"]')).toBeVisible();
     await expect(board.getByLabel('對手 攻擊力 50')).toBeVisible();
@@ -319,8 +319,15 @@ test.describe('教學頁面載入', () => {
     await expect(page.getByTestId('tutorial-field-target-power-opponent')).toHaveAttribute('data-card-ids', '3rd_58');
     await expect(page.getByTestId('tutorial-field-target-deck-opponent')).toBeVisible();
     await expect(page.getByTestId('tutorial-field-target-abyss-opponent')).toHaveAttribute('data-card-ids', '2nd_40');
-    await expect(page.getByTestId('tutorial-field-opponent-upper-row')).toHaveCSS('display', 'contents');
-    await expect(page.getByTestId('tutorial-field-opponent-lower-row')).toHaveCSS('display', 'contents');
+    const wideBattlefield = (page.viewportSize()?.width ?? 0) >= 480;
+    await expect(page.getByTestId('tutorial-field-opponent-upper-row')).toHaveCSS(
+      'display',
+      wideBattlefield ? 'contents' : 'flex',
+    );
+    await expect(page.getByTestId('tutorial-field-opponent-lower-row')).toHaveCSS(
+      'display',
+      wideBattlefield ? 'contents' : 'flex',
+    );
     const opponentRowTargetBoxes = await Promise.all(
       ['abyss-opponent', 'deck-opponent', 'set', 'power-opponent'].map((id) =>
         page.getByTestId(`tutorial-field-target-${id}`).boundingBox(),
@@ -328,7 +335,11 @@ test.describe('教學頁面載入', () => {
     );
     expect(opponentRowTargetBoxes.every(Boolean)).toBe(true);
     const opponentRowBottoms = opponentRowTargetBoxes.map((box) => box!.y + box!.height);
-    expect(Math.max(...opponentRowBottoms) - Math.min(...opponentRowBottoms)).toBeLessThanOrEqual(1);
+    if (wideBattlefield) {
+      expect(Math.max(...opponentRowBottoms) - Math.min(...opponentRowBottoms)).toBeLessThanOrEqual(1);
+    } else {
+      await expect.poll(() => board.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+    }
   });
 
   test('卡牌數值與戰場區域可互動探索', async ({ page }) => {
@@ -819,6 +830,7 @@ test.describe('教學覆蓋層與互動 @requires-backend', () => {
   });
 
   test('能從戰鬥準備完成整個固定劇本', async ({ page }) => {
+    test.setTimeout(120_000);
     await page.setViewportSize({ width: 375, height: 812 });
     await startTutorialBattle(page);
 

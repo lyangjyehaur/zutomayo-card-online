@@ -37,7 +37,7 @@ function Step({ no, title, children }: { no: string; title: string; children: Re
     >
       <div className="mb-3 flex items-center gap-2" aria-hidden="true">
         <span className="font-mono text-caption text-accent-primary/80">{no}</span>
-        <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">
+        <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/55">
           {title}
         </span>
       </div>
@@ -186,7 +186,7 @@ export function AILobbyPage({
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-caption text-accent-primary/80">03</span>
-                    <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">
+                    <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/55">
                       {t('lobby.difficulty')}
                     </span>
                   </div>
