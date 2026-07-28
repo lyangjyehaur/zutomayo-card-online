@@ -9,6 +9,13 @@ import {
   createAIKnowledgeState,
 } from '../ai';
 import { generateTurnPlans } from '../ai/candidates';
+import { sampleUnknownState } from '../ai/sampling';
+import {
+  clearPlanEvaluationCache,
+  getCachedPlanEvaluation,
+  planEvaluationCacheKey,
+  setCachedPlanEvaluation,
+} from '../ai/transposition';
 import { setupGame, chooseJanken, finishMulligan, setInitialCard, confirmReady } from '../GameLogic';
 import { parseAllEffects } from '../effects/parser';
 import type { CardDef, CardType, GameState } from '../types';
@@ -45,6 +52,8 @@ const TEST_CARDS: CardDef[] = [
     attack: { night: 20, day: 20 },
     effect: '相手に30ダメージを与える。',
   }),
+  makeCard('test-day-character', 'Character', { attack: { night: 0, day: 100 } }),
+  makeCard('test-night-character', 'Character', { attack: { night: 100, day: 0 } }),
 ];
 
 if (!isCardsInitialized()) {
@@ -328,6 +337,83 @@ describe('AI difficulty policy contracts', () => {
     );
   });
 
+  it('preserves one opaque identity across an opponent zone and the played-card list', () => {
+    const G = makeGWithHand(['test-character-1']);
+    const hidden = createInstance('test-direct-damage');
+    G.players[1].setZoneA = hidden;
+    G.players[1].cardsSetThisTurn = 1;
+    G.setCardsThisTurn[1] = [hidden];
+
+    const knowledge = createAIKnowledgeState(G, 0);
+    expect(knowledge.game.players[1].setZoneA?.defId).toBe('__hidden__');
+    expect(knowledge.game.players[1].setZoneA?.instanceId).toBe(knowledge.game.setCardsThisTurn[1][0].instanceId);
+  });
+
+  it('samples unknown cards deterministically without observing their authoritative definitions', () => {
+    const first = makeGWithHand(['test-character-1', 'test-character-2']);
+    const hidden = createInstance('test-direct-damage');
+    first.players[1].setZoneA = hidden;
+    first.players[1].cardsSetThisTurn = 1;
+    first.setCardsThisTurn[1] = [hidden];
+    const second = structuredClone(first) as GameState;
+    second.players[1].setZoneA!.defId = 'test-expensive-character';
+    second.setCardsThisTurn[1][0].defId = 'test-expensive-character';
+
+    const firstKnowledge = createAIKnowledgeState(first, 0);
+    const secondKnowledge = createAIKnowledgeState(second, 0);
+    const firstSample = sampleUnknownState(firstKnowledge, 'sample-seed', 'plan', 0);
+    const repeatedSample = sampleUnknownState(firstKnowledge, 'sample-seed', 'plan', 0);
+    const replacedSample = sampleUnknownState(secondKnowledge, 'sample-seed', 'plan', 0);
+
+    expect(firstKnowledge.visibleStateKey).toBe(secondKnowledge.visibleStateKey);
+    expect(firstSample.game.players[1].setZoneA?.defId).toBe(repeatedSample.game.players[1].setZoneA?.defId);
+    expect(firstSample.game.players[1].setZoneA?.defId).toBe(replacedSample.game.players[1].setZoneA?.defId);
+    expect(firstSample.game.players[1].setZoneA?.instanceId).toBe(firstSample.game.setCardsThisTurn[1][0].instanceId);
+    expect(firstSample.game.players[1].setZoneA?.defId).toBe(firstSample.game.setCardsThisTurn[1][0].defId);
+  });
+
+  it('destroys own deck order before sampling and hard decisions', () => {
+    const first = makeGWithHand(['test-character-1', 'test-character-2']);
+    first.players[0].deck = [
+      createInstance('test-character-3'),
+      createInstance('test-enchant-1'),
+      createInstance('test-character-4'),
+    ];
+    const second = structuredClone(first) as GameState;
+    second.players[0].deck.reverse();
+    const firstKnowledge = createAIKnowledgeState(first, 0);
+    const secondKnowledge = createAIKnowledgeState(second, 0);
+
+    expect(firstKnowledge.knownOwnDeckDefIds).toEqual(secondKnowledge.knownOwnDeckDefIds);
+    expect(firstKnowledge.visibleStateKey).toBe(secondKnowledge.visibleStateKey);
+    expect(
+      sampleUnknownState(firstKnowledge, 'deck-order', 'plan', 0).game.players[0].deck.map((card) => card.defId),
+    ).toEqual(
+      sampleUnknownState(secondKnowledge, 'deck-order', 'plan', 0).game.players[0].deck.map((card) => card.defId),
+    );
+    expect(aiPlanTurn(first, 0, 'hard', { seed: 'deck-order' }).action).toEqual(
+      aiPlanTurn(second, 0, 'hard', { seed: 'deck-order' }).action,
+    );
+  });
+
+  it('uses a hidden-information-safe transposition key and stable numeric cache value', () => {
+    clearPlanEvaluationCache();
+    const first = makeGWithHand(['test-character-1']);
+    const hidden = createInstance('test-character-2');
+    first.players[1].setZoneA = hidden;
+    first.setCardsThisTurn[1] = [hidden];
+    const second = structuredClone(first) as GameState;
+    second.players[1].setZoneA!.defId = 'test-direct-damage';
+    second.setCardsThisTurn[1][0].defId = 'test-direct-damage';
+    const firstKey = planEvaluationCacheKey(createAIKnowledgeState(first, 0).visibleStateKey, 'plan', 'seed', 3);
+    const secondKey = planEvaluationCacheKey(createAIKnowledgeState(second, 0).visibleStateKey, 'plan', 'seed', 3);
+
+    expect(firstKey).toBe(secondKey);
+    setCachedPlanEvaluation(firstKey, 42.5);
+    expect(getCachedPlanEvaluation(secondKey)).toBe(42.5);
+    expect(getCachedPlanEvaluation(firstKey)).toBe(42.5);
+  });
+
   it('normal and hard redraw an opening with no Character', () => {
     const G = setupGame();
     G.step = 'mulligan';
@@ -386,6 +472,45 @@ describe('AI difficulty policy contracts', () => {
     expect(decision?.reason).toBe('prioritize-directDamage');
   });
 
+  it('prioritizes useful healing when HP is low', () => {
+    const G = setupGame();
+    G.step = 'effectOrder';
+    G.players[0].hp = 20;
+    G.pendingEffectPlayer = 0;
+    G.pendingEffects[0] = [
+      {
+        id: 'clock',
+        player: 0,
+        cardInstanceId: 'clock-card',
+        cardDefId: 'test-character-1',
+        rawText: 'clock',
+        effect: {
+          trigger: 'onUse',
+          conditions: [],
+          action: { type: 'clockAdvance', params: { value: 1 } },
+          rawText: 'clock',
+        },
+        source: 'played',
+      },
+      {
+        id: 'heal',
+        player: 0,
+        cardInstanceId: 'heal-card',
+        cardDefId: 'test-character-1',
+        rawText: 'heal',
+        effect: {
+          trigger: 'onUse',
+          conditions: [],
+          action: { type: 'heal', params: { value: 30 } },
+          rawText: 'heal',
+        },
+        source: 'played',
+      },
+    ];
+
+    expect(aiSelectEffect(G, 0, 'normal')?.action).toBe(1);
+  });
+
   it('chooses the lower-value discard instead of the first option', () => {
     const G = setupGame();
     const strong = createInstance('test-character-1');
@@ -413,6 +538,123 @@ describe('AI difficulty policy contracts', () => {
     };
 
     expect(aiSelectPendingChoice(G, 0, 'normal')?.action).toEqual([weak.instanceId]);
+  });
+
+  it('declines an optional discard when replacing a strong card has negative value', () => {
+    const G = setupGame();
+    const strong = createInstance('test-character-1');
+    G.players[0].hand = [strong];
+    G.step = 'effectOrder';
+    G.pendingChoice = {
+      id: 'optional-discard',
+      player: 0,
+      type: 'optionalHandMoveThenDraw',
+      min: 0,
+      max: 1,
+      payload: {
+        sourcePlayer: 0,
+        sourceZone: 'hand',
+        destinationPlayer: 0,
+        destinationZone: 'abyss',
+        drawCount: 1,
+        filter: {},
+      },
+      options: [{ id: strong.instanceId, label: 'strong', cardDefId: strong.defId }],
+    };
+
+    expect(aiSelectPendingChoice(G, 0, 'normal')?.action).toEqual([]);
+  });
+
+  it('swaps a weak hand card for a stronger Abyss card', () => {
+    const G = setupGame();
+    const weak = createInstance('test-expensive-character');
+    const strong = createInstance('test-character-1');
+    G.players[0].hand = [weak];
+    G.players[0].abyss = [strong];
+    G.step = 'effectOrder';
+    G.pendingChoice = {
+      id: 'hand-abyss-swap',
+      player: 0,
+      type: 'handAbyssSwap',
+      min: 2,
+      max: 2,
+      payload: {},
+      options: [
+        { id: `hand:${weak.instanceId}`, label: 'weak', cardDefId: weak.defId },
+        { id: `abyss:${strong.instanceId}`, label: 'strong', cardDefId: strong.defId },
+      ],
+    };
+
+    expect(aiSelectPendingChoice(G, 0, 'normal')?.action).toEqual([
+      `hand:${weak.instanceId}`,
+      `abyss:${strong.instanceId}`,
+    ]);
+  });
+
+  it('uses the highest-value legal card from the Abyss', () => {
+    const G = setupGame();
+    G.players[0].abyss = [
+      { instanceId: 'weak', defId: 'test-expensive-character', faceUp: true },
+      { instanceId: 'strong', defId: 'test-character-1', faceUp: true },
+    ];
+    G.step = 'effectOrder';
+    G.pendingChoice = {
+      id: 'use-from-abyss',
+      player: 0,
+      type: 'useFromAbyss',
+      min: 1,
+      max: 1,
+      payload: { sourcePlayer: 0, cardType: 'Character' },
+      options: [
+        { id: 'weak', label: 'weak', cardInstanceId: 'weak', cardDefId: 'test-expensive-character' },
+        { id: 'strong', label: 'strong', cardInstanceId: 'strong', cardDefId: 'test-character-1' },
+      ],
+    };
+
+    expect(aiSelectPendingChoice(G, 0, 'normal')?.action).toEqual(['strong']);
+  });
+
+  it('chooses a Chronos position that favors its current Character', () => {
+    const G = setupGame();
+    G.players[0].battleZone = createInstance('test-day-character', true);
+    G.players[1].battleZone = createInstance('test-night-character', true);
+    G.step = 'effectOrder';
+    G.pendingChoice = {
+      id: 'clock-position',
+      player: 0,
+      type: 'clockPosition',
+      min: 1,
+      max: 1,
+      payload: {},
+      options: Array.from({ length: 18 }, (_, value) => ({ id: `clock-${value}`, label: `${value}`, value })),
+    };
+
+    const selected = aiSelectPendingChoice(G, 0, 'normal')?.action[0];
+    expect(Number(selected?.split('-')[1])).toBeGreaterThanOrEqual(5);
+    expect(Number(selected?.split('-')[1])).toBeLessThanOrEqual(13);
+  });
+
+  it('orders weaker cards first on top of the opponent deck', () => {
+    const G = setupGame();
+    G.players[1].deck = [
+      { instanceId: 'strong', defId: 'test-character-1', faceUp: false },
+      { instanceId: 'weak', defId: 'test-expensive-character', faceUp: false },
+    ];
+    G.step = 'effectOrder';
+    G.pendingChoice = {
+      id: 'reorder-opponent',
+      player: 0,
+      type: 'reorderOpponentDeckTop',
+      min: 2,
+      max: 2,
+      payload: { targetPlayer: 1, count: 2 },
+      options: [
+        { id: 'strong', label: 'strong', cardInstanceId: 'strong', cardDefId: 'test-character-1' },
+        { id: 'weak', label: 'weak', cardInstanceId: 'weak', cardDefId: 'test-expensive-character' },
+      ],
+    };
+
+    expect(aiSelectPendingChoice(G, 0, 'normal')?.action).toEqual(['weak', 'strong']);
   });
 
   it('returns a legal normal-policy fallback when hard search exceeds its budget', () => {

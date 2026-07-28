@@ -204,11 +204,21 @@ export function choiceOptionHeuristic(choice: PendingChoice, optionIds: string[]
       return (abyssValue ?? 0) - (handValue ?? 0);
     }
     case 'clockPosition':
-    case 'clockAdvance':
-      return options.reduce((sum, option) => sum + Math.abs(Number(option?.value ?? 0)), 0);
+    case 'clockAdvance': {
+      const value = Number(options[0]?.value ?? 0);
+      if (!Number.isFinite(value)) return Number.NEGATIVE_INFINITY;
+      const projected = structuredClone(G) as GameState;
+      projected.chronos.position = normalizeChronosPosition(
+        choice.type === 'clockPosition' ? value : projected.chronos.position + value,
+      );
+      return evaluateState(projected, choice.player);
+    }
     case 'abyssToDeckBottomOrLose':
       return total + optionIds.length * 30;
     case 'reorderOpponentDeckTop':
+      // The first selected card remains on top and is drawn first. Feed the
+      // opponent lower-value cards before stronger cards.
+      return -values.reduce((sum, value, index) => sum + value * (values.length - index), 0);
     case 'nameGuessOpponentHandReveal':
       return 0;
   }

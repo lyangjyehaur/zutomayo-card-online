@@ -2,7 +2,9 @@ import { createAIKnowledgeState } from './knowledge';
 import { generateTurnPlans, stablePlanToken } from './candidates';
 import { scoreCard } from './evaluate';
 import { isDecisionTimedOut, seededShuffle } from './rng';
+import { hasUnknownOpponentCommitment, sampleUnknownState } from './sampling';
 import { simulateTurnPlan } from './simulator';
+import { getCachedPlanEvaluation, planEvaluationCacheKey, setCachedPlanEvaluation } from './transposition';
 import type { AIDecision, AIDecisionContext, AIKnowledgeState, AISelection, AITraceFactor, AITurnPlan } from './types';
 
 interface RankedPlan {
@@ -10,6 +12,8 @@ interface RankedPlan {
   score: number;
   factors: AITraceFactor[];
 }
+
+const HARD_PLAN_BEAM_WIDTH = 18;
 
 function heuristicPlan(knowledge: AIKnowledgeState, selections: AISelection[]): RankedPlan {
   const totalClock = selections.reduce((sum, selection) => {
@@ -70,26 +74,47 @@ function chooseHardPlan(
   fallback: RankedPlan,
 ): { plan: RankedPlan; fallback?: string } {
   let best: RankedPlan | null = null;
-  const searchOrder = [...plans].sort((left, right) => right.length - left.length);
-  for (const selections of searchOrder) {
+  const searchOrder = plans
+    .map((selections) => heuristicPlan(knowledge, selections))
+    .sort((left, right) => right.score - left.score)
+    .slice(0, HARD_PLAN_BEAM_WIDTH);
+  const sampleCount = hasUnknownOpponentCommitment(knowledge) ? 3 : 1;
+  for (const heuristic of searchOrder) {
     if (isDecisionTimedOut(context)) return { plan: best ?? fallback, fallback: 'search-budget-exhausted' };
-    const heuristic = heuristicPlan(knowledge, selections);
-    const simulation = simulateTurnPlan(knowledge, selections, context);
-    if (!simulation) continue;
-    const futureKnowledge = createAIKnowledgeState(simulation.state, knowledge.player);
-    const future = simulation.completedTurn ? projectedNextTurnValue(futureKnowledge) * 0.2 : 0;
-    const score = simulation.score + heuristic.score * 0.2 + future;
+    const selections = heuristic.selections;
+    const planToken = stablePlanToken(knowledge, selections);
+    const cacheKey = planEvaluationCacheKey(knowledge.visibleStateKey, planToken, context.seed, sampleCount);
+    let sampledValue = getCachedPlanEvaluation(cacheKey);
+    let completedSamples = sampledValue === undefined ? 0 : sampleCount;
+    if (sampledValue === undefined) {
+      let total = 0;
+      for (let sampleIndex = 0; sampleIndex < sampleCount; sampleIndex++) {
+        if (isDecisionTimedOut(context)) break;
+        const sampledKnowledge = sampleUnknownState(knowledge, context.seed, planToken, sampleIndex);
+        const simulation = simulateTurnPlan(sampledKnowledge, selections, context);
+        if (!simulation) continue;
+        const futureKnowledge = createAIKnowledgeState(simulation.state, knowledge.player);
+        const future = simulation.completedTurn ? projectedNextTurnValue(futureKnowledge) * 0.2 : 0;
+        total += simulation.score + future;
+        completedSamples += 1;
+        if (simulation.timedOut) break;
+      }
+      if (completedSamples === 0) continue;
+      sampledValue = total / completedSamples;
+      if (completedSamples === sampleCount) setCachedPlanEvaluation(cacheKey, sampledValue);
+    }
+    const score = sampledValue + heuristic.score * 0.2;
     const candidate: RankedPlan = {
       selections,
       score,
       factors: [
-        { label: 'simulatedState', value: simulation.score },
+        { label: 'sampledSimulation', value: sampledValue, detail: `${completedSamples}/${sampleCount}` },
         { label: 'immediatePlan', value: heuristic.score * 0.2 },
-        { label: 'nextTurnPotential', value: future },
+        { label: 'beamCandidates', value: searchOrder.length, detail: `${plans.length}` },
       ],
     };
     if (!best || candidate.score > best.score) best = candidate;
-    if (simulation.timedOut) return { plan: best ?? fallback, fallback: 'simulation-budget-exhausted' };
+    if (completedSamples < sampleCount) return { plan: best ?? fallback, fallback: 'simulation-budget-exhausted' };
   }
   return { plan: best ?? fallback, ...(best ? {} : { fallback: 'no-legal-simulation' }) };
 }

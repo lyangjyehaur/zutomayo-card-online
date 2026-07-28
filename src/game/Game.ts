@@ -76,40 +76,94 @@ function hiddenCard(instanceId: string): CardInstance {
   return { instanceId, defId: '__hidden__', faceUp: false };
 }
 
-function redactHiddenCard(card: CardInstance | null, placeholder: string): CardInstance | null {
+interface PlayerViewHiddenIds {
+  id(owner: PlayerIndex, card: CardInstance): string;
+}
+
+function createPlayerViewHiddenIds(): PlayerViewHiddenIds {
+  const ids: [Map<string, string>, Map<string, string>] = [new Map(), new Map()];
+  const next = [0, 0];
+  return {
+    id(owner, card) {
+      const existing = ids[owner].get(card.instanceId);
+      if (existing) return existing;
+      const opaque = `hidden-p${owner}-card-${next[owner]++}`;
+      ids[owner].set(card.instanceId, opaque);
+      return opaque;
+    },
+  };
+}
+
+function redactHiddenCard(
+  card: CardInstance | null,
+  owner: PlayerIndex,
+  hiddenIds: PlayerViewHiddenIds,
+  explicitlyRevealedIds: ReadonlySet<string>,
+): CardInstance | null {
   if (!card) return null;
-  return card.faceUp ? { ...card } : hiddenCard(placeholder);
+  return card.faceUp || explicitlyRevealedIds.has(card.instanceId)
+    ? { ...card }
+    : hiddenCard(hiddenIds.id(owner, card));
 }
 
-function redactDeckForViewer(player: PlayerState, owner: PlayerIndex): CardInstance[] {
-  return player.deck.map((card, index) => (card.faceUp ? { ...card } : hiddenCard(`hidden-p${owner}-deck-${index}`)));
+function redactDeckForViewer(
+  player: PlayerState,
+  owner: PlayerIndex,
+  hiddenIds: PlayerViewHiddenIds,
+  explicitlyRevealedIds: ReadonlySet<string>,
+): CardInstance[] {
+  return player.deck.map((card) =>
+    card.faceUp || explicitlyRevealedIds.has(card.instanceId) ? { ...card } : hiddenCard(hiddenIds.id(owner, card)),
+  );
 }
 
-function redactPlayerForViewer(G: GameState, owner: PlayerIndex, viewer: PlayerIndex | null) {
+function redactPlayerForViewer(
+  G: GameState,
+  owner: PlayerIndex,
+  viewer: PlayerIndex | null,
+  hiddenIds: PlayerViewHiddenIds,
+  explicitlyRevealedIds: ReadonlySet<string>,
+) {
   const player = G.players[owner];
   const isOwner = viewer === owner;
-  if (isOwner) return { ...player, hand: [...player.hand], deck: redactDeckForViewer(player, owner) };
+  if (isOwner) {
+    return {
+      ...player,
+      hand: [...player.hand],
+      deck: redactDeckForViewer(player, owner, hiddenIds, explicitlyRevealedIds),
+      knownDeckDefIds: player.deck.map((card) => card.defId).sort(),
+    };
+  }
   const revealedHandIds = new Set(G.revealedHandCardIds?.[owner] ?? []);
 
   return {
     ...player,
-    hand: player.hand.map((card, index) =>
-      revealedHandIds.has(card.instanceId) ? { ...card } : hiddenCard(`hidden-p${owner}-hand-${index}`),
+    knownDeckDefIds: undefined,
+    hand: player.hand.map((card) =>
+      revealedHandIds.has(card.instanceId) || explicitlyRevealedIds.has(card.instanceId)
+        ? { ...card }
+        : hiddenCard(hiddenIds.id(owner, card)),
     ),
-    deck: redactDeckForViewer(player, owner),
-    battleZone: redactHiddenCard(player.battleZone, `hidden-p${owner}-battle`),
-    setZoneA: redactHiddenCard(player.setZoneA, `hidden-p${owner}-set-a`),
-    setZoneB: redactHiddenCard(player.setZoneB, `hidden-p${owner}-set-b`),
-    setZoneC: redactHiddenCard(player.setZoneC, `hidden-p${owner}-set-c`),
-    powerCharger: player.powerCharger.map((card, i) => redactHiddenCard(card, `hidden-p${owner}-power-${i}`)),
-    abyss: player.abyss.map((card, i) => redactHiddenCard(card, `hidden-p${owner}-abyss-${i}`)),
+    deck: redactDeckForViewer(player, owner, hiddenIds, explicitlyRevealedIds),
+    battleZone: redactHiddenCard(player.battleZone, owner, hiddenIds, explicitlyRevealedIds),
+    setZoneA: redactHiddenCard(player.setZoneA, owner, hiddenIds, explicitlyRevealedIds),
+    setZoneB: redactHiddenCard(player.setZoneB, owner, hiddenIds, explicitlyRevealedIds),
+    setZoneC: redactHiddenCard(player.setZoneC, owner, hiddenIds, explicitlyRevealedIds),
+    powerCharger: player.powerCharger.map((card) => redactHiddenCard(card, owner, hiddenIds, explicitlyRevealedIds)),
+    abyss: player.abyss.map((card) => redactHiddenCard(card, owner, hiddenIds, explicitlyRevealedIds)),
   };
 }
 
-function redactPlayedCardsForViewer(G: GameState, owner: PlayerIndex, viewer: PlayerIndex | null): CardInstance[] {
+function redactPlayedCardsForViewer(
+  G: GameState,
+  owner: PlayerIndex,
+  viewer: PlayerIndex | null,
+  hiddenIds: PlayerViewHiddenIds,
+  explicitlyRevealedIds: ReadonlySet<string>,
+): CardInstance[] {
   if (viewer === owner) return G.setCardsThisTurn[owner].map((card) => ({ ...card }));
-  return G.setCardsThisTurn[owner].map((card, index) =>
-    card.faceUp ? { ...card } : hiddenCard(`hidden-p${owner}-played-${index}`),
+  return G.setCardsThisTurn[owner].map((card) =>
+    card.faceUp || explicitlyRevealedIds.has(card.instanceId) ? { ...card } : hiddenCard(hiddenIds.id(owner, card)),
   );
 }
 
@@ -146,6 +200,12 @@ function redactActionLogForViewer(G: GameState, viewer: PlayerIndex | null, both
 
 function playerView({ G, playerID }: { G: GameState; playerID: string | null }): GameState {
   const viewer = playerIndex(playerID);
+  const hiddenIds = createPlayerViewHiddenIds();
+  const explicitlyRevealedIds = new Set(
+    viewer !== null && G.pendingChoice?.player === viewer
+      ? G.pendingChoice.options.flatMap((option) => (option.cardInstanceId ? [option.cardInstanceId] : []))
+      : [],
+  );
   const bothChose = G.jankenChoices[0] !== null && G.jankenChoices[1] !== null;
   // 教學模式（skipShuffle）下 AI 需看到玩家出拳才能出會輸的拳，
   // 且 AI 非真人不存在資訊不公平。非教學模式維持原資訊隱藏邏輯。
@@ -159,11 +219,14 @@ function playerView({ G, playerID }: { G: GameState; playerID: string | null }):
 
   return {
     ...G,
-    players: [redactPlayerForViewer(G, 0, viewer), redactPlayerForViewer(G, 1, viewer)] as [PlayerState, PlayerState],
-    setCardsThisTurn: [redactPlayedCardsForViewer(G, 0, viewer), redactPlayedCardsForViewer(G, 1, viewer)] as [
-      CardInstance[],
-      CardInstance[],
-    ],
+    players: [
+      redactPlayerForViewer(G, 0, viewer, hiddenIds, explicitlyRevealedIds),
+      redactPlayerForViewer(G, 1, viewer, hiddenIds, explicitlyRevealedIds),
+    ] as [PlayerState, PlayerState],
+    setCardsThisTurn: [
+      redactPlayedCardsForViewer(G, 0, viewer, hiddenIds, explicitlyRevealedIds),
+      redactPlayedCardsForViewer(G, 1, viewer, hiddenIds, explicitlyRevealedIds),
+    ] as [CardInstance[], CardInstance[]],
     jankenChoices,
     pendingChoice,
     actionLog: redactActionLogForViewer(G, viewer, bothChose),
