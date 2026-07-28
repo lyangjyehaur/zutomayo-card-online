@@ -299,6 +299,7 @@ export interface PendingOptionalHandMoveThenDrawPayload {
 export interface PendingAbyssToDeckBottomPayload {
   faceDown: boolean;
   shuffle: boolean;
+  moveAllPowerChargersToAbyss?: boolean;
   followUpChoiceType?: 'reorderOpponentDeckTop';
   followUpCount?: number;
 }

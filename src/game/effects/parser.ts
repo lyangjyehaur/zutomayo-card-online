@@ -718,6 +718,17 @@ function parseAction(text: string): EffectAction | null {
     return { type: 'millDeckToAbyss', params: { target: 'opponent', count: parseNum(millDeckMatch[1]) } };
   }
 
+  // "相手のエリアエンチャント(カード)を相手のアビスに置く"
+  const moveOpponentAreaEnchantToAbyssMatch = text.match(
+    /^相手のエリアエンチャント(?:カード)?を、?(?:相手の)?アビスに置く[。.]?$/,
+  );
+  if (moveOpponentAreaEnchantToAbyssMatch) {
+    return {
+      type: 'moveOpponentAreaEnchant',
+      params: { target: 'opponent', destination: 'abyss' },
+    };
+  }
+
   // "相手のエリアエンチャント(カード)を相手のデッキの上/底に置く"
   const returnAreaEnchantMatch = text.match(
     /^相手のエリアエンチャント(?:カード)?を(?:相手の)?デッキの(上|底)に(?:置く|戻し|戻す)/,
@@ -1079,6 +1090,7 @@ function parseAction(text: string): EffectAction | null {
         max: variable ? 'available' : count,
         faceDown: Boolean(abyssToDeckBottomOrLoseMatch[3]),
         shuffle: Boolean(abyssToDeckBottomOrLoseMatch[4]),
+        moveAllPowerChargersToAbyss: text.includes('お互いのパワーチャージャーのカードをすべてアビスに置く'),
         ...(reorderFollowUpMatch
           ? {
               followUpChoiceType: 'reorderOpponentDeckTop',
@@ -1162,7 +1174,7 @@ function parseAction(text: string): EffectAction | null {
     };
   }
 
-  const clockAdvanceMatch = text.match(/時計を([0-9０-９]+)つ進める/);
+  const clockAdvanceMatch = text.match(/時計を([0-9０-９]+)つ(?:進める|進ませる)/);
   if (clockAdvanceMatch) return { type: 'clockAdvance', params: { value: parseNum(clockAdvanceMatch[1]) } };
 
   if (text.includes('時計が真夜中になる') || text.includes('時計を真夜中にする')) {

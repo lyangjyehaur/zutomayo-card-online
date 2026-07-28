@@ -1126,6 +1126,26 @@ function handleReturnAreaEnchantToDeck({ effect, G, opponent, opponentIndex }: E
   return { success: true, message: 'Return opposing Area Enchant to deck' };
 }
 
+function handleMoveOpponentAreaEnchant({ G, opponent, opponentIndex, context }: EffectHandlerArgs): {
+  success: boolean;
+  message: string;
+} {
+  const card = opponent.setZoneC;
+  if (!card) return { success: false, message: 'No opposing Area Enchant' };
+  opponent.setZoneC = null;
+  card.faceUp = true;
+  opponent.abyss.push(card);
+  emitZoneEntered(G, context, opponentIndex, 'abyss', card);
+
+  if (!G.suppressedEffectCardIdsThisTurn) G.suppressedEffectCardIdsThisTurn = [];
+  if (!G.suppressedEffectCardIdsThisTurn.includes(card.instanceId)) {
+    G.suppressedEffectCardIdsThisTurn.push(card.instanceId);
+  }
+  G.pendingEffects[0] = G.pendingEffects[0].filter((effect) => effect.cardInstanceId !== card.instanceId);
+  G.pendingEffects[1] = G.pendingEffects[1].filter((effect) => effect.cardInstanceId !== card.instanceId);
+  return { success: true, message: 'Move opposing Area Enchant to Abyss' };
+}
+
 function handleMoveSelfAreaEnchant({ effect, G, player, me, context }: EffectHandlerArgs): {
   success: boolean;
   message: string;
@@ -1288,6 +1308,7 @@ const effectHandlers: Record<ActionType, EffectHandler> = {
   revealOpponentDeckTopBySendToPower: handleRevealOpponentDeckTopBySendToPower,
   revealOpponentHand: handleRevealOpponentHand,
   returnAreaEnchantToDeck: handleReturnAreaEnchantToDeck,
+  moveOpponentAreaEnchant: handleMoveOpponentAreaEnchant,
   moveSelfAreaEnchant: handleMoveSelfAreaEnchant,
   useFromAbyss: handleUseFromAbyss,
   handSizeModifier: handleHandSizeModifier,

@@ -333,7 +333,9 @@ function collectActionFeatures(effect: ParsedEffect, outputs: FeatureMap, inputs
     }
   }
   if (action.type === 'addSettableCard') addFeature(outputs, 'extra-set-capacity', evidence);
-  if (action.type === 'moveSelfAreaEnchant') addFeature(outputs, 'area-enchant-turnover', evidence);
+  if (action.type === 'moveSelfAreaEnchant' || action.type === 'moveOpponentAreaEnchant') {
+    addFeature(outputs, 'area-enchant-turnover', evidence);
+  }
   if (action.type === 'forceOwnAttackTime' || action.type === 'swapAttack') {
     addFeature(outputs, 'attack-time-control', evidence);
   }

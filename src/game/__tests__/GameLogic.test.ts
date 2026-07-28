@@ -1022,6 +1022,76 @@ describe('card-effect Chronos notices', () => {
   });
 });
 
+describe('4th SE card effects', () => {
+  it('moves the paid Abyss cards to the deck before moving both Power Chargers to the Abyss', () => {
+    const G = setupGame();
+    const sourceCard = createInstance('test-character-1', true);
+    const paymentCards = Array.from({ length: 8 }, (_, index) =>
+      createInstance(`test-enchant-${(index % 8) + 1}`, true),
+    );
+    const ownPowerCards = [createInstance('test-enchant-1', true), createInstance('test-enchant-2', true)];
+    const opponentPowerCards = [createInstance('test-enchant-3', true), createInstance('test-enchant-4', true)];
+    G.players[0].battleZone = sourceCard;
+    G.players[0].deck = [];
+    G.players[0].abyss = [...paymentCards];
+    G.players[0].powerCharger = [...ownPowerCards];
+    G.players[1].abyss = [];
+    G.players[1].powerCharger = [...opponentPowerCards];
+    G.step = 'effectOrder';
+    G.pendingEffectPlayer = 0;
+    G.pendingEffects = [
+      [
+        {
+          id: '4th-105-effect',
+          player: 0,
+          cardInstanceId: sourceCard.instanceId,
+          cardDefId: '4th_105',
+          rawText: '4th_105',
+          effect: {
+            trigger: 'onUse',
+            conditions: [],
+            action: {
+              type: 'requestChoice',
+              params: {
+                choiceType: 'abyssToDeckBottomOrLose',
+                min: 8,
+                max: 8,
+                faceDown: true,
+                shuffle: true,
+                moveAllPowerChargersToAbyss: true,
+              },
+            },
+            rawText: '4th_105',
+          },
+          source: 'played',
+        },
+      ],
+      [],
+    ];
+
+    expect(resolvePendingEffect(G, 0, 0)).toBe(true);
+    expect(G.pendingChoice).toMatchObject({
+      type: 'abyssToDeckBottomOrLose',
+      min: 8,
+      max: 8,
+      payload: { moveAllPowerChargersToAbyss: true },
+    });
+    const optionIds = G.pendingChoice?.options.map((option) => option.id) ?? [];
+    expect(submitPendingChoice(G, 0, optionIds)).toBe(true);
+
+    expect(G.players[0].deck).toHaveLength(8);
+    expect(G.players[0].deck.every((card) => !card.faceUp)).toBe(true);
+    expect(G.players[0].powerCharger).toHaveLength(0);
+    expect(G.players[1].powerCharger).toHaveLength(0);
+    expect(G.players[0].abyss.map((card) => card.instanceId)).toEqual(
+      expect.arrayContaining(ownPowerCards.map((card) => card.instanceId)),
+    );
+    expect(G.players[1].abyss.map((card) => card.instanceId)).toEqual(
+      expect.arrayContaining(opponentPowerCards.map((card) => card.instanceId)),
+    );
+  });
+});
+
 describe('getChronosTime and getPriorityPlayer', () => {
   it('getChronosTime returns night at position 0', () => {
     const G = setupGame();

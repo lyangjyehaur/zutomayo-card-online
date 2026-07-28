@@ -460,10 +460,11 @@ const abyssToDeckBottomOrLoseHandler: ChoiceHandler = {
       destinationPosition: 'bottom',
       faceDown: c.payload.faceDown,
       shuffle: c.payload.shuffle,
+      moveAllPowerChargersToAbyss: c.payload.moveAllPowerChargersToAbyss,
       followUpChoiceType: c.payload.followUpChoiceType,
     };
   },
-  apply({ G, player, choice, optionIds, playerState, runtime }) {
+  apply({ G, player, choice, optionIds, playerState, parsedEffects, runtime }) {
     const c = choice as Extract<PendingChoice, { type: 'abyssToDeckBottomOrLose' }>;
     const abyssIds = new Set(playerState.abyss.map((card) => card.instanceId));
     if (!optionIds.every((optionId) => abyssIds.has(optionId))) return { status: 'invalid' };
@@ -491,6 +492,26 @@ const abyssToDeckBottomOrLoseHandler: ChoiceHandler = {
       c.payload.shuffle && selectedCards.length > 1 ? runtime.shuffleSelectedCards(selectedCards) : selectedCards;
     playerState.deck.push(...ordered);
     G.lastChoiceSelectionCount[player] = optionIds.length;
+
+    if (c.payload.moveAllPowerChargersToAbyss) {
+      const moved = G.players.map((owner) => owner.powerCharger.splice(0));
+      for (const ownerIndex of [0, 1] as const) {
+        for (const card of moved[ownerIndex]) {
+          card.faceUp = true;
+          G.players[ownerIndex].abyss.push(card);
+        }
+      }
+      for (const ownerIndex of [0, 1] as const) {
+        for (const card of moved[ownerIndex]) {
+          runtime.resolveTimingEvent(G, parsedEffects, {
+            type: 'zoneEntered',
+            player: ownerIndex,
+            zone: 'abyss',
+            cardDefId: card.defId,
+          });
+        }
+      }
+    }
 
     if (c.payload.followUpChoiceType === 'reorderOpponentDeckTop') {
       const result = buildReorderOpponentDeckTopChoice(G, player, Number(c.payload.followUpCount ?? 0), choice.prompt);

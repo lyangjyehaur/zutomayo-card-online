@@ -751,6 +751,43 @@ describe('effect executor', () => {
     });
   });
 
+  describe('moveOpponentAreaEnchant', () => {
+    it('將對手 Area Enchant 移入 Abyss 並停止該卡後續效果', () => {
+      const G = makeG();
+      const areaEnchant = cardInstance('area-enchant-1');
+      G.players[1].setZoneC = areaEnchant;
+      G.pendingEffects[1] = [
+        {
+          id: 'opponent-area-effect',
+          player: 1,
+          cardInstanceId: areaEnchant.instanceId,
+          cardDefId: areaEnchant.defId,
+          rawText: '',
+          effect: makeEffect('boostAttack', { value: 10 }),
+          source: 'setZoneC',
+        },
+      ];
+
+      const result = runEffect(makeEffect('moveOpponentAreaEnchant', { destination: 'abyss' }), G);
+
+      expect(result.success).toBe(true);
+      expect(G.players[1].setZoneC).toBeNull();
+      expect(G.players[1].abyss).toEqual([
+        expect.objectContaining({ instanceId: areaEnchant.instanceId, faceUp: true }),
+      ]);
+      expect(G.suppressedEffectCardIdsThisTurn).toContain(areaEnchant.instanceId);
+      expect(G.pendingEffects[1]).toHaveLength(0);
+      expect(G.timingEvents).toContainEqual(
+        expect.objectContaining({ type: 'zoneEntered', player: 1, zone: 'abyss', cardDefId: areaEnchant.defId }),
+      );
+    });
+
+    it('對手沒有 Area Enchant 時不執行', () => {
+      const G = makeG();
+      expect(runEffect(makeEffect('moveOpponentAreaEnchant', { destination: 'abyss' }), G).success).toBe(false);
+    });
+  });
+
   describe('moveSelfAreaEnchant', () => {
     it('移動自身 AE 到 powerCharger', () => {
       const G = makeG();
