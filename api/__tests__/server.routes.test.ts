@@ -1562,6 +1562,57 @@ describe('server routes', () => {
   });
 
   describe('chat routes', () => {
+    it('GET /api/chat/messages accepts a verified guest match seat', async () => {
+      const credentials = 'guest-seat-credentials';
+      const guestUserId = 'guest:match:bgio-match-1:reservation:abc123';
+      const expectedCredentialHash = crypto.createHash('sha256').update(credentials).digest('hex');
+      mockQuery.mockImplementation(async (sql: string, params?: unknown[]) => {
+        if (sql.includes('WHERE match_id = $1 AND player_id = $2 AND credential_hash = $3')) {
+          expect(params).toEqual(['bgio-match-1', '1', expectedCredentialHash]);
+          return { rows: [{ user_id: guestUserId }], rowCount: 1 };
+        }
+        if (sql.includes('FROM platform_match_participants') && sql.includes('SELECT 1')) {
+          expect(params).toEqual(['bgio-match-1', guestUserId]);
+          return { rows: [{ exists: 1 }], rowCount: 1 };
+        }
+        if (sql.includes('FROM chat_messages')) {
+          expect(params).toEqual(['match:bgio-match-1', 10, guestUserId]);
+          return {
+            rows: [
+              {
+                id: 'chat_msg_guest_history',
+                conversation_id: 'match:bgio-match-1',
+                author_user_id: null,
+                author_display_name: 'Guest',
+                author_role: 'player',
+                content: 'guest history',
+                source_language: '',
+                moderation_status: 'visible',
+                moderation_reason: '',
+                metadata: { guestSeatUserId: guestUserId },
+                created_at: '2026-07-28T00:00:00.000Z',
+                edited_at: null,
+                deleted_at: null,
+              },
+            ],
+            rowCount: 1,
+          };
+        }
+        return { rows: [], rowCount: 0 };
+      });
+
+      const res = await sendRequest('GET', '/api/chat/messages?type=match&subjectId=bgio-match-1&limit=10', null, {
+        'x-match-id': 'bgio-match-1',
+        'x-match-player-id': '1',
+        'x-match-credentials': credentials,
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(parseBody(res)).toMatchObject({
+        messages: [{ id: 'chat_msg_guest_history', content: 'guest history' }],
+      });
+    });
+
     it('GET /api/chat/messages syncs every durable conversation type through the same route', async () => {
       const cases = [
         {

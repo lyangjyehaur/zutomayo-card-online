@@ -2,6 +2,7 @@ import type { ChatPublicAuthorRole } from '../api/client';
 
 export type MatchChatAccount = { id: string } | null | undefined;
 export type MatchChatAccessStatus = 'loading' | 'ready' | 'login_required';
+export type MatchChatFailureStatus = 'access_denied' | 'unavailable';
 
 export function matchChatAccessStatus(
   accountLoaded: boolean,
@@ -33,6 +34,10 @@ export function canSubmitMatchChat({
   status: string;
 }): boolean {
   return Boolean((account || hasPlayerSeat) && content.trim() && status === 'ready');
+}
+
+export function matchChatFailureStatus(httpStatus?: number): MatchChatFailureStatus {
+  return httpStatus === 401 || httpStatus === 403 ? 'access_denied' : 'unavailable';
 }
 
 function sanitizePresenceIdPart(value: string, maxLength: number): string {

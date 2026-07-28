@@ -68,6 +68,11 @@ describe('game runtime image contract', () => {
     expect(dockerignore).toContain('!api/deckService.cjs');
   });
 
+  it('keeps CJS type declarations available to the frontend image builder', () => {
+    const dockerignore = readFileSync(resolve(root, '.dockerignore'), 'utf8');
+    expect(dockerignore).toContain('!api/*.d.cts');
+  });
+
   it('ships the schema gate helper in the migration image', () => {
     const dockerfile = readFileSync(resolve(root, 'Dockerfile.migrate'), 'utf8');
     const dockerignore = readFileSync(resolve(root, '.dockerignore'), 'utf8');

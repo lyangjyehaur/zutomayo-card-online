@@ -104,6 +104,24 @@ describe('online lobby platform boundary', () => {
     expect(onlineGameSource).toContain('chatAccount && message.persisted && !message.self');
   });
 
+  it('keeps guest match chat available when the optional match shell is reconnecting', () => {
+    const onlineGameSource = readRepoFile('src/components/OnlineGame.tsx');
+
+    expect(onlineGameSource).not.toContain('platformShellEvidenceReady');
+    expect(onlineGameSource).not.toContain('platformShellUnavailable');
+    expect(onlineGameSource).toContain('data-chat-status={chatStatus}');
+  });
+
+  it('forwards guest match seat proof through the game API proxy', () => {
+    const gameServerSource = readRepoFile('src/server.ts');
+
+    expect(gameServerSource).toContain('MATCH_CHAT_ACCESS_PROXY_FORWARD_HEADERS');
+    expect(gameServerSource).toContain("'x-match-id'");
+    expect(gameServerSource).toContain("'x-match-player-id'");
+    expect(gameServerSource).toContain("'x-match-credentials'");
+    expect(gameServerSource).toContain('forwardOptionalRequestHeader(requestHeaders, ctx.request.headers, name)');
+  });
+
   it('opens unread match chats through durable history chat instead of live spectator fallback', () => {
     const communitySource = readRepoFile('src/pages/CommunityPage.tsx');
     const historyPageSource = readRepoFile('src/pages/MatchHistoryPage.tsx');

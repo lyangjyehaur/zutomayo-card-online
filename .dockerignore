@@ -3,6 +3,7 @@ api
 !api/
 api/*
 !api/*.cjs
+!api/*.d.cts
 !api/package.json
 !api/package-lock.json
 !api/Dockerfile
