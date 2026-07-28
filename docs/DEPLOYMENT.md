@@ -389,6 +389,8 @@ The command fetches the live official Japanese sources and validates every local
 
 同一部署階段也會將 `CARD_DERIVED_EFFECTS_DIR`（預設為本機 `data/`）中的卡牌效果、複核 manifest、官方日英來源及勘誤來源以 tar/stdin 串流至一次性 migration container，通過完整 audit 後以 transaction 更新 `card_texts_i18n`。檔案不會寫入 Server4 checkout 或容器映像；缺少任一來源、雜湊不符或術語違規時，部署會在啟動新服務前中止。
 
+0.2.4 的第四彈 105～107 另使用 Git-ignored 的 `card-unlisted-sources.json`、`card-unlisted-human-reviews.json` 與 `card-unlisted-release.json`。發布器固定只接受這三個 ID，要求文字已驗證、卡圖已核准、R2 HTTPS 圖片、四個衍生語言完整、效果可由正式 parser/executor 處理，並在同一 transaction upsert `cards`、`card_texts_i18n` 與 `admin_audit_log`。卡牌會標記 `source_note=reviewed-unlisted-release:v1`；核心 422 張日英來源仍保持精確稽核，其他任何額外卡牌都會令匯入失敗。Server4 必須先執行此增量卡發布，再執行衍生效果匯入，最後才啟動新服務。
+
 ### Runtime DDL policy
 
 Production and staging app images run with `RUNTIME_SCHEMA_DDL=false`. The game
@@ -670,7 +672,7 @@ npm run preflight:card-dataset -- --base-url https://battle.zutomayocard.online/
 ```bash
 export RELEASE_SHA="$(git rev-parse HEAD)"
 export RELEASE_ENVIRONMENT=staging
-export EXPECTED_CARD_COUNT=422
+export EXPECTED_CARD_COUNT=425
 export EXPECTED_SCHEMA_MIGRATION="$(find migrations -maxdepth 1 -type f -name '*.js' | sort | tail -n 1 | xargs basename | sed 's/\.js$//')"
 export EXPECTED_SCHEMA_CHECKSUM="$(shasum -a 256 "migrations/${EXPECTED_SCHEMA_MIGRATION}.js" | awk '{print $1}')"
 # Set PG_*, the five immutable *_IMAGE references, and GitHub provenance variables for the target release.

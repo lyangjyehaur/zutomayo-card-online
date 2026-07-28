@@ -33,6 +33,11 @@ COPY scripts/release-official-rulings.ts ./scripts/release-official-rulings.ts
 COPY scripts/release-official-rule-documents.ts ./scripts/release-official-rule-documents.ts
 COPY scripts/cardDerivedEffects.ts ./scripts/cardDerivedEffects.ts
 COPY scripts/import-card-derived-effects-pg.ts ./scripts/import-card-derived-effects-pg.ts
+COPY scripts/reviewedUnlistedCardRelease.ts ./scripts/reviewedUnlistedCardRelease.ts
+COPY scripts/release-reviewed-unlisted-cards.ts ./scripts/release-reviewed-unlisted-cards.ts
+COPY src/game/effects/parser.ts ./src/game/effects/parser.ts
+COPY src/game/effects/types.ts ./src/game/effects/types.ts
+COPY src/game/types.ts ./src/game/types.ts
 COPY src/rulesTerminology.ts ./src/rulesTerminology.ts
 
 USER node

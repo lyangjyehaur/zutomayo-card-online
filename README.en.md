@@ -16,7 +16,7 @@ Version 0.2.4 adds the card catalog, deck-share metadata and synergy recommendat
 ### Game and Battle
 
 - Local two-player and easy, normal, or hard AI; hard currently uses effect-free current-turn lookahead. See the [AI difficulty roadmap](docs/ai-difficulty-roadmap.md) for its limits and planned rewrite.
-- Complete data for 422 cards across 4 packs, with all 267 effect lines parsed.
+- Complete data for 425 cards across 4 packs, with all 270 effect lines parsed, including the separately reviewed and audited Fourth Set SE cards 105-107.
 - Rock-paper-scissors, mulligan, initial setup, effect ordering, player choices, battle, and Chronos day/night flow.
 - Authoritative phase timers and timeout recovery prevent disconnected or unresponsive players from blocking a match forever.
 - Per-card Chronos movement, HP, attack, mitigation, and healing resolution animations, a responsive battlefield, mobile touch controls, and a tutorial that shares the production battle presentation.

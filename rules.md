@@ -136,6 +136,6 @@ Chronos medal 所在時段對應側為優先玩家，先處理效果。
 - Set Zone A/B 同目的地衝突時 A 優先；只有 B 有 Character 或 Area Enchant 時仍會正常進場。
 - Enchant 保留到效果處理後離場；Area Enchant 進 Set Zone C 並持續存在。
 - 每個效果處理前各自檢查當下 Power Cost。攻擊加減、傷害減免、HP、抽牌與部分 Chronos 效果會實際改變狀態。
-- 422 張卡牌資料與 250 張有效果卡已進入目前 parser/executor 覆蓋基準；267/267 效果行可解析，`unparsedLines=0`、`parsedButPartial=0`。
+- 425 張可遊玩卡牌與 253 張有效果卡已進入目前 parser/executor 覆蓋基準；核心 422 張加上獨立複核發布的第四彈 105～107，共 270/270 效果行可解析，`unparsedLines=0`、`parsedButPartial=0`。
 - 玩家選擇效果順序、同一卡多段效果順序、傷害減免時機、Chronos transition、zone-entry events、Area Enchant 離場、手牌/移動選牌、Abyss 支付選牌、對手 Character 入替、手牌支付抽牌、Clock 選擇、deck top reorder 與持續型 modifier 皆有 runtime 支援與 smoke regression。
 - 目前規則與效果現況由 [`npm run rule:audit`](scripts/rule-audit.ts)、[效果執行測試](src/game/effects/__tests__/executor.test.ts) 與 [game smoke](scripts/game-smoke.ts) 持續驗證。

@@ -99,6 +99,13 @@ describe('operational shell scripts', () => {
     expect(deploy).toContain('release_card_derived_effects');
     expect(deploy).toContain('CARD_DERIVED_EFFECTS_REVIEW_SOURCE');
     expect(deploy).toContain('import-card-derived-effects-pg.ts');
+    expect(deploy).toContain('release_reviewed_unlisted_cards');
+    expect(deploy).toContain('CARD_UNLISTED_RELEASE_SOURCE');
+    expect(deploy).toContain('release-reviewed-unlisted-cards.ts');
+    expect(deploy).toContain('audit-reviewed-unlisted-cards.ts');
+    expect(deploy.indexOf('release_reviewed_unlisted_cards ||')).toBeLessThan(
+      deploy.indexOf('release_card_derived_effects ||'),
+    );
     expect(deploy).toContain('--translations=-');
     expect(deploy).toContain('COPYFILE_DISABLE=1 tar');
     expect(deploy).toContain("-name '._*' -delete");

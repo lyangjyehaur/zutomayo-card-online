@@ -19,8 +19,8 @@ async function fetchJson(path) {
 }
 
 const [cards, texts] = await Promise.all([fetchJson('cards'), fetchJson('cards/texts')]);
-if (!Array.isArray(cards) || cards.length !== 422) {
-  throw new Error(`Expected 422 cards, received ${Array.isArray(cards) ? cards.length : 'invalid data'}`);
+if (!Array.isArray(cards) || cards.length !== 425) {
+  throw new Error(`Expected 425 cards, received ${Array.isArray(cards) ? cards.length : 'invalid data'}`);
 }
 if (!texts || typeof texts !== 'object' || Array.isArray(texts)) {
   throw new Error('Card text endpoint returned invalid data');

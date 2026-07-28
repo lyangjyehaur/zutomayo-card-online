@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { initCards, isCardsInitialized, getAllCardDefs, createInstance } from '../cards/loader';
-import { parseAllEffects } from '../effects/parser';
+import { parseAllEffects, parseEffect } from '../effects/parser';
 import { ZutomayoCard } from '../Game';
 import { CHRONOS_MAPPING, type CardDef, type CardType, type GameState, type PendingEffect } from '../types';
 import {
@@ -1023,6 +1023,37 @@ describe('card-effect Chronos notices', () => {
 });
 
 describe('4th SE card effects', () => {
+  const reviewedEffects = {
+    '4th_105':
+      'アビスのカードを8枚選び、裏向きにして混ぜ、デッキの底に置く。そうしない場合、ゲームに敗北する。お互いのパワーチャージャーのカードをすべてアビスに置く。',
+    '4th_106': 'クロノスの時計を9つ進ませる',
+    '4th_107': '相手のエリアエンチャントを、相手のアビスに置く',
+  } as const;
+
+  function pendingReviewedEffect(G: GameState, cardId: keyof typeof reviewedEffects): ReturnType<typeof parseEffect> {
+    const parsed = parseEffect(reviewedEffects[cardId]);
+    expect(parsed).not.toBeNull();
+    const sourceCard = createInstance('test-enchant-1', true);
+    G.players[0].battleZone = sourceCard;
+    G.step = 'effectOrder';
+    G.pendingEffectPlayer = 0;
+    G.pendingEffects = [
+      [
+        {
+          id: `${cardId}-reviewed-effect`,
+          player: 0,
+          cardInstanceId: sourceCard.instanceId,
+          cardDefId: cardId,
+          rawText: reviewedEffects[cardId],
+          effect: parsed!,
+          source: 'played',
+        },
+      ],
+      [],
+    ];
+    return parsed;
+  }
+
   it('moves the paid Abyss cards to the deck before moving both Power Chargers to the Abyss', () => {
     const G = setupGame();
     const sourceCard = createInstance('test-character-1', true);
@@ -1089,6 +1120,73 @@ describe('4th SE card effects', () => {
     expect(G.players[1].abyss.map((card) => card.instanceId)).toEqual(
       expect.arrayContaining(opponentPowerCards.map((card) => card.instanceId)),
     );
+  });
+
+  it('makes 4th_105 lose immediately when fewer than eight Abyss cards are available', () => {
+    const G = setupGame();
+    G.players[0].abyss = Array.from({ length: 7 }, (_, index) => createInstance(`test-enchant-${index + 1}`, true));
+    pendingReviewedEffect(G, '4th_105');
+
+    expect(resolvePendingEffect(G, 0, 0)).toBe(true);
+    expect(G.winner).toBe(1);
+    expect(G.step).toBe('gameOver');
+    expect(G.pendingChoice).toBeNull();
+    expect(G.log.at(-1)).toContain('needs 8, has 7');
+  });
+
+  it('parses and resolves the exact 4th_106 text as a nine-space card-effect Chronos advance', () => {
+    const G = setupGame();
+    G.chronos.position = 14;
+    const parsed = pendingReviewedEffect(G, '4th_106');
+    expect(parsed?.action).toEqual({ type: 'clockAdvance', params: { value: 9 } });
+
+    expect(resolvePendingEffect(G, 0, 0)).toBe(true);
+    expect(G.chronos.position).toBe(5);
+    const notice = G.recentGameNotices.find(
+      (item) => item.kind === 'chronosChange' && item.chronosSourceCardDefId === '4th_106',
+    );
+    expect(notice).toMatchObject({
+      kind: 'chronosChange',
+      chronosFrom: 14,
+      chronosTo: 5,
+      chronosEffectMode: 'advance',
+      chronosMoveAmount: 9,
+      chronosSourceKind: 'cardEffect',
+      chronosSourceCardDefId: '4th_106',
+      player: 0,
+    });
+  });
+
+  it('parses and resolves the exact 4th_107 text, removing the opposing Area Enchant and its effects', () => {
+    const G = setupGame();
+    const areaEnchant = createInstance('test-area-enchant-1', true);
+    G.players[1].setZoneC = areaEnchant;
+    G.pendingEffects[1] = [
+      {
+        id: 'opponent-area-effect',
+        player: 1,
+        cardInstanceId: areaEnchant.instanceId,
+        cardDefId: areaEnchant.defId,
+        rawText: 'persistent opponent effect',
+        effect: {
+          trigger: 'onUse',
+          conditions: [],
+          action: { type: 'boostAttack', params: { value: 10 } },
+          rawText: 'persistent opponent effect',
+        },
+        source: 'setZoneC',
+      },
+    ];
+    const parsed = pendingReviewedEffect(G, '4th_107');
+    expect(parsed?.action).toEqual({
+      type: 'moveOpponentAreaEnchant',
+      params: { target: 'opponent', destination: 'abyss' },
+    });
+
+    expect(resolvePendingEffect(G, 0, 0)).toBe(true);
+    expect(G.players[1].setZoneC).toBeNull();
+    expect(G.players[1].abyss).toContainEqual(expect.objectContaining({ instanceId: areaEnchant.instanceId }));
+    expect(G.pendingEffects[1]).toHaveLength(0);
   });
 });
 

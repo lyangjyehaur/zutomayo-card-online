@@ -10,9 +10,9 @@ This document tracks product and architecture progress for ZUTOMAYO CARD Online.
 
 | Phase | Area                       | Status | Current evidence                                                                                                                     |
 | ----- | -------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------ |
-| 0     | Rules and data baseline    | Done   | Official [rules](../rules.md), Grand/Floor Rules, PostgreSQL-backed Q&A/errata, 422 cards, 4 packs, PostgreSQL-backed card API.      |
+| 0     | Rules and data baseline    | Done   | Official [rules](../rules.md), Grand/Floor Rules, PostgreSQL-backed Q&A/errata, 425 cards, 4 packs, PostgreSQL-backed card API.      |
 | 1     | Deterministic game state   | Done   | Explicit `GameState.step`: janken, mulligan, initial set, turn set, effect order, pending choices, game over.                        |
-| 2     | Effect engine              | Done   | 267/267 effect lines parsed; parser, executor, prompted choices, runtime audit, and semantic regression tests.                       |
+| 2     | Effect engine              | Done   | 270/270 effect lines parsed; parser, executor, prompted choices, runtime audit, and semantic regression tests.                       |
 | 3     | Local product              | Done   | Local battle, AI, tutorial, deck editor/sharing, official rulings, history, leaderboard, PWA, six-language UI.                       |
 | 4     | Authoritative online match | Done   | boardgame.io state sync, `playerView`, PostgreSQL adapter, Redis Pub/Sub, version guard, seat resume.                                |
 | 5     | Accounts and security      | Done   | Cookie/JWT auth, refresh blacklist, CSRF, local and OAuth identities, encrypted provider tokens, admin audit.                        |
