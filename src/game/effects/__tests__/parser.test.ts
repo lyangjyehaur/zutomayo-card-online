@@ -92,6 +92,22 @@ describe('Effect Parser', () => {
     });
 
     it('解析 4th SE 三張卡牌的完整效果', () => {
+      expect(
+        parseEffect('アビスのカードを４枚選び、裏向きにして混ぜ、デッキの底に置く。そうしない場合、ゲームに敗北する。'),
+      ).toMatchObject({
+        action: {
+          type: 'requestChoice',
+          params: {
+            choiceType: 'abyssToDeckBottomOrLose',
+            min: 4,
+            max: 4,
+            faceDown: true,
+            shuffle: true,
+            moveAllPowerChargersToAbyss: false,
+          },
+        },
+      });
+
       const abyssReset = parseEffect(
         'アビスのカードを8枚選び、裏向きにして混ぜ、デッキの底に置く。そうしない場合、ゲームに敗北する。お互いのパワーチャージャーのカードをすべてアビスに置く。',
       );
