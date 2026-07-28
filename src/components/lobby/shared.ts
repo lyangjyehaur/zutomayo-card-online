@@ -82,6 +82,12 @@ export function canStartAI({
   return cardsReady && !!deck0Name;
 }
 
+export function aiOpponentDeckSetup(deckName: string, serverDecks: DeckResponse[]): ZutomayoSetupData {
+  const resolvedName = deckName || RANDOM_DECK_NAME;
+  if (resolvedName === COUNTER_DECK_NAME) return { deck1Name: COUNTER_DECK_NAME };
+  return onlineDeckName(1, resolvedName, serverDecks);
+}
+
 export function onlineDeckName(player: PlayerIndex, deckName: string, serverDecks: DeckResponse[]): ZutomayoSetupData {
   // 線上模式先 sanitization：克制牌組降級為隨機牌組，避免線上對手拿到針對性牌組。
   const safeName = sanitizeDeckName(deckName, { customDeckAvailable: true, allowCounter: false });
@@ -139,31 +145,20 @@ export function buildDeckOptions(customDeckAvailable: boolean): DeckOption[] {
 }
 
 /**
- * AI 對手專用牌組選項：移除自訂牌組與伺服器牌組（AI 不該用玩家自訂牌組），新增克制牌組。
+ * AI 對手專用牌組選項：沿用玩家可用的本機牌組，並新增克制牌組。
+ * 伺服器牌組由呼叫端分組加入，避免這個純本機選項 builder 依賴登入狀態。
  * 克制牌組會在開局時分析玩家牌組特性，從卡池組出克制牌組。
  */
-export function buildAIOpponentDeckOptions(): DeckOption[] {
-  const presetOptions = Object.entries(PRESET_DECKS).map(([id, deck]) => {
-    const copy = DECK_COPY[id];
-    return {
-      id,
-      name: copy ? t(copy.nameKey) : deck.name,
-      description: copy ? t(copy.descKey) : deck.name,
-    };
-  });
-
+export function buildAIOpponentDeckOptions(customDeckAvailable: boolean): DeckOption[] {
+  const playerOptions = buildDeckOptions(customDeckAvailable);
   return [
-    {
-      id: RANDOM_DECK_NAME,
-      name: t('deck.random'),
-      description: t('deck.randomDesc'),
-    },
+    playerOptions[0],
     {
       id: COUNTER_DECK_NAME,
       name: t('deck.counter'),
       description: t('deck.counterDesc'),
     },
-    ...presetOptions,
+    ...playerOptions.slice(1),
   ];
 }
 

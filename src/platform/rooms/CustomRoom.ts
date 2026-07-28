@@ -257,6 +257,7 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
         status: this.status,
         playerCount: this.roleProfiles('player', ignoredSessionId).length,
         spectatorCount: this.roleProfiles('spectator', ignoredSessionId).length,
+        hostDisplayName: this.host?.displayName,
         boardgameMatchID: this.boardgameMatchID,
       },
     });

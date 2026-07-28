@@ -3,7 +3,7 @@ import { getOnlineRoom, openOnlineSeat, openOnlineSpectator, provisionOnlineMatc
 
 test.describe.configure({ mode: 'serial' });
 
-test.describe('雙瀏覽器線上對戰 @requires-backend', () => {
+test.describe('雙瀏覽器線上對戰 @requires-backend @core', () => {
   test('建立房間、加入、唯讀觀戰與斷線重連', async ({ browser, context, page, request }, testInfo) => {
     test.setTimeout(90_000);
     const baseURL = process.env.E2E_BASE_URL ?? 'http://localhost:3000';
@@ -102,6 +102,29 @@ test.describe('雙瀏覽器線上對戰 @requires-backend', () => {
       await expect(guestPage.locator('[data-result-outcome="victory"]')).toBeVisible({ timeout: 10_000 });
       await expect(spectatorPage.locator('[data-result-outcome="spectator"]')).toBeVisible({ timeout: 20_000 });
       expect(spectatorSubmissions).toEqual([]);
+
+      await Promise.all([
+        page.getByRole('button', { name: '再戰一局' }).click(),
+        guestPage.getByRole('button', { name: '再戰一局' }).click(),
+      ]);
+      await Promise.all([
+        expect
+          .poll(() => decodeURIComponent(new URL(page.url()).pathname.split('/').pop() || ''), { timeout: 20_000 })
+          .not.toBe(match.matchID),
+        expect
+          .poll(() => decodeURIComponent(new URL(guestPage.url()).pathname.split('/').pop() || ''), {
+            timeout: 20_000,
+          })
+          .not.toBe(match.matchID),
+      ]);
+      const hostRematchID = decodeURIComponent(new URL(page.url()).pathname.split('/').pop() || '');
+      const guestRematchID = decodeURIComponent(new URL(guestPage.url()).pathname.split('/').pop() || '');
+      expect(hostRematchID).not.toBe(match.matchID);
+      expect(guestRematchID).toBe(hostRematchID);
+      await Promise.all([
+        expect(page.locator('[data-game-step="janken"]')).toBeVisible({ timeout: 20_000 }),
+        expect(guestPage.locator('[data-game-step="janken"]')).toBeVisible({ timeout: 20_000 }),
+      ]);
     } catch (error) {
       failed = true;
       throw error;

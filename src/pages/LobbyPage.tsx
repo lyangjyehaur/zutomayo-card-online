@@ -50,6 +50,7 @@ import './LobbyPage.css';
 export {
   DEFAULT_DECK_NAME,
   aiOpponentDeckName,
+  aiOpponentDeckSetup,
   onlineDeckName,
   selectedDeckName,
   serverDeckIdFromOption,

@@ -975,6 +975,7 @@ describe('platform room lifecycle', () => {
       metadata: expect.objectContaining({
         status: 'waiting',
         playerCount: 1,
+        hostDisplayName: 'Host',
         boardgameMatchID: 'bgio-match-3',
       }),
     });

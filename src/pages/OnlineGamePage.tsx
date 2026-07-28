@@ -13,7 +13,12 @@ import {
   validateOnlineSession,
   type OnlineSession,
 } from '../onlineSession';
-import { isOnlineFailureStatus, onlineStatusPanelCopy, type OnlineRoomStatus } from '../onlineRoomStatus';
+import {
+  hasOnlineOpponent,
+  isOnlineFailureStatus,
+  onlineStatusPanelCopy,
+  type OnlineRoomStatus,
+} from '../onlineRoomStatus';
 import { createPlatformCustomRoom, type PlatformCustomRoom } from '../platformClient';
 
 type MatchPlayer = {
@@ -34,10 +39,12 @@ interface OnlineGamePageProps {
   session: OnlineSession | null;
   onClearSession: () => void;
   onCreateNewRoom: () => Promise<OnlineSession>;
+  onRematch: (session: OnlineSession) => Promise<OnlineSession>;
 }
 
 async function fetchRoom(
   matchID: string,
+  playerID?: '0' | '1',
 ): Promise<
   | { ok: true; opponentJoined: boolean }
   | { ok: false; reason: Exclude<OnlineRoomStatus, 'reconnecting' | 'retrying' | 'waiting' | 'ready'> }
@@ -47,7 +54,7 @@ async function fetchRoom(
     if (response.status === 404) return { ok: false, reason: 'roomNotFound' };
     if (!response.ok) return { ok: false, reason: 'connectionFailed' };
     const data = (await response.json()) as MatchResponse;
-    const opponentJoined = Boolean(data.players?.some((player) => player.id === 1 && player.name));
+    const opponentJoined = hasOnlineOpponent(data.players, playerID ?? '0');
     return { ok: true, opponentJoined };
   } catch (err) {
     Sentry.captureException(err, { tags: { action: 'fetch-room', match_id: matchID } });
@@ -124,7 +131,7 @@ function LeaveConfirmDialog({
   );
 }
 
-export function OnlineGamePage({ session, onClearSession, onCreateNewRoom }: OnlineGamePageProps) {
+export function OnlineGamePage({ session, onClearSession, onCreateNewRoom, onRematch }: OnlineGamePageProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const locale = useLocale();
@@ -136,14 +143,24 @@ export function OnlineGamePage({ session, onClearSession, onCreateNewRoom }: Onl
   const [leavePromptOpen, setLeavePromptOpen] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [creatingRoom, setCreatingRoom] = useState(false);
+  const [rematching, setRematching] = useState(false);
   const [actionError, setActionError] = useState('');
   const [platformCustomRoomReady, setPlatformCustomRoomReady] = useState(false);
   const platformCustomRoomRef = useRef<PlatformCustomRoom | null>(null);
+  const terminalActionRef = useRef<'leave' | 'create' | 'rematch' | null>(null);
   const latestReconnectStatusRef = useRef(reconnectStatus);
   // P2-13：Socket.IO 偵測到對手加入時設為 true，用來停止 HTTP fallback 並推進到 ready。
   const opponentJoinedRef = useRef(false);
   const routeState = location.state as { freshOnlineSession?: boolean; resumeOnlineSession?: boolean } | null;
   const showRejoinedStatus = routeState?.freshOnlineSession !== true;
+
+  useEffect(() => {
+    terminalActionRef.current = null;
+    setRematching(false);
+    setCreatingRoom(false);
+    setActionError('');
+    setLeavePromptOpen(false);
+  }, [matchID]);
 
   const handleOpponentDetected = useCallback(() => {
     if (opponentJoinedRef.current) return;
@@ -205,12 +222,7 @@ export function OnlineGamePage({ session, onClearSession, onCreateNewRoom }: Onl
       if (cancelled || opponentJoinedRef.current) return;
 
       if (result.ok) {
-        if (activeSession.playerID !== '0') {
-          setReconnectStatus('ready');
-          return;
-        }
-
-        const room = await fetchRoom(activeSession.matchID);
+        const room = await fetchRoom(activeSession.matchID, activeSession.playerID);
         if (cancelled || opponentJoinedRef.current) return;
         if (!room.ok) {
           if (room.reason === 'roomNotFound' || room.reason === 'roomFull') {
@@ -359,25 +371,31 @@ export function OnlineGamePage({ session, onClearSession, onCreateNewRoom }: Onl
     setLeavePromptOpen(true);
   }, []);
 
-  const leaveAndReturn = useCallback(async () => {
+  const leaveAndReturn = useCallback(() => {
+    if (terminalActionRef.current) return;
+    terminalActionRef.current = 'leave';
     setActionError('');
     setLeaving(true);
-    try {
-      if (activeSession) await leaveOnlineSession(activeSession);
-      onClearSession();
-      navigate('/');
-    } finally {
-      setLeaving(false);
-    }
-  }, [activeSession, navigate, onClearSession]);
+    const leavingSession = activeSession;
+    leavePlatformCustomRoom(true);
+    onClearSession();
+    navigate('/');
+    if (leavingSession) void leaveOnlineSession(leavingSession);
+    setLeaving(false);
+  }, [activeSession, leavePlatformCustomRoom, navigate, onClearSession]);
 
   const createNewRoom = useCallback(async () => {
+    if (terminalActionRef.current) return;
+    terminalActionRef.current = 'create';
     setCreatingRoom(true);
     setActionError('');
+    let succeeded = false;
     try {
-      if (activeSession) await leaveOnlineSession(activeSession);
-      onClearSession();
+      const leavingSession = activeSession;
       await onCreateNewRoom();
+      succeeded = true;
+      leavePlatformCustomRoom(true);
+      if (leavingSession) void leaveOnlineSession(leavingSession);
     } catch (err) {
       Sentry.captureException(err, { tags: { action: 'create-room' } });
       setActionError(
@@ -386,9 +404,27 @@ export function OnlineGamePage({ session, onClearSession, onCreateNewRoom }: Onl
           : translate(locale, 'online.createRoomFailed'),
       );
     } finally {
-      setCreatingRoom(false);
+      if (!succeeded) {
+        if (terminalActionRef.current === 'create') terminalActionRef.current = null;
+        setCreatingRoom(false);
+      }
     }
-  }, [activeSession, locale, onClearSession, onCreateNewRoom]);
+  }, [activeSession, leavePlatformCustomRoom, locale, onCreateNewRoom]);
+
+  const rematch = useCallback(async () => {
+    if (!activeSession || terminalActionRef.current) return;
+    terminalActionRef.current = 'rematch';
+    setRematching(true);
+    setActionError('');
+    try {
+      await onRematch(activeSession);
+    } catch (err) {
+      Sentry.captureException(err, { tags: { action: 'rematch', match_id: activeSession.matchID } });
+      setActionError(t('online.rematchFailed'));
+      if (terminalActionRef.current === 'rematch') terminalActionRef.current = null;
+      setRematching(false);
+    }
+  }, [activeSession, onRematch]);
 
   const closeLeavePrompt = useCallback(() => {
     if (!leaving) setLeavePromptOpen(false);
@@ -485,9 +521,6 @@ export function OnlineGamePage({ session, onClearSession, onCreateNewRoom }: Onl
             </Alert>
           )}
         </Panel>
-        {leavePromptOpen && (
-          <LeaveConfirmDialog leaving={leaving} onCancel={closeLeavePrompt} onConfirm={() => void leaveAndReturn()} />
-        )}
       </PageShell>
     );
   };
@@ -502,6 +535,7 @@ export function OnlineGamePage({ session, onClearSession, onCreateNewRoom }: Onl
         onCreateNewRoom={() => {
           void createNewRoom();
         }}
+        onRematch={() => undefined}
       />
     );
   }
@@ -516,7 +550,14 @@ export function OnlineGamePage({ session, onClearSession, onCreateNewRoom }: Onl
   const showOnlineGame = reconnectStatus === 'waiting' || reconnectStatus === 'ready';
 
   if (isFailure || !showOnlineGame) {
-    return renderStatusPanel(reconnectStatus, activeSession);
+    return (
+      <>
+        {renderStatusPanel(reconnectStatus, activeSession)}
+        {leavePromptOpen && (
+          <LeaveConfirmDialog leaving={leaving} onCancel={closeLeavePrompt} onConfirm={leaveAndReturn} />
+        )}
+      </>
+    );
   }
 
   return (
@@ -536,6 +577,12 @@ export function OnlineGamePage({ session, onClearSession, onCreateNewRoom }: Onl
         onCreateNewRoom={() => {
           void createNewRoom();
         }}
+        onRematch={() => {
+          void rematch();
+        }}
+        actionError={actionError}
+        actionPending={rematching || creatingRoom}
+        actionPendingLabel={creatingRoom ? t('online.creatingRoom') : t('online.rematchPreparing')}
         onOpponentDetected={handleOpponentDetected}
       />
       {reconnectStatus === 'waiting' && (
@@ -549,7 +596,7 @@ export function OnlineGamePage({ session, onClearSession, onCreateNewRoom }: Onl
         </div>
       )}
       {leavePromptOpen && (
-        <LeaveConfirmDialog leaving={leaving} onCancel={closeLeavePrompt} onConfirm={() => void leaveAndReturn()} />
+        <LeaveConfirmDialog leaving={leaving} onCancel={closeLeavePrompt} onConfirm={leaveAndReturn} />
       )}
     </>
   );

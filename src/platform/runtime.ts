@@ -26,6 +26,7 @@ import {
 } from './config';
 import { createPlatformFriendStoreFromEnv, resolvePlatformFriendStoreMode } from './friendStore';
 import { platformLogger as logger } from './logger';
+import { publicCustomRoomSummaries } from './publicRooms';
 import {
   createPlatformMatchParticipantStoreFromEnv,
   resolvePlatformMatchParticipantStoreMode,
@@ -398,6 +399,15 @@ export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}
       });
       app.get('/api/version', (_req, res) => {
         res.set('Cache-Control', 'no-store').json(versionInfo);
+      });
+      app.get('/api/rooms', async (_req, res) => {
+        try {
+          const rooms = await matchMaker.query({ name: 'custom_room' }, { createdAt: 1 });
+          res.set('Cache-Control', 'no-store').json({ rooms: publicCustomRoomSummaries(rooms) });
+        } catch (err) {
+          logger.error({ err }, 'failed to list public custom rooms');
+          res.status(503).set('Cache-Control', 'no-store').json({ error: 'Room list is temporarily unavailable' });
+        }
       });
       app.get('/metrics', async (req, res) => {
         if (!platformMetricsAuthorized(req.headers.authorization)) {

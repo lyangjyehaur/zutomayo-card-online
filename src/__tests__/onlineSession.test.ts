@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   clearStoredOnlineSession,
+  leaveOnlineSession,
   loadOnlineSession,
   ONLINE_SESSION_STORAGE_KEY,
+  requestOnlineRematch,
   saveOnlineSession,
   type OnlineSession,
   validateOnlineSession,
@@ -23,6 +25,7 @@ function createStorage() {
 
 describe('online session storage', () => {
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -122,5 +125,50 @@ describe('online session storage', () => {
 
     expect(session.platformUserId).toBe('guest:match:bgio-match-1:reservation:abc');
     expect(loadOnlineSession()).toEqual(session);
+  });
+
+  it('aborts remote leave cleanup after the local timeout', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        (_url: string, init?: RequestInit) =>
+          new Promise((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+          }),
+      ),
+    );
+    const session: OnlineSession = {
+      matchID: 'bgio-match-1',
+      playerID: '0',
+      playerCredentials: 'credential-0',
+    };
+
+    const leaving = leaveOnlineSession(session);
+    await vi.advanceTimersByTimeAsync(3_000);
+
+    await expect(leaving).resolves.toBeUndefined();
+  });
+
+  it('requests the shared next match with the current seat credentials', async () => {
+    const fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ nextMatchID: 'bgio-match-2' }),
+    }));
+    vi.stubGlobal('fetch', fetch);
+    const session: OnlineSession = {
+      matchID: 'bgio-match-1',
+      playerID: '1',
+      playerCredentials: 'credential-1',
+    };
+
+    await expect(requestOnlineRematch(session)).resolves.toBe('bgio-match-2');
+    expect(fetch).toHaveBeenCalledWith(
+      '/games/zutomayo-card/bgio-match-1/playAgain',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ playerID: '1', credentials: 'credential-1', unlisted: true }),
+      }),
+    );
   });
 });

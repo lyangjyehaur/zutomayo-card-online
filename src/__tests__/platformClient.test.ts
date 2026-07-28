@@ -6,11 +6,13 @@ import {
   connectPlatformQuickMatch,
   createPlatformCustomRoom,
   createPlatformInvite,
+  fetchPlatformAvailableRooms,
   isPlatformBoardgameRelayAcknowledged,
   joinPlatformInvite,
   joinPlatformCustomRoom,
   normalizeSeatReservation,
   platformBoardgameMatchReadyFromMessage,
+  platformAvailableRoomsFromMessage,
   platformChatPreviewFromMessage,
   platformCustomRoomSnapshotFromMessage,
   platformInviteAcceptedFromMessage,
@@ -58,6 +60,28 @@ describe('platform client helpers', () => {
         port: '5173',
       }),
     ).toBe('ws://127.0.0.1:3002');
+
+    expect(
+      resolvePlatformEndpoint('', {
+        protocol: 'http:',
+        hostname: '127.0.0.1',
+        port: '5175',
+      }),
+    ).toBe('ws://127.0.0.1:3002');
+  });
+
+  it('keeps non-development ports on the app origin', () => {
+    expect(
+      resolvePlatformEndpoint(
+        undefined,
+        {
+          protocol: 'https:',
+          hostname: 'battle.example.test',
+          port: '8443',
+        },
+        false,
+      ),
+    ).toBe('wss://battle.example.test:8443');
   });
 
   it('keeps production host when no explicit platform endpoint is configured', () => {
@@ -75,6 +99,42 @@ describe('platform client helpers', () => {
     expect(platformOnlineCountFromMessage({ players: 2, spectators: 7 })).toBe(9);
     expect(platformOnlineCountFromMessage({ onlineCount: -2 })).toBe(0);
     expect(platformOnlineCountFromMessage({})).toBeNull();
+  });
+
+  it('parses public room lists defensively', () => {
+    expect(
+      platformAvailableRoomsFromMessage({
+        rooms: [
+          {
+            roomCode: ' ROOM42 ',
+            hostDisplayName: ' Host ',
+            playerCount: 1.9,
+            createdAt: 1234.9,
+            internalRoomId: 'must-not-leak',
+          },
+          { roomCode: '', hostDisplayName: 'Invalid', playerCount: 1, createdAt: 1234 },
+        ],
+      }),
+    ).toEqual([{ roomCode: 'ROOM42', hostDisplayName: 'Host', playerCount: 1, createdAt: 1234 }]);
+    expect(platformAvailableRoomsFromMessage({ rooms: 'invalid' })).toBeNull();
+  });
+
+  it('fetches public rooms from the platform HTTP endpoint', async () => {
+    const get = vi.fn(async () => ({
+      data: {
+        rooms: [{ roomCode: 'ROOM42', hostDisplayName: 'Host', playerCount: 1, createdAt: 1234 }],
+      },
+    }));
+    vi.doMock('colyseus.js', () => ({
+      Client: class {
+        http = { get };
+      },
+    }));
+
+    await expect(fetchPlatformAvailableRooms()).resolves.toEqual([
+      { roomCode: 'ROOM42', hostDisplayName: 'Host', playerCount: 1, createdAt: 1234 },
+    ]);
+    expect(get).toHaveBeenCalledWith('api/rooms', { headers: { Accept: 'application/json' } });
   });
 
   it('joins lobby without browser-supplied friend ids', async () => {

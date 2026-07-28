@@ -124,6 +124,13 @@ export interface PlatformCustomRoomSnapshot {
   boardgameMatchID?: string;
 }
 
+export interface PlatformAvailableRoom {
+  roomCode: string;
+  hostDisplayName: string;
+  playerCount: number;
+  createdAt: number;
+}
+
 export interface PlatformCustomRoomHandlers {
   onSnapshot?: (snapshot: PlatformCustomRoomSnapshot) => void;
   onBoardgameMatchReady?: (message: PlatformBoardgameMatchReady) => void;
@@ -212,13 +219,18 @@ interface FlatSeatReservation {
 }
 
 function readConfiguredPlatformUrl(): string | undefined {
-  const viteEnv = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env;
+  const viteEnv = (import.meta as ImportMeta & { env?: { VITE_PLATFORM_URL?: string } }).env;
   return viteEnv?.VITE_PLATFORM_URL ?? (typeof process === 'undefined' ? undefined : process.env.VITE_PLATFORM_URL);
+}
+
+function readDevelopmentMode(): boolean {
+  return Boolean((import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV);
 }
 
 export function resolvePlatformEndpoint(
   configuredUrl = readConfiguredPlatformUrl(),
   location: LocationLike | undefined = typeof window === 'undefined' ? undefined : window.location,
+  developmentMode = readDevelopmentMode(),
 ): string {
   const trimmed = configuredUrl?.trim();
   if (trimmed) return trimmed;
@@ -226,7 +238,7 @@ export function resolvePlatformEndpoint(
   if (!location) return 'ws://127.0.0.1:3002';
 
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const port = location.port === '3000' || location.port === '5173' ? '3002' : location.port;
+  const port = location.port === '3000' || (developmentMode && location.port) ? '3002' : location.port;
   return `${protocol}//${location.hostname}${port ? `:${port}` : ''}`;
 }
 
@@ -591,6 +603,45 @@ export function platformCustomRoomSnapshotFromMessage(message: unknown): Platfor
     spectators,
     boardgameMatchID: typeof data.boardgameMatchID === 'string' ? data.boardgameMatchID : undefined,
   };
+}
+
+export function platformAvailableRoomsFromMessage(message: unknown): PlatformAvailableRoom[] | null {
+  if (!message || typeof message !== 'object') return null;
+  const rooms = (message as { rooms?: unknown }).rooms;
+  if (!Array.isArray(rooms)) return null;
+  return rooms
+    .map((room): PlatformAvailableRoom | null => {
+      if (!room || typeof room !== 'object') return null;
+      const data = room as Partial<PlatformAvailableRoom>;
+      if (
+        typeof data.roomCode !== 'string' ||
+        !data.roomCode.trim() ||
+        typeof data.hostDisplayName !== 'string' ||
+        !data.hostDisplayName.trim() ||
+        !Number.isFinite(data.playerCount) ||
+        !Number.isFinite(data.createdAt)
+      ) {
+        return null;
+      }
+      return {
+        roomCode: data.roomCode.trim().slice(0, 128),
+        hostDisplayName: data.hostDisplayName.trim().slice(0, 60),
+        playerCount: Math.max(0, Math.trunc(data.playerCount as number)),
+        createdAt: Math.max(0, Math.trunc(data.createdAt as number)),
+      };
+    })
+    .filter((room): room is PlatformAvailableRoom => Boolean(room));
+}
+
+export async function fetchPlatformAvailableRooms(): Promise<PlatformAvailableRoom[]> {
+  const { Client } = await import('colyseus.js');
+  const client = new Client(resolvePlatformEndpoint());
+  const response = await client.http.get('api/rooms', {
+    headers: { Accept: 'application/json' },
+  });
+  const rooms = platformAvailableRoomsFromMessage(response.data);
+  if (!rooms) throw new Error('Invalid platform room list');
+  return rooms;
 }
 
 function bindPlatformCustomRoomHandlers(room: Room<unknown>, handlers: PlatformCustomRoomHandlers): PlatformCustomRoom {

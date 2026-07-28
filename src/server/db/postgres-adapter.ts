@@ -423,6 +423,23 @@ export class PostgresAdapter {
     }
   }
 
+  async withRematchLock<T>(matchID: string, operation: () => Promise<T>): Promise<T> {
+    await this.connect();
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [matchID]);
+      const result = await operation();
+      await client.query('COMMIT');
+      return result;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   async setState(matchID: string, state: State, deltalog?: LogEntry[]): Promise<void> {
     if (this.closed) return;
     await this.connect();

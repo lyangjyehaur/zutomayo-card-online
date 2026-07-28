@@ -24,6 +24,14 @@ export type OnlineStatusPanelCopy = {
   tone: 'neutral' | 'waiting' | 'success' | 'error';
 };
 
+export function hasOnlineOpponent(
+  players: Array<{ id: number; name?: string } | undefined> | undefined,
+  playerID: '0' | '1',
+): boolean {
+  const opponentID = playerID === '0' ? 1 : 0;
+  return Boolean(players?.some((player) => player?.id === opponentID && player.name));
+}
+
 export function isOnlineRoomErrorKey(value: string): value is OnlineRoomErrorKey {
   return (
     value === 'online.roomFull' ||

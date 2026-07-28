@@ -13,11 +13,13 @@ import { hasStoredCustomDeck } from './game/cards/customDeck';
 import { getGameConfig as getLoadedGameConfig } from './game/cards/loader';
 import type { ZutomayoSetupData } from './game/types';
 import type { AIDifficulty } from './game/ai';
-import { LobbyPage, aiOpponentDeckName, onlineDeckName, serverDeckIdFromOption } from './pages/LobbyPage';
+import { LobbyPage, aiOpponentDeckSetup, onlineDeckName, serverDeckIdFromOption } from './pages/LobbyPage';
 import { t, translate, useLocale, type TranslationKey } from './i18n';
 import {
   clearStoredOnlineSession,
+  leaveOnlineSession,
   loadOnlineSession,
+  requestOnlineRematch,
   saveOnlineSession,
   validateOnlineSession,
   type OnlineSession,
@@ -498,9 +500,40 @@ function RouterShell() {
     return session;
   };
 
+  const rematchOnline = async (previousSession: OnlineSession): Promise<OnlineSession> => {
+    const nextMatchID = await requestOnlineRematch(previousSession);
+    const { playerCredentials, platformSeatToken, platformUserId, platformDisplayName } = await joinMatch(
+      nextMatchID,
+      previousSession.playerID,
+      previousSession.platformDisplayName,
+    );
+    const nextSession: OnlineSession = {
+      matchID: nextMatchID,
+      playerID: previousSession.playerID,
+      playerCredentials,
+      platformSeatToken,
+      platformUserId,
+      platformDisplayName,
+    };
+    setOnlineSession(nextSession);
+    setResumePromptSession(null);
+    saveOnlineSession(nextSession);
+    navigate(`/play/online/${encodeURIComponent(nextMatchID)}`, { state: { freshOnlineSession: true } });
+    // Keep the finished match seats intact until both players have exchanged
+    // their old credentials for seats in the shared rematch.
+    return nextSession;
+  };
+
   const clearOnlineSession = useCallback(() => {
     setOnlineSession(null);
     clearStoredOnlineSession();
+  }, []);
+
+  const cancelPendingOnlineSession = useCallback(async (session: OnlineSession) => {
+    await leaveOnlineSession(session);
+    setOnlineSession((current) => (current?.matchID === session.matchID ? null : current));
+    setResumePromptSession((current) => (current?.matchID === session.matchID ? null : current));
+    if (loadOnlineSession()?.matchID === session.matchID) clearStoredOnlineSession();
   }, []);
 
   const resumeStoredSession = async () => {
@@ -534,7 +567,7 @@ function RouterShell() {
   };
 
   const aiPlayerDeck = onlineDeckName(0, deck0Name, serverDecks);
-  const deck1 = aiOpponentDeckName(deck1Name);
+  const aiOpponentDeck = aiOpponentDeckSetup(deck1Name, serverDecks);
   const cardsReady = cardResourceState === 'ready';
   const cardsLoadError = cardResourceState === 'error';
   // 沉浸頁面暫不顯示跨頁的對局恢復提示；全域舊 NavBar 已移除。
@@ -561,6 +594,7 @@ function RouterShell() {
                   serverDecks={serverDecks}
                   setDeck0Name={setDeck0Name}
                   onStartOnline={startOnline}
+                  onCancelOnlineSession={cancelPendingOnlineSession}
                   onAuthChanged={refreshServerDecks}
                   serverDeckError={serverDeckError}
                   cardsReady={cardsReady}
@@ -593,7 +627,8 @@ function RouterShell() {
                 <AIGamePage
                   deck0Name={aiPlayerDeck.deck0Name}
                   deck0Ids={aiPlayerDeck.deck0Ids}
-                  deck1Name={deck1}
+                  deck1Name={aiOpponentDeck.deck1Name}
+                  deck1Ids={aiOpponentDeck.deck1Ids}
                   cardsReady={cardsReady}
                   cardsLoadError={cardsLoadError}
                   onRetryCards={refreshCardResources}
@@ -617,6 +652,7 @@ function RouterShell() {
                   session={onlineSession}
                   onClearSession={clearOnlineSession}
                   onCreateNewRoom={() => startOnline()}
+                  onRematch={rematchOnline}
                 />
               }
             />
