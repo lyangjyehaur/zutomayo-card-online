@@ -10,6 +10,7 @@ import type { GameState } from '../game/types';
 import { Sentry } from '../sentry';
 import { t } from '../i18n';
 import { PageShell } from '../ui';
+import { AIDecisionInspector } from './AIDecisionInspector';
 
 interface AIGameProps {
   difficulty: AIDifficulty;
@@ -324,6 +325,7 @@ export function AIGame({
           <AIClient playerID="1" />
         </div>
       </div>
+      {import.meta.env.DEV && !tutorialMode && <AIDecisionInspector />}
     </PageShell>
   );
 }
