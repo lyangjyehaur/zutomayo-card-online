@@ -113,6 +113,15 @@
 
 同輪修正後以 production API 的 425 張卡執行 `AI_SOAK_GAMES=5`，共 15/15 場完成、零非法 move、零卡死；Hard 98 次決策的 `p95 = 296.14 ms`，4 次在預算內走合法 fallback。另以 `AI_MATRIX_GAMES=1` 執行 40 場雙邊矩陣，完成 40/40、零失敗，覆蓋 13 次 `PendingChoice`；Normal 對 Easy 為 `11-9`，Hard 對 Normal 為 `15-5`，Hard 平均終局 HP 差為 `+41.5`，Hard 240 次決策的 `p95 = 240.59 ms`、最大 `397.60 ms`、8 次合法 fallback。這輪 Node 證據已恢復安全、策略差異與一般決策效能判定；production browser long-task 基準仍須在 PR 前重跑。
 
+`npm run benchmark:ai:browser` 會開啟 staging／release candidate 的 production 頁面，等 `/api/cards` 載入後，透過明確的 `?ai-performance=1` QA 入口在主執行緒執行三組 Hard 決策。腳本以桌面 `1440x900` 與手機 `390x844` 各跑一輪，將 release build／rules 版本、卡牌策略欄位 SHA-256、每次決策時間、fallback、sample 完成度、browser console error 與重疊的 `PerformanceObserver` long task 寫入 JSON；缺少候選版身分、卡表指紋或任何 AI 搜尋重疊 long task 超過 `100 ms` 都會失敗。入口只在指定 query 存在且正式卡表已載入時動態安裝，不會改變一般玩家流程。
+
+等待其他功能完成後，應以最終候選版依序執行：
+
+1. 將所有預定功能整合到同一個 release candidate，完成衝突處理後執行 `npm run verify`。
+2. 對候選版鎖定的正式卡表重跑 `npm run smoke:ai` 與 `npm run benchmark:ai`，保存 JSON 與卡表／commit 識別。
+3. 將同一 commit 部署到 staging production stack，執行 `BASE_URL=https://<staging-host> npm run benchmark:ai:browser`；不得以 Vite dev server 結果替代。
+4. AI browser gate 通過後，再執行通用 `npm run release:gate`、認證雙玩家 E2E 與部署所需的 exact-dataset／restore evidence。任一候選 commit 或正式卡表變更都必須使上述證據失效並重跑。
+
 ## 3. 目標難度契約
 
 所有難度都必須遵守合法 move、不能讓階段流程卡死、不能讀取 player 1 看不到的資訊，並且必須在限定時間內完成決策。
