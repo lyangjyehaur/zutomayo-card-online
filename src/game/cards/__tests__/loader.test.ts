@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getAllCardDefs, getCardDef, initCards, refreshCards, registerCardDefFallbacks } from '../loader';
-import { randomDeck } from '../deckBuilder';
+import { randomDeck, randomElementDeck } from '../deckBuilder';
 
 describe('card loader', () => {
   beforeEach(() => {
@@ -39,6 +39,37 @@ describe('card loader', () => {
 
   it('refuses to build a random deck from an empty card pool', () => {
     expect(() => randomDeck()).toThrow('Cards not loaded yet');
+  });
+
+  it('fills random decks from the remaining pool when non-character cards are scarce', () => {
+    const cards = [
+      ...Array.from({ length: 25 }, (_, index) => ({
+        id: `character_${index}`,
+        type: 'Character' as const,
+        element: '闇' as const,
+      })),
+      ...Array.from({ length: 3 }, (_, index) => ({
+        id: `enchant_${index}`,
+        type: 'Enchant' as const,
+        element: '闇' as const,
+      })),
+    ] as Parameters<typeof initCards>[0];
+    initCards(cards);
+
+    expect(randomDeck()).toHaveLength(20);
+    expect(randomElementDeck('闇')).toHaveLength(20);
+  });
+
+  it('rejects a loaded card pool that cannot form a complete deck', () => {
+    initCards(
+      Array.from({ length: 19 }, (_, index) => ({
+        id: `character_${index}`,
+        type: 'Character' as const,
+        element: '闇' as const,
+      })) as Parameters<typeof initCards>[0],
+    );
+
+    expect(() => randomDeck()).toThrow('Card pool must contain at least 20 cards, got 19');
   });
 
   it('uses presentation fallbacks without treating them as the authoritative card dataset', () => {

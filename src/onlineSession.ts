@@ -54,6 +54,17 @@ export function clearStoredOnlineSession(): void {
   getStorage()?.removeItem(ONLINE_SESSION_STORAGE_KEY);
 }
 
+export function resolveOnlineRouteSession(
+  session: OnlineSession | null,
+  storedSession: OnlineSession | null,
+  matchID: string,
+  spectatorMode: boolean,
+): OnlineSession | null {
+  if (spectatorMode || !matchID) return null;
+  if (session?.matchID === matchID) return session;
+  return storedSession?.matchID === matchID ? storedSession : null;
+}
+
 export async function leaveOnlineSession(session: OnlineSession): Promise<void> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 3_000);

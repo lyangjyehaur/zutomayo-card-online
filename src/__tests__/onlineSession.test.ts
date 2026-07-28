@@ -5,6 +5,7 @@ import {
   loadOnlineSession,
   ONLINE_SESSION_STORAGE_KEY,
   requestOnlineRematch,
+  resolveOnlineRouteSession,
   saveOnlineSession,
   type OnlineSession,
   validateOnlineSession,
@@ -70,6 +71,23 @@ describe('online session storage', () => {
     clearStoredOnlineSession();
 
     expect(localStorage.removeItem).toHaveBeenCalledWith(ONLINE_SESSION_STORAGE_KEY);
+  });
+
+  it('uses the newly stored rematch session while the parent state still points at the previous match', () => {
+    const previousSession: OnlineSession = {
+      matchID: 'bgio-match-1',
+      playerID: '0',
+      playerCredentials: 'credential-1',
+    };
+    const rematchSession: OnlineSession = {
+      matchID: 'bgio-match-2',
+      playerID: '0',
+      playerCredentials: 'credential-2',
+    };
+
+    expect(resolveOnlineRouteSession(previousSession, rematchSession, 'bgio-match-2', false)).toBe(rematchSession);
+    expect(resolveOnlineRouteSession(previousSession, rematchSession, 'bgio-match-3', false)).toBeNull();
+    expect(resolveOnlineRouteSession(previousSession, rematchSession, 'bgio-match-2', true)).toBeNull();
   });
 
   it('refreshes platform seat tokens without dropping stable platform identity', async () => {

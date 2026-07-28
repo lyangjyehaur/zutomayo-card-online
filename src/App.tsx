@@ -515,10 +515,11 @@ function RouterShell() {
       platformUserId,
       platformDisplayName,
     };
-    setOnlineSession(nextSession);
-    setResumePromptSession(null);
+    // Persist before navigating so the new route can resolve this session while React commits the parent state.
     saveOnlineSession(nextSession);
     navigate(`/play/online/${encodeURIComponent(nextMatchID)}`, { state: { freshOnlineSession: true } });
+    setOnlineSession(nextSession);
+    setResumePromptSession(null);
     // Keep the finished match seats intact until both players have exchanged
     // their old credentials for seats in the shared rematch.
     return nextSession;

@@ -10,6 +10,8 @@ import { t, translate, useLocale } from '../i18n';
 import {
   clearStoredOnlineSession,
   leaveOnlineSession,
+  loadOnlineSession,
+  resolveOnlineRouteSession,
   validateOnlineSession,
   type OnlineSession,
 } from '../onlineSession';
@@ -137,7 +139,7 @@ export function OnlineGamePage({ session, onClearSession, onCreateNewRoom, onRem
   const locale = useLocale();
   const { matchID = '' } = useParams<'matchID'>();
   const spectatorMode = new URLSearchParams(location.search).get('spectate') === '1';
-  const activeSession = !spectatorMode && session?.matchID === matchID ? session : null;
+  const activeSession = resolveOnlineRouteSession(session, loadOnlineSession(), matchID, spectatorMode);
   const [reconnectStatus, setReconnectStatus] = useState<OnlineRoomStatus>('reconnecting');
   const [retryNonce, setRetryNonce] = useState(0);
   const [leavePromptOpen, setLeavePromptOpen] = useState(false);
@@ -187,7 +189,7 @@ export function OnlineGamePage({ session, onClearSession, onCreateNewRoom, onRem
   }, []);
 
   useEffect(() => {
-    if (spectatorMode || activeSession || !matchID) return;
+    if (spectatorMode || activeSession || !matchID || terminalActionRef.current) return;
     navigate(`/online?room=${encodeURIComponent(matchID)}`, { replace: true });
   }, [activeSession, matchID, navigate, spectatorMode]);
 

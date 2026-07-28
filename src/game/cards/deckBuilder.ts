@@ -43,6 +43,26 @@ function assertCardsLoaded(): void {
   }
 }
 
+function buildRandomDeckFromPool(
+  pool: ReturnType<typeof getAllCardDefs>,
+  desiredCharacterCount: number,
+): CardInstance[] {
+  if (pool.length < 20) {
+    throw new Error(`Card pool must contain at least 20 cards, got ${pool.length}`);
+  }
+
+  const characters = shuffle(pool.filter((card) => card.type === 'Character'));
+  const others = shuffle(pool.filter((card) => card.type !== 'Character'));
+  const selected = [...characters.slice(0, desiredCharacterCount), ...others.slice(0, 20 - desiredCharacterCount)];
+
+  if (selected.length < 20) {
+    const selectedIds = new Set(selected.map((card) => card.id));
+    selected.push(...shuffle(pool.filter((card) => !selectedIds.has(card.id))).slice(0, 20 - selected.length));
+  }
+
+  return shuffle(selected).map((card) => createInstance(card.id));
+}
+
 // Build a deck from a list of card def IDs (must be 20 cards)
 export function buildDeck(defIds: string[]): CardInstance[] {
   // 所有牌組建構路徑（custom / preset / randomDeck）統一走驗證，確保不合規牌組無法進入遊戲。
@@ -121,15 +141,9 @@ export function getPresetDeckNames(): string[] {
 export function randomDeck(): CardInstance[] {
   assertCardsLoaded();
   const allCards = getAllCardDefs();
-  const characters = allCards.filter((c) => c.type === 'Character');
-  const others = allCards.filter((c) => c.type !== 'Character');
   // 官方推薦 Character >= 50%（非強制）；隨機決定 10-15 張角色卡，其餘從非角色卡隨機抽取
   const charCount = 10 + Math.floor(Math.random() * 6); // 10-15
-  const otherCount = 20 - charCount;
-  const deckChars = shuffle(characters).slice(0, charCount);
-  const deckOthers = shuffle(others).slice(0, otherCount);
-  const deck = shuffle([...deckChars, ...deckOthers]);
-  return deck.map((c) => createInstance(c.id));
+  return buildRandomDeckFromPool(allCards, charCount);
 }
 
 /**
@@ -142,15 +156,9 @@ export function randomDeck(): CardInstance[] {
 export function randomElementDeck(element: Element): CardInstance[] {
   assertCardsLoaded();
   const pool = getAllCardDefs().filter((c) => c.element === element);
-  const characters = pool.filter((c) => c.type === 'Character');
-  const others = pool.filter((c) => c.type !== 'Character');
   // 官方推薦 Character >= 50%（非強制）；隨機決定 10-15 張角色卡
   const charCount = 10 + Math.floor(Math.random() * 6); // 10-15
-  const otherCount = 20 - charCount;
-  const deckChars = shuffle(characters).slice(0, charCount);
-  const deckOthers = shuffle(others).slice(0, otherCount);
-  const deck = shuffle([...deckChars, ...deckOthers]);
-  return deck.map((c) => createInstance(c.id));
+  return buildRandomDeckFromPool(pool, charCount);
 }
 
 /**
