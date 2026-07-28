@@ -368,9 +368,9 @@ export const ja: Record<TranslationKey, string> = {
   'difficulty.easy': 'やさしい',
   'difficulty.normal': 'ふつう',
   'difficulty.hard': 'むずかしい',
-  'difficulty.easyDesc': '入門向けテンポ',
-  'difficulty.normalDesc': '標準的な判断',
-  'difficulty.hardDesc': '高圧的な選択',
+  'difficulty.easyDesc': '合理的だがミスもある',
+  'difficulty.normalDesc': '資源と効果を評価',
+  'difficulty.hardDesc': '効果を模擬し先を読む',
 
   'deck.random': 'ランダムデッキ',
   'deck.randomDesc': '全425枚のカードプールからランダムに20枚抽出',

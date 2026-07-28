@@ -1,6 +1,14 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { initCards, isCardsInitialized, createInstance, getAllCardDefs } from '../cards/loader';
-import { aiSelectCards } from '../ai';
+import {
+  aiPlanTurn,
+  aiSelectCards,
+  aiSelectEffect,
+  aiSelectMulligan,
+  aiSelectPendingChoice,
+  createAIKnowledgeState,
+} from '../ai';
+import { generateTurnPlans } from '../ai/candidates';
 import { setupGame, chooseJanken, finishMulligan, setInitialCard, confirmReady } from '../GameLogic';
 import { parseAllEffects } from '../effects/parser';
 import type { CardDef, CardType, GameState } from '../types';
@@ -32,6 +40,11 @@ const TEST_CARDS: CardDef[] = [
   ...Array.from({ length: 15 }, (_, i) => makeCard(`test-character-${i + 1}`, 'Character')),
   ...Array.from({ length: 8 }, (_, i) => makeCard(`test-enchant-${i + 1}`, 'Enchant')),
   ...Array.from({ length: 2 }, (_, i) => makeCard(`test-area-enchant-${i + 1}`, 'Area Enchant')),
+  makeCard('test-expensive-character', 'Character', { powerCost: 99, attack: { night: 80, day: 80 } }),
+  makeCard('test-direct-damage', 'Character', {
+    attack: { night: 20, day: 20 },
+    effect: '相手に30ダメージを与える。',
+  }),
 ];
 
 if (!isCardsInitialized()) {
@@ -131,7 +144,7 @@ describe('aiSelectCards', () => {
     expect(result[0].handIndex).toBeLessThan(5);
   });
 
-  it('returns 2 cards when required set count is 2 (loser)', () => {
+  it('returns a legal optional card count for the previous loser', () => {
     const G = makeGWithHand([
       'test-character-1',
       'test-character-2',
@@ -142,9 +155,21 @@ describe('aiSelectCards', () => {
     // Simulate player 0 being the loser of previous battle
     G.lastBattleResult = { winner: 1, damage: 10, winnerAttack: 30, loserAttack: 20 };
     const result = aiSelectCards(G, 0, 'normal');
-    expect(result).toHaveLength(2);
-    // Two different hand indices
-    expect(result[0].handIndex).not.toBe(result[1].handIndex);
+    expect(result.length).toBeGreaterThanOrEqual(1);
+    expect(result.length).toBeLessThanOrEqual(2);
+    expect(new Set(result.map((selection) => selection.slot)).size).toBe(result.length);
+
+    const plans = generateTurnPlans(createAIKnowledgeState(G, 0));
+    expect(
+      plans.some(
+        (plan) =>
+          plan.length === 2 &&
+          plan
+            .map((selection) => selection.slot)
+            .sort()
+            .join(',') === 'A,B',
+      ),
+    ).toBe(true);
   });
 
   it('works in initialSet step', () => {
@@ -188,7 +213,7 @@ describe('aiSelectCards', () => {
     }
   });
 
-  it('hard difficulty handles 2-card requirement with limited slots', () => {
+  it('hard difficulty handles the loser optional second card with limited slots', () => {
     const G = makeGWithHand([
       'test-character-1',
       'test-character-2',
@@ -198,10 +223,9 @@ describe('aiSelectCards', () => {
     ]);
     G.lastBattleResult = { winner: 1, damage: 10, winnerAttack: 30, loserAttack: 20 };
     const result = aiSelectCards(G, 0, 'hard');
-    expect(result).toHaveLength(2);
-    // Slots should be A and B
-    const slots = result.map((r) => r.slot).sort();
-    expect(slots).toEqual(['A', 'B']);
+    expect(result.length).toBeGreaterThanOrEqual(1);
+    expect(result.length).toBeLessThanOrEqual(2);
+    expect(new Set(result.map((selection) => selection.slot)).size).toBe(result.length);
   });
 
   it('does not modify the original game state hand', () => {
@@ -259,5 +283,149 @@ describe('aiSelectCards with power cost considerations', () => {
     G.players[0].powerCharger = [createInstance('test-character-1')];
     const result = aiSelectCards(G, 0, 'hard');
     expect(result).toHaveLength(1);
+  });
+});
+
+describe('AI difficulty policy contracts', () => {
+  it('replays easy decisions from the same seed without using global Math.random', () => {
+    const G = makeGWithHand([
+      'test-character-1',
+      'test-character-2',
+      'test-character-3',
+      'test-enchant-1',
+      'test-enchant-2',
+    ]);
+    const random = vi.spyOn(Math, 'random').mockImplementation(() => {
+      throw new Error('AI must not use global Math.random');
+    });
+    try {
+      expect(aiPlanTurn(G, 0, 'easy', { seed: 'repeatable' }).action).toEqual(
+        aiPlanTurn(G, 0, 'easy', { seed: 'repeatable' }).action,
+      );
+    } finally {
+      random.mockRestore();
+    }
+  });
+
+  it('sanitizes authoritative opponent cards before making a decision', () => {
+    const first = makeGWithHand([
+      'test-character-1',
+      'test-character-2',
+      'test-character-3',
+      'test-enchant-1',
+      'test-enchant-2',
+    ]);
+    const second = structuredClone(first) as GameState;
+    first.players[1].hand = [createInstance('test-character-4'), createInstance('test-character-5')];
+    second.players[1].hand = [createInstance('test-direct-damage'), createInstance('test-expensive-character')];
+
+    const firstKnowledge = createAIKnowledgeState(first, 0);
+    const secondKnowledge = createAIKnowledgeState(second, 0);
+    expect(firstKnowledge.game.players[1].hand.map((card) => card.defId)).toEqual(['__hidden__', '__hidden__']);
+    expect(secondKnowledge.game.players[1].hand.map((card) => card.defId)).toEqual(['__hidden__', '__hidden__']);
+    expect(aiPlanTurn(first, 0, 'hard', { seed: 'hidden-invariant' }).action).toEqual(
+      aiPlanTurn(second, 0, 'hard', { seed: 'hidden-invariant' }).action,
+    );
+  });
+
+  it('normal and hard redraw an opening with no Character', () => {
+    const G = setupGame();
+    G.step = 'mulligan';
+    G.players[0].hand = Array.from({ length: 5 }, (_, index) => createInstance(`test-enchant-${index + 1}`));
+    expect(aiSelectMulligan(G, 0, 'normal', { seed: 1 }).action.length).toBeGreaterThan(0);
+    expect(aiSelectMulligan(G, 0, 'hard', { seed: 1 }).action.length).toBeGreaterThan(0);
+  });
+
+  it('keeps a strong and immediately playable Character opening', () => {
+    const G = setupGame();
+    G.step = 'mulligan';
+    G.players[0].hand = Array.from({ length: 5 }, (_, index) => createInstance(`test-character-${index + 1}`));
+    expect(aiSelectMulligan(G, 0, 'normal', { seed: 1 }).action).toEqual([]);
+    expect(aiSelectMulligan(G, 0, 'hard', { seed: 1 }).action).toEqual([]);
+  });
+
+  it('prioritizes lethal direct damage over healing at full HP', () => {
+    const G = setupGame();
+    G.step = 'effectOrder';
+    G.players[0].hp = 100;
+    G.players[1].hp = 20;
+    G.pendingEffectPlayer = 0;
+    G.pendingEffects[0] = [
+      {
+        id: 'heal',
+        player: 0,
+        cardInstanceId: 'heal-card',
+        cardDefId: 'test-character-1',
+        rawText: 'heal',
+        effect: {
+          trigger: 'onUse',
+          conditions: [],
+          action: { type: 'heal', params: { value: 30 } },
+          rawText: 'heal',
+        },
+        source: 'played',
+      },
+      {
+        id: 'lethal',
+        player: 0,
+        cardInstanceId: 'damage-card',
+        cardDefId: 'test-direct-damage',
+        rawText: 'damage',
+        effect: {
+          trigger: 'onUse',
+          conditions: [],
+          action: { type: 'directDamage', params: { value: 30 } },
+          rawText: 'damage',
+        },
+        source: 'played',
+      },
+    ];
+
+    const decision = aiSelectEffect(G, 0, 'normal');
+    expect(decision?.action).toBe(1);
+    expect(decision?.reason).toBe('prioritize-directDamage');
+  });
+
+  it('chooses the lower-value discard instead of the first option', () => {
+    const G = setupGame();
+    const strong = createInstance('test-character-1');
+    const weak = createInstance('test-expensive-character');
+    G.players[0].hand = [strong, weak];
+    G.step = 'effectOrder';
+    G.pendingChoice = {
+      id: 'discard-one',
+      player: 0,
+      type: 'optionalHandMoveThenDraw',
+      min: 1,
+      max: 1,
+      payload: {
+        sourcePlayer: 0,
+        sourceZone: 'hand',
+        destinationPlayer: 0,
+        destinationZone: 'abyss',
+        drawCount: 1,
+        filter: {},
+      },
+      options: [
+        { id: strong.instanceId, label: 'strong', cardDefId: strong.defId },
+        { id: weak.instanceId, label: 'weak', cardDefId: weak.defId },
+      ],
+    };
+
+    expect(aiSelectPendingChoice(G, 0, 'normal')?.action).toEqual([weak.instanceId]);
+  });
+
+  it('returns a legal normal-policy fallback when hard search exceeds its budget', () => {
+    const G = makeGWithHand([
+      'test-character-1',
+      'test-character-2',
+      'test-character-3',
+      'test-enchant-1',
+      'test-enchant-2',
+    ]);
+    let time = 0;
+    const decision = aiPlanTurn(G, 0, 'hard', { budgetMs: 1, now: () => (time += 2) });
+    expect(decision.action.selections).toHaveLength(1);
+    expect(decision.fallback).toBe('search-budget-exhausted');
   });
 });

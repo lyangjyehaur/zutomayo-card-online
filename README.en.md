@@ -15,7 +15,7 @@ Version 0.2.4 adds the card catalog, deck-share metadata and synergy recommendat
 
 ### Game and Battle
 
-- Local two-player and easy, normal, or hard AI; hard currently uses effect-free current-turn lookahead. See the [AI difficulty roadmap](docs/ai-difficulty-roadmap.md) for its limits and planned rewrite.
+- Local two-player and easy, normal, or hard AI with strategic mulligans, effect and target scoring, and bounded rules-driven turn simulation on hard.
 - Complete data for 425 cards across 4 packs, with all 270 effect lines parsed, including the separately reviewed and audited Fourth Set SE cards 105-107.
 - Rock-paper-scissors, mulligan, initial setup, effect ordering, player choices, battle, and Chronos day/night flow.
 - Authoritative phase timers and timeout recovery prevent disconnected or unresponsive players from blocking a match forever.

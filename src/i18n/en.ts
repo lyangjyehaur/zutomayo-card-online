@@ -367,9 +367,9 @@ export const en: Record<TranslationKey, string> = {
   'difficulty.easy': 'Easy',
   'difficulty.normal': 'Normal',
   'difficulty.hard': 'Hard',
-  'difficulty.easyDesc': 'Beginner-friendly',
-  'difficulty.normalDesc': 'Standard play',
-  'difficulty.hardDesc': 'Aggressive picks',
+  'difficulty.easyDesc': 'Reasonable play with mistakes',
+  'difficulty.normalDesc': 'Scores resources and effects',
+  'difficulty.hardDesc': 'Simulates effects and plans ahead',
 
   'deck.random': 'Random Deck',
   'deck.randomDesc': 'Randomly draw 20 cards from the full 425-card pool',

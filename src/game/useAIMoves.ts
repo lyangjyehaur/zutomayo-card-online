@@ -1,9 +1,25 @@
 import { useEffect, useRef } from 'react';
 import type { Ctx } from 'boardgame.io';
 import type { GameState, JankenChoice, PendingChoice, SetSlot } from './types';
-import { aiSelectCards, type AIDifficulty } from './ai';
+import {
+  aiPlanTurn,
+  aiSelectEffect,
+  aiSelectJanken,
+  aiSelectMulligan,
+  aiSelectPendingChoice,
+  type AIDecision,
+  type AIDifficulty,
+  type AISelection,
+} from './ai';
 import { getMinimumSetCount, getRequiredSetCount } from './GameLogic';
 import { defaultPendingChoiceOptionIds, pendingChoiceSelectionError } from './pendingChoices';
+
+const AI_ACTION_DELAY_MS = 450;
+
+function publishDecisionTrace(decision: AIDecision<unknown>): void {
+  if (!import.meta.env.DEV || typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent('zutomayo:ai-decision', { detail: decision }));
+}
 
 // 為 AI 挑選合法的 pendingChoice option 組合。
 // handAbyssSwap 必須含 1 個 hand: 與 1 個 abyss: option，否則 handler 判定 invalid。
@@ -53,6 +69,7 @@ export interface TutorialAIScript {
 
 export interface ZutomayoMoveDispatchers {
   janken: (choice: JankenChoice) => void;
+  mulligan: (indices: number[]) => void;
   keepHand: () => void;
   setInitialCard: (handIndex: number) => void;
   setTurnCard: (handIndex: number, slot: SetSlot) => void;
@@ -73,17 +90,23 @@ export function useAIMoves(
   fastMode?: boolean,
 ) {
   const timeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activePlan = useRef<{
+    turnNumber: number;
+    step: GameState['step'];
+    selections: AISelection[];
+    decisionToken: string;
+  } | null>(null);
   const active = playerID === '1' && !!ctx && !ctx.gameover;
 
   useEffect(() => {
     // 教學導覽階段（aiPaused=true）暫停 AI，避免場地導覽時 AI 自動出拳/放置卡牌
     if (!active || !G || G.step === 'gameOver' || aiPaused) return;
-    // Tutorial mode: longer delays to give user time to read
-    const baseDelay = difficulty === 'easy' ? 700 : difficulty === 'normal' ? 450 : 250;
-    const delay = fastMode ? 50 : tutorialMode ? Math.max(baseDelay, 2000) : baseDelay;
+    // Difficulty controls policy only. Presentation timing is a separate UX concern.
+    const delay = fastMode ? 50 : tutorialMode ? 2000 : AI_ACTION_DELAY_MS;
     timeout.current = setTimeout(() => {
       const player = G.players[1];
       if (G.step === 'janken') {
+        activePlan.current = null;
         if (G.jankenChoices[1]) return;
         // 教學模式：等玩家出拳後，AI 出會輸的拳，確保玩家不管出什麼都贏
         if (aiScript) {
@@ -95,32 +118,45 @@ export function useAIMoves(
           };
           moves.janken(beats[G.jankenChoices[0] as JankenChoice]);
         } else {
-          const choices: JankenChoice[] = ['rock', 'paper', 'scissors'];
-          moves.janken(choices[Math.floor(Math.random() * 3)]);
+          const decision = aiSelectJanken(G, 1, difficulty);
+          publishDecisionTrace(decision);
+          moves.janken(decision.action);
         }
         return;
       }
       if (G.step === 'mulligan') {
-        if (!G.mulliganUsed[1]) moves.keepHand();
+        activePlan.current = null;
+        if (!G.mulliganUsed[1]) {
+          const decision = aiSelectMulligan(G, 1, difficulty);
+          publishDecisionTrace(decision);
+          moves.mulligan(decision.action);
+        }
         return;
       }
       // 效果執行後可能產生 pendingChoice（如選擇手牌棄置），step 仍為 effectOrder
       // 但 pendingEffects 已清空，必須優先處理 pendingChoice 否則遊戲會卡死。
       if (G.pendingChoice && G.pendingChoice.player === 1) {
+        activePlan.current = null;
         const choice = G.pendingChoice;
         // 教學腳本：用 defId 一對一匹配 option；不合法時 fallback 到通用選擇。
         const scriptedDefIds = aiScript?.pendingChoiceDefIdsByTurn?.[G.turnNumber];
-        const ids = aiChoiceOptionIds(choice, scriptedDefIds);
+        const scriptedIds = scriptedDefIds ? aiChoiceOptionIds(choice, scriptedDefIds) : null;
+        const decision = scriptedIds ? null : aiSelectPendingChoice(G, 1, difficulty);
+        if (decision) publishDecisionTrace(decision);
+        const ids = scriptedIds ?? decision?.action ?? aiChoiceOptionIds(choice);
         if (ids) moves.submitPendingChoice(ids);
         return;
       }
       if (G.step === 'effectOrder') {
+        activePlan.current = null;
         if (G.pendingEffectPlayer === 1 && G.pendingEffects[1].length > 0) {
           // 教學腳本：指定效果解決順序；未指定時預設 index 0
           const scriptedOrder = aiScript?.effectOrderByTurn?.[G.turnNumber];
           // 已解決的效果數 = 原始數量 - 當前剩餘；用此作為腳本陣列的推進 index
           // 但腳本 index 是相對於「當前 pendingEffects」的位置，直接取第一個有效 index
-          const idx = scriptedOrder && scriptedOrder.length > 0 ? scriptedOrder[0] : 0;
+          const decision = scriptedOrder && scriptedOrder.length > 0 ? null : aiSelectEffect(G, 1, difficulty);
+          if (decision) publishDecisionTrace(decision);
+          const idx = scriptedOrder && scriptedOrder.length > 0 ? scriptedOrder[0] : (decision?.action ?? 0);
           const safeIdx = Math.min(idx, G.pendingEffects[1].length - 1);
           moves.resolvePendingEffect(safeIdx);
         }
@@ -129,11 +165,15 @@ export function useAIMoves(
       if (G.step !== 'initialSet' && G.step !== 'turnSet') return;
       const minimum = getMinimumSetCount(G, 1);
       const required = getRequiredSetCount(G, 1);
-      if (G.ready[1]) return;
+      if (G.ready[1]) {
+        activePlan.current = null;
+        return;
+      }
       // 教學腳本：用 defId 指定要出的卡，依序設定
       const scriptedSetCards = aiScript?.setCardsByTurn?.[G.turnNumber];
       const cardToSet = scriptedSetCards?.[player.cardsSetThisTurn];
       if (cardToSet) {
+        activePlan.current = null;
         const handIndex = player.hand.findIndex((c) => c.defId === cardToSet.defId);
         if (handIndex >= 0) {
           if (G.step === 'initialSet') moves.setInitialCard(handIndex);
@@ -143,18 +183,50 @@ export function useAIMoves(
         // 腳本指定的卡不在手牌（已被出或不存在），fallback 到 AI 策略
       }
       if (player.cardsSetThisTurn >= minimum && player.cardsSetThisTurn <= required) {
-        moves.confirmReady();
-        return;
+        const plan = activePlan.current;
+        const planMatchesTurn = plan?.turnNumber === G.turnNumber && plan.step === G.step;
+        const remainingPlannedCard =
+          planMatchesTurn &&
+          plan.selections.some((selection) => player.hand.some((card) => card.instanceId === selection.cardInstanceId));
+        if (planMatchesTurn && !remainingPlannedCard) {
+          activePlan.current = null;
+          moves.confirmReady();
+          return;
+        }
       }
       // 空手時無法出牌，規則允許直接 confirmReady，避免永久卡死。
       if (player.hand.length === 0) {
+        activePlan.current = null;
         moves.confirmReady();
         return;
       }
-      const choice = aiSelectCards(G, 1, difficulty)[0];
-      const handIndex = choice?.handIndex ?? 0;
+      let plan = activePlan.current;
+      if (!plan || plan.turnNumber !== G.turnNumber || plan.step !== G.step) {
+        const decision = aiPlanTurn(G, 1, difficulty);
+        publishDecisionTrace(decision);
+        plan = {
+          turnNumber: G.turnNumber,
+          step: G.step,
+          selections: decision.action.selections,
+          decisionToken: decision.action.decisionToken,
+        };
+        activePlan.current = plan;
+      }
+      const next = plan.selections.find((selection) =>
+        player.hand.some((card) => card.instanceId === selection.cardInstanceId),
+      );
+      if (!next) {
+        activePlan.current = null;
+        if (player.cardsSetThisTurn >= minimum) moves.confirmReady();
+        return;
+      }
+      const handIndex = player.hand.findIndex((card) => card.instanceId === next.cardInstanceId);
+      if (handIndex < 0) {
+        activePlan.current = null;
+        return;
+      }
       if (G.step === 'initialSet') moves.setInitialCard(handIndex);
-      else moves.setTurnCard(handIndex, player.setZoneA ? 'B' : 'A');
+      else moves.setTurnCard(handIndex, next.slot);
     }, delay);
     return () => {
       if (timeout.current) clearTimeout(timeout.current);

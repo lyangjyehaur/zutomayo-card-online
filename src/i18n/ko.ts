@@ -366,9 +366,9 @@ export const ko: Record<TranslationKey, string> = {
   'difficulty.easy': '쉬움',
   'difficulty.normal': '보통',
   'difficulty.hard': '어려움',
-  'difficulty.easyDesc': '입문자용',
-  'difficulty.normalDesc': '기본 전략',
-  'difficulty.hardDesc': '공격적 선택',
+  'difficulty.easyDesc': '합리적이지만 실수도 함',
+  'difficulty.normalDesc': '자원과 효과 평가',
+  'difficulty.hardDesc': '효과 시뮬레이션과 단기 계획',
 
   'deck.random': '랜덤 덱',
   'deck.randomDesc': '전체 425장 카드 풀에서 무작위로 20장 추출',
