@@ -1,5 +1,7 @@
 /* global module */
 
+const { sortCardsById } = require('./cardOrder.cjs');
+
 const I18N_LANGS = ['ja', 'zh-TW', 'zh-CN', 'zh-HK', 'en', 'ko'];
 const I18N_LANG_ALIASES = new Map([
   ['zhTW', 'zh-TW'],
@@ -181,7 +183,7 @@ async function getCatalogCards(pool, searchParams = new URLSearchParams()) {
     }
     const rows = (await pool.query(`${CARD_SELECT} FROM cards WHERE ${conditions.join(' AND ')} ORDER BY id`, values))
       .rows;
-    return rows.map(cardRowToDef);
+    return sortCardsById(rows.map(cardRowToDef));
   } catch {
     return [];
   }
