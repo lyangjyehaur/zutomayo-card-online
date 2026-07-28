@@ -44,6 +44,23 @@ test.describe('雙瀏覽器線上對戰 @requires-backend @core', () => {
       await expect(page.locator('[data-tut="janken-panel"]')).toBeVisible();
       await expect(guestPage.locator('[data-tut="janken-panel"]')).toBeVisible();
 
+      await Promise.all([
+        page.getByRole('button', { name: '顯示對戰聊天' }).click(),
+        guestPage.getByRole('button', { name: '顯示對戰聊天' }).click(),
+      ]);
+      await Promise.all([
+        expect(page.locator('[data-chat-status="ready"]')).toBeVisible({ timeout: 20_000 }),
+        expect(guestPage.locator('[data-chat-status="ready"]')).toBeVisible({ timeout: 20_000 }),
+      ]);
+      const hostMessage = `guest-host-${Date.now()}`;
+      const guestMessage = `guest-reply-${Date.now()}`;
+      await page.getByRole('textbox', { name: '對戰聊天訊息' }).fill(hostMessage);
+      await page.getByRole('button', { name: '發送對戰聊天訊息' }).click();
+      await expect(guestPage.locator('.online-chat-bubble', { hasText: hostMessage })).toBeVisible({ timeout: 20_000 });
+      await guestPage.getByRole('textbox', { name: '對戰聊天訊息' }).fill(guestMessage);
+      await guestPage.getByRole('button', { name: '發送對戰聊天訊息' }).click();
+      await expect(page.locator('.online-chat-bubble', { hasText: guestMessage })).toBeVisible({ timeout: 20_000 });
+
       await openOnlineSpectator(spectatorPage, match.matchID);
       await expect(spectatorPage.locator('[data-game-step="janken"]')).toBeVisible({ timeout: 30_000 });
       await expect(spectatorPage.locator('[data-tut="janken-panel"]')).toHaveCount(0);

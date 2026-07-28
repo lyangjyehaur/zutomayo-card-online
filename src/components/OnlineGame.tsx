@@ -29,6 +29,7 @@ import {
   canSubmitMatchChat,
   matchChatAccessStatus,
   matchChatAuthorRole,
+  matchChatFailureStatus,
   matchPlatformPresenceUserId,
 } from '../chat/matchChatAccess';
 import {
@@ -68,7 +69,7 @@ interface OnlineGameProps {
 type ConnectionStatus = 'reconnecting' | 'disconnected' | 'rejoined' | null;
 
 type MatchDataMember = { id: number; name?: string } | undefined;
-type ChatStatus = 'loading' | 'ready' | 'unavailable' | 'login_required' | 'sending';
+type ChatStatus = 'loading' | 'ready' | 'access_denied' | 'unavailable' | 'login_required' | 'sending';
 type OnlineChatEntry = {
   id: string;
   authorDisplayName: string;
@@ -143,6 +144,7 @@ function mergeChatEntries(current: OnlineChatEntry[], incoming: OnlineChatEntry[
 function chatStatusLabel(status: ChatStatus): string {
   if (status === 'loading') return t('chat.matchSyncing');
   if (status === 'login_required') return t('chat.matchLoginRequired');
+  if (status === 'access_denied') return t('chat.matchAccessDenied');
   if (status === 'unavailable') return t('chat.matchOffline');
   return t('chat.matchChat');
 }
@@ -150,6 +152,7 @@ function chatStatusLabel(status: ChatStatus): string {
 function chatEmptyLabel(status: ChatStatus): string {
   if (status === 'loading') return t('chat.matchSyncing');
   if (status === 'login_required') return t('chat.matchLoginToChat');
+  if (status === 'access_denied' || status === 'unavailable') return chatStatusLabel(status);
   return t('chat.matchNoMessages');
 }
 
@@ -302,8 +305,6 @@ export function OnlineGame({
   const [resyncingState, setResyncingState] = useState(false);
   const [platformShellConnectionState, setPlatformShellConnectionState] =
     useState<PlatformMatchShellConnectionState>('connecting');
-  const [platformShellEvidenceReady, setPlatformShellEvidenceReady] = useState(false);
-  const [platformShellUnavailable, setPlatformShellUnavailable] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [chatUnreadCount, setChatUnreadCount] = useState(0);
   const [pageVisible, setPageVisible] = useState(() =>
@@ -463,13 +464,6 @@ export function OnlineGame({
       };
     }
 
-    if (!platformShellEvidenceReady) {
-      if (platformShellUnavailable) setChatStatus('unavailable');
-      return () => {
-        cancelled = true;
-      };
-    }
-
     void loadMatchChatEntries().then(
       (entries) => {
         if (cancelled) return;
@@ -483,22 +477,14 @@ export function OnlineGame({
           level: 'warning',
           data: { match_id: matchID, status: err instanceof ApiError ? err.status : undefined },
         });
-        if (!cancelled) setChatStatus('unavailable');
+        if (!cancelled) setChatStatus(matchChatFailureStatus(err instanceof ApiError ? err.status : undefined));
       },
     );
 
     return () => {
       cancelled = true;
     };
-  }, [
-    chatAccount,
-    chatAccountLoaded,
-    hasPlayerSeat,
-    loadMatchChatEntries,
-    matchID,
-    platformShellEvidenceReady,
-    platformShellUnavailable,
-  ]);
+  }, [chatAccount, chatAccountLoaded, hasPlayerSeat, loadMatchChatEntries, matchID]);
 
   useEffect(() => {
     if (chatStatus !== 'ready' || !chatAccount || !chatOpen || !pageVisible) return;
@@ -561,8 +547,6 @@ export function OnlineGame({
   useEffect(() => {
     if (!chatAccountLoaded) return;
     let cancelled = false;
-    setPlatformShellEvidenceReady(false);
-    setPlatformShellUnavailable(false);
 
     const controller = connectPlatformMatchShellWithRetry(
       {
@@ -581,12 +565,6 @@ export function OnlineGame({
         onRoomChange: (nextRoom) => {
           if (!cancelled) platformRoomRef.current = nextRoom;
         },
-        onPresence: () => {
-          if (!cancelled) {
-            setPlatformShellEvidenceReady(true);
-            setPlatformShellUnavailable(false);
-          }
-        },
         onChatPreview: () => {
           if (cancelled) return;
           void loadMatchChatEntries().then(
@@ -603,11 +581,6 @@ export function OnlineGame({
             },
           );
         },
-        onDisconnect: () => {
-          if (!cancelled) {
-            setPlatformShellEvidenceReady(false);
-          }
-        },
         onError: (err) => {
           Sentry.addBreadcrumb({
             category: 'platform',
@@ -615,9 +588,6 @@ export function OnlineGame({
             level: 'warning',
             data: { match_id: matchID, error: err instanceof Error ? err.message : String(err) },
           });
-          if (!cancelled) {
-            setPlatformShellUnavailable(true);
-          }
         },
       },
     );
@@ -626,8 +596,6 @@ export function OnlineGame({
       cancelled = true;
       platformRoomRef.current = null;
       setPlatformShellConnectionState('stopped');
-      setPlatformShellEvidenceReady(false);
-      setPlatformShellUnavailable(false);
       void controller.stop();
     };
   }, [
@@ -791,7 +759,11 @@ export function OnlineGame({
           level: 'warning',
           data: { match_id: matchID, status: err instanceof ApiError ? err.status : undefined },
         });
-        setChatStatus(err instanceof ApiError && err.status === 401 ? 'login_required' : 'ready');
+        setChatStatus(
+          err instanceof ApiError && (err.status === 401 || err.status === 403)
+            ? matchChatFailureStatus(err.status)
+            : 'ready',
+        );
       }
     },
     [
@@ -1015,7 +987,11 @@ export function OnlineGame({
               })
             }
           />
-          {chatOpen && <span className="online-chat-state">{chatStatusLabel(chatStatus)}</span>}
+          {chatOpen && (
+            <span className="online-chat-state" data-chat-status={chatStatus}>
+              {chatStatusLabel(chatStatus)}
+            </span>
+          )}
         </div>
         {chatOpen && (
           <>
@@ -1085,7 +1061,12 @@ export function OnlineGame({
                 value={chatDraft}
                 onChange={(event) => setChatDraft(event.target.value.slice(0, 500))}
                 maxLength={500}
-                disabled={chatStatus === 'loading' || chatStatus === 'unavailable' || chatStatus === 'login_required'}
+                disabled={
+                  chatStatus === 'loading' ||
+                  chatStatus === 'access_denied' ||
+                  chatStatus === 'unavailable' ||
+                  chatStatus === 'login_required'
+                }
                 aria-label={t('chat.matchInput')}
               />
               <IconButton
@@ -1097,6 +1078,7 @@ export function OnlineGame({
                   !chatDraft.trim() ||
                   chatStatus === 'loading' ||
                   chatStatus === 'sending' ||
+                  chatStatus === 'access_denied' ||
                   chatStatus === 'unavailable' ||
                   chatStatus === 'login_required'
                 }

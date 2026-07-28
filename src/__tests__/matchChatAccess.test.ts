@@ -3,6 +3,7 @@ import {
   canSubmitMatchChat,
   matchChatAccessStatus,
   matchChatAuthorRole,
+  matchChatFailureStatus,
   matchPlatformPresenceUserId,
 } from '../chat/matchChatAccess';
 
@@ -15,6 +16,13 @@ describe('match chat access', () => {
     expect(matchChatAuthorRole(null, false, true)).toBe('player');
     expect(canSubmitMatchChat({ account: null, hasPlayerSeat: true, content: 'hello', status: 'ready' })).toBe(true);
     expect(canSubmitMatchChat({ account: null, hasPlayerSeat: false, content: 'hello', status: 'ready' })).toBe(false);
+  });
+
+  it('separates rejected seat credentials from temporary chat failures', () => {
+    expect(matchChatFailureStatus(401)).toBe('access_denied');
+    expect(matchChatFailureStatus(403)).toBe('access_denied');
+    expect(matchChatFailureStatus(500)).toBe('unavailable');
+    expect(matchChatFailureStatus()).toBe('unavailable');
   });
 
   it('assigns evidence-bearing chat roles only after account identity is loaded', () => {
