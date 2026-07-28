@@ -1,0 +1,854 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>限定卡本機預審核</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: Inter, 'Noto Sans TC', 'Microsoft JhengHei', system-ui, sans-serif;
+        color: #f5efe5;
+        background: #121315;
+        --surface: #1c1e21;
+        --surface-2: #25282c;
+        --line: #3a3e43;
+        --muted: #a6a9ad;
+        --gold: #d9b76d;
+        --green: #68b58d;
+        --red: #d36b72;
+        --blue: #72a7d8;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-width: 320px;
+      }
+      button,
+      input,
+      textarea,
+      select {
+        font: inherit;
+      }
+      button,
+      input,
+      textarea,
+      select {
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        color: inherit;
+        background: #15171a;
+      }
+      button {
+        min-height: 38px;
+        padding: 0 13px;
+        cursor: pointer;
+      }
+      button:hover {
+        border-color: var(--gold);
+      }
+      button:focus-visible,
+      input:focus-visible,
+      textarea:focus-visible,
+      select:focus-visible {
+        outline: 3px solid color-mix(in srgb, var(--blue) 35%, transparent);
+        outline-offset: 1px;
+      }
+      button.primary {
+        border-color: #8f7037;
+        background: #8f7037;
+        color: white;
+      }
+      button.verify {
+        border-color: #2f7655;
+        background: #2f7655;
+        color: white;
+      }
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.45;
+      }
+      header {
+        min-height: 70px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        padding: 12px 18px;
+        border-bottom: 1px solid var(--line);
+        background: #17191c;
+      }
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+      h1 {
+        font-size: 18px;
+      }
+      .subtitle {
+        margin-top: 3px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .summary {
+        display: flex;
+        gap: 22px;
+        font-variant-numeric: tabular-nums;
+      }
+      .summary span {
+        display: block;
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .summary strong {
+        font-size: 15px;
+      }
+      .workspace {
+        display: grid;
+        grid-template-columns: 280px minmax(0, 1fr);
+        min-height: calc(100vh - 70px);
+      }
+      aside {
+        min-width: 0;
+        border-right: 1px solid var(--line);
+        background: #17191c;
+      }
+      .filters {
+        display: grid;
+        gap: 8px;
+        padding: 12px;
+        border-bottom: 1px solid var(--line);
+      }
+      input,
+      textarea,
+      select {
+        width: 100%;
+        padding: 9px 10px;
+      }
+      textarea {
+        resize: vertical;
+        line-height: 1.48;
+      }
+      .card-list {
+        height: calc(100vh - 174px);
+        overflow: auto;
+      }
+      .card-row {
+        width: 100%;
+        min-height: 58px;
+        display: grid;
+        grid-template-columns: 8px minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 9px;
+        padding: 8px 11px;
+        border: 0;
+        border-bottom: 1px solid #2a2d31;
+        border-radius: 0;
+        background: transparent;
+        text-align: left;
+      }
+      .card-row.active {
+        background: #292c30;
+        box-shadow: inset 3px 0 var(--gold);
+      }
+      .status-dot {
+        width: 8px;
+        height: 30px;
+        border-radius: 4px;
+        background: #676b70;
+      }
+      .status-dot.verified {
+        background: var(--green);
+      }
+      .status-dot.better {
+        background: var(--red);
+      }
+      .row-copy {
+        min-width: 0;
+      }
+      .row-copy strong,
+      .row-copy small {
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .row-copy strong {
+        font-size: 13px;
+      }
+      .row-copy small,
+      .row-id,
+      .meta {
+        color: var(--muted);
+        font-size: 11px;
+      }
+      main {
+        min-width: 0;
+        padding: 16px;
+      }
+      .review-layout {
+        display: grid;
+        grid-template-columns: minmax(320px, 0.9fr) minmax(500px, 1.1fr);
+        gap: 18px;
+        max-width: 1500px;
+        margin: auto;
+      }
+      .image-panel,
+      .form-panel {
+        min-width: 0;
+      }
+      .toolbar,
+      .actions,
+      .section-heading,
+      .title-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 9px;
+      }
+      .toolbar {
+        margin-bottom: 10px;
+      }
+      .toolbar-actions {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 8px;
+      }
+      .image-frame {
+        position: relative;
+        max-height: calc(100vh - 158px);
+        overflow: auto;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #0b0c0e;
+      }
+      .image-frame.dragging {
+        border-color: var(--gold);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold) 24%, transparent);
+      }
+      .image-frame.dragging::after {
+        content: '放開以更換目前卡圖';
+        position: absolute;
+        inset: 12px;
+        z-index: 2;
+        display: grid;
+        place-items: center;
+        border: 1px dashed var(--gold);
+        border-radius: 7px;
+        background: #121315e6;
+        color: var(--gold);
+        font-weight: 700;
+        pointer-events: none;
+      }
+      .image-frame img {
+        display: block;
+        width: min(100%, 760px);
+        height: auto;
+        margin: auto;
+      }
+      .image-frame.zoomed img {
+        width: auto;
+        max-width: none;
+      }
+      .image-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 14px;
+        margin-top: 9px;
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .image-meta a {
+        color: var(--blue);
+      }
+      .form-panel {
+        padding: 15px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface);
+      }
+      .title-row {
+        padding-bottom: 13px;
+        border-bottom: 1px solid var(--line);
+      }
+      .title-row h2 {
+        margin-top: 3px;
+        font-size: 20px;
+      }
+      .badge {
+        display: inline-flex;
+        padding: 4px 8px;
+        border: 1px solid currentColor;
+        border-radius: 999px;
+        color: var(--gold);
+        font-size: 11px;
+      }
+      .badge.verified {
+        color: var(--green);
+      }
+      .machine-note {
+        margin-top: 7px;
+        color: var(--gold);
+        font-size: 12px;
+      }
+      .section {
+        padding-top: 14px;
+      }
+      .section + .section {
+        margin-top: 14px;
+        border-top: 1px solid var(--line);
+      }
+      .section-heading {
+        margin-bottom: 10px;
+      }
+      .section-heading h3 {
+        font-size: 14px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+      .grid.three {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+      .wide {
+        grid-column: 1 / -1;
+      }
+      label span {
+        display: block;
+        margin-bottom: 5px;
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .required-mark {
+        display: inline;
+        margin-left: 3px;
+        color: var(--red);
+        font-style: normal;
+        font-weight: 700;
+      }
+      .conditional-note {
+        display: inline;
+        margin-left: 4px;
+        color: var(--gold);
+      }
+      .actions {
+        position: sticky;
+        bottom: 0;
+        margin: 18px -15px -15px;
+        padding: 12px 15px;
+        border-top: 1px solid var(--line);
+        background: #202327f2;
+        backdrop-filter: blur(8px);
+      }
+      .action-group {
+        display: flex;
+        gap: 8px;
+      }
+      .notice {
+        min-height: 18px;
+        color: var(--green);
+        font-size: 12px;
+      }
+      .notice.error {
+        color: var(--red);
+      }
+      .ocr-panel {
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: #15171a;
+      }
+      .ocr-panel summary {
+        padding: 10px;
+        color: var(--blue);
+        cursor: pointer;
+      }
+      .ocr-lines {
+        max-height: 260px;
+        overflow: auto;
+        padding: 0 10px 10px;
+      }
+      .ocr-line {
+        display: grid;
+        grid-template-columns: 46px minmax(0, 1fr);
+        gap: 8px;
+        padding: 4px 0;
+        border-top: 1px solid #282b2f;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 11px;
+      }
+      .ocr-line span:first-child {
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+      }
+      .empty {
+        padding: 42px;
+        color: var(--muted);
+        text-align: center;
+      }
+      @media (max-width: 1040px) {
+        .review-layout {
+          grid-template-columns: 1fr;
+        }
+        .image-frame {
+          max-height: 65vh;
+        }
+      }
+      @media (max-width: 760px) {
+        header {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+        .summary {
+          width: 100%;
+          justify-content: space-between;
+          gap: 8px;
+        }
+        .workspace {
+          grid-template-columns: 1fr;
+        }
+        aside {
+          border-right: 0;
+          border-bottom: 1px solid var(--line);
+        }
+        .filters {
+          grid-template-columns: 1fr 1fr;
+        }
+        .card-list {
+          height: 180px;
+        }
+        main {
+          padding: 10px;
+        }
+        .grid.three {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+      @media (max-width: 480px) {
+        .filters,
+        .grid,
+        .grid.three {
+          grid-template-columns: 1fr;
+        }
+        .actions {
+          align-items: stretch;
+          flex-direction: column;
+        }
+        .action-group {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div>
+        <h1>限定卡本機預審核</h1>
+        <p class="subtitle">只保存本機審核紀錄，不寫入 PostgreSQL，不上傳 R2</p>
+      </div>
+      <div class="summary" aria-label="審核進度">
+        <div><span>文本已確認</span><strong id="textProgress">--</strong></div>
+        <div><span>圖片已批准</span><strong id="imageProgress">--</strong></div>
+        <div><span>需換圖</span><strong id="betterProgress">--</strong></div>
+        <div><span>未來可上傳</span><strong id="readyProgress">--</strong></div>
+      </div>
+    </header>
+    <div class="workspace">
+      <aside>
+        <div class="filters">
+          <input id="search" type="search" placeholder="搜尋候選編號、卡號或名稱" />
+          <select id="statusFilter">
+            <option value="pending">待確認文本</option>
+            <option value="all">全部 64 張</option>
+            <option value="verified">文本已確認</option>
+            <option value="better">需要更清晰圖片</option>
+            <option value="imagePending">圖片待審核</option>
+          </select>
+        </div>
+        <div id="cardList" class="card-list"></div>
+      </aside>
+      <main id="main"><div class="empty">正在載入本機卡牌資料…</div></main>
+    </div>
+    <script>
+      const state = { cards: [], filtered: [], activeId: '', summary: {}, dirty: false, zoomed: false };
+      const $ = (id) => document.getElementById(id);
+      const fields = [
+        'cardId',
+        'printedNumber',
+        'nameJa',
+        'nameEnOfficial',
+        'effectJa',
+        'effectEnOfficial',
+        'printedEffectStatus',
+        'playStatus',
+        'playStatusReason',
+        'type',
+        'rarity',
+        'element',
+        'clock',
+        'powerCost',
+        'sendToPower',
+        'attackNight',
+        'attackDay',
+        'song',
+        'illustrator',
+        'pack',
+        'notes',
+        'imageReviewStatus',
+        'textReviewStatus',
+      ];
+      const escapeHtml = (value) =>
+        String(value || '').replace(
+          /[&<>'"]/g,
+          (character) =>
+            ({
+              '&': '&amp;',
+              '<': '&lt;',
+              '>': '&gt;',
+              "'": '&#39;',
+              '"': '&quot;',
+            })[character],
+        );
+
+      function renderSummary() {
+        const summary = state.summary;
+        $('textProgress').textContent = `${summary.textVerified || 0}/${summary.total || 0}`;
+        $('imageProgress').textContent = `${summary.imageApproved || 0}/${summary.total || 0}`;
+        $('betterProgress').textContent = summary.needsBetterImage || 0;
+        $('readyProgress').textContent = summary.readyForFutureUpload || 0;
+      }
+
+      function filterCards() {
+        const query = $('search').value.trim().toLowerCase();
+        const filter = $('statusFilter').value;
+        state.filtered = state.cards.filter((card) => {
+          const review = card.review;
+          const matchesSearch =
+            !query ||
+            [card.candidateId, review.cardId, card.name, review.nameJa, review.nameEnOfficial].some((value) =>
+              String(value || '')
+                .toLowerCase()
+                .includes(query),
+            );
+          const matchesStatus =
+            filter === 'all' ||
+            (filter === 'pending' && review.textReviewStatus !== 'verified') ||
+            (filter === 'verified' && review.textReviewStatus === 'verified') ||
+            (filter === 'better' && review.imageReviewStatus === 'needs_better_image') ||
+            (filter === 'imagePending' && review.imageReviewStatus === 'needs_review');
+          return matchesSearch && matchesStatus;
+        });
+        if (!state.filtered.some((card) => card.candidateId === state.activeId)) {
+          state.activeId = state.filtered[0]?.candidateId || '';
+        }
+        renderList();
+        renderCard();
+      }
+
+      function renderList() {
+        const list = $('cardList');
+        list.replaceChildren();
+        for (const card of state.filtered) {
+          const review = card.review;
+          const button = document.createElement('button');
+          const dotClass =
+            review.imageReviewStatus === 'needs_better_image'
+              ? 'better'
+              : review.textReviewStatus === 'verified'
+                ? 'verified'
+                : '';
+          button.type = 'button';
+          button.className = `card-row${card.candidateId === state.activeId ? ' active' : ''}`;
+          button.innerHTML = `<span class="status-dot ${dotClass}"></span><span class="row-copy"><strong></strong><small></small></span><span class="row-id"></span>`;
+          button.querySelector('strong').textContent = review.nameJa || card.name;
+          button.querySelector('small').textContent = review.cardId || card.candidateId;
+          button.querySelector('.row-id').textContent = card.candidateId.replace('limited_', '#');
+          button.addEventListener('click', () => selectCard(card.candidateId));
+          list.append(button);
+        }
+        if (!state.filtered.length) list.innerHTML = '<div class="empty">沒有符合條件的卡牌</div>';
+      }
+
+      function selectCard(candidateId) {
+        if (state.dirty && !window.confirm('目前修改尚未儲存，確定切換卡牌？')) return;
+        state.activeId = candidateId;
+        state.dirty = false;
+        location.hash = candidateId;
+        renderList();
+        renderCard();
+      }
+
+      function option(value, label, current) {
+        return `<option value="${escapeHtml(value)}" ${value === current ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+      }
+
+      function renderCard() {
+        const card = state.cards.find((entry) => entry.candidateId === state.activeId);
+        if (!card) {
+          $('main').innerHTML = '<div class="empty">沒有可審核的卡牌</div>';
+          return;
+        }
+        const review = card.review;
+        const ocrLines = card.machineSuggestion?.evidence?.ocrLines || [];
+        const index = state.filtered.findIndex((entry) => entry.candidateId === card.candidateId);
+        const statusClass = review.textReviewStatus === 'verified' ? 'verified' : '';
+        $('main').innerHTML = `
+          <div class="review-layout">
+            <section class="image-panel">
+              <div class="toolbar"><span class="meta">${escapeHtml(card.candidateId)} · ${escapeHtml(card.distributionType)}</span><div class="toolbar-actions"><button id="replaceImageButton" class="primary" type="button">更換卡圖</button><button id="zoomButton" type="button">放大原圖</button><input id="imageUploadInput" type="file" accept="image/jpeg,image/png,image/webp" hidden /></div></div>
+              <div id="imageFrame" class="image-frame"><img id="cardImage" src="${card.imageUrl}" alt="${escapeHtml(review.nameJa || card.name)} 卡面" /></div>
+              <div class="image-meta"><span id="imageDimensions">讀取尺寸中…</span><span id="imageHash">SHA-256 ${escapeHtml(card.sourceSha256.slice(0, 12))}…</span><span>可點「更換卡圖」或直接拖曳 JPEG／PNG／WebP 到圖片上</span><a href="${escapeHtml(card.sourcePageUrl)}" target="_blank" rel="noreferrer">查看參考頁</a></div>
+            </section>
+            <section class="form-panel">
+              <div class="title-row"><div><span class="meta">${escapeHtml(card.candidateId)}</span><h2>${escapeHtml(review.nameJa || card.name)}</h2><p class="machine-note">目前欄位為 OCR 與規則生成的候選值，需逐項對照卡面。</p></div><span class="badge ${statusClass}">${review.textReviewStatus === 'verified' ? '文本已確認' : '機器草稿'}</span></div>
+              <section class="section">
+                <div class="section-heading"><h3>卡號與基本資料</h3></div>
+                <div class="grid three">
+                  <label><span>正式資料 ID<em class="required-mark">*</em></span><input id="cardId" aria-required="true" value="${escapeHtml(review.cardId)}" placeholder="例如 promo_001" /></label>
+                  <label><span>卡面印刷編號<em class="required-mark">*</em></span><input id="printedNumber" aria-required="true" value="${escapeHtml(review.printedNumber)}" placeholder="照卡面輸入" /></label>
+                  <label><span>稀有度<em class="required-mark">*</em></span><select id="rarity" aria-required="true">${['', 'N', 'R', 'SR', 'UR', 'SE'].map((v) => option(v, v || '未確認', review.rarity)).join('')}</select></label>
+                  <label><span>卡牌種類<em class="required-mark">*</em></span><select id="type" aria-required="true">${['', 'Character', 'Enchant', 'Area Enchant'].map((v) => option(v, v || '未確認', review.type)).join('')}</select></label>
+                  <label><span>屬性<em class="required-mark">*</em></span><select id="element" aria-required="true">${['', '闇', '炎', '電気', '風', 'カオス'].map((v) => option(v, v || '未確認', review.element)).join('')}</select></label>
+                  <label><span>卡包／分類<em class="required-mark">*</em></span><input id="pack" aria-required="true" value="${escapeHtml(review.pack)}" /></label>
+                </div>
+              </section>
+              <section class="section">
+                <div class="section-heading"><h3>卡面文本</h3></div>
+                <div class="grid">
+                  <label><span>日文名稱<em class="required-mark">*</em></span><input id="nameJa" aria-required="true" value="${escapeHtml(review.nameJa)}" /></label>
+                  <label><span>官方英文名稱<em class="required-mark">*</em></span><input id="nameEnOfficial" aria-required="true" value="${escapeHtml(review.nameEnOfficial)}" /></label>
+                  <label class="wide"><span>卡面效果<em class="required-mark">*</em></span><select id="printedEffectStatus" aria-required="true">${[
+                    ['unknown', '尚未確認'],
+                    ['present', '有印刷效果'],
+                    ['none', '沒有印刷效果'],
+                  ]
+                    .map(([v, l]) => option(v, l, review.printedEffectStatus || 'unknown'))
+                    .join('')}</select></label>
+                  <label><span>日文效果<em class="required-mark effect-required">*</em></span><textarea id="effectJa" rows="5">${escapeHtml(review.effectJa)}</textarea></label>
+                  <label><span>官方英文效果<em class="required-mark effect-required">*</em></span><textarea id="effectEnOfficial" rows="5">${escapeHtml(review.effectEnOfficial)}</textarea></label>
+                </div>
+              </section>
+              <section class="section">
+                <div class="section-heading"><h3>數值</h3></div>
+                <div class="grid three">
+                  <label><span>時計<em class="required-mark">*</em></span><input id="clock" aria-required="true" inputmode="numeric" value="${escapeHtml(review.clock)}" /></label>
+                  <label><span>Power Cost<em class="required-mark">*</em></span><input id="powerCost" aria-required="true" inputmode="numeric" value="${escapeHtml(review.powerCost)}" /></label>
+                  <label><span>SEND TO POWER<em class="required-mark">*</em></span><input id="sendToPower" aria-required="true" inputmode="numeric" value="${escapeHtml(review.sendToPower)}" /></label>
+                  <label><span>夜攻擊力<em class="conditional-note">Character 必填</em></span><input id="attackNight" inputmode="numeric" value="${escapeHtml(review.attackNight)}" /></label>
+                  <label><span>晝攻擊力<em class="conditional-note">Character 必填</em></span><input id="attackDay" inputmode="numeric" value="${escapeHtml(review.attackDay)}" /></label>
+                </div>
+              </section>
+              <section class="section">
+                <div class="section-heading"><h3>來源與審核</h3></div>
+                <div class="grid">
+                  <label><span>歌曲</span><input id="song" value="${escapeHtml(review.song)}" /></label>
+                  <label><span>畫師</span><input id="illustrator" value="${escapeHtml(review.illustrator)}" /></label>
+                  <label><span>圖片審核</span><select id="imageReviewStatus">${[
+                    ['needs_review', '待人工查看'],
+                    ['approved', '圖片可用'],
+                    ['needs_better_image', '需要更清晰圖片'],
+                    ['rejected', '圖片不可用'],
+                  ]
+                    .map(([v, l]) => option(v, l, review.imageReviewStatus))
+                    .join('')}</select></label>
+                  <label><span>文本狀態</span><select id="textReviewStatus">${[
+                    ['draft', '草稿'],
+                    ['verified', '文本已人工確認'],
+                  ]
+                    .map(([v, l]) => option(v, l, review.textReviewStatus))
+                    .join('')}</select></label>
+                  <label><span>對戰狀態<em class="required-mark">*</em></span><select id="playStatus" aria-required="true">${[
+                    ['disabled', '待確認／停用'],
+                    ['display_only', '僅供收藏，不可加入牌組'],
+                    ['playable', '正常對戰可用'],
+                  ]
+                    .map(([v, l]) => option(v, l, review.playStatus || 'disabled'))
+                    .join('')}</select></label>
+                  <label><span>對戰狀態原因<span class="conditional-note">停用或僅收藏時必填</span></span><input id="playStatusReason" value="${escapeHtml(review.playStatusReason)}" placeholder="例如：紀念卡、玩笑效果、規則引擎尚未支援" /></label>
+                  <label class="wide"><span>審核備註</span><textarea id="notes" rows="3">${escapeHtml(review.notes)}</textarea></label>
+                </div>
+              </section>
+              <section class="section">
+                <details class="ocr-panel">
+                  <summary>查看原始 OCR 辨識行（${ocrLines.length}）</summary>
+                  <div class="ocr-lines">${ocrLines
+                    .map(
+                      (line) =>
+                        `<div class="ocr-line"><span>${Math.round(Number(line.confidence || 0) * 100)}%</span><span>${escapeHtml(line.text)}</span></div>`,
+                    )
+                    .join('')}</div>
+                </details>
+              </section>
+              <div class="actions"><p id="notice" class="notice" role="status"></p><div class="action-group"><button id="previousButton" type="button" ${index <= 0 ? 'disabled' : ''}>← 上一張</button><button id="saveButton" class="primary" type="button">儲存草稿</button><button id="verifyButton" class="verify" type="button">確認文本並到下一張</button><button id="nextButton" type="button" ${index < 0 || index >= state.filtered.length - 1 ? 'disabled' : ''}>下一張 →</button></div></div>
+            </section>
+          </div>`;
+        const image = $('cardImage');
+        image.addEventListener('load', () => {
+          $('imageDimensions').textContent = `${image.naturalWidth} × ${image.naturalHeight}px`;
+        });
+        $('zoomButton').addEventListener('click', () => {
+          state.zoomed = !state.zoomed;
+          $('imageFrame').classList.toggle('zoomed', state.zoomed);
+          $('zoomButton').textContent = state.zoomed ? '適應寬度' : '放大原圖';
+        });
+        const uploadInput = $('imageUploadInput');
+        const imageFrame = $('imageFrame');
+        $('replaceImageButton').addEventListener('click', () => uploadInput.click());
+        uploadInput.addEventListener('change', () => {
+          const file = uploadInput.files?.[0];
+          if (file) uploadImage(card, file);
+          uploadInput.value = '';
+        });
+        for (const eventName of ['dragenter', 'dragover']) {
+          imageFrame.addEventListener(eventName, (event) => {
+            event.preventDefault();
+            imageFrame.classList.add('dragging');
+          });
+        }
+        for (const eventName of ['dragleave', 'drop']) {
+          imageFrame.addEventListener(eventName, (event) => {
+            event.preventDefault();
+            imageFrame.classList.remove('dragging');
+          });
+        }
+        imageFrame.addEventListener('drop', (event) => {
+          const file = event.dataTransfer?.files?.[0];
+          if (file) uploadImage(card, file);
+        });
+        const updateEffectFields = () => {
+          const effectStatus = $('printedEffectStatus').value;
+          const hasEffect = effectStatus === 'present';
+          for (const marker of document.querySelectorAll('.effect-required')) marker.hidden = !hasEffect;
+          for (const id of ['effectJa', 'effectEnOfficial']) {
+            const input = $(id);
+            input.disabled = effectStatus === 'none';
+            input.setAttribute('aria-required', hasEffect ? 'true' : 'false');
+            if (effectStatus === 'none') input.value = '';
+          }
+        };
+        updateEffectFields();
+        $('printedEffectStatus').addEventListener('change', updateEffectFields);
+        const updatePlayStatusFields = () => {
+          $('playStatusReason').setAttribute('aria-required', $('playStatus').value === 'playable' ? 'false' : 'true');
+        };
+        updatePlayStatusFields();
+        $('playStatus').addEventListener('change', updatePlayStatusFields);
+        for (const id of fields)
+          $(id).addEventListener('input', () => {
+            state.dirty = true;
+          });
+        $('previousButton').addEventListener('click', () => navigate(index - 1));
+        $('nextButton').addEventListener('click', () => navigate(index + 1));
+        $('saveButton').addEventListener('click', () => saveReview(card, false));
+        $('verifyButton').addEventListener('click', () => saveReview(card, true));
+      }
+
+      function navigate(index) {
+        const card = state.filtered[index];
+        if (card) selectCard(card.candidateId);
+      }
+
+      async function saveReview(card, verify) {
+        const notice = $('notice');
+        notice.className = 'notice';
+        notice.textContent = '儲存中…';
+        const payload = Object.fromEntries(fields.map((id) => [id, $(id).value]));
+        if (verify) payload.textReviewStatus = 'verified';
+        try {
+          const response = await fetch(`/api/review/${encodeURIComponent(card.candidateId)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error || '儲存失敗');
+          card.review = result.review;
+          state.summary = result.summary;
+          state.dirty = false;
+          renderSummary();
+          notice.textContent = verify ? '文本已確認' : '草稿已儲存';
+          if (verify) {
+            const next =
+              state.filtered.find(
+                (entry, position) =>
+                  position > state.filtered.indexOf(card) && entry.review.textReviewStatus !== 'verified',
+              ) || state.cards.find((entry) => entry.review.textReviewStatus !== 'verified');
+            if (next) selectCard(next.candidateId);
+            else filterCards();
+          } else {
+            renderList();
+          }
+        } catch (error) {
+          notice.className = 'notice error';
+          notice.textContent = error instanceof Error ? error.message : '儲存失敗';
+        }
+      }
+
+      async function uploadImage(card, file) {
+        const notice = $('notice');
+        notice.className = 'notice';
+        notice.textContent = `正在更換 ${card.candidateId} 卡圖…`;
+        try {
+          const response = await fetch(`/api/image/${encodeURIComponent(card.candidateId)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': file.type || 'application/octet-stream' },
+            body: file,
+          });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error || '更換卡圖失敗');
+          card.imageUrl = result.imageUrl;
+          card.localImagePath = result.localImagePath;
+          card.sourceSha256 = result.sha256;
+          card.review = result.review;
+          state.summary = result.summary;
+          $('cardImage').src = result.imageUrl;
+          $('imageHash').textContent = `SHA-256 ${result.sha256.slice(0, 12)}…`;
+          $('imageReviewStatus').value = 'needs_review';
+          renderSummary();
+          renderList();
+          notice.textContent = `已更換 ${card.candidateId} 卡圖，舊圖已自動備份`;
+        } catch (error) {
+          notice.className = 'notice error';
+          notice.textContent = error instanceof Error ? error.message : '更換卡圖失敗';
+        }
+      }
+
+      async function load() {
+        try {
+          const response = await fetch('/api/state', { cache: 'no-store' });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || '無法載入資料');
+          state.cards = data.cards;
+          state.summary = data.summary;
+          const hash = decodeURIComponent(location.hash.slice(1));
+          state.activeId = state.cards.some((card) => card.candidateId === hash) ? hash : '';
+          renderSummary();
+          filterCards();
+        } catch (error) {
+          $('main').innerHTML =
+            `<div class="empty">${escapeHtml(error instanceof Error ? error.message : '載入失敗')}</div>`;
+        }
+      }
+
+      window.addEventListener('beforeunload', (event) => {
+        if (state.dirty) event.preventDefault();
+      });
+      document.addEventListener('keydown', (event) => {
+        if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
+          event.preventDefault();
+          $('saveButton')?.click();
+        }
+      });
+      $('search').addEventListener('input', filterCards);
+      $('statusFilter').addEventListener('change', filterCards);
+      load();
+    </script>
+  </body>
+</html>

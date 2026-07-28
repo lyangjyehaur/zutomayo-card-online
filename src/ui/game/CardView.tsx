@@ -1,4 +1,4 @@
-import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
+import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent } from 'react';
 import type { CardInstance, Element } from '../../game/types';
 import { getCardDef } from '../../game/cards/loader';
 import { getLocalizedCardName } from '../../game/cards/i18n';
@@ -30,8 +30,6 @@ export interface CardViewProps {
   size?: CardViewSize;
   state?: CardViewState;
   imageContext?: CardImageContext;
-  /** 顯示左上充能成本 chip（mini 尺寸一律隱藏） */
-  showCost?: boolean;
   /** 點擊 / Enter / Space：執行動作（出牌、選目標、撤回…） */
   onActivate?: () => void;
   /** 滑鼠移入 / 聚焦：更新詳情層焦點卡 */
@@ -43,12 +41,34 @@ export interface CardViewProps {
   tutId?: string;
 }
 
+export interface CardCostTagProps {
+  card: CardInstance;
+  insufficient?: boolean;
+  className?: string;
+  style?: CSSProperties;
+}
+
+/** 卡面外側的原始 Power Cost 快覽；不在 CardView 上疊加任何內容。 */
+export function CardCostTag({ card, insufficient = false, className, style }: CardCostTagProps) {
+  const def = card.faceUp && card.defId !== '__hidden__' ? getCardDef(card.defId) : undefined;
+  if (!def) return null;
+  const label = `${t('card.energy')}: ${def.powerCost}${
+    insufficient ? ` · ${t('board.hpChange.insufficientPower' as never)}` : ''
+  }`;
+  const cls = ['card-cost-tag', className ?? ''].filter(Boolean).join(' ');
+  return (
+    <span className={cls} data-insufficient={insufficient || undefined} aria-label={label} title={label} style={style}>
+      <span aria-hidden="true">COST</span>
+      <strong>{def.powerCost}</strong>
+    </span>
+  );
+}
+
 export function CardView({
   card,
   size = 'md',
   state = 'idle',
   imageContext,
-  showCost = true,
   onActivate,
   onInspect,
   onInspectEnd,
@@ -80,22 +100,15 @@ export function CardView({
     .join(' ');
 
   const front = def ? (
-    <>
-      <CardImage
-        className="cardview-art"
-        cardId={def.id}
-        context={resolvedImageContext}
-        alt=""
-        loading="lazy"
-        referrerPolicy="no-referrer"
-        draggable={false}
-      />
-      {showCost && size !== 'mini' && (
-        <span className="cardview-cost" aria-hidden="true">
-          {def.powerCost}
-        </span>
-      )}
-    </>
+    <CardImage
+      className="cardview-art"
+      cardId={def.id}
+      context={resolvedImageContext}
+      alt=""
+      loading="lazy"
+      referrerPolicy="no-referrer"
+      draggable={false}
+    />
   ) : null;
 
   // 兩個面永遠保留在 DOM：伏牌→公開時可由 CSS 以同一張實例完成 3D 翻轉。

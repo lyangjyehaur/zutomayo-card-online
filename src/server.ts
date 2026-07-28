@@ -42,6 +42,7 @@ import {
 import { createServiceReadiness } from './operational/serviceLifecycle';
 import { drainNetwork } from './operational/networkDrain';
 import { replayJsonRequestBody } from './server/requestBodyReplay';
+import { createOnlineRematchSetupData } from './server/onlineRematch';
 import { createUmamiProxyMiddleware, UMAMI_SCRIPT_PATH, UMAMI_SEND_PATH } from './server/umamiProxy';
 import {
   configurePlatformJwtAccountStore,
@@ -452,6 +453,7 @@ server.app.use(async (ctx: KoaContext, next: Next) => {
   }
   await next();
 });
+
 server.app.use(
   createUmamiProxyMiddleware({
     upstreamUrl: process.env.UMAMI_UPSTREAM_URL,
@@ -468,11 +470,45 @@ server.app.use(async (ctx: KoaContext, next: Next) => {
   await next();
 });
 
+const parseGameCreateBody = koaBody({ jsonLimit: '64kb' });
+server.app.use(async (ctx: KoaContext, next: Next) => {
+  const match = /^\/games\/zutomayo-card\/([^/]+)\/playAgain$/.exec(ctx.path);
+  if (!match || ctx.method !== 'POST') {
+    await next();
+    return;
+  }
+
+  await parseGameCreateBody(ctx, async () => undefined);
+  const matchID = decodeURIComponent(match[1]);
+  await db.withRematchLock(matchID, async () => {
+    const current = await db.fetch(matchID, { initialState: true, metadata: true });
+    if (!current.initialState || !current.metadata) ctx.throw(404, 'Match ' + matchID + ' not found');
+    if (!isCompatibleVersion(setupVersion(current.metadata))) {
+      ctx.throw(426, 'Room version does not match server game version');
+    }
+    let setupData: ZutomayoSetupData;
+    try {
+      setupData = createOnlineRematchSetupData(
+        current.initialState,
+        current.metadata,
+        APP_VERSION_INFO,
+        APP_VERSION_INFO.rulesVersion,
+      );
+    } catch (error) {
+      logger.warn({ err: error, matchID }, 'unable to reconstruct rematch decks');
+      ctx.throw(409, 'Previous match cannot be replayed');
+    }
+    const body = isRecord(ctx.request.body) ? ctx.request.body : {};
+    ctx.request.body = { ...body, numPlayers: 2, unlisted: true, setupData };
+    replayJsonRequestBody(ctx, ctx.request.body);
+    await next();
+  });
+});
+
 // Online setup data is an untrusted transport envelope. Resolve custom decks
 // from a short-lived PostgreSQL reservation bound to the caller's JWT, then
 // strip the opaque token and any client-supplied opponent deck before the
 // boardgame router creates the match.
-const parseGameCreateBody = koaBody({ jsonLimit: '64kb' });
 server.app.use(async (ctx: KoaContext, next: Next) => {
   if (ctx.path !== '/games/zutomayo-card/create' || ctx.method !== 'POST') {
     await next();

@@ -35,7 +35,15 @@ import {
 } from '../game/cards/songTitleConfig';
 import { parseEffect } from '../game/effects/parser';
 import type { ParsedEffect } from '../game/effects';
-import type { CardDef, CardType, Element } from '../game/types';
+import type {
+  CardCatalogStatus,
+  CardDef,
+  CardDistributionType,
+  CardPlayStatus,
+  CardPublicationStatus,
+  CardType,
+  Element,
+} from '../game/types';
 import {
   ApiError,
   adminCreateChatUserSanction,
@@ -198,6 +206,14 @@ type CardEditDraft = {
   pack: string;
   song: string;
   illustrator: string;
+  catalogStatus: CardCatalogStatus;
+  distributionType: CardDistributionType;
+  publicationStatus: CardPublicationStatus;
+  playStatus: CardPlayStatus;
+  playStatusReason: string;
+  sourceUrl: string;
+  sourceNote: string;
+  sourceSha256: string;
 };
 
 type SongTitleLocale = Exclude<(typeof I18N_LANGS)[number]['code'], 'ja'>;
@@ -223,6 +239,14 @@ function cardToDraft(card: CardDef): CardEditDraft {
     pack: card.pack,
     song: card.song,
     illustrator: card.illustrator,
+    catalogStatus: card.catalogStatus ?? 'listed',
+    distributionType: card.distributionType ?? 'standard',
+    publicationStatus: card.publicationStatus ?? 'published',
+    playStatus: card.playStatus ?? 'playable',
+    playStatusReason: card.playStatusReason ?? '',
+    sourceUrl: card.sourceUrl ?? '',
+    sourceNote: card.sourceNote ?? '',
+    sourceSha256: card.sourceSha256 ?? '',
   };
 }
 
@@ -248,6 +272,14 @@ function draftToPatch(draft: CardEditDraft): Partial<CardDef> {
     pack: draft.pack,
     song: draft.song,
     illustrator: draft.illustrator,
+    catalogStatus: draft.catalogStatus,
+    distributionType: draft.distributionType,
+    publicationStatus: draft.publicationStatus,
+    playStatus: draft.playStatus,
+    playStatusReason: draft.playStatusReason,
+    sourceUrl: draft.sourceUrl,
+    sourceNote: draft.sourceNote,
+    sourceSha256: draft.sourceSha256,
   };
 }
 
@@ -896,7 +928,7 @@ function I18nEditor({ card, onDirtyChange }: { card: CardDef; onDirtyChange?: (d
   );
 }
 
-function SongTitleEditor({ cards }: { cards: CardDef[] }) {
+export function SongTitleEditor({ cards }: { cards: CardDef[] }) {
   const [draft, setDraft] = useState<SongTitleConfig>({});
   const [savedDraft, setSavedDraft] = useState<SongTitleConfig>({});
   const [activeLocale, setActiveLocale] = useState<SongTitleLocale>('zh-TW');
@@ -1083,7 +1115,7 @@ function SongTitleEditor({ cards }: { cards: CardDef[] }) {
   );
 }
 
-function AboutSettingsEditor() {
+export function AboutSettingsEditor() {
   const [draft, setDraft] = useState<AboutPageI18nConfig>(DEFAULT_ABOUT_PAGE_I18N_CONFIG);
   const [activeLocale, setActiveLocale] = useState<AboutPageLocale>('zh-TW');
   const [loading, setLoading] = useState(true);

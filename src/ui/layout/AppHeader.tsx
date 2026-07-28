@@ -21,10 +21,11 @@ export interface AppHeaderProps {
   /** 左側標題膠囊中的額外狀態，例如在線人數 */
   leftMeta?: ReactNode;
   actions?: ReactNode;
+  actionsClassName?: string;
   className?: string;
 }
 
-export function AppHeader({ title, subtitle, backTo, leftMeta, actions, className }: AppHeaderProps) {
+export function AppHeader({ title, subtitle, backTo, leftMeta, actions, actionsClassName, className }: AppHeaderProps) {
   const navigate = useNavigate();
   return (
     <header
@@ -57,7 +58,12 @@ export function AppHeader({ title, subtitle, backTo, leftMeta, actions, classNam
         {leftMeta && <span className="ml-1 inline-flex shrink-0">{leftMeta}</span>}
       </div>
       {actions && (
-        <div className="pointer-events-auto flex shrink-0 items-center gap-2 rounded-md border border-border-soft bg-surface-base/80 px-2 py-1.5 backdrop-blur-md">
+        <div
+          className={cn(
+            'pointer-events-auto flex shrink-0 items-center gap-2 rounded-md border border-border-soft bg-surface-base/80 px-2 py-1.5 backdrop-blur-md',
+            actionsClassName,
+          )}
+        >
           {actions}
         </div>
       )}

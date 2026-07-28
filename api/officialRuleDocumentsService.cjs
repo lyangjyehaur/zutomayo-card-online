@@ -30,11 +30,13 @@ function mapRuleDocumentRows(rows, requestedLocale) {
   if (rows.length === 0) return null;
   const translated = requestedLocale !== 'ja';
   const sections = rows.map((row) => {
+    const sourceBody = text(row.body_ja);
+    const translatedBody = text(row.translated_body);
     const hasTranslation =
       translated &&
       PUBLIC_TRANSLATION_STATUSES.has(row.translation_status) &&
       text(row.translated_title).trim() &&
-      text(row.translated_body).trim();
+      (sourceBody.trim() ? translatedBody.trim() : translatedBody === '');
     return {
       id: text(row.section_id),
       number: text(row.section_number),
@@ -42,10 +44,10 @@ function mapRuleDocumentRows(rows, requestedLocale) {
       level: Number(row.level) || 1,
       order: Number(row.sort_order) || 0,
       pages: { start: Number(row.page_start) || 1, end: Number(row.page_end) || 1 },
-      source: { title: text(row.section_title_ja), body: text(row.body_ja) },
+      source: { title: text(row.section_title_ja), body: sourceBody },
       localized: {
         title: hasTranslation ? text(row.translated_title) : text(row.section_title_ja),
-        body: hasTranslation ? text(row.translated_body) : text(row.body_ja),
+        body: hasTranslation ? translatedBody : sourceBody,
       },
       effectiveLocale: hasTranslation ? requestedLocale : 'ja',
       translationStatus: hasTranslation ? text(row.translation_status) : 'source',

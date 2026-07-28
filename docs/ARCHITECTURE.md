@@ -106,9 +106,17 @@ flowchart LR
 ### React + Vite SPA
 
 - **入口**：`src/main.tsx` → `src/App.tsx`（路由 + NavBar + 教學 overlay + 重連提示）。
-- **路由**：React Router 7，路徑定義於 `src/pages/`（大廳、AI/線上/教學對戰、牌組編輯／分享、官方 Q&A／勘誤、對戰紀錄、排行榜、反饋、個人頁、管理後台）。
+- **路由**：React Router 7；公開頁面主要位於 `src/pages/`，管理後台位於 `src/admin/` 並由 Refine 5 headless 管理 `/admin/*` 的資源、認證、存取控制與 CRUD data provider。
 - **建構**：Vite 7，Strict TypeScript。`npm run build` 會先跑 `typecheck` + `typecheck:scripts` 再 `vite build`。
 - **Design System v1**：`src/ui/` 提供 `primitives/`、`layout/`、`game/`、`feedback/`、`forms/`、`tokens/`（colors / spacing / typography / z-index / motion）。
+
+### Refine 管理後台
+
+- `src/admin/RefineAdminApp.tsx` 宣告資源與 `/admin/*` 子路由；`AdminLayout.tsx` 提供桌面側欄及手機抽屜。
+- `src/admin/providers.ts` 連接既有管理員 session、角色權限及 PostgreSQL API。Refine 不取代 API 的權限檢查，前後端會同時依角色限制資源。
+- 卡牌是標準 Refine resource，支援 list/create/edit；官方裁定、聊天審核、營運及公告等專用流程以 custom resource page 掛入同一殼層。
+- 新卡預設 `unlisted + draft + disabled`。卡圖只接受來源 URL 並顯示預覽，不提供 R2 上傳動作。
+- 完整資源與角色矩陣見 [admin-console.md](admin-console.md)。
 
 ### boardgame.io Client
 
@@ -411,7 +419,7 @@ gameOver（endIf 回傳 { winner } 或 { draw: true }）
 
 ```mermaid
 flowchart LR
-    JP[日文效果文字\n267 行] -->|parseEffect\nregex + 條件分詞| Parsed[ParsedEffect\ntrigger/conditions/action]
+    JP[日文效果文字\n270 行] -->|parseEffect\nregex + 條件分詞| Parsed[ParsedEffect\ntrigger/conditions/action]
     Parsed -->|executeEffect\nhandler registry| State[GameState 變更]
     State -->|requestChoice handler| Pending[PendingChoice\n待玩家選擇]
     Pending -->|submitPendingChoice\nresolvePendingEffect| State
@@ -422,7 +430,7 @@ flowchart LR
 - `parseEffect(rawText)` 將日文效果文字轉成 `{ trigger, conditions[], action, priority?, expiry? }`。
 - 步驟：正規化（去 `<br>`/`<a>`/`※`）→ 偵測 trigger（`onUse`/`onTurnStart`/`onTurnEnd`/`onBattle`/`onDamageReceived`/`onChronosChanged`/`onZoneEntered`）→ 拆出條件（chronos / element / HP / powerCost / zoneCount / namedCard ...）→ `parseAction` 對應到 `ActionType`。
 - `parseAllEffects()` 批次解析所有卡牌，並合併 `expiry`（Area Enchant 自動失效條件）與 secondary effects。
-- 覆蓋率：422 張卡 / 250 張效果卡 / 267 行效果 100% 解析。
+- 覆蓋率：425 張卡 / 253 張效果卡 / 270 行效果 100% 解析；其中第四彈 105～107 由獨立複核 manifest 交易式發布。
 
 **`effects/executor.ts`（handler registry）**：
 
@@ -436,15 +444,15 @@ flowchart LR
 
 ### AI 決策（`src/game/ai.ts`）
 
-三種難度：
+目前三種難度的實際行為如下。完整限制與改造計畫見 [AI 難度現況與改造路線](ai-difficulty-roadmap.md)。
 
-| 難度   | 策略                                                                                                                                                      |
-| ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| easy   | 依 `scoreCard`（攻擊力 / power cost / clock）排序後取最高分卡                                                                                             |
-| normal | 同 easy，但會避開 power cost 不足的卡                                                                                                                     |
-| hard   | `hardLookahead()`：枚舉所有手牌組合 × slot 分配，`simulateBattle()` 模擬戰鬥，以 `(damageDealt - damageReceived, damageDealt, heuristicScore)` 比較選最佳 |
+| 難度   | 目前策略                                                                                                                                       |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| easy   | 隨機排列手牌後取出規則要求的張數；目前不使用 `scoreCard` 判斷品質                                                                              |
+| normal | 依 `scoreCard` 評估當前晝夜攻擊力、Power Cost、Clock 與粗略效果加分，再取最高分卡                                                              |
+| hard   | `hardLookahead()` 枚舉手牌組合與 slot，使用空效果集合模擬當前一次戰鬥，以即時 HP 差與 heuristic 比較；不包含實際卡牌效果、重抽判斷或跨回合預測 |
 
-`simulateBattle` 用 `structuredClone(G)` 複製狀態後跑 `revealCards` → `advanceChronos` → `placeRevealedCards` → `resolveBattle`，計算 HP 差分。`useAIMoves.ts` 是 React hook，自動驅動 AI 出牌。
+`simulateBattle` 用 `structuredClone(G)` 複製 player-1 `playerView` 狀態後跑 `revealCards` → `advanceChronos` → `placeRevealedCards` → `resolveBattle`，計算 HP 差分。`useAIMoves.ts` 是 React hook，自動驅動 AI 出牌；目前三種難度都固定保留起手牌，效果順序與 prompted choice 主要採用第一個合法選項。
 
 ### Chronos 時鐘系統（`src/game/chronos.ts`）
 

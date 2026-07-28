@@ -52,16 +52,28 @@ describe('platform chat preview store', () => {
         authorUserId: 'u_player',
       }),
     ).resolves.toBe(false);
+    expect(pool.query).toHaveBeenCalledTimes(1);
+  });
+
+  it('verifies guest previews against the persisted seat identity metadata', async () => {
+    const pool = { query: vi.fn(async () => ({ rows: [{ '?column?': 1 }] })) };
+    const store = createPostgresPlatformChatPreviewStore(pool);
+
     await expect(
       store.canBroadcastPreview({
         conversationId: 'match:bgio-match-1',
         boardgameMatchID: 'bgio-match-1',
         messageId: 'chat_msg_guest',
-        authorUserId: 'guest:session',
+        authorUserId: 'guest:match:bgio-match-1:reservation:abc',
       }),
-    ).resolves.toBe(false);
+    ).resolves.toBe(true);
 
-    expect(pool.query).toHaveBeenCalledTimes(1);
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining("m.metadata->>'guestSeatUserId' = $3"), [
+      'chat_msg_guest',
+      'match:bgio-match-1',
+      'guest:match:bgio-match-1:reservation:abc',
+      'bgio-match-1',
+    ]);
   });
 
   it('defaults durable chat preview verification on with production or database env', () => {

@@ -119,6 +119,7 @@ export type ActionType =
   | 'revealOpponentDeckTopBySendToPower' // Branch on opponent deck top SEND TO POWER
   | 'revealOpponentHand' // Reveal opponent's current hand
   | 'returnAreaEnchantToDeck' // Return Area Enchant to deck
+  | 'moveOpponentAreaEnchant' // Move opponent Area Enchant to a public zone
   | 'moveSelfAreaEnchant' // Move own Area Enchant to a zone
   | 'useFromAbyss' // Choose an Enchant in Abyss and use its parsed effect
   | 'handSizeModifier' // Track battle/game duration hand-size increases

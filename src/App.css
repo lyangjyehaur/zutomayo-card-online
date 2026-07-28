@@ -275,10 +275,6 @@ body {
   }
 }
 
-.app-shell.has-nav {
-  grid-template-rows: auto minmax(0, 1fr);
-}
-
 .app-shell.play-shell {
   grid-template-rows: minmax(0, 1fr);
 }
@@ -345,52 +341,6 @@ body {
     opacity: 1;
     transform: translateX(0);
   }
-}
-
-.app-shell.has-nav .route-content > .app-screen,
-.app-shell.has-nav .route-content > .lobby {
-  height: 100%;
-}
-
-.nav-bar {
-  position: relative;
-  z-index: 20;
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  min-height: 3.25rem;
-  padding: 0.45rem clamp(0.8rem, 2vw, 1.4rem);
-  border-bottom: 1px solid rgba(245, 211, 104, 0.2);
-  background: rgba(6, 9, 23, 0.94);
-  box-shadow: 0 0.6rem 1.4rem rgba(0, 0, 0, 0.22);
-}
-
-.nav-link {
-  flex: 0 0 auto;
-  border: 1px solid transparent;
-  border-radius: var(--radius);
-  min-height: 2.25rem;
-  padding: 0.45rem 0.8rem;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  font-weight: 800;
-  transition:
-    border-color 160ms ease,
-    background 160ms ease,
-    color 160ms ease;
-}
-
-.nav-link:hover,
-.nav-link.active {
-  border-color: rgba(245, 211, 104, 0.34);
-  background: rgba(245, 211, 104, 0.09);
-  color: var(--text);
-}
-
-.nav-link.tutorial {
-  margin-left: auto;
-  color: var(--gold);
 }
 
 .legacy-primary,
@@ -5061,6 +5011,9 @@ button.zone:focus-visible {
 }
 
 .mulligan-hand {
+  /* 橫向捲動會連帶裁切 Y 軸；預留卡牌 hover 上浮與選取光暈的空間。 */
+  margin-top: -0.875rem;
+  padding-top: 0.875rem;
   overscroll-behavior-x: contain;
   scroll-snap-type: x proximity;
   scrollbar-width: thin;
@@ -5346,6 +5299,11 @@ button.zone:focus-visible {
   overflow: hidden !important;
 }
 
+.pending-choice-clock-hint {
+  color: var(--gold) !important;
+  font-weight: 800;
+}
+
 .pending-choice-panel .effect-order-list {
   min-height: 0;
   flex: 1 1 auto;
@@ -5450,20 +5408,6 @@ button.zone:focus-visible {
 }
 
 @media (max-width: 768px) {
-  .nav-bar {
-    gap: 0.35rem;
-    overflow-x: auto;
-    padding: 0.4rem 0.65rem;
-  }
-
-  .nav-link {
-    padding: 0.42rem 0.65rem;
-  }
-
-  .nav-link.tutorial {
-    margin-left: 0;
-  }
-
   .ai-setup,
   .admin-page,
   .not-found-page,
@@ -5550,11 +5494,6 @@ button.zone:focus-visible {
 }
 
 /* ===== 新首頁主選單樣式 ===== */
-
-/* 非遊戲頁面允許滾動（新首頁用 min-h-screen 不再固定 100vh） */
-.app-shell.has-nav .route-content {
-  overflow-y: auto;
-}
 
 /* 主選單卡片：置中、大尺寸、hover 效果 */
 .lobby-menu-cards {
@@ -6753,5 +6692,19 @@ button.zone:focus-visible {
     max-width: 22rem;
     padding-top: 0.6rem !important;
     padding-bottom: 0.6rem !important;
+  }
+}
+
+section.pending-choice-panel-clock {
+  position: fixed !important;
+  inset: auto max(1rem, env(safe-area-inset-right, 0px)) max(1rem, env(safe-area-inset-bottom, 0px)) auto !important;
+  width: min(21rem, calc(100vw - 2rem)) !important;
+}
+
+@media (max-width: 767px) {
+  section.pending-choice-panel-clock {
+    inset: auto 0.75rem 0.75rem auto !important;
+    width: min(18rem, calc(100vw - 1.5rem)) !important;
+    padding: 0.75rem !important;
   }
 }

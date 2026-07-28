@@ -3,7 +3,16 @@ import { registerCardDefFallbacks } from '../game/cards/loader';
 import type { CardInstance } from '../game/types';
 import type { CSSProperties } from 'react';
 import { t } from '../i18n';
-import { AbyssZone, BattleZone, ChargeZone, ChronosPanel, DeckZone, PlayerStatus, SetZone } from '../ui/game';
+import {
+  AbyssZone,
+  BattleZone,
+  ChargeZone,
+  ChronosPanel,
+  DeckZone,
+  PlayerStatus,
+  SetZone,
+  useViewportMode,
+} from '../ui/game';
 
 registerCardDefFallbacks(Object.values(TUTORIAL_SHOWCASE_CARDS));
 
@@ -37,15 +46,6 @@ function targetClass(active: boolean, explored: boolean): string {
   }`;
 }
 
-function SideLabel({ side }: { side: 'me' | 'opponent' }) {
-  return (
-    <div className="min-w-20 text-center font-mono uppercase tracking-[var(--tracking-label)]">
-      <span className="block text-[0.625rem] opacity-65">{side === 'me' ? 'PLAYER' : 'OPPONENT'}</span>
-      <strong className="mt-1 block text-body-sm">{t(side === 'me' ? 'player.me' : 'player.opponent')}</strong>
-    </div>
-  );
-}
-
 export function TutorialBattlefieldPreview({
   selectedZone,
   exploredZones,
@@ -55,33 +55,28 @@ export function TutorialBattlefieldPreview({
   exploredZones: ReadonlySet<TutorialFieldZone>;
   onSelectZone: (zone: TutorialFieldZone) => void;
 }) {
+  const viewport = useViewportMode();
+  const statusRowClass = viewport.isTouch || viewport.mode !== 'desktop' ? 'mobile-status-row' : 'playerstatus-row';
+
   return (
     <section
-      className="h-[44rem] min-h-0 overflow-hidden rounded-md border border-border-soft bg-surface-canvas shadow-raised min-[30rem]:h-[38rem] min-[35rem]:h-[36rem] min-[40rem]:h-[35rem]"
+      className="h-[45rem] min-h-0 overflow-hidden rounded-md border border-border-soft bg-surface-canvas shadow-raised min-[30rem]:h-[38rem] min-[35rem]:h-[36rem] min-[40rem]:h-[35rem] min-[48rem]:h-[38rem] min-[64rem]:h-[39rem]"
       aria-label={t('tutorial.chapter.field.subtitle')}
       data-testid="tutorial-real-board-preview"
     >
       <div className="bf-root chrono-night" data-board-layout="tutorial-simplified">
         <div className="bf-field" data-time="night" data-night-side="me">
           <section className="bf-opponent" aria-label={t('player.opponent')}>
-            <div className="flex w-full max-w-md items-center justify-center gap-3">
-              <SideLabel side="opponent" />
-              <button
-                type="button"
-                className={`${targetClass(selectedZone === 'hp', exploredZones.has('hp'))} min-w-40 flex-1 p-2 text-left`}
-                data-testid="tutorial-field-target-hp-opponent"
-                data-explored={exploredZones.has('hp') || undefined}
-                aria-pressed={selectedZone === 'hp'}
-                onClick={() => onSelectZone('hp')}
-              >
-                <PlayerStatus
-                  side="opponent"
-                  name={t('player.opponent')}
-                  hp={70}
-                  className="[&_.playerstatus-name]:sr-only"
-                />
-              </button>
-            </div>
+            <button
+              type="button"
+              className={`${targetClass(selectedZone === 'hp', exploredZones.has('hp'))} ${statusRowClass} p-2 text-left`}
+              data-testid="tutorial-field-target-hp-opponent"
+              data-explored={exploredZones.has('hp') || undefined}
+              aria-pressed={selectedZone === 'hp'}
+              onClick={() => onSelectZone('hp')}
+            >
+              <PlayerStatus side="opponent" name={t('player.opponent')} hp={70} />
+            </button>
             <div className="bf-strip !flex !w-full !flex-col !items-center !justify-center !gap-1 !overflow-visible [--card-height-sm:calc(var(--card-width-sm)*7/5)] [--card-width-sm:clamp(2rem,9vw,2.5rem)] [--slot-height-sm:calc(var(--card-height-sm)+0.25rem)] [--slot-width-sm:calc(var(--card-width-sm)+0.25rem)] [--space-slot-gap:clamp(0.125rem,1vw,0.5rem)] min-[30rem]:!flex-row min-[30rem]:!flex-nowrap min-[30rem]:!items-end min-[30rem]:!gap-2 min-[30rem]:[--card-width-sm:clamp(2.25rem,5vw,3rem)]">
               <div
                 className="flex items-end justify-center gap-2 min-[30rem]:contents"
@@ -204,7 +199,7 @@ export function TutorialBattlefieldPreview({
                 chronos={{ position: 3, nightSidePlayer: 0 }}
                 currentTime="night"
                 currentPlayer={0}
-                size="sm"
+                size={viewport.mode === 'mobile' ? 'sm' : 'md'}
               />
             </button>
             <div
@@ -306,19 +301,16 @@ export function TutorialBattlefieldPreview({
                 </div>
               </div>
             </div>
-            <div className="flex w-full max-w-md items-center justify-center gap-3">
-              <SideLabel side="me" />
-              <button
-                type="button"
-                className={`${targetClass(selectedZone === 'hp', exploredZones.has('hp'))} min-w-40 flex-1 p-2 text-left`}
-                data-testid="tutorial-field-target-hp"
-                data-explored={exploredZones.has('hp') || undefined}
-                aria-pressed={selectedZone === 'hp'}
-                onClick={() => onSelectZone('hp')}
-              >
-                <PlayerStatus side="me" name={t('player.me')} hp={100} className="[&_.playerstatus-name]:sr-only" />
-              </button>
-            </div>
+            <button
+              type="button"
+              className={`${targetClass(selectedZone === 'hp', exploredZones.has('hp'))} ${statusRowClass} p-2 text-left`}
+              data-testid="tutorial-field-target-hp"
+              data-explored={exploredZones.has('hp') || undefined}
+              aria-pressed={selectedZone === 'hp'}
+              onClick={() => onSelectZone('hp')}
+            >
+              <PlayerStatus side="me" name={t('player.me')} hp={100} />
+            </button>
           </section>
         </div>
       </div>

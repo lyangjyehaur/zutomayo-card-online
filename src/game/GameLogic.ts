@@ -1,4 +1,4 @@
-import type { ParsedEffect } from './effects';
+import type { ActionType, ParsedEffect } from './effects';
 import {
   areEffectsDisabledForCard,
   collectTurnEffects,
@@ -8,6 +8,7 @@ import {
 import type {
   ActionLogEntry,
   CardInstance,
+  ChronosContribution,
   ChronosTime,
   CombatModifiers,
   Element,
@@ -23,6 +24,7 @@ import type {
   TimingEvent,
   ZutomayoSetupData,
 } from './types';
+import { CHRONOS_MAPPING } from './types';
 import {
   applyPendingChoice,
   choiceActionPayload,
@@ -44,8 +46,10 @@ import {
 } from './cards/deckBuilder';
 import { pushHpChange } from './hpChange';
 import { pushGameNotice } from './gameNotices';
+import { restoreHiddenInformation } from './hiddenInformation';
 import { recordAction } from './actionLog';
 import { APP_VERSION_INFO, isCompatibleVersion } from '../version';
+import { enterAutomaticResolution, type AutomaticResolutionContext } from './automaticLoop';
 
 const playerIndexes: PlayerIndex[] = [0, 1];
 
@@ -165,6 +169,7 @@ export function emptyModifiers(): CombatModifiers {
     attackTimeOverride: [null, null],
     cardClockSetTo: null,
     damageReduction: [0, 0],
+    damageReductionSources: [[], []],
     elementOverride: [null, null],
     handSize: [0, 0],
     clockContributionDisabled: [false, false],
@@ -248,19 +253,44 @@ function setChronosPosition(
   position: number,
   parsedEffects: Map<string, ParsedEffect[]> = emptyParsedEffects(),
   logMessage?: string,
-  source?: { kind: 'turnAdvance' | 'cardEffect'; cardDefId?: string },
+  source?: {
+    kind: 'turnAdvance' | 'cardEffect';
+    cardDefId?: string;
+    cardInstanceId?: string;
+    player?: PlayerIndex;
+    effectMode?: 'advance' | 'rewind' | 'set';
+    moveAmount?: number;
+    advanceAmount?: number;
+    contributions?: ChronosContribution[];
+  },
   breakdown?: HpChangeBreakdown,
+  automaticResolution?: AutomaticResolutionContext,
 ): void {
   const before = G.chronos.position;
   const beforeTime = chronosTimeAt(before, G.midnightRange);
-  G.chronos.position = normalizeChronosPosition(position);
+  const normalizedPosition = normalizeChronosPosition(position);
+  const movementAmount = Math.abs(
+    source?.kind === 'turnAdvance' ? (source.advanceAmount ?? 0) : (source?.moveAmount ?? 0),
+  );
+  const movementDirection = source?.kind === 'cardEffect' && source.effectMode === 'rewind' ? -1 : 1;
+  const hasPathMovement =
+    Number.isFinite(movementAmount) &&
+    movementAmount > 0 &&
+    (source?.kind === 'turnAdvance' || (source?.kind === 'cardEffect' && source.effectMode !== 'set'));
+  G.chronos.position = normalizedPosition;
   if (logMessage) G.log.push(logMessage);
   const afterTime = getChronosTime(G);
-  if (before !== G.chronos.position) {
+  if (before !== G.chronos.position || hasPathMovement) {
     // 官方 QA Q18/Q21：クロノス推進可能跨夜→晝→夜，需記錄路徑上的所有時間轉換。
     // 中間轉換事件僅記錄到 timingEvents 供 chronosTimeChanged 條件檢查，
     // 不觸發 onChronosChanged 效果（避免重複觸發）；效果僅在最終位置觸發一次。
-    const transitions = chronosTransitionsOnPath(before, position, G.midnightRange);
+    const transitions = chronosTransitionsOnPath(
+      before,
+      position,
+      G.midnightRange,
+      hasPathMovement ? movementDirection : 1,
+      hasPathMovement ? movementAmount : undefined,
+    );
     for (const t of transitions) {
       if (t.from === beforeTime && t.to === afterTime) continue;
       G.timingEvents.push({
@@ -272,35 +302,131 @@ function setChronosPosition(
       });
       G.log.push(`Timing chronosChanged (path: ${t.from}→${t.to}).`);
     }
-    resolveTimingEvent(G, parsedEffects, {
-      type: 'chronosChanged',
-      fromChronos: before,
-      toChronos: G.chronos.position,
-      fromChronosTime: beforeTime,
-      toChronosTime: afterTime,
-    });
     // 推一筆 chronosChange GameNotice，僅提示最終 from→to 淨結果（中間轉換不逐一提示）。
     // 來源歸因：回合推進 vs 卡牌效果（附卡名 + 來源玩家），讓 UI 說明「時鐘為何變化」。
-    // chronosDelta 取最短路徑（|delta| <= 6），正數前進、負數後退。
-    let chronosDelta = G.chronos.position - before;
-    if (chronosDelta > 6) chronosDelta -= 12;
-    if (chronosDelta < -6) chronosDelta += 12;
-    const sourcePlayer = source?.kind === 'cardEffect' ? G.pendingEffectPlayer : undefined;
+    // chronosDelta 取 18 格錶盤的最短路徑，正數前進、負數後退。
+    const after = G.chronos.position;
+    let chronosDelta = after - before;
+    const halfPositions = CHRONOS_MAPPING.positions / 2;
+    if (chronosDelta > halfPositions) chronosDelta -= CHRONOS_MAPPING.positions;
+    if (chronosDelta < -halfPositions) chronosDelta += CHRONOS_MAPPING.positions;
+    const sourcePlayer = source?.kind === 'cardEffect' ? source.player : undefined;
     pushGameNotice(G, {
       kind: 'chronosChange',
       tone: 'phase',
       titleKey: source?.kind === 'cardEffect' ? 'board.notice.chronosCardEffect' : 'board.notice.chronosTurnAdvance',
       chronosFrom: before,
-      chronosTo: G.chronos.position,
+      chronosTo: after,
       chronosDelta,
       chronosFromTime: beforeTime,
       chronosToTime: afterTime,
       ...(source ? { chronosSourceKind: source.kind } : {}),
       ...(source?.cardDefId ? { chronosSourceCardDefId: source.cardDefId } : {}),
+      ...(source?.cardInstanceId ? { chronosSourceCardInstanceId: source.cardInstanceId } : {}),
+      ...(source?.effectMode ? { chronosEffectMode: source.effectMode } : {}),
+      ...(source?.moveAmount !== undefined ? { chronosMoveAmount: source.moveAmount } : {}),
+      ...(source?.advanceAmount !== undefined ? { chronosAdvanceAmount: source.advanceAmount } : {}),
+      ...(source?.contributions ? { chronosContributions: source.contributions } : {}),
       ...(sourcePlayer !== null && sourcePlayer !== undefined ? { player: sourcePlayer } : {}),
       ...(breakdown ? { breakdown } : {}),
     });
+    resolveTimingEvent(
+      G,
+      parsedEffects,
+      {
+        type: 'chronosChanged',
+        fromChronos: before,
+        toChronos: after,
+        fromChronosTime: beforeTime,
+        toChronosTime: afterTime,
+      },
+      {
+        ...(automaticResolution ? { automaticResolution } : {}),
+      },
+    );
   }
+}
+
+const CHRONOS_MUTATING_ACTIONS = new Set<ActionType>([
+  'clockReset',
+  'nullifyOpponentClock',
+  'clockRewindOpponentCharacter',
+  'clockSet',
+  'clockSetFromTurnStartMinusOpponentClock',
+  'clockAdvance',
+]);
+
+function chronosEffectMovement(
+  actionType: ActionType,
+  rawValue: unknown,
+  before: number,
+  after: number,
+): { mode: 'advance' | 'rewind' | 'set'; moveAmount?: number; targetPosition: number } | null {
+  if (!CHRONOS_MUTATING_ACTIONS.has(actionType)) return null;
+  const advance = Number(rawValue ?? 0);
+  if (actionType === 'clockAdvance' && Number.isFinite(advance)) {
+    return {
+      mode: advance < 0 ? 'rewind' : 'advance',
+      moveAmount: Math.abs(advance),
+      targetPosition: before + advance,
+    };
+  }
+  const mode =
+    actionType === 'clockReset' ||
+    actionType === 'nullifyOpponentClock' ||
+    actionType === 'clockRewindOpponentCharacter' ||
+    actionType === 'clockSetFromTurnStartMinusOpponentClock'
+      ? 'rewind'
+      : 'set';
+  return {
+    mode,
+    ...(mode === 'rewind' ? { moveAmount: normalizeChronosPosition(before - after) } : {}),
+    targetPosition: after,
+  };
+}
+
+function executeEffectWithChronosResolution(
+  G: GameState,
+  parsedEffects: Map<string, ParsedEffect[]>,
+  effect: ParsedEffect,
+  player: PlayerIndex,
+  source: { cardDefId: string; cardInstanceId: string },
+  automaticResolution?: AutomaticResolutionContext,
+): ReturnType<typeof executeEffect> {
+  const before = G.chronos.position;
+  const result = executeEffect(effect, G, player, {
+    cardInstanceId: source.cardInstanceId,
+    cardDefId: source.cardDefId,
+    onTimingEvent: (nestedEvent) =>
+      resolveTimingEvent(G, parsedEffects, nestedEvent, {
+        ...(automaticResolution ? { automaticResolution } : {}),
+      }),
+  });
+  if (!result.success) return result;
+
+  const after = G.chronos.position;
+  const movement = chronosEffectMovement(effect.action.type, effect.action.params.value, before, after);
+  const hasMovement = movement && (after !== before || (movement.moveAmount ?? 0) > 0);
+  if (!movement || !hasMovement) return result;
+
+  G.chronos.position = before;
+  setChronosPosition(
+    G,
+    movement.targetPosition,
+    parsedEffects,
+    undefined,
+    {
+      kind: 'cardEffect',
+      cardDefId: source.cardDefId,
+      cardInstanceId: source.cardInstanceId,
+      player,
+      effectMode: movement.mode,
+      ...(movement.moveAmount !== undefined ? { moveAmount: movement.moveAmount } : {}),
+    },
+    undefined,
+    automaticResolution,
+  );
+  return result;
 }
 
 // 計算從 before 到 after 的路徑上的所有時間轉換點。
@@ -308,13 +434,19 @@ function chronosTransitionsOnPath(
   before: number,
   after: number,
   midnightRange: number,
+  direction: 1 | -1 = 1,
+  moveAmount?: number,
 ): { from: ChronosTime; to: ChronosTime; atPosition: number }[] {
   const transitions: { from: ChronosTime; to: ChronosTime; atPosition: number }[] = [];
   const normalizedAfter = normalizeChronosPosition(after);
   let current = normalizeChronosPosition(before);
   let currentTime = chronosTimeAt(current, midnightRange);
-  while (current !== normalizedAfter) {
-    const next = normalizeChronosPosition(current + 1);
+  const steps =
+    moveAmount === undefined
+      ? normalizeChronosPosition(direction > 0 ? normalizedAfter - current : current - normalizedAfter)
+      : Math.max(0, Math.trunc(moveAmount));
+  for (let step = 0; step < steps; step++) {
+    const next = normalizeChronosPosition(current + direction);
     const nextTime = chronosTimeAt(next, midnightRange);
     if (currentTime !== nextTime) {
       transitions.push({ from: currentTime, to: nextTime, atPosition: next });
@@ -597,15 +729,29 @@ export function confirmReady(G: GameState, player: PlayerIndex, parsedEffects: M
 }
 
 // P3-16：線上回合超時處理。當伺服器時間已超過 TURN_TIMER_MS 且該玩家尚未 confirmReady 時，
-// 強制將該玩家設為 ready 並推進回合，避免未達最低出牌數時卡死。
-// 不像 confirmReady 會檢查最低出牌數，timeoutSkip 允許空手跳過。
+// 依官方 Q4 自動補足最低出牌數後確認，避免斷線玩家令對局卡死或以零張牌跳過。
 export function timeoutSkip(G: GameState, player: PlayerIndex, parsedEffects: Map<string, ParsedEffect[]>): boolean {
   if (G.step !== 'turnSet' || G.ready[player]) return false;
   // 伺服器權威超時檢查：Date.now() 在 boardgame.io server/master 執行，為權威時間。
   if (typeof G.turnStartTime !== 'number' || Date.now() - G.turnStartTime < TURN_TIMER_MS) return false;
+  const state = G.players[player];
+  let autoSet = false;
+  if (state.cardsSetThisTurn < getMinimumSetCount(G, player)) {
+    const legalHandIndex = state.hand.findIndex((card) => {
+      const def = getCardDef(card.defId);
+      return !(def?.type === 'Area Enchant' && G.areaEnchantSetLocked?.[player]);
+    });
+    if (legalHandIndex < 0 || !setCard(G, player, legalHandIndex, 'A')) {
+      const reason = `Player ${player} loses: timeout with no legal card available to set.`;
+      recordAction(G, player, 'timeoutSkip', { confirmed: false, reason: 'noLegalCard' });
+      endGame(G, (1 - player) as PlayerIndex, reason);
+      return true;
+    }
+    autoSet = true;
+  }
   recordConfirmedSetCards(G, player);
   G.ready[player] = true;
-  recordAction(G, player, 'timeoutSkip', { confirmed: true });
+  recordAction(G, player, 'timeoutSkip', { confirmed: true, autoSet });
   if (G.ready[0] && G.ready[1]) resolveTurn(G, parsedEffects);
   return true;
 }
@@ -660,7 +806,9 @@ export function timeoutAdvance(
   } else if (G.step === 'turnSet') {
     return timeoutSkip(G, player, parsedEffects);
   } else if (G.step === 'effectOrder' && G.pendingEffectPlayer === player) {
-    advanced = resolvePendingEffect(G, player, 0, parsedEffects);
+    const [firstLegalEffect] = getResolvablePendingEffectIndexes(G, player);
+    advanced =
+      firstLegalEffect === undefined ? false : resolvePendingEffect(G, player, firstLegalEffect, parsedEffects);
   }
 
   if (advanced) recordAction(G, player, 'timeoutAdvance', { timedOutStep });
@@ -680,11 +828,20 @@ export function revealCards(G: GameState): void {
 export function advanceChronos(G: GameState, parsedEffects: Map<string, ParsedEffect[]> = emptyParsedEffects()): void {
   const clockLines: HpChangeBreakdownLine[] = [];
   const participantIds: string[] = [];
+  const contributions: ChronosContribution[] = [];
   let total = 0;
   for (const player of playerIndexes) {
     for (const card of G.setCardsThisTurn[player]) {
       const def = getCardDef(card.defId);
       if (def?.type === 'Character' && G.modifiers.clockContributionDisabled?.[player]) {
+        contributions.push({
+          player,
+          cardInstanceId: card.instanceId,
+          cardDefId: card.defId,
+          printedValue: def.clock,
+          appliedValue: 0,
+          nullified: true,
+        });
         // 被無效化的卡仍列出（clock 0）讓玩家理解為何沒貢獻。
         clockLines.push({
           label: `board.hpChange.clockContribution`,
@@ -696,6 +853,14 @@ export function advanceChronos(G: GameState, parsedEffects: Map<string, ParsedEf
       }
       const clock = G.modifiers.cardClockSetTo ?? def?.clock ?? 0;
       total += clock;
+      contributions.push({
+        player,
+        cardInstanceId: card.instanceId,
+        cardDefId: card.defId,
+        printedValue: def?.clock ?? 0,
+        appliedValue: clock,
+        nullified: false,
+      });
       clockLines.push({
         label: `board.hpChange.clockContribution`,
         value: `+${clock}`,
@@ -716,7 +881,7 @@ export function advanceChronos(G: GameState, parsedEffects: Map<string, ParsedEf
     before + total,
     parsedEffects,
     `Chronos +${total} (${before}→${normalizeChronosPosition(before + total)}).`,
-    { kind: 'turnAdvance' },
+    { kind: 'turnAdvance', advanceAmount: total, contributions },
     chronosBreakdown,
   );
 }
@@ -1004,6 +1169,7 @@ export function resolveTimingEvent(
       player: PlayerIndex;
       success: boolean;
     }) => void;
+    automaticResolution?: AutomaticResolutionContext;
   } = {},
 ): void {
   const trigger = timingTrigger(event);
@@ -1013,16 +1179,30 @@ export function resolveTimingEvent(
   }
   if (!trigger || G.step === 'gameOver') return;
 
+  const automaticResolution = enterAutomaticResolution(G, event, options.automaticResolution);
+  if (automaticResolution.repeated) {
+    if (!G.pendingChoice) {
+      endGame(G, null, 'Draw: unavoidable automatic infinite loop repeated the same game state.');
+    }
+    return;
+  }
+
   if (event.type === 'turnEnd' && G.delayedEffects?.length) {
     const delayed = G.delayedEffects;
     G.delayedEffects = [];
     for (const pendingEffect of delayed) {
       if (areEffectsDisabledForCard(G, pendingEffect.player, pendingEffect.cardDefId)) continue;
-      const result = executeEffect(pendingEffect.effect, G, pendingEffect.player, {
-        cardInstanceId: pendingEffect.cardInstanceId,
-        cardDefId: pendingEffect.cardDefId,
-        onTimingEvent: (nestedEvent) => resolveTimingEvent(G, parsedEffects, nestedEvent),
-      });
+      const result = executeEffectWithChronosResolution(
+        G,
+        parsedEffects,
+        pendingEffect.effect,
+        pendingEffect.player,
+        {
+          cardInstanceId: pendingEffect.cardInstanceId,
+          cardDefId: pendingEffect.cardDefId,
+        },
+        automaticResolution.context,
+      );
       if (result.success) G.log.push(`Player ${pendingEffect.player}: ${result.message}.`);
       options.onEffectExecuted?.({
         cardDefId: pendingEffect.cardDefId,
@@ -1060,11 +1240,14 @@ export function resolveTimingEvent(
           effect.conditions?.some((c) => c.type === 'hpLessOrEqual');
         if (!definition || (!isImmediateHpMove && getPlayerPower(G.players[player], G, player) < definition.powerCost))
           continue;
-        const result = executeEffect(effect, G, player, {
-          cardInstanceId: card.instanceId,
-          cardDefId: card.defId,
-          onTimingEvent: (nestedEvent) => resolveTimingEvent(G, parsedEffects, nestedEvent),
-        });
+        const result = executeEffectWithChronosResolution(
+          G,
+          parsedEffects,
+          effect,
+          player,
+          { cardInstanceId: card.instanceId, cardDefId: card.defId },
+          automaticResolution.context,
+        );
         if (result.success) G.log.push(`Player ${player}: ${result.message}.`);
         options.onEffectExecuted?.({ cardDefId: card.defId, effect, player, success: result.success });
         if ((G.step as GameState['step']) === 'gameOver') {
@@ -1077,6 +1260,10 @@ export function resolveTimingEvent(
 }
 
 export function resolveBattle(G: GameState, parsedEffects: Map<string, ParsedEffect[]> = emptyParsedEffects()): void {
+  const battleCards = playerIndexes.map((index) => {
+    const card = G.players[index].battleZone;
+    return card ? { ...card } : null;
+  }) as [CardInstance | null, CardInstance | null];
   const attacks = playerIndexes.map((index) => {
     const card = G.players[index].battleZone;
     return card ? getEffectiveAttack(card, G, index) : 0;
@@ -1097,8 +1284,8 @@ export function resolveBattle(G: GameState, parsedEffects: Map<string, ParsedEff
     const p1Insufficient = p1Card ? isAttackPowerInsufficient(p1Card, G, 1) : false;
     const p0AttackText = p0Insufficient ? 'board.hpChange.insufficientPower' : `${attacks[0]}`;
     const p1AttackText = p1Insufficient ? 'board.hpChange.insufficientPower' : `${attacks[1]}`;
-    const p0ShowBase = !p0Insufficient && p0Base !== null && p0Base !== attacks[0];
-    const p1ShowBase = !p1Insufficient && p1Base !== null && p1Base !== attacks[1];
+    const p0ShowBase = p0Base !== null && p0Base !== attacks[0];
+    const p1ShowBase = p1Base !== null && p1Base !== attacks[1];
     const drawLines: HpChangeBreakdownLine[] = [
       {
         label: 'board.hpChange.p0Attack',
@@ -1130,6 +1317,7 @@ export function resolveBattle(G: GameState, parsedEffects: Map<string, ParsedEff
       winnerAttack: attacks[0],
       loserAttack: attacks[1],
       damage: 0,
+      battleCards,
       breakdown: drawBreakdown,
     });
     // 平手無 HP 變化，但記錄到 actionLog 讓玩家能回溯戰鬥攻擊力比較。
@@ -1147,21 +1335,21 @@ export function resolveBattle(G: GameState, parsedEffects: Map<string, ParsedEff
   const rawDamage = attacks[winner] - attacks[loser];
   const damageReceivedEvent: TimingEvent = { type: 'damageReceived', player: loser, amount: rawDamage };
   // 收集實際參與減傷計算的卡（含附魔卡），供 HP 變化 breakdown 顯示。
-  const damageReduceParticipants: { cardDefId: string; value: number }[] = [];
-  const reductionBefore = G.modifiers.damageReduction[loser] ?? 0;
   resolveTimingEvent(G, parsedEffects, damageReceivedEvent, {
     effectFilter: (effect) => effect.action.type === 'damageReduce',
-    onEffectExecuted: ({ cardDefId, effect, success }) => {
-      if (success && effect.action.type === 'damageReduce') {
-        const v = Number(effect.action.params.value ?? 0);
-        damageReduceParticipants.push({ cardDefId, value: v });
-      }
-    },
   });
   if (G.step === 'gameOver') return;
-  const reductionApplied = (G.modifiers.damageReduction[loser] ?? 0) - reductionBefore;
   const unreduceable = Boolean(G.modifiers.unreduceableDamage[winner]);
-  const damage = unreduceable ? rawDamage : Math.max(0, rawDamage - G.modifiers.damageReduction[loser]);
+  const availableReduction = Math.max(0, G.modifiers.damageReduction[loser] ?? 0);
+  const reductionApplied = unreduceable ? 0 : Math.min(rawDamage, availableReduction);
+  const damage = rawDamage - reductionApplied;
+  let remainingAttributedReduction = reductionApplied;
+  const damageReductionSources = (G.modifiers.damageReductionSources?.[loser] ?? []).flatMap((source) => {
+    if (remainingAttributedReduction <= 0 || source.amount <= 0) return [];
+    const amount = Math.min(source.amount, remainingAttributedReduction);
+    remainingAttributedReduction -= amount;
+    return [{ ...source, amount }];
+  });
   if (!unreduceable) {
     if (!G.damageReducedThisTurn) G.damageReducedThisTurn = [0, 0];
     G.damageReducedThisTurn[loser] += Math.min(rawDamage, G.modifiers.damageReduction[loser]);
@@ -1179,8 +1367,8 @@ export function resolveBattle(G: GameState, parsedEffects: Map<string, ParsedEff
   const loserInsufficient = loserCard ? isAttackPowerInsufficient(loserCard, G, loser) : false;
   const winnerAttackText = winnerInsufficient ? 'board.hpChange.insufficientPower' : `${attacks[winner]}`;
   const loserAttackText = loserInsufficient ? 'board.hpChange.insufficientPower' : `${attacks[loser]}`;
-  const winnerShowBase = !winnerInsufficient && winnerBase !== null && winnerBase !== attacks[winner];
-  const loserShowBase = !loserInsufficient && loserBase !== null && loserBase !== attacks[loser];
+  const winnerShowBase = winnerBase !== null && winnerBase !== attacks[winner];
+  const loserShowBase = loserBase !== null && loserBase !== attacks[loser];
   const battleLines: HpChangeBreakdownLine[] = [
     {
       label: 'board.hpChange.winnerAttack',
@@ -1213,10 +1401,17 @@ export function resolveBattle(G: GameState, parsedEffects: Map<string, ParsedEff
     participantCardDefIds: [
       ...(winnerCard ? [winnerCard.defId] : []),
       ...(loserCard ? [loserCard.defId] : []),
-      ...damageReduceParticipants.map((p) => p.cardDefId),
+      ...damageReductionSources.map((source) => source.cardDefId),
     ],
   };
-  pushHpChange(G, loser, G.players[loser].hp - loserHpBefore, 'battle', undefined, battleBreakdown);
+  pushHpChange(G, loser, G.players[loser].hp - loserHpBefore, 'battle', undefined, battleBreakdown, {
+    winner,
+    winnerAttack: attacks[winner],
+    loserAttack: attacks[loser],
+    damage,
+    battleCards,
+    damageReductionSources,
+  });
   // 傷害被完全減免（damage=0）時 pushHpChange 因 delta=0 不會推 notice，
   // 這裡補一筆 battleResult notice，讓 UI 提示「傷害全減免」並顯示減傷明細。
   if (damage === 0) {
@@ -1225,10 +1420,14 @@ export function resolveBattle(G: GameState, parsedEffects: Map<string, ParsedEff
       tone: 'neutral',
       titleKey: 'board.notice.battleNoDamage',
       player: loser,
+      hpBefore: loserHpBefore,
+      hpAfter: G.players[loser].hp,
       winner,
       winnerAttack: attacks[winner],
       loserAttack: attacks[loser],
       damage: 0,
+      battleCards,
+      damageReductionSources,
       breakdown: battleBreakdown,
     });
   }
@@ -1253,6 +1452,7 @@ export function resolveBattle(G: GameState, parsedEffects: Map<string, ParsedEff
 }
 
 export function endGame(G: GameState, winner: PlayerIndex | null, reason: string): void {
+  restoreHiddenInformation(G);
   G.step = 'gameOver';
   G.winner = winner;
   G.gameoverReason = reason;
@@ -1322,6 +1522,7 @@ function suppressEffectCardForTurn(G: GameState, cardInstanceId: string): void {
 function finishTurn(G: GameState, parsedEffects: Map<string, ParsedEffect[]> = emptyParsedEffects()): void {
   resolveTimingEvent(G, parsedEffects, { type: 'turnEnd' });
   if (G.step === 'gameOver') return;
+  restoreHiddenInformation(G);
   for (const index of playerIndexes) {
     const player = G.players[index];
     for (const zone of ['setZoneA', 'setZoneB'] as const) {
@@ -1390,7 +1591,9 @@ function continueAfterTurnEffects(
     endGame(G, winner, 'A player reached 0 HP during effect resolution.');
     return;
   }
+  restoreHiddenInformation(G);
   resolveBattle(G, parsedEffects);
+  restoreHiddenInformation(G);
   if (G.players[0].hp <= 0 || G.players[1].hp <= 0) {
     const winner = G.players[0].hp <= 0 ? 1 : 0;
     endGame(G, winner, `Player ${1 - winner} loses at 0 HP.`);
@@ -1418,13 +1621,32 @@ function playerHasPendingEffectInPhase(G: GameState, player: PlayerIndex, phase:
   return G.pendingEffects[player].some((effect) => pendingEffectPriority(effect) === phase);
 }
 
+/**
+ * Returns the effects the active player may legally resolve next. Effects from
+ * the same card keep their printed order, and late effects wait until every
+ * normal effect has finished.
+ */
+export function getResolvablePendingEffectIndexes(G: GameState, player: PlayerIndex): number[] {
+  if (G.step !== 'effectOrder' || G.pendingEffectPlayer !== player) return [];
+  const phase = pendingEffectPhase(G);
+  return G.pendingEffects[player].flatMap((effect, index, effects) => {
+    if (pendingEffectPriority(effect) !== phase) return [];
+    const hasEarlierEffectFromCard = effects
+      .slice(0, index)
+      .some((earlier) => earlier.cardInstanceId === effect.cardInstanceId);
+    return hasEarlierEffectFromCard ? [] : [index];
+  });
+}
+
 function pruneDisabledPendingEffects(G: GameState, player: PlayerIndex): void {
   G.pendingEffects[player] = G.pendingEffects[player].filter((pendingEffect) => {
-    if (areEffectsDisabledForCard(G, player, pendingEffect.cardDefId)) return false;
+    const rulesSourceCardDefId = pendingEffect.rulesSourceCardDefId ?? pendingEffect.cardDefId;
+    if (areEffectsDisabledForCard(G, player, rulesSourceCardDefId)) return false;
     // 官方規則指南 B：效果在「処理する時点」のパワー総数 >= パワーコスト 時才發動。
     // 執行前重新檢查パワーコスト，避免效果處理途中パワー下降後仍發動。
+    // 官方 QA Q48：複製 Enchant 時檢查實際發動複製的卡，不檢查被複製卡的費用。
     // 合成效果（如 follow-up-draw）無對應 cardDef，不套用パワーコスト檢查。
-    const def = getCardDef(pendingEffect.cardDefId);
+    const def = getCardDef(rulesSourceCardDefId);
     if (!def) return true;
     const reduction = def.type === 'Character' ? (G.modifiers.powerCostReduction?.[player] ?? 0) : 0;
     const cost = Math.max(0, def.powerCost - reduction);
@@ -1478,38 +1700,24 @@ export function resolvePendingEffect(
   index: number,
   parsedEffects: Map<string, ParsedEffect[]> = emptyParsedEffects(),
 ): boolean {
-  if (G.step !== 'effectOrder' || G.pendingEffectPlayer !== player) return false;
-  if (!Number.isInteger(index) || index < 0 || index >= G.pendingEffects[player].length) return false;
+  const resolvableIndexes = getResolvablePendingEffectIndexes(G, player);
+  if (!Number.isInteger(index) || !resolvableIndexes.includes(index)) return false;
   const pendingEffect = G.pendingEffects[player][index];
   if (!pendingEffect || pendingEffect.player !== player) return false;
-  if (
-    G.pendingEffects[player].slice(0, index).some((effect) => effect.cardInstanceId === pendingEffect.cardInstanceId)
-  ) {
-    return false;
-  }
-  if (pendingEffectPhase(G) === 'normal' && pendingEffectPriority(pendingEffect) === 'late') return false;
-  recordAction(G, player, 'chooseEffectOrder', {
-    index,
-    effectId: pendingEffect.id,
-    cardDefId: pendingEffect.cardDefId,
-    source: pendingEffect.source,
-  });
-  G.pendingEffects[player].splice(index, 1);
-
-  const beforeChronos = G.chronos.position;
-  const result = executeEffect(pendingEffect.effect, G, player, {
-    cardInstanceId: pendingEffect.cardInstanceId,
-    cardDefId: pendingEffect.cardDefId,
-    onTimingEvent: (event) => resolveTimingEvent(G, parsedEffects, event),
-  });
-  if (G.chronos.position !== beforeChronos) {
-    const afterChronos = G.chronos.position;
-    G.chronos.position = beforeChronos;
-    setChronosPosition(G, afterChronos, parsedEffects, undefined, {
-      kind: 'cardEffect',
+  if (resolvableIndexes.length > 1) {
+    recordAction(G, player, 'chooseEffectOrder', {
+      index,
+      effectId: pendingEffect.id,
       cardDefId: pendingEffect.cardDefId,
+      source: pendingEffect.source,
     });
   }
+  G.pendingEffects[player].splice(index, 1);
+
+  const result = executeEffectWithChronosResolution(G, parsedEffects, pendingEffect.effect, player, {
+    cardInstanceId: pendingEffect.rulesSourceCardInstanceId ?? pendingEffect.cardInstanceId,
+    cardDefId: pendingEffect.rulesSourceCardDefId ?? pendingEffect.cardDefId,
+  });
   recordAction(
     G,
     player,

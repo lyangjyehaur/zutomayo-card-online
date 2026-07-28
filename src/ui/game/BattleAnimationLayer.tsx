@@ -8,7 +8,6 @@ type SnapshotCard = Pick<CardInstance, 'instanceId' | 'defId' | 'faceUp'>;
 
 interface VisualSnapshot {
   turn: number;
-  battle: GameState['lastBattleResult'];
   chronosPosition: number;
   players: Array<Record<ZoneName, SnapshotCard[]>>;
 }
@@ -22,7 +21,7 @@ interface Rect {
 
 interface AnimationItem {
   id: string;
-  kind: 'move' | 'lunge' | 'impact' | 'chronos';
+  kind: 'move' | 'chronos';
   card?: SnapshotCard;
   rect: Rect;
   dx?: number;
@@ -44,7 +43,6 @@ function copyCard(card: CardInstance | null): SnapshotCard[] {
 function snapshot(G: GameState): VisualSnapshot {
   return {
     turn: G.turnNumber,
-    battle: { ...G.lastBattleResult },
     chronosPosition: G.chronos.position,
     players: G.players.map((player) => ({
       hand: player.hand.map((card) => ({ ...card })),
@@ -201,38 +199,14 @@ export function BattleAnimationLayer({
         }
       }
 
-      if (before.chronosPosition !== next.chronosPosition) {
+      const latestChronosNotice = [...(G.recentGameNotices ?? [])]
+        .reverse()
+        .find((notice) => notice.kind === 'chronosChange');
+      const hasSequencedChronosChange = latestChronosNotice?.kind === 'chronosChange';
+      if (before.chronosPosition !== next.chronosPosition && !hasSequencedChronosChange) {
         const chronosRect = nextZoneRects.get('chronos');
         if (chronosRect)
           generated.push({ id: `chronos-${next.turn}-${next.chronosPosition}`, kind: 'chronos', rect: chronosRect });
-      }
-
-      // 回合結算時，保留正式卡牌在原位，改以複本向中央短衝，避免誤導規則上的場地移動。
-      const battleChanged =
-        next.battle.winner !== before.battle.winner ||
-        next.battle.damage !== before.battle.damage ||
-        next.battle.winnerAttack !== before.battle.winnerAttack ||
-        next.battle.loserAttack !== before.battle.loserAttack;
-      if ((next.turn > before.turn || battleChanged) && next.battle.winner !== null) {
-        const winner = next.battle.winner;
-        const loser = (1 - winner) as PlayerIndex;
-        const winnerCard = next.players[winner].battleZone[0];
-        const winnerRect = winnerCard ? nextRects.get(winnerCard.instanceId) : null;
-        const loserCard = next.players[loser].battleZone[0];
-        const loserRect = loserCard ? nextRects.get(loserCard.instanceId) : null;
-        if (winnerCard && winnerRect && loserRect) {
-          generated.push({
-            id: `lunge-${next.turn}-${winnerCard.instanceId}`,
-            kind: 'lunge',
-            card: winnerCard,
-            rect: winnerRect,
-            dx: (loserRect.left - winnerRect.left) * 0.36,
-            dy: (loserRect.top - winnerRect.top) * 0.36,
-          });
-          if (next.battle.damage > 0) {
-            generated.push({ id: `impact-${next.turn}-${loser}`, kind: 'impact', rect: loserRect });
-          }
-        }
       }
     }
 
@@ -265,21 +239,15 @@ export function BattleAnimationLayer({
   return (
     <div className="battle-animation-layer" aria-hidden="true">
       {items.map((item) =>
-        item.kind === 'impact' || item.kind === 'chronos' ? (
-          <span
-            key={item.id}
-            className={item.kind === 'chronos' ? 'battle-animation-chronos' : 'battle-animation-impact'}
-            style={styleFor(item)}
-          />
+        item.kind === 'chronos' ? (
+          <span key={item.id} className="battle-animation-chronos" style={styleFor(item)} />
         ) : (
           <div
             key={item.id}
             className={`battle-animation-card battle-animation-card-${item.kind}`}
             style={styleFor(item)}
           >
-            {item.card && (
-              <CardView card={item.card} size="md" showCost={false} className="battle-animation-card-face" />
-            )}
+            {item.card && <CardView card={item.card} size="md" className="battle-animation-card-face" />}
           </div>
         ),
       )}

@@ -1,0 +1,731 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>卡牌聯動候選審核</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: Inter, 'Noto Sans TC', system-ui, sans-serif;
+        color: #f4f0e8;
+        background: #111315;
+        --surface: #1c1f22;
+        --surface2: #25292d;
+        --line: #3a4045;
+        --muted: #a9afb4;
+        --gold: #d5b56c;
+        --green: #65bd91;
+        --red: #e0797c;
+        --blue: #78b5df;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-width: 320px;
+      }
+      button,
+      input,
+      textarea,
+      select {
+        font: inherit;
+        color: inherit;
+        background: #151719;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+      }
+      button {
+        min-height: 36px;
+        padding: 0 12px;
+        cursor: pointer;
+      }
+      button:hover {
+        border-color: var(--gold);
+      }
+      button:focus-visible,
+      input:focus-visible,
+      textarea:focus-visible,
+      select:focus-visible {
+        outline: 3px solid #78b5df55;
+        outline-offset: 1px;
+      }
+      header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 20px;
+        padding: 15px 20px;
+        border-bottom: 1px solid var(--line);
+        background: #17191b;
+      }
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+      h1 {
+        font-size: 18px;
+      }
+      .subtitle,
+      .muted {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .subtitle {
+        margin-top: 4px;
+      }
+      .summary {
+        display: flex;
+        gap: 18px;
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
+      .summary span {
+        display: block;
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .summary strong {
+        font-size: 16px;
+      }
+      .layout {
+        display: grid;
+        grid-template-columns: 310px minmax(0, 1fr);
+        min-height: calc(100vh - 76px);
+      }
+      aside {
+        border-right: 1px solid var(--line);
+        background: #17191b;
+      }
+      .filters {
+        display: grid;
+        gap: 8px;
+        padding: 12px;
+        border-bottom: 1px solid var(--line);
+      }
+      .list-note {
+        color: var(--muted);
+        font-size: 11px;
+      }
+      input,
+      select,
+      textarea {
+        width: 100%;
+        padding: 8px 9px;
+      }
+      .relation-list {
+        height: calc(100vh - 194px);
+        overflow: auto;
+      }
+      .relation-row {
+        display: grid;
+        grid-template-columns: 8px minmax(0, 1fr) auto;
+        gap: 9px;
+        width: 100%;
+        min-height: 66px;
+        padding: 9px 11px;
+        border: 0;
+        border-bottom: 1px solid #2a2e32;
+        border-radius: 0;
+        text-align: left;
+        background: transparent;
+      }
+      .relation-row.active {
+        background: #292d31;
+        box-shadow: inset 3px 0 var(--gold);
+      }
+      .dot {
+        width: 8px;
+        height: 34px;
+        border-radius: 4px;
+        background: var(--muted);
+      }
+      .dot.high {
+        background: var(--green);
+      }
+      .dot.medium {
+        background: var(--gold);
+      }
+      .dot.low {
+        background: var(--muted);
+      }
+      .dot.conflict {
+        background: var(--red);
+      }
+      .row-copy {
+        min-width: 0;
+      }
+      .row-copy strong,
+      .row-copy small {
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .row-copy strong {
+        font-size: 12px;
+      }
+      .row-copy small {
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .row-status {
+        color: var(--muted);
+        font-size: 10px;
+      }
+      main {
+        min-width: 0;
+        padding: 18px;
+      }
+      .empty {
+        padding: 60px 20px;
+        color: var(--muted);
+        text-align: center;
+      }
+      .detail {
+        max-width: 1050px;
+        margin: auto;
+      }
+      .detail-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 14px;
+        padding-bottom: 14px;
+        border-bottom: 1px solid var(--line);
+      }
+      .detail-head h2 {
+        margin-top: 4px;
+        font-size: 21px;
+      }
+      .badge {
+        display: inline-flex;
+        padding: 4px 8px;
+        border: 1px solid currentColor;
+        border-radius: 999px;
+        color: var(--gold);
+        font-size: 11px;
+        white-space: nowrap;
+      }
+      .badge.approved {
+        color: var(--green);
+      }
+      .badge.rejected {
+        color: var(--red);
+      }
+      .badge.needs_changes {
+        color: var(--gold);
+      }
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 14px;
+      }
+      .card-box,
+      .evidence,
+      .review-box {
+        padding: 13px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: var(--surface);
+      }
+      .card-box h3 {
+        font-size: 15px;
+      }
+      .card-box .id {
+        margin-top: 3px;
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .effect {
+        margin-top: 10px;
+        white-space: pre-wrap;
+        line-height: 1.55;
+        font-size: 13px;
+      }
+      .source-text {
+        margin-top: 8px;
+        padding-top: 8px;
+        border-top: 1px dashed var(--line);
+        color: var(--muted);
+        white-space: pre-wrap;
+        line-height: 1.5;
+        font-size: 11px;
+      }
+      .meta-line {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 12px;
+        margin-top: 10px;
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .section {
+        margin-top: 14px;
+      }
+      .section h3 {
+        margin-bottom: 8px;
+        font-size: 14px;
+      }
+      .concepts {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .concept {
+        padding: 4px 7px;
+        border: 1px solid #50606b;
+        border-radius: 999px;
+        color: var(--blue);
+        font-size: 11px;
+      }
+      .concept.category {
+        border-color: #756744;
+        color: var(--gold);
+      }
+      .member-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .member-list span {
+        padding: 5px 7px;
+        border: 1px solid var(--line);
+        border-radius: 5px;
+        background: #171a1d;
+        font-size: 11px;
+      }
+      .evidence {
+        display: grid;
+        gap: 7px;
+      }
+      .evidence div {
+        padding: 7px 8px;
+        border-left: 2px solid #56616a;
+        background: #171a1d;
+        white-space: pre-wrap;
+        line-height: 1.45;
+        font-size: 12px;
+      }
+      .review-box {
+        display: grid;
+        gap: 10px;
+      }
+      .review-box label span {
+        display: block;
+        margin-bottom: 5px;
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .review-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .review-actions .approve {
+        border-color: #347c5b;
+        background: #286046;
+      }
+      .review-actions .reject {
+        border-color: #8b474d;
+        background: #713940;
+      }
+      .notice {
+        min-height: 18px;
+        color: var(--green);
+        font-size: 12px;
+      }
+      .notice.error {
+        color: var(--red);
+      }
+      @media (max-width: 820px) {
+        header {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+        .summary {
+          width: 100%;
+          justify-content: space-between;
+          text-align: left;
+        }
+        .layout {
+          grid-template-columns: 1fr;
+        }
+        aside {
+          border-right: 0;
+          border-bottom: 1px solid var(--line);
+        }
+        .relation-list {
+          height: 230px;
+        }
+        main {
+          padding: 11px;
+        }
+      }
+      @media (max-width: 560px) {
+        .cards {
+          grid-template-columns: 1fr;
+        }
+        .detail-head {
+          flex-direction: column;
+        }
+        .review-actions {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div>
+        <h1>卡牌聯動候選審核</h1>
+        <p class="subtitle">可解釋模型的本機人工審核；批准前不會進入 PG 或玩家推薦。</p>
+      </div>
+      <div class="summary">
+        <div><span>候選</span><strong id="total">--</strong></div>
+        <div><span>待審核</span><strong id="pending">--</strong></div>
+        <div><span>已批准</span><strong id="approved">--</strong></div>
+        <div><span>目前佇列</span><strong id="queueCount">--</strong></div>
+        <div><span>衝突</span><strong id="conflicts">--</strong></div>
+      </div>
+    </header>
+    <div class="layout">
+      <aside>
+        <div class="filters">
+          <select id="queue">
+            <option value="core" selected>核心關係（建議先審）</option>
+            <option value="groups">機制群組</option>
+            <option value="conflicts">可能衝突</option>
+            <option value="high">全部高信心</option>
+            <option value="all">全部原始候選</option>
+          </select>
+          <input id="search" type="search" placeholder="搜尋卡號、卡名或機制" /><select id="kind">
+            <option value="all">全部關係</option>
+            <option value="enables">正向聯動</option>
+            <option value="conflicts">可能衝突</option></select
+          ><select id="category">
+            <option value="all">全部互動分類</option>
+            <option value="named_card_song">指定歌曲／卡牌</option>
+            <option value="element">屬性相關</option>
+            <option value="zone_resource">深淵／充能區資源</option>
+            <option value="chronos">Chronos／時間</option>
+            <option value="hp_damage">HP／傷害／減傷</option>
+            <option value="hand_draw">手牌／抽牌</option>
+            <option value="card_stats_type">Power Cost／卡牌種類</option>
+            <option value="deck_flow">牌組頂／SEND TO POWER 分流</option>
+            <option value="area_enchant">區域附魔卡</option>
+            <option value="event_trigger">進場／戰敗／受傷等事件</option>
+            <option value="other">其他</option></select
+          ><select id="confidence">
+            <option value="all">全部信心分級</option>
+            <option value="high">高信心</option>
+            <option value="medium">中信心</option>
+            <option value="low">低信心</option></select
+          ><select id="status">
+            <option value="all">全部審核狀態</option>
+            <option value="candidate">待審核</option>
+            <option value="approved">已批准</option>
+            <option value="needs_changes">需修改</option>
+            <option value="rejected">已駁回</option>
+          </select>
+        </div>
+        <p id="rangeInfo" class="list-note"></p>
+        <div id="relationList" class="relation-list"></div>
+      </aside>
+      <main id="main"><div class="empty">載入候選關係…</div></main>
+    </div>
+    <script>
+      const state = {
+        relations: [],
+        groups: [],
+        profiles: {},
+        filtered: [],
+        filteredGroups: [],
+        activeKey: '',
+        activeGroupId: '',
+        reviewSummary: {},
+        groupReviewSummary: {},
+        dirty: false,
+      };
+      const $ = (id) => document.getElementById(id);
+      const escapeHtml = (value) =>
+        String(value ?? '').replace(
+          /[&<>'"]/g,
+          (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[c],
+        );
+      const statusLabel = { candidate: '待審核', approved: '已批准', rejected: '已駁回', needs_changes: '需修改' };
+      const confidenceLabel = { high: '高信心', medium: '中信心', low: '低信心' };
+      const categoryLabel = {
+        named_card_song: '指定歌曲／卡牌',
+        element: '屬性相關',
+        zone_resource: '深淵／充能區資源',
+        chronos: 'Chronos／時間',
+        hp_damage: 'HP／傷害／減傷',
+        hand_draw: '手牌／抽牌',
+        card_stats_type: 'Power Cost／卡牌種類',
+        deck_flow: '牌組頂／SEND TO POWER 分流',
+        area_enchant: '區域附魔卡',
+        event_trigger: '進場／戰敗／受傷等事件',
+        other: '其他',
+      };
+      const isGroupMode = () => $('queue').value === 'groups';
+      const isCoreRelation = (relation) =>
+        relation.kind === 'enables' &&
+        relation.playabilityEligible &&
+        relation.concepts.some((concept) =>
+          /^(named-card:|damage-reduced$|chronos-position:|opponent-element:)/.test(concept),
+        );
+      function renderSummary() {
+        const s = isGroupMode() ? state.groupReviewSummary : state.reviewSummary;
+        $('total').textContent = s.total;
+        $('pending').textContent = s.pending;
+        $('approved').textContent = s.approved;
+        $('conflicts').textContent = state.relations.filter((r) => r.kind === 'conflicts').length;
+      }
+      function filter() {
+        const q = $('search').value.trim().toLowerCase();
+        const queue = $('queue').value;
+        const kind = $('kind').value;
+        const category = $('category').value;
+        const confidence = $('confidence').value;
+        const status = $('status').value;
+        if (queue === 'groups') {
+          state.filteredGroups = state.groups.filter((group) => {
+            const haystack = [group.id, group.title, group.concept, group.category, categoryLabel[group.category]]
+              .join(' ')
+              .toLowerCase();
+            return (
+              (!q || haystack.includes(q)) &&
+              (category === 'all' || group.category === category) &&
+              (status === 'all' || group.review.status === status)
+            );
+          });
+          if (!state.filteredGroups.some((group) => group.id === state.activeGroupId)) {
+            state.activeGroupId = state.filteredGroups[0]?.id || '';
+          }
+          $('queueCount').textContent = state.filteredGroups.length;
+          renderSummary();
+          renderList();
+          renderDetail();
+          return;
+        }
+        state.filtered = state.relations.filter((r) => {
+          const haystack = [
+            r.sourceCardId,
+            r.targetCardId,
+            r.source?.cardName,
+            r.target?.cardName,
+            r.source?.cardNameJa,
+            r.target?.cardNameJa,
+            ...(r.concepts || []),
+            ...(r.categories || []),
+            ...(r.categories || []).map((entry) => categoryLabel[entry] || entry),
+          ]
+            .join(' ')
+            .toLowerCase();
+          return (
+            (!q || haystack.includes(q)) &&
+            (queue === 'all' ||
+              (queue === 'core' && isCoreRelation(r)) ||
+              (queue === 'high' && r.confidence === 'high' && r.playabilityEligible) ||
+              (queue === 'conflicts' && r.kind === 'conflicts')) &&
+            (kind === 'all' || r.kind === kind) &&
+            (category === 'all' || (r.categories || []).includes(category)) &&
+            (confidence === 'all' || r.confidence === confidence) &&
+            (status === 'all' || r.review.status === status)
+          );
+        });
+        if (!state.filtered.some((r) => r.key === state.activeKey)) state.activeKey = state.filtered[0]?.key || '';
+        $('queueCount').textContent = state.filtered.length;
+        renderSummary();
+        renderList();
+        renderDetail();
+      }
+      function renderList() {
+        const list = $('relationList');
+        list.replaceChildren();
+        if (isGroupMode()) {
+          const visibleGroups = state.filteredGroups.slice(0, 250);
+          $('rangeInfo').textContent = `符合 ${state.filteredGroups.length} 個機制群組`;
+          for (const group of visibleGroups) {
+            const button = document.createElement('button');
+            button.className = `relation-row${group.id === state.activeGroupId ? ' active' : ''}`;
+            button.innerHTML =
+              '<span class="dot medium"></span><span class="row-copy"><strong></strong><small></small></span><span class="row-status"></span>';
+            button.querySelector('strong').textContent = group.title;
+            button.querySelector('small').textContent =
+              `${categoryLabel[group.category] || group.category} · ${group.relationCount} 條展開關係 · ${group.enablerCardIds.length} 張啟動卡 · ${group.payoffCardIds.length} 張收益卡`;
+            button.querySelector('.row-status').textContent = statusLabel[group.review.status] || '';
+            button.addEventListener('click', () => {
+              state.activeGroupId = group.id;
+              state.dirty = false;
+              renderList();
+              renderDetail();
+            });
+            list.append(button);
+          }
+          if (!state.filteredGroups.length) list.innerHTML = '<div class="empty">沒有符合條件的機制群組</div>';
+          return;
+        }
+        const visible = state.filtered.slice(0, 250);
+        $('rangeInfo').textContent = `符合 ${state.filtered.length} 條，側欄顯示前 ${visible.length} 條`;
+        for (const r of visible) {
+          const button = document.createElement('button');
+          button.className = `relation-row${r.key === state.activeKey ? ' active' : ''}`;
+          button.innerHTML = `<span class="dot ${r.kind === 'conflicts' ? 'conflict' : r.confidence}"></span><span class="row-copy"><strong></strong><small></small></span><span class="row-status"></span>`;
+          button.querySelector('strong').textContent =
+            `${r.source?.cardName || r.sourceCardId} → ${r.target?.cardName || r.targetCardId}`;
+          button.querySelector('small').textContent =
+            r.kind === 'conflicts'
+              ? `可能衝突 · ${categoryLabel[r.primaryCategory] || r.primaryCategory}`
+              : (r.categories || []).map((entry) => categoryLabel[entry] || entry).join(' · ');
+          button.querySelector('.row-status').textContent = statusLabel[r.review.status] || '';
+          button.addEventListener('click', () => {
+            state.activeKey = r.key;
+            state.dirty = false;
+            renderList();
+            renderDetail();
+          });
+          list.append(button);
+        }
+        if (!state.filtered.length) list.innerHTML = '<div class="empty">沒有符合條件的候選</div>';
+      }
+      function renderCard(card, heading) {
+        if (!card) return `<section class="card-box"><h3>${heading}</h3><p class="muted">卡牌資料不存在</p></section>`;
+        const japaneseName =
+          card.cardNameJa && card.cardNameJa !== card.cardName
+            ? `<p class="source-text">日文名稱來源：${escapeHtml(card.cardNameJa)}</p>`
+            : '';
+        const localizedEffect = card.cardEffect
+          ? `<p class="effect">${escapeHtml(card.cardEffect)}</p>`
+          : '<p class="effect muted">尚無校對的繁體中文效果文本</p>';
+        const japaneseEffect = card.cardEffectJa
+          ? `<p class="source-text">日文效果來源：\n${escapeHtml(card.cardEffectJa)}</p>`
+          : '';
+        return `<section class="card-box"><h3>${escapeHtml(card.cardName || card.cardId)}</h3><p class="id">${escapeHtml(card.cardId)}${card.cardType ? ` · ${escapeHtml(card.cardType)}` : ''}${card.cardElement ? ` · ${escapeHtml(card.cardElement)}` : ''}</p>${japaneseName}${localizedEffect}${japaneseEffect}</section>`;
+      }
+      function renderReviewBox(review, fallbackRationale) {
+        return `<section class="section review-box"><label><span>審核後的自然語言理由</span><textarea id="rationale" rows="3">${escapeHtml(review.rationale || fallbackRationale)}</textarea></label><label><span>審核備註（駁回／要求修改時必填）</span><textarea id="notes" rows="3">${escapeHtml(review.notes || '')}</textarea></label><p id="notice" class="notice" role="status"></p><div class="review-actions"><button class="approve" id="approve">批准</button><button id="changes">要求修改</button><button class="reject" id="reject">駁回</button><button id="reset">重置為待審核</button></div></section>`;
+      }
+      function bindReviewActions(saveHandler) {
+        for (const id of ['rationale', 'notes'])
+          $(id).addEventListener('input', () => {
+            state.dirty = true;
+          });
+        $('approve').addEventListener('click', () => saveHandler('approved'));
+        $('changes').addEventListener('click', () => saveHandler('needs_changes'));
+        $('reject').addEventListener('click', () => saveHandler('rejected'));
+        $('reset').addEventListener('click', () => saveHandler('candidate'));
+      }
+      function memberNames(ids) {
+        const visible = ids.slice(0, 32).map((id) => `<span>${escapeHtml(state.profiles[id]?.cardName || id)}</span>`);
+        if (ids.length > visible.length) visible.push(`<span>另有 ${ids.length - visible.length} 張</span>`);
+        return visible.join('');
+      }
+      function categoryTags(categories) {
+        return (categories || [])
+          .map((category) => `<span class="concept category">${escapeHtml(categoryLabel[category] || category)}</span>`)
+          .join('');
+      }
+      function renderDetail() {
+        if (isGroupMode()) {
+          const group = state.groups.find((entry) => entry.id === state.activeGroupId);
+          if (!group) {
+            $('main').innerHTML = '<div class="empty">沒有可審核的機制群組</div>';
+            return;
+          }
+          $('main').innerHTML =
+            `<div class="detail"><div class="detail-head"><div><p class="muted">${escapeHtml(group.concept)} · ${group.relationCount} 條原始關係</p><h2>${escapeHtml(group.title)}</h2><p class="effect">${escapeHtml(group.rationale)}</p></div><span class="badge ${group.review.status}">${statusLabel[group.review.status] || group.review.status}</span></div><section class="section"><h3>互動分類</h3><div class="concepts">${categoryTags([group.category])}</div></section><section class="section"><h3>啟動卡（${group.enablerCardIds.length}）</h3><div class="member-list">${memberNames(group.enablerCardIds)}</div></section><section class="section"><h3>收益卡（${group.payoffCardIds.length}）</h3><div class="member-list">${memberNames(group.payoffCardIds)}</div></section>${renderReviewBox(group.review, group.rationale)}</div>`;
+          bindReviewActions(saveGroup);
+          return;
+        }
+        const r = state.relations.find((entry) => entry.key === state.activeKey);
+        if (!r) {
+          $('main').innerHTML = '<div class="empty">沒有可審核的候選</div>';
+          return;
+        }
+        const concepts = (r.concepts || []).map((c) => `<span class="concept">${escapeHtml(c)}</span>`).join('');
+        const evidence = (r.evidence || []).map((e) => `<div>${escapeHtml(e)}</div>`).join('');
+        $('main').innerHTML =
+          `<div class="detail"><div class="detail-head"><div><p class="muted">${escapeHtml(r.key)} · ${r.kind === 'conflicts' ? '可能衝突' : '正向聯動'} · ${confidenceLabel[r.confidence] || ''} · 分數 ${r.score}</p><h2>${escapeHtml(r.rationale)}</h2></div><span class="badge ${r.review.status}">${statusLabel[r.review.status] || r.review.status}</span></div><div class="cards">${renderCard(r.source, '來源卡牌')}${renderCard(r.target, '目標卡牌')}</div><section class="section"><h3>互動分類</h3><div class="concepts">${categoryTags(r.categories)}</div></section><section class="section"><h3>機制標籤</h3><div class="concepts">${concepts || '<span class="muted">沒有標籤</span>'}</div></section><section class="section"><h3>模型證據</h3><div class="evidence">${evidence || '<div class="muted">沒有可顯示證據</div>'}</div></section>${renderReviewBox(r.review, r.rationale)}</div>`;
+        bindReviewActions(save);
+      }
+      async function save(status) {
+        const r = state.relations.find((entry) => entry.key === state.activeKey);
+        if (!r) return;
+        const notice = $('notice');
+        notice.className = 'notice';
+        notice.textContent = '儲存中…';
+        try {
+          const response = await fetch(`/api/review/${encodeURIComponent(r.key)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status, rationale: $('rationale').value, notes: $('notes').value }),
+          });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || '儲存失敗');
+          r.review = data.review;
+          state.dirty = false;
+          state.reviewSummary = data.reviewSummary;
+          filter();
+        } catch (error) {
+          notice.className = 'notice error';
+          notice.textContent = error instanceof Error ? error.message : '儲存失敗';
+        }
+      }
+      async function saveGroup(status) {
+        const group = state.groups.find((entry) => entry.id === state.activeGroupId);
+        if (!group) return;
+        const notice = $('notice');
+        notice.className = 'notice';
+        notice.textContent = '儲存中…';
+        try {
+          const response = await fetch(`/api/group-review/${encodeURIComponent(group.id)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status, rationale: $('rationale').value, notes: $('notes').value }),
+          });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || '儲存失敗');
+          group.review = data.review;
+          state.groupReviewSummary = data.groupReviewSummary;
+          state.dirty = false;
+          filter();
+        } catch (error) {
+          notice.className = 'notice error';
+          notice.textContent = error instanceof Error ? error.message : '儲存失敗';
+        }
+      }
+      async function load() {
+        try {
+          const response = await fetch('/api/state', { cache: 'no-store' });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || '載入失敗');
+          state.profiles = data.profiles;
+          state.relations = data.relations.map((relation) => ({
+            ...relation,
+            source: data.profiles[relation.sourceCardId],
+            target: data.profiles[relation.targetCardId],
+          }));
+          state.groups = data.groups;
+          state.reviewSummary = data.reviewSummary;
+          state.groupReviewSummary = data.groupReviewSummary;
+          for (const id of ['queue', 'search', 'kind', 'category', 'confidence', 'status']) {
+            $(id).addEventListener('input', filter);
+          }
+          filter();
+        } catch (error) {
+          $('main').innerHTML =
+            `<div class="empty">${escapeHtml(error instanceof Error ? error.message : '載入失敗')}</div>`;
+        }
+      }
+      load();
+    </script>
+  </body>
+</html>

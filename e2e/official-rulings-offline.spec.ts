@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 
 test.skip(process.env.E2E_PWA_OFFLINE !== '1', 'Requires the production PWA preview harness');
 
-test('production PWA 可在官方規則 API 中斷後使用已暖機的快取', async ({ page, request }) => {
+test('production PWA 可在官方規則 API 中斷後使用已暖機的快取 @pwa-only', async ({ page, request }) => {
   await request.post('/__test/reset');
   await page.addInitScript(() => {
     localStorage.setItem('zutomayo_deck_intro_seen', 'true');

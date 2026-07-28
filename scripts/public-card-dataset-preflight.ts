@@ -75,7 +75,7 @@ async function main(): Promise<void> {
   const smoke = gameSmoke(base);
   const report = evaluateCardDataset(
     { cards, translations: cardTextsToRows(texts), presetDecks, gameConfig },
-    { expectedCardCount: 422, gameSmokePassed: smoke.passed },
+    { expectedCardCount: 425, gameSmokePassed: smoke.passed },
   );
   console.log(
     JSON.stringify(

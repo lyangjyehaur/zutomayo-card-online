@@ -71,10 +71,22 @@ export interface ChronosDialProps {
   chronos: ChronosState;
   currentTime: ChronosTime;
   currentPlayer: PlayerIndex;
+  targetablePositions?: readonly number[];
+  selectedTargetPosition?: number | null;
+  onTargetPositionSelect?: (position: number) => void;
 }
 
-export function ChronosDial({ chronos, currentTime, currentPlayer }: ChronosDialProps) {
+export function ChronosDial({
+  chronos,
+  currentTime,
+  currentPlayer,
+  targetablePositions = [],
+  selectedTargetPosition = null,
+  onTargetPositionSelect,
+}: ChronosDialProps) {
   const position = normalizeChronosPosition(chronos.position);
+  const selectable = Boolean(onTargetPositionSelect && targetablePositions.length > 0);
+  const targetablePositionSet = new Set(targetablePositions.map(normalizeChronosPosition));
   const [medalPosition, setMedalPosition] = useState(position);
   const [hasFaceArt, setHasFaceArt] = useState(false);
   const timeLabel = currentTime === 'night' ? t('board.night') : t('board.day');
@@ -100,8 +112,9 @@ export function ChronosDial({ chronos, currentTime, currentPlayer }: ChronosDial
       data-time={currentTime}
       data-night-side={nightSide}
       data-face-art={hasFaceArt}
-      role="img"
-      aria-label={`${t('chronos.title')} ${position}/${POSITIONS} · ${timeLabel}`}
+      data-selectable={selectable}
+      role={selectable ? 'group' : 'img'}
+      aria-label={`${t('chronos.title')} · ${timeLabel}`}
     >
       <img
         className="chronosdial-face-art"
@@ -111,15 +124,11 @@ export function ChronosDial({ chronos, currentTime, currentPlayer }: ChronosDial
         onLoad={markAssetReady(setHasFaceArt)}
         onError={hideMissingReadyAsset(setHasFaceArt)}
       />
-      <div className="chronosdial-orbit" aria-hidden="true">
-        {CHRONOS_SLOTS.map((slot) => (
-          <span
-            key={slot.position}
-            className="chronosdial-slot"
-            data-active={slot.position === position}
-            data-time={slot.time}
-            style={slotStyle(slot)}
-          >
+      <div className="chronosdial-orbit" aria-hidden={selectable ? undefined : true}>
+        {CHRONOS_SLOTS.map((slot) => {
+          const targetable = selectable && targetablePositionSet.has(slot.position);
+          const selected = targetable && selectedTargetPosition === slot.position;
+          const slotContents = (
             <span className="chronosdial-slot-inner">
               <img
                 className="chronosdial-slot-art"
@@ -129,8 +138,37 @@ export function ChronosDial({ chronos, currentTime, currentPlayer }: ChronosDial
                 onError={hideMissingAsset}
               />
             </span>
-          </span>
-        ))}
+          );
+
+          return targetable ? (
+            <button
+              key={slot.position}
+              className="chronosdial-slot"
+              type="button"
+              data-position={slot.position}
+              data-active={slot.position === position}
+              data-selected-target={selected}
+              data-time={slot.time}
+              style={slotStyle(slot)}
+              aria-label={`${t('board.choiceChronosPositionHint' as never)} ${slot.position + 1}`}
+              aria-pressed={selected}
+              onClick={() => onTargetPositionSelect?.(slot.position)}
+            >
+              {slotContents}
+            </button>
+          ) : (
+            <span
+              key={slot.position}
+              className="chronosdial-slot"
+              data-position={slot.position}
+              data-active={slot.position === position}
+              data-time={slot.time}
+              style={slotStyle(slot)}
+            >
+              {slotContents}
+            </span>
+          );
+        })}
         <span className="chronosdial-medal" data-position={medalPosition} style={medalSlot.style}>
           <img
             className="chronosdial-medal-img"

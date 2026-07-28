@@ -6,6 +6,7 @@ import {
   openAuthenticatedOnlineLobby,
   registerAuthenticatedOnlineAccount,
 } from './helpers/online';
+import { QUICK_MATCH_ENABLED } from '../src/featureFlags';
 
 /**
  * These tests require the API and Colyseus endpoint to receive the same
@@ -62,16 +63,15 @@ function skipWhenBlocked(testInfo: TestInfo, baseURL: string, requireRankedHisto
 
 async function expectAuthenticatedLobby(page: Page, nickname: string): Promise<void> {
   await expect(page.getByText(`${nickname} · ELO`).first()).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByRole('button', { name: '開始匹配' })).toBeDisabled({ timeout: 30_000 });
 }
 
 async function selectFirstAvailableDeck(page: Page): Promise<void> {
-  const deckPanel = page.getByRole('heading', { name: '我的牌組' }).locator('xpath=ancestor::section[1]');
-  const deck = deckPanel.locator('button:not([disabled])').first();
+  const deckPanel = page.locator('[data-room-panel="deck"]');
+  const deckOptions = deckPanel.locator('details[data-deck-options]');
+  const deck = deckOptions.locator('button[aria-pressed]:not([disabled])').first();
   await expect(deck).toBeVisible({ timeout: 30_000 });
   await deck.click();
   await expect(deck).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByRole('button', { name: '開始匹配' })).toBeEnabled({ timeout: 30_000 });
 }
 
 async function expectProductionWebSocket(page: Page, websocketUrls: string[]): Promise<void> {
@@ -161,12 +161,13 @@ async function closeGuestContext(context: BrowserContext, failed: boolean): Prom
 
 test.describe.configure({ mode: 'serial' });
 
-test.describe('Authenticated 雙瀏覽器線上流程 @requires-backend', () => {
+test.describe('Authenticated 雙瀏覽器線上流程 @requires-backend @staging-only', () => {
   test('Quick Match、牌組選擇、聊天、重連、觀戰資訊隱藏、完整結算與雙方 server history @rr05-core', async ({
     browser,
     context,
     page,
   }, testInfo) => {
+    test.skip(!QUICK_MATCH_ENABLED, 'Quick Match UI is temporarily disabled');
     test.setTimeout(150_000);
     const baseURL = process.env.E2E_BASE_URL ?? 'http://localhost:3000';
     skipWhenBlocked(testInfo, baseURL, true);
@@ -217,16 +218,16 @@ test.describe('Authenticated 雙瀏覽器線上流程 @requires-backend', () => 
       await expect(spectatorPage.locator('[data-game-step="janken"]')).toBeVisible({ timeout: 30_000 });
       await expect(spectatorPage.locator('[data-tut^="janken-"]')).toHaveCount(0);
 
-      await Promise.all([
-        page.getByRole('button', { name: '顯示對戰聊天' }).click(),
-        guestPage.getByRole('button', { name: '顯示對戰聊天' }).click(),
-      ]);
+      await page.getByRole('button', { name: '顯示對戰聊天' }).click();
       const chatMessage = `authenticated-chat-${Date.now()}`;
       const chatInput = page.getByRole('textbox', { name: '對戰聊天訊息' });
       await expect(chatInput).toBeEnabled({ timeout: 20_000 });
       await chatInput.fill(chatMessage);
       await page.getByRole('button', { name: '發送對戰聊天訊息' }).click();
+      await expect(guestPage.locator('[data-chat-unread-count="1"]')).toBeVisible({ timeout: 20_000 });
+      await guestPage.locator('.online-chat-toggle').click();
       await expect(guestPage.locator('.online-chat-bubble', { hasText: chatMessage })).toBeVisible({ timeout: 20_000 });
+      await expect(guestPage.locator('[data-chat-unread-count]')).toHaveCount(0);
 
       await context.setOffline(true);
       await expect(page.locator('[data-online-connection-status="disconnected"]')).toBeVisible({ timeout: 15_000 });
@@ -303,6 +304,11 @@ test.describe('Authenticated 雙瀏覽器線上流程 @requires-backend', () => 
         expectAuthenticatedLobby(guestPage, recipient.nickname),
       ]);
       await Promise.all([selectFirstAvailableDeck(page), selectFirstAvailableDeck(guestPage)]);
+
+      await Promise.all([
+        page.locator('[data-friend-invites] summary').click(),
+        guestPage.locator('[data-friend-invites] summary').click(),
+      ]);
 
       const sendInvite = page.locator(`[data-friend-invite-action="send"][data-friend-user-id="${recipient.id}"]`);
       const acceptInvite = guestPage.locator(

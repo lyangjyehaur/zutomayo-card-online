@@ -54,11 +54,26 @@ export function clearStoredOnlineSession(): void {
   getStorage()?.removeItem(ONLINE_SESSION_STORAGE_KEY);
 }
 
+export function resolveOnlineRouteSession(
+  session: OnlineSession | null,
+  storedSession: OnlineSession | null,
+  matchID: string,
+  spectatorMode: boolean,
+): OnlineSession | null {
+  if (spectatorMode || !matchID) return null;
+  if (session?.matchID === matchID) return session;
+  return storedSession?.matchID === matchID ? storedSession : null;
+}
+
 export async function leaveOnlineSession(session: OnlineSession): Promise<void> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 3_000);
   try {
     await fetch(`/games/zutomayo-card/${encodeURIComponent(session.matchID)}/leave`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
+      keepalive: true,
       body: JSON.stringify({
         playerID: session.playerID,
         credentials: session.playerCredentials,
@@ -72,7 +87,27 @@ export async function leaveOnlineSession(session: OnlineSession): Promise<void> 
       level: 'warning',
       data: { match_id: session.matchID, error: err instanceof Error ? err.message : String(err) },
     });
+  } finally {
+    clearTimeout(timeout);
   }
+}
+
+export async function requestOnlineRematch(session: OnlineSession): Promise<string> {
+  const response = await fetch(`/games/zutomayo-card/${encodeURIComponent(session.matchID)}/playAgain`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      playerID: session.playerID,
+      credentials: session.playerCredentials,
+      unlisted: true,
+    }),
+  });
+  if (!response.ok) throw new Error(`Online rematch failed: HTTP ${response.status}`);
+  const data = (await response.json()) as { nextMatchID?: unknown };
+  if (typeof data.nextMatchID !== 'string' || !data.nextMatchID) {
+    throw new Error('Online rematch did not return a match ID');
+  }
+  return data.nextMatchID;
 }
 
 export async function validateOnlineSession(session: OnlineSession): Promise<OnlineSessionValidationResult> {

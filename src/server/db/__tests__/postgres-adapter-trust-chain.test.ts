@@ -81,6 +81,24 @@ function stateBeforeDeckBind() {
 }
 
 describe('PostgresAdapter trust-chain transactions', () => {
+  it('serializes rematch creation with a transaction-scoped advisory lock', async () => {
+    const schemaClient = mockClient();
+    const lockClient = mockClient();
+    const pool = mockPool([schemaClient, lockClient]);
+    const adapter = new PostgresAdapter({ pool: pool as never, createIndexes: false });
+    const operation = vi.fn(async () => 'next-match');
+
+    await expect(adapter.withRematchLock('match_1', operation)).resolves.toBe('next-match');
+
+    expect(lockClient.query).toHaveBeenNthCalledWith(1, 'BEGIN');
+    expect(lockClient.query).toHaveBeenNthCalledWith(2, 'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
+      'match_1',
+    ]);
+    expect(lockClient.query).toHaveBeenLastCalledWith('COMMIT');
+    expect(operation).toHaveBeenCalledOnce();
+    expect(lockClient.release).toHaveBeenCalledOnce();
+  });
+
   it('shuffles a reserved deck and marks only the opening hand face up', async () => {
     const initialState = stateBeforeDeckBind();
     const state = structuredClone(initialState);

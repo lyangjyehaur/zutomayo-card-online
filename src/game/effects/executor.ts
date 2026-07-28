@@ -18,6 +18,7 @@ import { getCardDef } from '../cards/loader';
 import { getChronosTimeForPosition, normalizeChronosPosition } from '../chronos';
 import { pushHpChange } from '../hpChange';
 import { recordAction } from '../actionLog';
+import { restoreHiddenInformation } from '../hiddenInformation';
 import { handleRequestChoice } from './requestChoices';
 import { Sentry } from '../../sentry';
 
@@ -329,6 +330,7 @@ function evaluateCondition(
 }
 
 function endFromEffect(G: GameState, winner: PlayerIndex, reason: string): void {
+  restoreHiddenInformation(G);
   G.step = 'gameOver';
   G.winner = winner;
   G.gameoverReason = reason;
@@ -795,8 +797,16 @@ function handleDirectDamage({
   return { success: true, message: `Deal ${damage}` };
 }
 
-function handleDamageReduce({ G, player, value }: EffectHandlerArgs): { success: boolean; message: string } {
+function handleDamageReduce({ G, player, value, context }: EffectHandlerArgs): { success: boolean; message: string } {
   G.modifiers.damageReduction[player] += value;
+  if (context.cardDefId && value > 0) {
+    if (!G.modifiers.damageReductionSources) G.modifiers.damageReductionSources = [[], []];
+    G.modifiers.damageReductionSources[player].push({
+      ...(context.cardInstanceId ? { cardInstanceId: context.cardInstanceId } : {}),
+      cardDefId: context.cardDefId,
+      amount: value,
+    });
+  }
   return { success: true, message: `Damage reduction +${value}` };
 }
 
@@ -977,6 +987,13 @@ function handleMillDeckToAbyss({ effect, G, player, opponent, opponentIndex, con
     moved++;
   }
   if (effect.action.params.countFromLastChoice) G.lastChoiceSelectionCount[player] = null;
+  // Grand Rules 8.2.2: moving fewer than the specified number from a deck to
+  // Abyss causes that deck's owner to lose immediately.
+  if (moved < count) {
+    const reason = `Player ${opponentIndex} loses: not enough cards to move ${count} from deck to Abyss (moved ${moved}).`;
+    endFromEffect(G, player, reason);
+    return { success: false, message: reason };
+  }
   return { success: true, message: `Mill ${moved} opposing card${moved === 1 ? '' : 's'} to Abyss` };
 }
 
@@ -1001,7 +1018,15 @@ function handleMoveOwnDeckTopByPower({ G, player, me, context }: EffectHandlerAr
   return { success: true, message: 'Move deck top to Abyss' };
 }
 
-function handleMoveOpponentDeckTopByPowerCost({ effect, G, player, me, opponent, context }: EffectHandlerArgs): {
+function handleMoveOpponentDeckTopByPowerCost({
+  effect,
+  G,
+  player,
+  me,
+  opponent,
+  opponentIndex,
+  context,
+}: EffectHandlerArgs): {
   success: boolean;
   message: string;
 } {
@@ -1012,7 +1037,13 @@ function handleMoveOpponentDeckTopByPowerCost({ effect, G, player, me, opponent,
   if (opponent.deck.length === 0) return { success: false, message: 'No opposing deck top card to reveal' };
   const card = opponent.deck[0];
   card.faceUp = true;
+  recordAction(G, player, 'revealCards', {
+    targetPlayer: opponentIndex,
+    sourceZone: 'deck',
+    cardDefIds: [card.defId],
+  });
   const powerCost = getCardDef(card.defId)?.powerCost ?? 0;
+  card.faceUp = false;
   if (powerCost >= minPowerCost) {
     const areaEnchant = me.setZoneC;
     if (!areaEnchant) return { success: false, message: 'No own Area Enchant to move' };
@@ -1025,14 +1056,28 @@ function handleMoveOpponentDeckTopByPowerCost({ effect, G, player, me, opponent,
   return { success: true, message: 'Reveal opposing deck top' };
 }
 
-function handleRevealOpponentDeckTopBySendToPower({ effect, G, player, me, opponent, context }: EffectHandlerArgs): {
+function handleRevealOpponentDeckTopBySendToPower({
+  effect,
+  G,
+  player,
+  me,
+  opponent,
+  opponentIndex,
+  context,
+}: EffectHandlerArgs): {
   success: boolean;
   message: string;
 } {
   if (opponent.deck.length === 0) return { success: false, message: 'No opposing deck top card to reveal' };
   const card = opponent.deck[0];
   card.faceUp = true;
+  recordAction(G, player, 'revealCards', {
+    targetPlayer: opponentIndex,
+    sourceZone: 'deck',
+    cardDefIds: [card.defId],
+  });
   const sendToPower = getCardDef(card.defId)?.sendToPower ?? 0;
+  card.faceUp = false;
   const minSendToPower = Number(effect.action.params.minSendToPower ?? 1);
   if (sendToPower >= minSendToPower) {
     const areaEnchant = me.setZoneC;
@@ -1048,7 +1093,7 @@ function handleRevealOpponentDeckTopBySendToPower({ effect, G, player, me, oppon
   return { success: true, message: `Attack +${boost}` };
 }
 
-function handleRevealOpponentHand({ G, opponent, opponentIndex }: EffectHandlerArgs): {
+function handleRevealOpponentHand({ G, player, opponent, opponentIndex }: EffectHandlerArgs): {
   success: boolean;
   message: string;
 } {
@@ -1056,6 +1101,11 @@ function handleRevealOpponentHand({ G, opponent, opponentIndex }: EffectHandlerA
   const revealed = new Set(G.revealedHandCardIds[opponentIndex]);
   for (const card of opponent.hand) revealed.add(card.instanceId);
   G.revealedHandCardIds[opponentIndex] = [...revealed];
+  recordAction(G, player, 'revealCards', {
+    targetPlayer: opponentIndex,
+    sourceZone: 'hand',
+    cardDefIds: opponent.hand.map((card) => card.defId),
+  });
   return { success: true, message: 'Reveal opposing hand' };
 }
 
@@ -1066,7 +1116,7 @@ function handleReturnAreaEnchantToDeck({ effect, G, opponent, opponentIndex }: E
   const card = opponent.setZoneC;
   if (!card) return { success: false, message: 'No opposing Area Enchant' };
   opponent.setZoneC = null;
-  card.faceUp = true;
+  card.faceUp = false;
   if (effect.action.params.position === 'top') opponent.deck.unshift(card);
   else opponent.deck.push(card);
   if (effect.action.params.lockAreaEnchant) {
@@ -1074,6 +1124,26 @@ function handleReturnAreaEnchantToDeck({ effect, G, opponent, opponentIndex }: E
     G.areaEnchantSetLocked[opponentIndex] = true;
   }
   return { success: true, message: 'Return opposing Area Enchant to deck' };
+}
+
+function handleMoveOpponentAreaEnchant({ G, opponent, opponentIndex, context }: EffectHandlerArgs): {
+  success: boolean;
+  message: string;
+} {
+  const card = opponent.setZoneC;
+  if (!card) return { success: false, message: 'No opposing Area Enchant' };
+  opponent.setZoneC = null;
+  card.faceUp = true;
+  opponent.abyss.push(card);
+  emitZoneEntered(G, context, opponentIndex, 'abyss', card);
+
+  if (!G.suppressedEffectCardIdsThisTurn) G.suppressedEffectCardIdsThisTurn = [];
+  if (!G.suppressedEffectCardIdsThisTurn.includes(card.instanceId)) {
+    G.suppressedEffectCardIdsThisTurn.push(card.instanceId);
+  }
+  G.pendingEffects[0] = G.pendingEffects[0].filter((effect) => effect.cardInstanceId !== card.instanceId);
+  G.pendingEffects[1] = G.pendingEffects[1].filter((effect) => effect.cardInstanceId !== card.instanceId);
+  return { success: true, message: 'Move opposing Area Enchant to Abyss' };
 }
 
 function handleMoveSelfAreaEnchant({ effect, G, player, me, context }: EffectHandlerArgs): {
@@ -1238,6 +1308,7 @@ const effectHandlers: Record<ActionType, EffectHandler> = {
   revealOpponentDeckTopBySendToPower: handleRevealOpponentDeckTopBySendToPower,
   revealOpponentHand: handleRevealOpponentHand,
   returnAreaEnchantToDeck: handleReturnAreaEnchantToDeck,
+  moveOpponentAreaEnchant: handleMoveOpponentAreaEnchant,
   moveSelfAreaEnchant: handleMoveSelfAreaEnchant,
   useFromAbyss: handleUseFromAbyss,
   handSizeModifier: handleHandSizeModifier,
@@ -1265,6 +1336,11 @@ export function executeEffect(
     const revealed = new Set(G.revealedHandCardIds[player]);
     for (const card of me.hand) revealed.add(card.instanceId);
     G.revealedHandCardIds[player] = [...revealed];
+    recordAction(G, player, 'revealCards', {
+      targetPlayer: player,
+      sourceZone: 'hand',
+      cardDefIds: me.hand.map((card) => card.defId),
+    });
   }
   const valueParam = effect.action.params.value;
   const value = Number(effect.action.params.value ?? 0);
@@ -1285,6 +1361,9 @@ export function executeEffect(
   }
   if (G.pendingChoice && context.cardDefId && !G.pendingChoice.sourceCardDefId) {
     G.pendingChoice.sourceCardDefId = context.cardDefId;
+  }
+  if (G.pendingChoice && context.cardInstanceId && !G.pendingChoice.sourceCardInstanceId) {
+    G.pendingChoice.sourceCardInstanceId = context.cardInstanceId;
   }
   return result;
 }
@@ -1324,4 +1403,5 @@ export function processTurnEffects(
       }
     }
   }
+  restoreHiddenInformation(G);
 }

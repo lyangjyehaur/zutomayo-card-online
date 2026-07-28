@@ -183,6 +183,7 @@ export interface CustomRoomMetadata {
   status: CustomRoomStatus;
   playerCount: number;
   spectatorCount: number;
+  hostDisplayName?: string;
   boardgameMatchID?: string;
 }
 

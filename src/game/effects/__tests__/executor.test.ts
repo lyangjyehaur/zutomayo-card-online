@@ -356,9 +356,15 @@ describe('effect executor', () => {
   describe('damageReduce', () => {
     it('增加減傷修飾器', () => {
       const G = makeG();
-      const result = runEffect(makeEffect('damageReduce', { value: 15 }), G);
+      const result = runEffect(makeEffect('damageReduce', { value: 15 }), G, 0, {
+        cardInstanceId: 'reducer-instance',
+        cardDefId: 'reducer-card',
+      });
       expect(result.success).toBe(true);
       expect(G.modifiers.damageReduction[0]).toBe(15);
+      expect(G.modifiers.damageReductionSources?.[0]).toEqual([
+        { cardInstanceId: 'reducer-instance', cardDefId: 'reducer-card', amount: 15 },
+      ]);
     });
   });
 
@@ -583,6 +589,18 @@ describe('effect executor', () => {
       expect(G.players[1].deck.length).toBe(1);
     });
 
+    it('固定張數超過對手牌庫時移動現有卡牌並使對手立即敗北', () => {
+      const G = makeG();
+      G.players[1].deck = [cardInstance('char-basic')];
+      const result = runEffect(makeEffect('millDeckToAbyss', { count: 2 }), G);
+      expect(result.success).toBe(false);
+      expect(G.players[1].deck).toHaveLength(0);
+      expect(G.players[1].abyss).toHaveLength(1);
+      expect(G.step).toBe('gameOver');
+      expect(G.winner).toBe(0);
+      expect(G.gameoverReason).toContain('not enough cards to move 2 from deck to Abyss');
+    });
+
     it('countFromLastChoice 使用上次選擇數量', () => {
       const G = makeG();
       G.players[1].deck = [cardInstance('char-basic'), cardInstance('char-dark')];
@@ -591,6 +609,18 @@ describe('effect executor', () => {
       expect(result.success).toBe(true);
       expect(G.players[1].abyss.length).toBe(2);
       expect(G.lastChoiceSelectionCount[0]).toBeNull();
+    });
+
+    it('countFromLastChoice 超過對手牌庫時重設選擇數量並使對手立即敗北', () => {
+      const G = makeG();
+      G.players[1].deck = [cardInstance('char-basic')];
+      G.lastChoiceSelectionCount[0] = 2;
+      const result = runEffect(makeEffect('millDeckToAbyss', { countFromLastChoice: true }), G);
+      expect(result.success).toBe(false);
+      expect(G.players[1].abyss).toHaveLength(1);
+      expect(G.lastChoiceSelectionCount[0]).toBeNull();
+      expect(G.step).toBe('gameOver');
+      expect(G.winner).toBe(0);
     });
 
     it('countFromLastChoice 無選擇數量時回傳失敗', () => {
@@ -641,7 +671,11 @@ describe('effect executor', () => {
       G.players[1].deck = [cardInstance('char-basic')]; // powerCost 2
       const result = runEffect(makeEffect('moveOpponentDeckTopByPowerCost', { minPowerCost: 3 }), G);
       expect(result.success).toBe(true);
-      expect(G.players[1].deck[0].faceUp).toBe(true);
+      expect(G.players[1].deck[0].faceUp).toBe(false);
+      expect(G.actionLog.at(-1)).toMatchObject({
+        action: 'revealCards',
+        payload: { targetPlayer: 1, sourceZone: 'deck', cardDefIds: ['char-basic'] },
+      });
     });
 
     it('對手牌庫為空時回傳失敗', () => {
@@ -714,6 +748,43 @@ describe('effect executor', () => {
       const G = makeG();
       const result = runEffect(makeEffect('returnAreaEnchantToDeck', { position: 'bottom' }), G);
       expect(result.success).toBe(false);
+    });
+  });
+
+  describe('moveOpponentAreaEnchant', () => {
+    it('將對手 Area Enchant 移入 Abyss 並停止該卡後續效果', () => {
+      const G = makeG();
+      const areaEnchant = cardInstance('area-enchant-1');
+      G.players[1].setZoneC = areaEnchant;
+      G.pendingEffects[1] = [
+        {
+          id: 'opponent-area-effect',
+          player: 1,
+          cardInstanceId: areaEnchant.instanceId,
+          cardDefId: areaEnchant.defId,
+          rawText: '',
+          effect: makeEffect('boostAttack', { value: 10 }),
+          source: 'setZoneC',
+        },
+      ];
+
+      const result = runEffect(makeEffect('moveOpponentAreaEnchant', { destination: 'abyss' }), G);
+
+      expect(result.success).toBe(true);
+      expect(G.players[1].setZoneC).toBeNull();
+      expect(G.players[1].abyss).toEqual([
+        expect.objectContaining({ instanceId: areaEnchant.instanceId, faceUp: true }),
+      ]);
+      expect(G.suppressedEffectCardIdsThisTurn).toContain(areaEnchant.instanceId);
+      expect(G.pendingEffects[1]).toHaveLength(0);
+      expect(G.timingEvents).toContainEqual(
+        expect.objectContaining({ type: 'zoneEntered', player: 1, zone: 'abyss', cardDefId: areaEnchant.defId }),
+      );
+    });
+
+    it('對手沒有 Area Enchant 時不執行', () => {
+      const G = makeG();
+      expect(runEffect(makeEffect('moveOpponentAreaEnchant', { destination: 'abyss' }), G).success).toBe(false);
     });
   });
 

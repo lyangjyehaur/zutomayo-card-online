@@ -135,7 +135,11 @@ export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; cli
   private async broadcastChatPreview(client: PlatformClient, message: ChatPreviewMessage): Promise<void> {
     if (carriesChatPreviewContent(message)) return;
     const messageId = optionalText(message.messageId, 128);
-    if (!messageId || !client.userData || !client.auth?.authenticated) return;
+    if (!messageId || !client.userData || !client.auth) return;
+    const hasVerifiedIdentity =
+      client.auth.authenticated ||
+      (client.userData.role === 'player' && client.userData.hasBoardgameCredentials === true);
+    if (!hasVerifiedIdentity) return;
     if (client.userData.userId !== client.auth.userId) return;
     const suppliedConversationId = optionalText(message.conversationId, 128);
     if (!this.conversationId || (suppliedConversationId && suppliedConversationId !== this.conversationId)) return;

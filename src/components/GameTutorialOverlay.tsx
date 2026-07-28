@@ -32,9 +32,8 @@ export interface TutorialStep {
   hideNext?: boolean;
   /** 由遊戲元件回報成功操作並推進，此步不顯示 Next。 */
   actionOnly?: boolean;
-  /** 標記此步驟可由 GameNotice 彈窗的確認按鈕推進（如時鐘推進、HP 計算彈窗）。
-   *  解決多回合場景中同類步驟（clock-advance/hp-calc）重複出現時的 findIndex 問題。 */
-  advanceOnNoticeDismiss?: boolean;
+  /** 標記此步驟在正式場上結算動畫完整播放後自動推進。 */
+  advanceOnResolutionComplete?: boolean;
   /** 返回上一個說明時是否可直接切換，或必須從安全檢查點重建對局。 */
   backBehavior?: { type: 'direct' } | { type: 'restart'; checkpoint: 'preparation' | 'flow' | 'turn2' | 'effects' };
 }
@@ -160,6 +159,7 @@ export function GameTutorialOverlay({
   const bodyKey = resolved?.body ?? current.body;
   const rects = useTargetRects(current.target, current.padding ?? 12, currentStep);
   const isActionStep = Boolean(current.completeWhen || current.actionOnly);
+  const isAutoResolutionStep = current.advanceOnResolutionComplete === true;
   const interactionTarget =
     current.interactionTarget !== undefined
       ? current.interactionTarget
@@ -542,13 +542,19 @@ export function GameTutorialOverlay({
 
         {/* Footer：操作按鈕與提示 */}
         <div className="tutorial-tooltip-footer mt-5 flex flex-col gap-3">
-          {(isActionStep || current.hideNext) && (
+          {(isActionStep || current.hideNext) && !isAutoResolutionStep && (
             <p className="tutorial-tooltip-instruction" data-testid="tutorial-fixed-instruction">
               {t((current.instruction ?? 'tutorial.game.actionHint') as never)}
             </p>
           )}
           {/* Navigation / action hint */}
-          {isActionStep || current.hideNext ? (
+          {isAutoResolutionStep ? (
+            <div className="flex items-center justify-center gap-2" role="status" aria-live="polite">
+              <span className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/60">
+                {t('tutorial.game.resolutionPlaying' as never)}
+              </span>
+            </div>
+          ) : isActionStep || current.hideNext ? (
             <div className="flex items-center justify-center gap-2">
               <span className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/60">
                 {t('common.continue')}

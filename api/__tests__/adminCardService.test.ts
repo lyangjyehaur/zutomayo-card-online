@@ -115,6 +115,14 @@ describe('admin card service', () => {
       false,
       true,
       'https://zutomayocard.net/errata/001/',
+      'listed',
+      'standard',
+      'draft',
+      'disabled',
+      '',
+      '',
+      '',
+      '',
     ]);
   });
 

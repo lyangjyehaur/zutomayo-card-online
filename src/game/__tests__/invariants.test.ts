@@ -110,6 +110,7 @@ const VALID_ACTIONS: ActionType[] = [
   'revealOpponentDeckTopBySendToPower',
   'revealOpponentHand',
   'returnAreaEnchantToDeck',
+  'moveOpponentAreaEnchant',
   'moveSelfAreaEnchant',
   'useFromAbyss',
   'handSizeModifier',

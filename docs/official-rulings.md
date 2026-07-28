@@ -35,6 +35,10 @@ Q&A 同步只接受 `public === '公開'`。parser、筆數或必要欄位不符
 4. 以 `release:official-rulings` 及 `release:official-rule-documents` 完成即時來源驗證、五語匯入、完整性檢查及 active pointer 切換。
 5. 啟動或重啟 API，檢查 `/api/official/status` 的 `buildId`，並抽查 Grand Rules、基本 Floor Rules、Q&A 與勘誤六種語言。
 
+Grand Rules 的發布來源必須保存官方 PDF 的完整正文，不得只提供章節摘要。發布器會驗證第 1 至 10 章、足夠的日文原文長度、190 項以上編號內容，以及每種譯文是否逐項保留完全相同的條文編號。純章／節標題可以使用空正文作為結構節點，API 仍會把其已複核標題視為完整翻譯。官方 PDF 本身缺少 `3.9`，並同時以 `10.2` 編號「優先プレイヤー」與「公開情報と非公開情報」；資料必須忠實保留，不得自行改號。
+
+基本 Floor Rules 同樣必須保存官方 PDF 全文，不得以章節摘要替代。當前 `floorrule_260721.pdf` 的受控來源包含第 1 至 10 章、38 個已複核資料節點（overview 加 37 個正文節點）及 145 個清單／編號步驟標記；五種譯文必須逐節保留相同標記序列，並通過各語言全文長度門檻。賽事角色、用品規範、洗牌程序、BO3 時間到處理、退賽、結果操作及五級處分均屬必要內容，缺少任何已複核章節或只保留概要都會在資料庫 transaction 開始前失敗。
+
 內容 JSON 不得提交 GitHub，也不會複製進 API 或 migration image。內容發布須從持有本機受控來源檔的維護環境執行；server4 部署透過 SSH stdin 將內容直接送進一次性 migration container。
 
 ```bash
@@ -43,7 +47,7 @@ npm run export:official-rulings-translations -- \
   --output=data/official-rulings-translations.json
 
 cat data/official-rulings-translations.json | npm run release:official-rulings -- \
-  --translations=- --app-version=0.2.3 --build-id="$(git rev-parse HEAD)"
+  --translations=- --app-version=0.2.4 --build-id="$(git rev-parse HEAD)"
 
 OFFICIAL_RULE_DOCUMENTS_FILE=data/official-rule-documents-20260721.json \
   npm run release:official-rule-documents

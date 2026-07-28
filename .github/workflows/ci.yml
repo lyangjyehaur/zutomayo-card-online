@@ -98,10 +98,9 @@ jobs:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
         run: npm run build
 
-  e2e:
-    name: E2E Tests
+  core-e2e:
+    name: Core E2E Tests
     runs-on: ubuntu-latest
-    needs: lint-and-test
     env:
       PG_PASSWORD: e2e-test-password
       JWT_SECRET: e2e-test-jwt-secret-32chars-min
@@ -127,7 +126,8 @@ jobs:
           compose=(docker compose -f docker-compose.yml -f docker-compose.e2e.yml)
           if "${compose[@]}" up --build --wait --wait-timeout 180 game api platform \
             2>&1 | tee "$log_file" \
-            && "${compose[@]}" run --build --rm e2e 2>&1 | tee -a "$log_file"; then
+            && "${compose[@]}" build e2e 2>&1 | tee -a "$log_file" \
+            && "${compose[@]}" run --rm e2e npm run e2e:core 2>&1 | tee -a "$log_file"; then
             exit 0
           fi
           service_status="$("${compose[@]}" ps --all --format '{{.Service}}={{.State}}/{{.ExitCode}}' | tr '\n' ' ')"

@@ -16,6 +16,53 @@ const { postgresConnectionString, postgresSslConfig } = require('../api/runtimeS
 type DocumentId = 'grand' | 'floor';
 
 const OFFICIAL_RULES_INDEX_URL = 'https://zutomayocard.net/rule/';
+const FLOOR_SECTION_IDS = [
+  'overview',
+  'chapter-1',
+  'chapter-1-spectators',
+  'chapter-2',
+  'chapter-3',
+  'chapter-3-organizer',
+  'chapter-3-judge',
+  'chapter-3-staff',
+  'chapter-3-player',
+  'chapter-3-spectator',
+  'chapter-4',
+  'chapter-4-cards',
+  'chapter-4-proxies',
+  'chapter-4-sleeves',
+  'chapter-4-playmat',
+  'chapter-4-clock',
+  'chapter-4-notes',
+  'chapter-5',
+  'chapter-6',
+  'chapter-6-procedure',
+  'chapter-6-precautions',
+  'chapter-6-judge',
+  'chapter-7',
+  'chapter-7-game-result',
+  'chapter-7-turn-end',
+  'chapter-7-match-result',
+  'chapter-7-bo3',
+  'chapter-7-bo3-time',
+  'chapter-7-reporting',
+  'chapter-7-concession',
+  'chapter-8',
+  'chapter-9',
+  'chapter-10',
+  'chapter-10-caution',
+  'chapter-10-warning',
+  'chapter-10-game-loss',
+  'chapter-10-disqualification',
+  'chapter-10-suspension',
+] as const;
+const FLOOR_TRANSLATION_MINIMUM_LENGTHS: Record<OfficialTranslationLocale, number> = {
+  'zh-TW': 7_500,
+  'zh-CN': 7_500,
+  'zh-HK': 7_500,
+  en: 23_000,
+  ko: 11_500,
+};
 
 interface SectionTranslation {
   title: string;
@@ -65,6 +112,13 @@ function nonEmpty(value: unknown, label: string): string {
   return result;
 }
 
+function floorStructureMarkers(body: string): string[] {
+  return body
+    .split('\n')
+    .map((line) => line.trim().match(/^(?:●|・|※|\d+\.)/)?.[0])
+    .filter((marker): marker is string => Boolean(marker));
+}
+
 export function validateSnapshot(value: unknown): RuleDocumentsSnapshot {
   if (!value || typeof value !== 'object') throw new Error('Rule document release input must be an object');
   const snapshot = value as RuleDocumentsSnapshot;
@@ -98,7 +152,9 @@ export function validateSnapshot(value: unknown): RuleDocumentsSnapshot {
       if (sectionIds.has(section.id)) throw new Error(`${document.id} has duplicate section ${section.id}`);
       sectionIds.add(nonEmpty(section.id, `${document.id}.section.id`));
       nonEmpty(section.titleJa, `${document.id}.${section.id}.titleJa`);
-      nonEmpty(section.bodyJa, `${document.id}.${section.id}.bodyJa`);
+      if (typeof section.bodyJa !== 'string') {
+        throw new Error(`${document.id}.${section.id}.bodyJa must be a string`);
+      }
       if (!Number.isInteger(section.order) || section.order < 0) throw new Error(`${section.id}.order is invalid`);
       if (!Number.isInteger(section.level) || section.level < 1 || section.level > 4) {
         throw new Error(`${section.id}.level is invalid`);
@@ -116,13 +172,108 @@ export function validateSnapshot(value: unknown): RuleDocumentsSnapshot {
         const translation = section.translations?.[locale];
         if (!translation) throw new Error(`${document.id}.${section.id}.${locale} is missing`);
         const title = nonEmpty(translation.title, `${document.id}.${section.id}.${locale}.title`);
-        const body = nonEmpty(translation.body, `${document.id}.${section.id}.${locale}.body`);
+        if (typeof translation.body !== 'string') {
+          throw new Error(`${document.id}.${section.id}.${locale}.body must be a string`);
+        }
+        const body = translation.body.trim();
+        if (Boolean(section.bodyJa.trim()) !== Boolean(body)) {
+          throw new Error(
+            `${document.id}.${section.id}.${locale}.body must match the source section's structural/content state`,
+          );
+        }
         assertCanonicalRulesTerminology(locale, `${title}\n${body}`, `${document.id}.${section.id}.${locale}`);
       }
     }
     for (const section of document.sections) {
       if (section.parentId && !sectionIds.has(section.parentId)) {
         throw new Error(`${document.id}.${section.id} references missing parent ${section.parentId}`);
+      }
+    }
+    if (document.id === 'grand') {
+      const chapterNumbers = document.sections
+        .filter((section) => section.level === 1 && section.id !== 'overview')
+        .map((section) => section.number);
+      const expectedChapters = Array.from({ length: 10 }, (_, index) => String(index + 1));
+      if (JSON.stringify(chapterNumbers) !== JSON.stringify(expectedChapters)) {
+        throw new Error('Grand Rules release must preserve the official chapter structure from 1 through 10');
+      }
+      const numberedRuleIds = document.sections.flatMap((section) => [
+        ...(section.number ? [section.number] : []),
+        ...[...section.bodyJa.matchAll(/(?:^|\n)(\d+(?:\.\d+)+)(?=\s)/g)].map((match) => match[1]),
+      ]);
+      const uniqueNumberedRuleIds = new Set(numberedRuleIds);
+      const sourceTextLength = document.sections.reduce(
+        (total, section) => total + section.titleJa.length + section.bodyJa.length,
+        0,
+      );
+      if (numberedRuleIds.length < 190 || uniqueNumberedRuleIds.size < 185 || sourceTextLength < 10_000) {
+        throw new Error(
+          'Grand Rules release is incomplete: the full numbered source text from the official PDF is required',
+        );
+      }
+      for (const locale of OFFICIAL_TRANSLATION_LOCALES) {
+        const translatedLength = document.sections.reduce(
+          (total, section) =>
+            total + section.translations[locale].title.length + section.translations[locale].body.length,
+          0,
+        );
+        if (translatedLength < 7_000) {
+          throw new Error(`Grand Rules ${locale} translation is incomplete (${translatedLength} characters)`);
+        }
+        for (const section of document.sections) {
+          const sourceRuleIds = [...section.bodyJa.matchAll(/(?:^|\n)(\d+(?:\.\d+)+)(?=\s)/g)].map((match) => match[1]);
+          const translatedRuleIds = [
+            ...section.translations[locale].body.matchAll(/(?:^|\n)(\d+(?:\.\d+)+)(?=\s)/g),
+          ].map((match) => match[1]);
+          if (JSON.stringify(sourceRuleIds) !== JSON.stringify(translatedRuleIds)) {
+            throw new Error(`Grand Rules ${section.id}.${locale} does not preserve every numbered rule`);
+          }
+        }
+      }
+    }
+    if (document.id === 'floor') {
+      const chapterNumbers = document.sections
+        .filter((section) => section.level === 1 && section.id !== 'overview')
+        .map((section) => section.number);
+      const expectedChapters = Array.from({ length: 10 }, (_, index) => String(index + 1));
+      if (JSON.stringify(chapterNumbers) !== JSON.stringify(expectedChapters)) {
+        throw new Error('Floor Rules release must preserve the official chapter structure from 1 through 10');
+      }
+      if (JSON.stringify(document.sections.map((section) => section.id)) !== JSON.stringify(FLOOR_SECTION_IDS)) {
+        throw new Error(
+          'Floor Rules release must preserve every reviewed chapter and subsection from the official PDF',
+        );
+      }
+      const sourceTextLength = document.sections.reduce(
+        (total, section) => total + section.titleJa.length + section.bodyJa.length,
+        0,
+      );
+      const sourceMarkerCount = document.sections.reduce(
+        (total, section) => total + floorStructureMarkers(section.bodyJa).length,
+        0,
+      );
+      if (sourceTextLength < 12_000 || sourceMarkerCount < 140) {
+        throw new Error(
+          'Floor Rules release is incomplete: the full structured source text from the official PDF is required',
+        );
+      }
+      for (const locale of OFFICIAL_TRANSLATION_LOCALES) {
+        const translatedLength = document.sections.reduce(
+          (total, section) =>
+            total + section.translations[locale].title.length + section.translations[locale].body.length,
+          0,
+        );
+        if (translatedLength < FLOOR_TRANSLATION_MINIMUM_LENGTHS[locale]) {
+          throw new Error(`Floor Rules ${locale} translation is incomplete (${translatedLength} characters)`);
+        }
+        for (const section of document.sections) {
+          if (
+            JSON.stringify(floorStructureMarkers(section.bodyJa)) !==
+            JSON.stringify(floorStructureMarkers(section.translations[locale].body))
+          ) {
+            throw new Error(`Floor Rules ${section.id}.${locale} does not preserve every list item and numbered step`);
+          }
+        }
       }
     }
   }
@@ -268,7 +419,7 @@ async function upsertDocument(client: import('pg').PoolClient, document: RuleDoc
         `SELECT COUNT(*)::int AS count
            FROM official_rule_section_translations
           WHERE document_id=$1 AND document_version=$2
-            AND locale=ANY($3::text[]) AND status='verified' AND title_text<>'' AND body_text<>''`,
+            AND locale=ANY($3::text[]) AND status='verified' AND title_text<>''`,
         [document.id, document.version, OFFICIAL_TRANSLATION_LOCALES],
       )
     ).rows[0]?.count || 0,

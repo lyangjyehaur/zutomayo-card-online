@@ -432,6 +432,7 @@ function handleAbyssToDeckBottomOrLoseChoice({
   const payload: PendingAbyssToDeckBottomPayload = {
     faceDown: Boolean(effect.action.params.faceDown),
     shuffle: Boolean(effect.action.params.shuffle),
+    moveAllPowerChargersToAbyss: Boolean(effect.action.params.moveAllPowerChargersToAbyss),
     followUpChoiceType:
       effect.action.params.followUpChoiceType === 'reorderOpponentDeckTop' ? 'reorderOpponentDeckTop' : undefined,
     followUpCount:

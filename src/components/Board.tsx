@@ -1,7 +1,7 @@
 import type { BoardProps } from 'boardgame.io/react';
 import { Activity, BookOpen, Info, Pause, X } from 'lucide-react';
 import { createPortal } from 'react-dom';
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CHRONOS_MAPPING } from '../game/types';
 import type {
@@ -23,18 +23,24 @@ import {
   AbyssZone,
   ActionDock,
   BattleAnimationLayer,
+  BattleResolutionLayer,
   BattleZone,
+  CardCostTag,
   CardDetailBody,
   CardDetailPanel,
   CardDetailSheet,
   CardView,
   ChargeZone,
   ChronosPanel,
+  ChronosResolutionLayer,
   DeckZone,
   HandZone,
   PhaseIndicator,
   PlayerStatus,
+  initialResolutionNotices,
+  resolutionNoticeChannel,
   SetZone,
+  unseenResolutionNotices,
   ZoneSummarySheet,
   useViewportMode,
   type BattleZoneAttack,
@@ -44,7 +50,9 @@ import {
   getChronosTime,
   getEffectiveAttack,
   getMinimumSetCount,
+  getPlayerPower,
   getPlayersAwaitingAction,
+  getResolvablePendingEffectIndexes,
   getRequiredSetCount,
   isAttackPowerInsufficient,
 } from '../game/GameLogic';
@@ -180,6 +188,7 @@ export type BoardGameOverAction = {
   label: string;
   onClick: () => void;
   variant?: 'primary' | 'secondary';
+  disabled?: boolean;
 };
 
 export type BoardGameOverActions = {
@@ -211,8 +220,8 @@ type Props = BoardProps<GameState> & {
   hideSetupOverlay?: boolean;
   // 教學模式：setupFeedback 彈窗（如猜拳結果）確認按鈕點擊時的通知
   onSetupFeedbackDismiss?: () => void;
-  // 教學模式：GameNoticeOverlay 彈窗（時鐘推進、HP 計算）確認按鈕點擊時的通知
-  onNoticeDismiss?: () => void;
+  // 教學模式：場上時計／戰鬥結算動畫完整播放後通知劇本引擎推進。
+  onResolutionComplete?: () => void;
   // 教學模式：限制當前步驟可從手牌打出的卡，讓固定劇本不會因誤觸偏離。
   tutorialAllowedSetCardDefIds?: string[];
   // 教學模式：確認前必須已放置的卡（例如追趕回合要求的兩張牌）。
@@ -333,6 +342,17 @@ function formatLogEntry(
     if (cardDefId) segments.push(cardSeg(cardDefId));
     segments.push(seg(` → ${zoneLabel(zone)}`));
     return { segments, tone: 'set' };
+  }
+  if (a === 'revealCards') {
+    const cardDefIds = Array.isArray(payload?.cardDefIds)
+      ? payload.cardDefIds.filter((id): id is string => typeof id === 'string')
+      : [];
+    const segments: LogSegment[] = [seg(`${p} ${t('board.phaseReveal')} `)];
+    for (const [index, cardDefId] of cardDefIds.entries()) {
+      if (index > 0) segments.push(seg(' · '));
+      segments.push(cardSeg(cardDefId));
+    }
+    return { segments, tone: 'effect' };
   }
   if (a === 'hpChange') {
     const delta = (payload?.delta as number) ?? 0;
@@ -592,13 +612,9 @@ function localizedCardNameById(cardDefId?: string): string | undefined {
  */
 function noticeDuration(notice: GameNotice, isGameOver: boolean): number {
   const reduced = prefersReducedMotion();
-  if (isGameOver) return reduced ? 300 : 900;
-  if (notice.breakdown && notice.breakdown.lines.length > 0) return reduced ? 600 : 1800;
-  return reduced ? 400 : 1100;
-}
-
-function chronosTimeLabel(time: ChronosTime): string {
-  return time === 'night' ? t('board.notice.night' as never) : t('board.notice.day' as never);
+  if (isGameOver) return reduced ? 500 : 1200;
+  if (notice.breakdown && notice.breakdown.lines.length > 0) return reduced ? 900 : 2300;
+  return reduced ? 600 : 1400;
 }
 
 function BreakdownBlock({ breakdown }: { breakdown: HpChangeBreakdown }) {
@@ -677,11 +693,15 @@ function renderNoticeContent(notice: GameNotice, me?: PlayerIndex): ReactNode {
     }
     case 'chronosChange': {
       const sourceCardName = localizedCardNameById(notice.chronosSourceCardDefId);
-      const fromTime = notice.chronosFromTime ? chronosTimeLabel(notice.chronosFromTime) : '';
-      const toTime = notice.chronosToTime ? chronosTimeLabel(notice.chronosToTime) : '';
-      const delta = notice.chronosDelta ?? 0;
-      const deltaStr = delta > 0 ? `+${delta}` : `${delta}`;
       const isCardEffect = notice.chronosSourceKind === 'cardEffect';
+      const mode = notice.chronosEffectMode ?? ((notice.chronosDelta ?? 0) < 0 ? 'rewind' : 'advance');
+      const moveAmount = notice.chronosMoveAmount ?? notice.chronosAdvanceAmount ?? Math.abs(notice.chronosDelta ?? 0);
+      const operation =
+        mode === 'set'
+          ? t('board.chronosResolution.setPosition' as never)
+          : `${t(
+              (mode === 'rewind' ? 'board.chronosResolution.rewind' : 'board.chronosResolution.advance') as never,
+            )} ${moveAmount} ${t('board.chronosResolution.spaces' as never)}`;
       const sideLabel =
         isCardEffect && notice.player !== undefined && me !== undefined
           ? notice.player === me
@@ -695,15 +715,7 @@ function renderNoticeContent(notice: GameNotice, me?: PlayerIndex): ReactNode {
             {sideLabel ? ` · ${sideLabel}` : ''}
             {sourceCardName ? ` · ${sourceCardName}` : ''}
           </div>
-          <strong className="phase-message-title font-display text-3xl font-bold">
-            {notice.chronosFrom} → {notice.chronosTo}
-          </strong>
-          <p className="mt-1 font-mono text-lg tracking-[var(--tracking-fine)] text-accent-primary-soft">{deltaStr}</p>
-          {(fromTime || toTime) && (
-            <p className="mt-1 font-mono text-caption uppercase tracking-[var(--tracking-meta)] text-content-primary/50">
-              {fromTime} → {toTime}
-            </p>
-          )}
+          <strong className="phase-message-title font-display text-3xl font-bold">{operation}</strong>
           {notice.breakdown && <BreakdownBlock breakdown={notice.breakdown} />}
         </>
       );
@@ -735,153 +747,133 @@ function renderNoticeContent(notice: GameNotice, me?: PlayerIndex): ReactNode {
   }
 }
 
-/** 教學模式下判斷 notice 是否需要手動確認（時鐘推進、HP 計算等含明細的彈框）。
- *  一般對戰一律自動消失，避免確認操作阻塞回合或結算流程。 */
-function noticeNeedsConfirm(notice: GameNotice, manualConfirm: boolean): boolean {
-  if (!manualConfirm) return false;
-  if (notice.kind === 'chronosChange') return true;
-  if (notice.kind === 'hpChange' && notice.breakdown) return true;
-  return false;
+function TimedResolutionNotice({
+  notice,
+  me,
+  isGameOver,
+  onResolved,
+}: {
+  notice: GameNotice | null;
+  me?: PlayerIndex;
+  isGameOver: boolean;
+  onResolved: (noticeId: number) => void;
+}) {
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => onResolved(notice.id), noticeDuration(notice, isGameOver));
+    return () => window.clearTimeout(timer);
+  }, [isGameOver, notice, onResolved]);
+
+  if (!notice) return null;
+  let content: ReactNode;
+  try {
+    content = renderNoticeContent(notice, me);
+  } catch {
+    content = <strong>Notice render error</strong>;
+  }
+  return (
+    <div
+      className={`phase-message-overlay game-notice-overlay phase-message-${notice.tone}`}
+      role="status"
+      aria-live="polite"
+      data-notice-id={notice.id}
+    >
+      <div className="phase-message-panel hp-change-float">{content}</div>
+    </div>
+  );
 }
 
-function GameNoticeOverlay({
+function ResolutionTimeline({
   G,
   me,
-  onNoticeDismiss,
   onActivityChange,
+  onBattleAnimatingChange,
+  onIngestion,
   suppress = false,
 }: {
   G: GameState;
   me?: PlayerIndex;
-  onNoticeDismiss?: () => void;
   onActivityChange?: (active: boolean) => void;
+  onBattleAnimatingChange?: (active: boolean) => void;
+  onIngestion?: (maxNoticeId: number, hasPlayback: boolean) => void;
   suppress?: boolean;
 }) {
-  const lastSeenIdRef = useRef<number>(-1);
+  const lastSeenIdRef = useRef(-1);
+  const suppressedRef = useRef(suppress);
   const [queue, setQueue] = useState<GameNotice[]>([]);
   const [current, setCurrent] = useState<GameNotice | null>(null);
-  const [busy, setBusy] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const manualConfirm = Boolean(onNoticeDismiss);
-
-  // 用原始型別（最後一筆 id + 數量）作為 effect 依賴，避免 boardgame.io immer/playerView
-  // 淺拷貝導致 recentGameNotices 參考比較失效的邊界情況。
   const notices = G.recentGameNotices ?? [];
-  const lastNoticeId = notices.length > 0 ? notices[notices.length - 1].id : 0;
+  const lastNoticeId = notices.at(-1)?.id ?? 0;
   const noticeCount = notices.length;
+  const hasPendingIngestion =
+    !suppress && lastSeenIdRef.current === -1
+      ? initialResolutionNotices(notices).length > 0
+      : !suppress && notices.some((notice) => notice.id > lastSeenIdRef.current);
 
   useEffect(() => {
-    if (!suppress) return;
-    lastSeenIdRef.current = lastNoticeId;
-    setQueue([]);
-    setCurrent(null);
-    setBusy(false);
-  }, [lastNoticeId, noticeCount, suppress]);
-
-  useEffect(() => {
-    const arr = G.recentGameNotices ?? [];
-    const maxId = arr.reduce((max, n) => Math.max(max, n.id), 0);
+    const ordered = G.recentGameNotices ?? [];
+    const maxId = ordered.reduce((max, notice) => Math.max(max, notice.id), 0);
+    const resumed = suppressedRef.current && !suppress;
+    suppressedRef.current = suppress;
     if (suppress) {
       lastSeenIdRef.current = maxId;
+      setQueue([]);
+      setCurrent(null);
+      onIngestion?.(maxId, false);
       return;
     }
+    if (resumed) lastSeenIdRef.current = -1;
     if (lastSeenIdRef.current === -1) {
       lastSeenIdRef.current = maxId;
+      const initial = initialResolutionNotices(ordered);
+      onIngestion?.(maxId, initial.length > 0);
+      setQueue(initial);
       return;
     }
-    const newOnes = arr.filter((n) => n.id > lastSeenIdRef.current);
+    const unseen = unseenResolutionNotices(ordered, lastSeenIdRef.current);
     lastSeenIdRef.current = maxId;
-    if (newOnes.length === 0) return;
-    setBusy(true);
-    setQueue((prev) => [...prev, ...newOnes]);
+    onIngestion?.(maxId, unseen.length > 0);
+    if (unseen.length === 0) return;
+    setQueue((existing) => {
+      const known = new Set(existing.map((notice) => notice.id));
+      if (current) known.add(current.id);
+      return [...existing, ...unseen.filter((notice) => !known.has(notice.id))];
+    });
+    // current is intentionally excluded: notice IDs and queue state provide de-duplication.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lastNoticeId, noticeCount, suppress]);
+  }, [G.recentGameNotices, lastNoticeId, noticeCount, onIngestion, suppress]);
 
   useEffect(() => {
     if (current || queue.length === 0) return;
-    const next = queue[0];
-    setCurrent(next);
-    setQueue((prev) => prev.slice(1));
+    setCurrent(queue[0]);
+    setQueue((existing) => existing.slice(1));
   }, [current, queue]);
 
-  useEffect(() => {
-    if (!current || noticeNeedsConfirm(current, manualConfirm)) return;
-    // 一般通知依情境自動消失；進入 gameOver 時縮短最後提示，避免拖慢結算頁。
-    const timer = setTimeout(() => setCurrent(null), noticeDuration(current, G.step === 'gameOver'));
-    timerRef.current = timer;
-    return () => {
-      clearTimeout(timer);
-      if (timerRef.current === timer) timerRef.current = null;
-    };
-  }, [G.step, current, manualConfirm]);
+  useLayoutEffect(() => {
+    onActivityChange?.(Boolean(current || queue.length > 0 || hasPendingIngestion));
+  }, [current, hasPendingIngestion, onActivityChange, queue.length]);
 
-  useEffect(() => {
-    if (current || queue.length > 0) {
-      setBusy(true);
-      return;
-    }
-    const timer = setTimeout(() => setBusy(false), 0);
-    return () => clearTimeout(timer);
-  }, [current, queue]);
-
-  useEffect(() => {
-    onActivityChange?.(busy);
-  }, [busy, onActivityChange]);
-
-  const dismissCurrent = () => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-    setCurrent(null);
-    // 教學模式：通知教學引擎彈窗已確認關閉（用於 clock-advance/hp-calc 步驟推進）
-    if (current && noticeNeedsConfirm(current, manualConfirm)) {
-      onNoticeDismiss?.();
-    }
-  };
-
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
+  const resolveCurrent = useCallback((noticeId: number) => {
+    setCurrent((active) => (active?.id === noticeId ? null : active));
   }, []);
-
-  if (suppress || !current) return null;
-
-  let content: ReactNode;
-  try {
-    content = renderNoticeContent(current, me);
-  } catch {
-    content = <strong>Notice render error</strong>;
-  }
-
-  const needsConfirm = noticeNeedsConfirm(current, manualConfirm);
+  const channel = current ? resolutionNoticeChannel(current) : null;
 
   return (
-    <div
-      className={`phase-message-overlay game-notice-overlay phase-message-${current.tone}`}
-      role="status"
-      aria-live="polite"
-    >
-      {needsConfirm && <div className="game-notice-backdrop" />}
-      <div
-        className={`phase-message-panel ${needsConfirm ? 'hp-change-confirm' : 'hp-change-float'}`}
-        data-tut="game-notice-panel"
-      >
-        {content}
-        {needsConfirm && (
-          <Button
-            className="mt-3 bg-content-primary px-6 py-2 text-caption font-medium uppercase tracking-[var(--tracking-kicker)] text-surface-base transition hover:bg-accent-primary active:scale-95"
-            type="button"
-            variant="primary"
-            size="sm"
-            onClick={dismissCurrent}
-          >
-            {t('common.confirm' as never)}
-          </Button>
-        )}
-      </div>
-    </div>
+    <>
+      <ChronosResolutionLayer G={G} notice={channel === 'chronos' ? current : null} onResolved={resolveCurrent} />
+      <BattleResolutionLayer
+        G={G}
+        notice={channel === 'battle' ? current : null}
+        onResolved={resolveCurrent}
+        onAnimatingChange={onBattleAnimatingChange}
+      />
+      <TimedResolutionNotice
+        notice={channel === 'general' ? current : null}
+        me={me}
+        isGameOver={G.step === 'gameOver'}
+        onResolved={resolveCurrent}
+      />
+    </>
   );
 }
 
@@ -1050,6 +1042,7 @@ function MulliganScreen({
                   onActivate={done ? undefined : () => activateCard(card, index)}
                   onInspect={() => focusCard(card)}
                 />
+                <CardCostTag card={card} />
               </div>
             ))}
           </div>
@@ -1135,6 +1128,7 @@ function translateGameOverReason(reason: string | null): string {
   if (reason.includes('simultaneous overdraw')) return t('board.reasonBothDeckEmpty');
   if (reason.includes('not enough cards')) return t('board.reasonDeckEmpty');
   if (reason.includes('effect attempted to draw')) return t('board.reasonEffectDraw');
+  if (reason.includes('unavoidable automatic infinite loop')) return t('board.reasonInfiniteLoop');
   if (reason.includes('0 HP')) return t('board.reasonHpZero');
   if (reason.includes('surrendered')) return t('board.reasonSurrender');
   return t('board.reason');
@@ -1294,6 +1288,7 @@ function GameOverScreen({ G, ctx, playerID, matchID, gameOverActions, spectator 
                   type="button"
                   variant={gameOverActions.primary.variant === 'secondary' ? 'secondary' : 'primary'}
                   onClick={gameOverActions.primary.onClick}
+                  disabled={gameOverActions.primary.disabled}
                 >
                   {gameOverActions.primary.label}
                 </Button>
@@ -1303,6 +1298,7 @@ function GameOverScreen({ G, ctx, playerID, matchID, gameOverActions, spectator 
                     type="button"
                     variant={gameOverActions.secondary.variant === 'secondary' ? 'secondary' : 'primary'}
                     onClick={gameOverActions.secondary.onClick}
+                    disabled={gameOverActions.secondary.disabled}
                   >
                     {gameOverActions.secondary.label}
                   </Button>
@@ -1313,6 +1309,7 @@ function GameOverScreen({ G, ctx, playerID, matchID, gameOverActions, spectator 
                     type="button"
                     variant={gameOverActions.tertiary.variant === 'secondary' ? 'secondary' : 'primary'}
                     onClick={gameOverActions.tertiary.onClick}
+                    disabled={gameOverActions.tertiary.disabled}
                   >
                     {gameOverActions.tertiary.label}
                   </Button>
@@ -1394,7 +1391,10 @@ function EffectOrderPanel({
   if (currentPlayer === null) return null;
 
   const isCurrentPlayer = currentPlayer === meIndex;
-  const pending = G.pendingEffects[currentPlayer];
+  const pending = getResolvablePendingEffectIndexes(G, currentPlayer).map((index) => ({
+    effect: G.pendingEffects[currentPlayer][index],
+    index,
+  }));
 
   return (
     <section className="effect-order-panel" aria-label={t('board.effectOrder')}>
@@ -1404,7 +1404,7 @@ function EffectOrderPanel({
       </div>
       {isCurrentPlayer ? (
         <div className="effect-order-list">
-          {pending.map((effect, index) => {
+          {pending.map(({ effect, index }) => {
             const card = getCardDef(effect.cardDefId);
             const effectText = translatedPendingEffectText(effect, locale);
             return (
@@ -1435,19 +1435,18 @@ function PendingChoicePanel({
   G,
   moves,
   playerID,
+  selected,
+  onSelectionChange,
 }: {
   G: GameState;
   moves: Props['moves'];
   playerID: Props['playerID'];
+  selected: string[];
+  onSelectionChange: (selected: string[]) => void;
 }) {
   const locale = useLocale();
   const choice = G.pendingChoice;
   const meIndex = Number(playerID ?? '0') as PlayerIndex;
-  const [selected, setSelected] = useState<string[]>([]);
-
-  useEffect(() => {
-    setSelected([]);
-  }, [choice?.id]);
 
   if (!choice) return null;
 
@@ -1457,17 +1456,28 @@ function PendingChoicePanel({
   const semanticError = selectionError === 'handAbyssPair' ? t('board.choiceInvalidHandAbyssPair') : '';
   const prompt = translatedChoicePrompt(G, locale) ?? getChoiceInstruction(choice.type);
   const toggle = (optionId: string) => {
-    setSelected((current) => {
-      if (current.includes(optionId)) return current.filter((item) => item !== optionId);
-      if (current.length >= choice.max) return current;
-      return [...current, optionId];
-    });
+    if (selected.includes(optionId)) {
+      onSelectionChange(selected.filter((item) => item !== optionId));
+      return;
+    }
+    if (selected.length >= choice.max) return;
+    onSelectionChange([...selected, optionId]);
   };
+  const isChronosPositionChoice = choice.type === 'clockPosition';
 
   return (
-    <section className="effect-order-panel pending-choice-panel" aria-label={t('board.pendingChoice')}>
+    <section
+      className={`effect-order-panel pending-choice-panel ${isChronosPositionChoice ? 'pending-choice-panel-clock' : ''}`}
+      aria-label={t('board.pendingChoice')}
+    >
       <div className="effect-order-heading">
-        <strong>{isCurrentPlayer ? t('board.chooseCards') : t('board.waitingChoicePlayer')}</strong>
+        <strong>
+          {isCurrentPlayer
+            ? isChronosPositionChoice
+              ? t('board.chronosResolution.setPosition' as never)
+              : t('board.chooseCards')
+            : t('board.waitingChoicePlayer')}
+        </strong>
         <span>{playerName(choice.player)}</span>
       </div>
       {isCurrentPlayer ? (
@@ -1477,29 +1487,33 @@ function PendingChoicePanel({
             {t('board.choiceCount')} {selected.length}/{choice.max} · {t('board.choiceRequired')} {choice.min}–
             {choice.max}
           </p>
-          <div className="effect-order-list">
-            {choice.options.map((option) => {
-              const isSelected = selected.includes(option.id);
-              const order = selected.indexOf(option.id) + 1;
-              return (
-                <button
-                  key={option.id}
-                  className={`effect-order-item pending-choice-option ${isSelected ? 'selected' : ''}`}
-                  type="button"
-                  onClick={() => toggle(option.id)}
-                >
-                  <span className="effect-order-card">{option.label}</span>
-                  <span className="effect-order-action">
-                    {isSelected && choice.type === 'reorderOpponentDeckTop'
-                      ? `#${order}`
-                      : isSelected
-                        ? t('common.selected')
-                        : t('common.select')}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+          {isChronosPositionChoice ? (
+            <p className="pending-choice-clock-hint">{t('board.choiceChronosPositionHint' as never)}</p>
+          ) : (
+            <div className="effect-order-list">
+              {choice.options.map((option) => {
+                const isSelected = selected.includes(option.id);
+                const order = selected.indexOf(option.id) + 1;
+                return (
+                  <button
+                    key={option.id}
+                    className={`effect-order-item pending-choice-option ${isSelected ? 'selected' : ''}`}
+                    type="button"
+                    onClick={() => toggle(option.id)}
+                  >
+                    <span className="effect-order-card">{option.label}</span>
+                    <span className="effect-order-action">
+                      {isSelected && choice.type === 'reorderOpponentDeckTop'
+                        ? `#${order}`
+                        : isSelected
+                          ? t('common.selected')
+                          : t('common.select')}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
           {semanticError && (
             <p className="pending-choice-error" role="alert" aria-live="polite">
               {semanticError}
@@ -1829,7 +1843,7 @@ function BattleBoard({
   useServerTimer = false,
   opponentLabel,
   selfLabel,
-  onNoticeDismiss,
+  onResolutionComplete,
   onTutorialAction,
   tutorialMode,
   tutorialAllowedSetCardDefIds,
@@ -1839,16 +1853,46 @@ function BattleBoard({
   tutorialEffectOverlayVisible,
   onNoticeActivityChange,
   onBattleAnimationChange,
+  onResolutionIngestion,
   onPause,
 }: Props & {
   onPause: () => void;
   onNoticeActivityChange?: (active: boolean) => void;
   onBattleAnimationChange?: (active: boolean) => void;
+  onResolutionIngestion?: (maxNoticeId: number, hasPlayback: boolean) => void;
 }) {
   const meIndex = Number(playerID ?? '0') as PlayerIndex;
   const opponentIndex = (1 - meIndex) as PlayerIndex;
   const me = G.players[meIndex];
   const opponent = G.players[opponentIndex];
+  const [resolutionTimelineActive, setResolutionTimelineActive] = useState(false);
+  const resolutionWasActiveRef = useRef(false);
+  const animationActivityRef = useRef({ board: false, battleResolution: false });
+  const handleResolutionTimelineActivity = useCallback(
+    (active: boolean) => {
+      const wasActive = resolutionWasActiveRef.current;
+      resolutionWasActiveRef.current = active;
+      setResolutionTimelineActive(active);
+      onNoticeActivityChange?.(active);
+      if (wasActive && !active) onResolutionComplete?.();
+    },
+    [onNoticeActivityChange, onResolutionComplete],
+  );
+  const reportAnimationActivity = useCallback(
+    (kind: keyof typeof animationActivityRef.current, active: boolean) => {
+      animationActivityRef.current[kind] = active;
+      onBattleAnimationChange?.(Object.values(animationActivityRef.current).some(Boolean));
+    },
+    [onBattleAnimationChange],
+  );
+  const handleBoardAnimationChange = useCallback(
+    (active: boolean) => reportAnimationActivity('board', active),
+    [reportAnimationActivity],
+  );
+  const handleBattleResolutionChange = useCallback(
+    (active: boolean) => reportAnimationActivity('battleResolution', active),
+    [reportAnimationActivity],
+  );
   // 設定名稱 override（AI 對戰時為「玩家」/「電腦」），formatLogEntry 等純函數透過 module-level 變數讀取。
   useEffect(() => {
     opponentLabelOverride = opponentLabel ?? null;
@@ -1879,12 +1923,15 @@ function BattleBoard({
   const [interactionMessage, setInteractionMessage] = useState('');
   const [activeSidePanel, setActiveSidePanel] = useState<BattleSidePanel | null>(null);
   const [selectedHandIndex, setSelectedHandIndex] = useState<number | null>(null);
+  const [selectedPendingChoiceOptions, setSelectedPendingChoiceOptions] = useState<string[]>([]);
   const [detailSheetOpen, setDetailSheetOpen] = useState(false);
   const [zoneSheet, setZoneSheet] = useState<{ kind: 'abyss' | 'power'; owner: PlayerIndex } | null>(null);
-  const [damageFlash, setDamageFlash] = useState<{ target: PlayerIndex; amount: number; id: number } | null>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
-  const phaseTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
-  const previousTurnNumber = useRef(G.turnNumber);
+  const autoEffectAttemptRef = useRef<string | null>(null);
+  const legalPendingEffectIndexes = getResolvablePendingEffectIndexes(G, meIndex);
+  const automaticEffectIndex = legalPendingEffectIndexes.length === 1 ? legalPendingEffectIndexes[0] : undefined;
+  const automaticEffect =
+    automaticEffectIndex === undefined ? undefined : G.pendingEffects[meIndex][automaticEffectIndex];
   const awaitingPlayers = getPlayersAwaitingAction(G);
   const awaitingPlayersKey = awaitingPlayers.join(',');
   const meReady = G.ready[meIndex];
@@ -1892,12 +1939,52 @@ function BattleBoard({
     !tutorialRequiredSetCardDefIds ||
     tutorialRequiredSetCardDefIds.every((defId) => G.setCardsThisTurn[meIndex].some((card) => card.defId === defId));
 
-  const clearPhaseTimers = useCallback(() => {
-    for (const phaseTimer of phaseTimers.current) clearTimeout(phaseTimer);
-    phaseTimers.current = [];
-  }, []);
+  useEffect(() => {
+    setSelectedPendingChoiceOptions([]);
+  }, [G.pendingChoice?.id]);
 
-  useEffect(() => () => clearPhaseTimers(), [clearPhaseTimers]);
+  useEffect(() => {
+    if (
+      spectator ||
+      tutorialMode ||
+      resolutionTimelineActive ||
+      G.pendingChoice ||
+      automaticEffectIndex === undefined ||
+      !automaticEffect
+    ) {
+      return;
+    }
+    const attemptKey = `${_stateID ?? 'local'}:${automaticEffect.id}`;
+    if (autoEffectAttemptRef.current === attemptKey) return;
+    autoEffectAttemptRef.current = attemptKey;
+    moves.resolvePendingEffect(automaticEffectIndex);
+  }, [
+    G.pendingChoice,
+    _stateID,
+    automaticEffect,
+    automaticEffectIndex,
+    moves,
+    resolutionTimelineActive,
+    spectator,
+    tutorialMode,
+  ]);
+
+  const chronosPositionChoice =
+    G.pendingChoice?.type === 'clockPosition' && G.pendingChoice.player === meIndex ? G.pendingChoice : null;
+  const chronosTargetPositions = chronosPositionChoice
+    ? chronosPositionChoice.options.map((option) => Number(option.value)).filter((value) => Number.isInteger(value))
+    : undefined;
+  const selectedChronosTarget = chronosPositionChoice
+    ? Number(
+        chronosPositionChoice.options.find((option) => selectedPendingChoiceOptions.includes(option.id))?.value ?? NaN,
+      )
+    : null;
+  const selectChronosTarget = chronosPositionChoice
+    ? (position: number) => {
+        const option = chronosPositionChoice.options.find((item) => Number(item.value) === position);
+        if (option) setSelectedPendingChoiceOptions([option.id]);
+      }
+    : undefined;
 
   useEffect(() => {
     if (spectator) {
@@ -1966,8 +2053,8 @@ function BattleBoard({
       return;
     }
     // 教學流程不使用真實倒數；一般本機與線上模式皆走同一 timeoutSkip 規則，
-    // 允許未達最低出牌數時跳過，避免 00 秒後仍可無限操作。
-    if (onNoticeDismiss) return;
+    // 未達最低出牌數時由規則層自動設置合法卡牌，避免 00 秒後仍可無限操作。
+    if (tutorialMode) return;
     if (useServerTimer) {
       const now = Date.now();
       if (timeoutExpiredAtRef.current === null) timeoutExpiredAtRef.current = now;
@@ -1994,7 +2081,7 @@ function BattleBoard({
     G.ready,
     meIndex,
     moves,
-    onNoticeDismiss,
+    tutorialMode,
     retryTick,
     useServerTimer,
     awaitingPlayersKey,
@@ -2011,19 +2098,6 @@ function BattleBoard({
     if (focusedCard || me.hand.length === 0) return;
     setFocusedCard({ card: me.hand[0], owner: meIndex, zone: t('board.hand') });
   }, [focusedCard, me.hand, meIndex]);
-
-  useEffect(() => {
-    if (G.turnNumber > previousTurnNumber.current) {
-      const result = G.lastBattleResult;
-      if (result.winner !== null && result.damage > 0) {
-        const target = (1 - result.winner) as PlayerIndex;
-        setDamageFlash({ target, amount: result.damage, id: Date.now() });
-        const flashTimer = setTimeout(() => setDamageFlash(null), 900);
-        phaseTimers.current.push(flashTimer);
-      }
-    }
-    previousTurnNumber.current = G.turnNumber;
-  }, [G.lastBattleResult, G.turnNumber]);
 
   const time = getChronosTime(G);
   const currentInstruction = getPhaseInstruction(G, meIndex, required, minimum, playerName);
@@ -2071,7 +2145,9 @@ function BattleBoard({
   const primaryActionTitle = G.ready[meIndex]
     ? t('board.readyWaiting')
     : G.pendingChoice
-      ? t('board.chooseCards')
+      ? G.pendingChoice.type === 'clockPosition'
+        ? t('board.chronosResolution.setPosition' as never)
+        : t('board.chooseCards')
       : G.step === 'effectOrder'
         ? t('board.chooseEffect')
         : canConfirm
@@ -2190,7 +2266,7 @@ function BattleBoard({
         time={time}
         timeLeft={timeLeft}
         timerActive={
-          !onNoticeDismiss && (useServerTimer ? awaitingPlayers.length > 0 : G.step === 'turnSet' && !G.ready[meIndex])
+          !tutorialMode && (useServerTimer ? awaitingPlayers.length > 0 : G.step === 'turnSet' && !G.ready[meIndex])
         }
         onPause={onPause}
         onPanelChange={setActiveSidePanel}
@@ -2209,8 +2285,8 @@ function BattleBoard({
                 name={playerName(opponentIndex)}
                 hp={opponent.hp}
                 meta={opponentMeta}
-                damageAmount={damageFlash?.target === opponentIndex ? damageFlash.amount : undefined}
                 tutId="opponent-hp"
+                animationZone={`p${opponentIndex}:status`}
               />
               {mobileAbyssButton(opponentIndex, opponent.abyss.length)}
             </div>
@@ -2304,6 +2380,9 @@ function BattleBoard({
               currentPlayer={meIndex}
               size={viewport.mode === 'mobile' ? 'sm' : 'md'}
               animationZone="chronos"
+              targetablePositions={chronosTargetPositions}
+              selectedTargetPosition={Number.isInteger(selectedChronosTarget) ? selectedChronosTarget : null}
+              onTargetPositionSelect={selectChronosTarget}
             />
             <BattleZone
               side="me"
@@ -2390,8 +2469,8 @@ function BattleBoard({
                   name={playerName(meIndex)}
                   hp={me.hp}
                   meta={meMeta}
-                  damageAmount={damageFlash?.target === meIndex ? damageFlash.amount : undefined}
                   tutId="player-hp"
+                  animationZone={`p${meIndex}:status`}
                 />
                 {mobileAbyssButton(meIndex, me.abyss.length)}
               </div>
@@ -2401,6 +2480,8 @@ function BattleBoard({
                 selectedIndex={selectedHandIndex}
                 canAct={canAct}
                 allowedCardDefIds={playableCardDefIds}
+                availablePower={getPlayerPower(me, G, meIndex)}
+                powerCostReduction={G.modifiers.powerCostReduction?.[meIndex] ?? 0}
                 tutId="player-hand"
                 onCardTap={spectator ? undefined : handleHandTap}
                 onCardHover={
@@ -2446,11 +2527,19 @@ function BattleBoard({
 
       {/* 效果結算 — 居中覆蓋層 */}
       {!spectator &&
+        !resolutionTimelineActive &&
         (G.step === 'effectOrder' || G.pendingChoice) &&
+        (G.pendingChoice || tutorialMode || legalPendingEffectIndexes.length > 1) &&
         (!tutorialMode || tutorialEffectOverlayVisible !== false) && (
           <BattleOverlayLayer>
             {G.pendingChoice ? (
-              <PendingChoicePanel G={G} moves={moves} playerID={playerID} />
+              <PendingChoicePanel
+                G={G}
+                moves={moves}
+                playerID={playerID}
+                selected={selectedPendingChoiceOptions}
+                onSelectionChange={setSelectedPendingChoiceOptions}
+              />
             ) : (
               <EffectOrderPanel G={G} moves={moves} playerID={playerID} />
             )}
@@ -2494,14 +2583,15 @@ function BattleBoard({
         />
       )}
 
-      <GameNoticeOverlay
+      <ResolutionTimeline
         G={G}
         me={meIndex}
-        onNoticeDismiss={onNoticeDismiss}
-        onActivityChange={onNoticeActivityChange}
+        onActivityChange={handleResolutionTimelineActivity}
+        onBattleAnimatingChange={handleBattleResolutionChange}
+        onIngestion={onResolutionIngestion}
         suppress={tutorialSuppressNotices}
       />
-      <BattleAnimationLayer G={G} me={meIndex} onAnimatingChange={onBattleAnimationChange} />
+      <BattleAnimationLayer G={G} me={meIndex} onAnimatingChange={handleBoardAnimationChange} />
     </BoardLayout>
   );
 }
@@ -2513,13 +2603,14 @@ export function Board(props: Props) {
   const setupFeedbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [setupFeedback, setSetupFeedback] = useState<FeedbackMessage | null>(null);
   const [mulliganFocusedCard, setMulliganFocusedCard] = useState<FocusedCard>(null);
-  // 結算頁等待最後一筆通知與戰鬥動畫實際完成；保底 timer 僅防止異常狀態永久卡住。
+  // 結算頁只在最後一筆通知與場上動畫實際完成後顯示。
   const [showGameOver, setShowGameOver] = useState(false);
   const gameOverTriggeredRef = useRef(false);
   const noticeActiveRef = useRef(false);
   const battleAnimationActiveRef = useRef(false);
+  const gameOverTargetNoticeIdRef = useRef(0);
+  const ingestedNoticeIdRef = useRef(0);
   const gameOverSettleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const gameOverFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 暫停/離開確認對話框
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const canSurrender =
@@ -2542,9 +2633,7 @@ export function Board(props: Props) {
 
   const clearGameOverTimers = useCallback(() => {
     if (gameOverSettleTimerRef.current) clearTimeout(gameOverSettleTimerRef.current);
-    if (gameOverFallbackTimerRef.current) clearTimeout(gameOverFallbackTimerRef.current);
     gameOverSettleTimerRef.current = null;
-    gameOverFallbackTimerRef.current = null;
   }, []);
 
   const revealGameOver = useCallback(() => {
@@ -2560,6 +2649,16 @@ export function Board(props: Props) {
       if (!noticeActiveRef.current && !battleAnimationActiveRef.current) revealGameOver();
     }, 120);
   }, [props.G.step, revealGameOver]);
+
+  const handleResolutionIngestion = useCallback(
+    (maxNoticeId: number, hasPlayback: boolean) => {
+      ingestedNoticeIdRef.current = Math.max(ingestedNoticeIdRef.current, maxNoticeId);
+      if (props.G.step !== 'gameOver') return;
+      if (hasPlayback) noticeActiveRef.current = true;
+      if (maxNoticeId >= gameOverTargetNoticeIdRef.current && !hasPlayback) scheduleGameOverWhenIdle();
+    },
+    [props.G.step, scheduleGameOverWhenIdle],
+  );
 
   const handleNoticeActivityChange = useCallback(
     (active: boolean) => {
@@ -2592,17 +2691,21 @@ export function Board(props: Props) {
       gameOverTriggeredRef.current = false;
       noticeActiveRef.current = false;
       battleAnimationActiveRef.current = false;
+      gameOverTargetNoticeIdRef.current = 0;
       clearGameOverTimers();
       setShowGameOver(false);
       return;
     }
     if (gameOverTriggeredRef.current) return;
     gameOverTriggeredRef.current = true;
+    gameOverTargetNoticeIdRef.current = (props.G.recentGameNotices ?? []).reduce(
+      (max, notice) => Math.max(max, notice.id),
+      0,
+    );
     setShowGameOver(false);
-    scheduleGameOverWhenIdle();
-    gameOverFallbackTimerRef.current = setTimeout(revealGameOver, 3500);
+    if (ingestedNoticeIdRef.current >= gameOverTargetNoticeIdRef.current) scheduleGameOverWhenIdle();
     return clearGameOverTimers;
-  }, [clearGameOverTimers, props.G.step, revealGameOver, scheduleGameOverWhenIdle]);
+  }, [clearGameOverTimers, props.G.recentGameNotices, props.G.step, scheduleGameOverWhenIdle]);
 
   useEffect(() => {
     if (props.tutorialAutoReplay) {
@@ -2748,6 +2851,7 @@ export function Board(props: Props) {
         onPause={requestExit}
         onNoticeActivityChange={handleNoticeActivityChange}
         onBattleAnimationChange={handleBattleAnimationChange}
+        onResolutionIngestion={handleResolutionIngestion}
       />
       {setupOverlay}
     </>,

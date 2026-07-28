@@ -5,6 +5,7 @@ import {
   DERIVED_EFFECT_LANGS,
   loadDerivedEffectsAuditInput,
 } from './cardDerivedEffects';
+import { REVIEWED_UNLISTED_CARD_IDS, REVIEWED_UNLISTED_SOURCE_NOTE } from './reviewedUnlistedCardRelease';
 
 const require = createRequire(import.meta.url);
 const { Pool } = require('pg') as typeof import('pg');
@@ -55,7 +56,7 @@ async function main(): Promise<void> {
     await client.query("SELECT pg_advisory_xact_lock(hashtext('card-derived-effects-import'))");
 
     const existing = await client.query(
-      `SELECT id, effect, en_effect_official
+      `SELECT id, effect, en_effect_official, source_note
        FROM cards
        WHERE NULLIF(BTRIM(effect), '') IS NOT NULL
        ORDER BY id`,
@@ -63,7 +64,11 @@ async function main(): Promise<void> {
     const existingById = new Map(
       existing.rows.map((row) => [
         row.id as string,
-        { effect: String(row.effect || ''), enEffectOfficial: String(row.en_effect_official || '') },
+        {
+          effect: String(row.effect || ''),
+          enEffectOfficial: String(row.en_effect_official || ''),
+          sourceNote: String(row.source_note || ''),
+        },
       ]),
     );
     const mismatches: string[] = [];
@@ -80,8 +85,13 @@ async function main(): Promise<void> {
         mismatches.push(`${card.id}: PostgreSQL English effect differs from the effective official text`);
       }
     }
-    if (existingById.size !== effectCards.length) {
-      mismatches.push(`PostgreSQL has ${existingById.size} effect cards; reviewed source has ${effectCards.length}`);
+    const coreEffectCardIds = new Set(effectCardIds);
+    const allowedReviewedIds = new Set<string>(REVIEWED_UNLISTED_CARD_IDS);
+    for (const [cardId, dbCard] of existingById) {
+      if (coreEffectCardIds.has(cardId)) continue;
+      if (dbCard.sourceNote !== REVIEWED_UNLISTED_SOURCE_NOTE || !allowedReviewedIds.has(cardId)) {
+        mismatches.push(`${cardId}: extra effect card lacks approved reviewed-release provenance`);
+      }
     }
     if (mismatches.length > 0) {
       throw new Error(`Refusing import due to official-source mismatch:\n${mismatches.join('\n')}`);

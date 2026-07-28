@@ -4,6 +4,10 @@ export type Element = '闇' | '炎' | '電気' | '風' | 'カオス';
 export type CardType = 'Character' | 'Enchant' | 'Area Enchant';
 export type Rarity = 'N' | 'R' | 'SR' | 'UR' | 'SE';
 export type ChronosTime = 'night' | 'day';
+export type CardCatalogStatus = 'listed' | 'pending_listing' | 'unlisted';
+export type CardDistributionType = 'standard' | 'bonus' | 'collaboration' | 'live' | 'event' | 'regional';
+export type CardPublicationStatus = 'draft' | 'reviewed' | 'published' | 'retired';
+export type CardPlayStatus = 'playable' | 'display_only' | 'disabled';
 
 // 官方場地墊：クロノス共 18 刻度，夜（青）晝（赤）各 9 格平分；
 // 真夜中（0）為夜弧中心、正午（9）為晝弧中心，順時針推進。
@@ -61,6 +65,8 @@ export interface HpChangeEntry {
   id: number;
   player: PlayerIndex;
   delta: number;
+  hpBefore?: number;
+  hpAfter?: number;
   reason: HpChangeReason;
   sourceCardDefId?: string;
   breakdown?: HpChangeBreakdown;
@@ -68,12 +74,29 @@ export interface HpChangeEntry {
   timestamp: number;
 }
 
+/** 回合時計合計中，單張已公開卡牌實際提供的 Chronos 推進量。 */
+export interface ChronosContribution {
+  player: PlayerIndex;
+  cardInstanceId: string;
+  cardDefId: string;
+  printedValue: number;
+  appliedValue: number;
+  nullified: boolean;
+}
+
+/** 戰鬥中實際參與減傷的卡牌來源與套用值。 */
+export interface DamageReductionSource {
+  cardInstanceId?: string;
+  cardDefId: string;
+  amount: number;
+}
+
 /**
  * 統一遊戲事件提示（GameNotice）。
  *
- * 為了讓「遊戲進行的每一步」都有置中面板提示（HP 變化、時鐘推進、戰鬥結果、
- * 回合切換），且避免多個浮層互相競爭定位，引擎層在關鍵節點統一 push 到
- * `recentGameNotices`，由 UI 層單一 overlay 依序消費顯示。
+ * 為了讓「遊戲進行的每一步」都有一致回饋（HP 變化、時計推進、戰鬥結果、
+ * 回合切換），引擎層在關鍵節點統一 push 到 `recentGameNotices`，由 UI 層的
+ * 單一播放時間線依序分派給場上動畫或提示面板。
  *
  * titleKey / kickerKey 存 i18n key 字串，由 UI 層翻譯（引擎層不依賴 i18n）。
  */
@@ -86,10 +109,13 @@ export interface GameNotice {
   tone: GameNoticeTone;
   titleKey: string;
   kickerKey?: string;
-  /** hpChange / battleResult 適用：受影響玩家。 */
+  /** hpChange / battleResult 的受影響玩家，或 cardEffect 的來源玩家。 */
   player?: PlayerIndex;
   /** hpChange 專用。 */
   delta?: number;
+  /** HP 變化發生當下的精確快照，避免後續效果改寫 UI 結算起訖值。 */
+  hpBefore?: number;
+  hpAfter?: number;
   reason?: HpChangeReason;
   sourceCardDefId?: string;
   breakdown?: HpChangeBreakdown;
@@ -101,11 +127,26 @@ export interface GameNotice {
   chronosToTime?: ChronosTime;
   chronosSourceKind?: 'turnAdvance' | 'cardEffect';
   chronosSourceCardDefId?: string;
+  chronosSourceCardInstanceId?: string;
+  /** cardEffect 專用：區分順時針推進、逆時針回溯與直接指定位置。 */
+  chronosEffectMode?: 'advance' | 'rewind' | 'set';
+  /** cardEffect 專用：逐格移動量；set 模式不使用。 */
+  chronosMoveAmount?: number;
+  /** turnAdvance 專用：不依賴鐘面位置反推的實際順時針推進格數。 */
+  chronosAdvanceAmount?: number;
+  /** turnAdvance 專用：各張卡牌的時計貢獻，供場上定位回饋使用。 */
+  chronosContributions?: ChronosContribution[];
   /** battleResult 專用。 */
   winner?: PlayerIndex | null;
   winnerAttack?: number;
   loserAttack?: number;
   damage?: number;
+  /** 戰鬥當下實際套用的減傷來源，供場上因果動畫使用。 */
+  damageReductionSources?: DamageReductionSource[];
+  /** 戰鬥發生當下的雙方卡牌快照，避免後續回合換牌污染延遲播放。 */
+  battleCards?: [CardInstance | null, CardInstance | null];
+  /** notice 產生時所屬回合；由 pushGameNotice 統一補入。 */
+  resolutionTurn?: number;
   /** turnStart 專用。 */
   turn?: number;
   timestamp: number;
@@ -174,6 +215,14 @@ export interface CardDef {
   officialErrataAffectsName?: boolean;
   officialErrataAffectsEffect?: boolean;
   officialErrataUrl?: string;
+  catalogStatus?: CardCatalogStatus;
+  distributionType?: CardDistributionType;
+  publicationStatus?: CardPublicationStatus;
+  playStatus?: CardPlayStatus;
+  playStatusReason?: string;
+  sourceUrl?: string;
+  sourceNote?: string;
+  sourceSha256?: string;
   pack: string;
   song: string;
   illustrator: string;
@@ -202,6 +251,9 @@ export interface PendingEffect {
   player: PlayerIndex;
   cardInstanceId: string;
   cardDefId: string;
+  /** 複製效果的實際發動來源；Power Cost 與效果禁用應檢查此卡，而非被複製卡。 */
+  rulesSourceCardInstanceId?: string;
+  rulesSourceCardDefId?: string;
   rawText: string;
   effect: import('./effects').ParsedEffect;
   source: PendingEffectSource;
@@ -247,6 +299,7 @@ export interface PendingOptionalHandMoveThenDrawPayload {
 export interface PendingAbyssToDeckBottomPayload {
   faceDown: boolean;
   shuffle: boolean;
+  moveAllPowerChargersToAbyss?: boolean;
   followUpChoiceType?: 'reorderOpponentDeckTop';
   followUpCount?: number;
 }
@@ -291,6 +344,7 @@ export interface PendingChoiceBase {
   min: number;
   max: number;
   prompt?: string;
+  sourceCardInstanceId?: string;
   sourceCardDefId?: string;
 }
 
@@ -380,6 +434,8 @@ export interface CombatModifiers {
   attackTimeOverride: [ChronosTime | null, ChronosTime | null];
   cardClockSetTo: number | null;
   damageReduction: [number, number];
+  /** 舊對局狀態可能沒有此欄位，讀取端必須容許 undefined。 */
+  damageReductionSources?: [DamageReductionSource[], DamageReductionSource[]];
   elementOverride: [Element | null, Element | null];
   handSize: [number, number];
   clockContributionDisabled: [boolean, boolean];

@@ -37,6 +37,11 @@ CARD_DERIVED_EFFECT_FILES=(
   card-english-extraction.json
   card-official-errata.json
 )
+CARD_UNLISTED_RELEASE_FILES=(
+  card-unlisted-sources.json
+  card-unlisted-human-reviews.json
+  card-unlisted-release.json
+)
 
 CONFIRM=false
 DRY_RUN=false
@@ -138,6 +143,16 @@ load_local_release() {
     [[ -f "$CARD_DERIVED_EFFECTS_DIR/$derived_file" ]] || \
       die "reviewed card-derived-effects source is missing: $CARD_DERIVED_EFFECTS_DIR/$derived_file"
   done
+  local unlisted_file
+  for unlisted_file in "${CARD_UNLISTED_RELEASE_FILES[@]}"; do
+    [[ -f "$CARD_DERIVED_EFFECTS_DIR/$unlisted_file" ]] || \
+      die "reviewed unlisted-card release source is missing: $CARD_DERIVED_EFFECTS_DIR/$unlisted_file"
+  done
+  CARD_UNLISTED_SOURCES_SOURCE="$CARD_DERIVED_EFFECTS_DIR/card-unlisted-sources.json" \
+  CARD_UNLISTED_HUMAN_REVIEWS_SOURCE="$CARD_DERIVED_EFFECTS_DIR/card-unlisted-human-reviews.json" \
+  CARD_UNLISTED_RELEASE_SOURCE="$CARD_DERIVED_EFFECTS_DIR/card-unlisted-release.json" \
+    node --import tsx scripts/audit-reviewed-unlisted-cards.ts >/dev/null || \
+    die 'reviewed unlisted-card release audit failed'
 }
 
 remote_predeploy_backup() {
@@ -298,6 +313,21 @@ release_card_derived_effects() {
       '"
 }
 
+release_reviewed_unlisted_cards() {
+  COPYFILE_DISABLE=1 tar -C "$CARD_DERIVED_EFFECTS_DIR" -cf - "${CARD_UNLISTED_RELEASE_FILES[@]}" \
+    | ssh -p "$SERVER_PORT" "$SERVER_USER@$SERVER_HOST" "set -euo pipefail
+      cd '$REMOTE_DIR'
+      docker compose -f '$COMPOSE_FILE' run --rm -T migrate sh -ceu '
+        tmp=\$(mktemp -d)
+        trap \"rm -rf \\\"\$tmp\\\"\" EXIT
+        tar -xf - -C \"\$tmp\"
+        CARD_UNLISTED_SOURCES_SOURCE=\"\$tmp/card-unlisted-sources.json\" \\
+        CARD_UNLISTED_HUMAN_REVIEWS_SOURCE=\"\$tmp/card-unlisted-human-reviews.json\" \\
+        CARD_UNLISTED_RELEASE_SOURCE=\"\$tmp/card-unlisted-release.json\" \\
+          node --import tsx scripts/release-reviewed-unlisted-cards.ts
+      '"
+}
+
 remote_start() {
   ssh_run "set -euo pipefail
     cd '$REMOTE_DIR'
@@ -341,6 +371,7 @@ if [[ "$DRY_RUN" == true ]]; then
   log "[dry-run] would stream the reviewed official-rulings translations and require an atomic active release"
   log "[dry-run] would stream and atomically activate the translated official rule documents"
   log "[dry-run] would stream and transactionally import reviewed card-derived effects"
+  log "[dry-run] would stream and transactionally publish reviewed unlisted cards"
   log "[dry-run] would synchronize and verify $BATTLE_ASSET_COUNT private battle assets"
   exit 0
 fi
@@ -359,6 +390,8 @@ log 'synchronizing private battle assets outside GitHub'
 sync_battle_assets
 
 remote_build_and_migrate || die 'build or migration failed; the running release was not replaced'
+log 'streaming and transactionally publishing reviewed unlisted cards'
+release_reviewed_unlisted_cards || die 'reviewed unlisted-card release gate failed; the running release was not replaced'
 log 'streaming and transactionally importing reviewed card-derived effects'
 release_card_derived_effects || die 'card-derived-effects release gate failed; the running release was not replaced'
 log 'synchronizing and atomically activating current official Q&A, errata, and five reviewed locales'

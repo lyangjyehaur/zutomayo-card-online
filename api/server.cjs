@@ -44,6 +44,7 @@ const {
   prepareLogtoAccountDeletion,
 } = require('./accountDeletionService.cjs');
 const { upsertCard, upsertCardI18n, upsertGameConfig } = require('./adminCardService.cjs');
+const { listCardSynergies, upsertCardSynergy } = require('./cardSynergyService.cjs');
 const { listAdminUsers, resetUserElo, updateLinkedAdminRole } = require('./adminService.cjs');
 const {
   authenticateAdmin,
@@ -84,6 +85,9 @@ const S = require('./schemas.cjs');
 const { buildSignedImgproxyUrl, parseAllowedSources } = require('./imgproxySigner.cjs');
 const {
   getAllCardTextsI18n,
+  getAdminCards,
+  getCardRecommendations,
+  getCatalogCards,
   getCardOfficialErrata,
   getCardTextsI18n,
   getGameConfig,
@@ -647,7 +651,63 @@ async function initSchema() {
     `ALTER TABLE cards ADD COLUMN IF NOT EXISTS official_errata_affects_name BOOLEAN NOT NULL DEFAULT FALSE`,
     `ALTER TABLE cards ADD COLUMN IF NOT EXISTS official_errata_affects_effect BOOLEAN NOT NULL DEFAULT FALSE`,
     `ALTER TABLE cards ADD COLUMN IF NOT EXISTS official_errata_url TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE cards ADD COLUMN IF NOT EXISTS catalog_status TEXT NOT NULL DEFAULT 'listed'`,
+    `ALTER TABLE cards ADD COLUMN IF NOT EXISTS distribution_type TEXT NOT NULL DEFAULT 'standard'`,
+    `ALTER TABLE cards ADD COLUMN IF NOT EXISTS publication_status TEXT NOT NULL DEFAULT 'published'`,
+    `ALTER TABLE cards ADD COLUMN IF NOT EXISTS play_status TEXT NOT NULL DEFAULT 'playable'`,
+    `ALTER TABLE cards ADD COLUMN IF NOT EXISTS play_status_reason TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE cards ADD COLUMN IF NOT EXISTS source_url TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE cards ADD COLUMN IF NOT EXISTS source_note TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE cards ADD COLUMN IF NOT EXISTS source_sha256 TEXT NOT NULL DEFAULT ''`,
     `CREATE INDEX IF NOT EXISTS idx_cards_has_official_errata ON cards(has_official_errata)`,
+    `CREATE INDEX IF NOT EXISTS idx_cards_public_game_pool ON cards(publication_status, play_status)`,
+    `CREATE INDEX IF NOT EXISTS idx_cards_catalog_source ON cards(catalog_status, distribution_type)`,
+
+    `CREATE TABLE IF NOT EXISTS card_synergy_groups (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      primary_category TEXT NOT NULL,
+      rationale_ja TEXT NOT NULL,
+      rationale_i18n JSONB NOT NULL DEFAULT '{}'::jsonb,
+      evidence JSONB NOT NULL DEFAULT '[]'::jsonb,
+      review_status TEXT NOT NULL DEFAULT 'candidate',
+      recommendation_eligible BOOLEAN NOT NULL DEFAULT FALSE,
+      source_version TEXT NOT NULL,
+      rules_version TEXT NOT NULL,
+      reviewed_by_user_id TEXT,
+      reviewed_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS card_synergy_relations (
+      id TEXT PRIMARY KEY,
+      group_id TEXT REFERENCES card_synergy_groups(id) ON DELETE SET NULL,
+      source_card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+      target_card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL,
+      primary_category TEXT NOT NULL,
+      categories TEXT[] NOT NULL DEFAULT '{}',
+      confidence TEXT NOT NULL,
+      score INTEGER NOT NULL,
+      rationale_ja TEXT NOT NULL,
+      rationale_i18n JSONB NOT NULL DEFAULT '{}'::jsonb,
+      evidence JSONB NOT NULL DEFAULT '[]'::jsonb,
+      review_status TEXT NOT NULL DEFAULT 'candidate',
+      recommendation_eligible BOOLEAN NOT NULL DEFAULT FALSE,
+      source_version TEXT NOT NULL,
+      rules_version TEXT NOT NULL,
+      reviewed_by_user_id TEXT,
+      reviewed_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CHECK (source_card_id <> target_card_id)
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS uq_card_synergy_relation_source
+      ON card_synergy_relations(source_card_id, target_card_id, kind, primary_category, source_version)`,
+    `CREATE INDEX IF NOT EXISTS idx_card_synergy_recommendations
+      ON card_synergy_relations(source_card_id, review_status, recommendation_eligible)`,
+    `CREATE INDEX IF NOT EXISTS idx_card_synergy_review_queue
+      ON card_synergy_relations(primary_category, confidence, review_status)`,
 
     `CREATE TABLE IF NOT EXISTS card_official_errata (
       errata_id TEXT PRIMARY KEY,
@@ -5264,6 +5324,22 @@ function handleRequest(req, res) {
       return;
     }
 
+    if (pathname === '/api/catalog/cards' && method === 'GET') {
+      res.setHeader('Cache-Control', 'no-store');
+      json(await getCatalogCards(pool, url.searchParams));
+      return;
+    }
+
+    const catalogRecommendationsRoute = pathname.match(/^\/api\/catalog\/cards\/([^/]+)\/recommendations$/);
+    if (catalogRecommendationsRoute && method === 'GET') {
+      const cardId = decodeURIComponent(catalogRecommendationsRoute[1]);
+      res.setHeader('Cache-Control', 'no-store');
+      const result = await getCardRecommendations(pool, cardId, url.searchParams.get('limit'));
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
+      return;
+    }
+
     if (pathname === '/api/cards/texts' && method === 'GET') {
       res.setHeader('Cache-Control', 'no-store');
       json(await getAllCardTextsI18n(pool));
@@ -5304,6 +5380,51 @@ function handleRequest(req, res) {
     if (pathname === '/api/admin/cards/reload' && method === 'POST') {
       if (!(await authorizeAdmin(req, 'cards:write'))) return json({ error: 'Unauthorized' }, 401);
       json({ ok: true });
+      return;
+    }
+
+    if (pathname === '/api/admin/cards' && method === 'GET') {
+      if (!(await authorizeAdmin(req, 'cards:write'))) return json({ error: 'Unauthorized' }, 401);
+      res.setHeader('Cache-Control', 'no-store');
+      json(await getAdminCards(pool));
+      return;
+    }
+
+    if (pathname === '/api/admin/card-synergies' && method === 'GET') {
+      if (!(await authorizeAdmin(req, 'cards:write'))) return json({ error: 'Unauthorized' }, 401);
+      const parsed = validateBody(S.cardSynergyListQuerySchema, Object.fromEntries(url.searchParams.entries()));
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      res.setHeader('Cache-Control', 'no-store');
+      json({ relations: await listCardSynergies(pool, parsed.data) });
+      return;
+    }
+
+    if (pathname === '/api/admin/card-synergies' && method === 'POST') {
+      const admin = await authorizeAdmin(req, 'cards:write');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
+      const parsed = validateBody(S.cardSynergyWriteSchema, await readBody(128 * 1024));
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      const id = `synergy_${crypto.randomBytes(12).toString('hex')}`;
+      const result = await upsertCardSynergy(pool, id, parsed.data, admin.adminUserId);
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body, 201);
+      return;
+    }
+
+    const adminCardSynergyRoute = pathname.match(/^\/api\/admin\/card-synergies\/([^/]+)$/);
+    if (adminCardSynergyRoute && method === 'PUT') {
+      const admin = await authorizeAdmin(req, 'cards:write');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
+      const parsed = validateBody(S.cardSynergyWriteSchema, await readBody(128 * 1024));
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      const result = await upsertCardSynergy(
+        pool,
+        decodeURIComponent(adminCardSynergyRoute[1]),
+        parsed.data,
+        admin.adminUserId,
+      );
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
       return;
     }
 

@@ -162,7 +162,7 @@
 
 目前 250 張有效果卡的 `zh-TW`、`zh-CN`、`zh-HK`、`ko` 效果已同時依官方修正後日文及人工校對的英文複核。複核來源檔 `data/card-effects-i18n.json` 與本機 review manifest 以 SHA-256 鎖定確切版本，兩者都不進 Git。來源檔不得含 `en`，英文只維護於 `cards`。
 
-422 張卡名與 42 首歌名使用相同的本機複核流程。`data/card-names-i18n.json`、`data/card-song-titles-i18n.json` 與 `data/card-derived-names-review.json` 均不得提交到 Git；review manifest 會以 SHA-256 鎖定卡名、歌名、官方日英來源及卡牌 seed。批量匯入前執行 `npm run audit:card-derived-names`，確認卡片數量、語言完整性、重複卡名一致性及卡名內歌名均符合 canonical 表，再以 `npm run import:card-derived-names` 寫入 PostgreSQL。匯入只更新衍生卡名與 `game_config.card_song_titles_i18n`，不得改動既有效果翻譯。
+核心 422 張卡名與 42 首歌名使用相同的本機複核流程。`data/card-names-i18n.json`、`data/card-song-titles-i18n.json` 與 `data/card-derived-names-review.json` 均不得提交到 Git；review manifest 會以 SHA-256 鎖定卡名、歌名、官方日英來源及卡牌 seed。批量匯入前執行 `npm run audit:card-derived-names`，確認卡片數量、語言完整性、重複卡名一致性及卡名內歌名均符合 canonical 表，再以 `npm run import:card-derived-names` 寫入 PostgreSQL。匯入只更新衍生卡名與 `game_config.card_song_titles_i18n`，不得改動既有效果翻譯。第四彈 105～107 則由獨立 reviewed-unlisted manifest 提供四語卡名與效果；只有固定 allowlist 且帶已複核 provenance 的增量卡可與核心資料並存。
 
 CI/E2E 不使用線上卡牌快照；`scripts/create-e2e-card-seed.ts` 會在測試容器內生成無正式卡名、效果及翻譯的合成卡牌資料。
 
@@ -258,11 +258,11 @@ npm run import:card-official-texts
 
 生產匯入前必須備份資料庫。匯入後至少驗證：
 
-- `/api/cards` 返回 422 張卡。
-- 422 張卡均有 `enNameOfficial`。
-- 250 張有效果卡均有 `enEffectOfficial`。
+- `/api/cards` 返回 425 張卡。
+- 425 張卡均有 `enNameOfficial`。
+- 253 張有效果卡均有 `enEffectOfficial`。
 - `hasOfficialErrata` 共 12 張。
-- `/api/cards/texts` 返回 422 張卡的文本資料。
+- `/api/cards/texts` 返回 425 張卡的文本資料，四個衍生語言共 1700 列已複核文本。
 - 英文、日文和至少一個衍生語言實際 UI 的名稱、效果與勘誤 fallback。
 - `card_texts_i18n` 的 `ja`、`en` 列均為 0；資料庫中不存在 `card_effects_i18n` relation。
 

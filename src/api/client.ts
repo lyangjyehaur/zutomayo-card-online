@@ -760,6 +760,40 @@ export async function fetchCards(force = false): Promise<CardDef[]> {
   return data;
 }
 
+export interface CardRecommendation {
+  card: CardDef;
+  score: number;
+  reasons: string[];
+  categories?: string[];
+  rationale?: string;
+  rationaleI18n?: Record<string, string>;
+  source?: 'approved' | 'heuristic';
+  recommendationType: 'synergy' | 'same_song';
+}
+
+export async function fetchCatalogCards(
+  params: {
+    query?: string;
+    pack?: string;
+    element?: string;
+    type?: string;
+    distributionType?: string;
+  } = {},
+): Promise<CardDef[]> {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value) query.set(key, value);
+  }
+  const suffix = query.toString() ? `?${query.toString()}` : '';
+  return request<CardDef[]>(`/catalog/cards${suffix}`);
+}
+
+export async function fetchCardRecommendations(cardId: string, limit = 12): Promise<CardRecommendation[]> {
+  return request<CardRecommendation[]>(
+    `/catalog/cards/${encodeURIComponent(cardId)}/recommendations?limit=${encodeURIComponent(String(limit))}`,
+  );
+}
+
 export interface CardTextI18nEntry {
   name: string;
   effect: string;
@@ -801,6 +835,8 @@ export interface OfficialQaItem {
   lastSyncedAt: string;
   contentVersion: number;
 }
+
+type OfficialQaWireItem = Omit<OfficialQaItem, 'tagIds'> & { tagIds?: string[] };
 
 export interface OfficialErrataItem {
   errataId: string;
@@ -913,8 +949,13 @@ export async function fetchOfficialQa(
   if (filters.query) params.set('query', filters.query);
   if (filters.tag) params.set('tag', filters.tag);
   if (filters.cardId) params.set('cardId', filters.cardId);
-  const data = await request<{ items: OfficialQaItem[] }>(`/official/qa?${params.toString()}`);
-  return data.items;
+  const data = await request<{ items: OfficialQaWireItem[] }>(`/official/qa?${params.toString()}`);
+  return data.items.map((item) => ({
+    ...item,
+    tags: Array.isArray(item.tags) ? item.tags : [],
+    tagIds: Array.isArray(item.tagIds) ? item.tagIds : Array.isArray(item.tags) ? item.tags : [],
+    relatedCardIds: Array.isArray(item.relatedCardIds) ? item.relatedCardIds : [],
+  }));
 }
 
 export async function fetchOfficialQaItem(number: number, language: string): Promise<OfficialQaItem> {
@@ -2167,6 +2208,85 @@ export async function adminUpdateCard(id: string, card: Partial<CardDef>): Promi
   await adminReloadGameCards();
   cardsCache = null;
   return updated;
+}
+
+export async function adminGetCards(): Promise<CardDef[]> {
+  return request<CardDef[]>('/admin/cards', { headers: adminAuthHeaders() });
+}
+
+export type CardSynergyCategory =
+  | 'named_card_song'
+  | 'element'
+  | 'zone_resource'
+  | 'chronos'
+  | 'hp_damage'
+  | 'hand_draw'
+  | 'card_stats_type'
+  | 'deck_flow'
+  | 'area_enchant'
+  | 'event_trigger'
+  | 'other';
+
+export interface AdminCardSynergy {
+  id: string;
+  groupId: string;
+  sourceCardId: string;
+  sourceCardName: string;
+  targetCardId: string;
+  targetCardName: string;
+  kind: 'enables' | 'conflicts';
+  primaryCategory: CardSynergyCategory;
+  categories: CardSynergyCategory[];
+  confidence: 'high' | 'medium' | 'low';
+  score: number;
+  rationaleJa: string;
+  rationaleI18n: Record<string, string>;
+  evidence: unknown[];
+  reviewStatus: 'candidate' | 'approved' | 'rejected' | 'needs_changes';
+  recommendationEligible: boolean;
+  sourceVersion: string;
+  rulesVersion: string;
+  reviewedAt: string | null;
+  updatedAt: string;
+}
+
+export type AdminCardSynergyInput = Omit<
+  AdminCardSynergy,
+  'id' | 'sourceCardName' | 'targetCardName' | 'reviewedAt' | 'updatedAt'
+>;
+
+export async function adminGetCardSynergies(
+  params: {
+    status?: string;
+    category?: string;
+    query?: string;
+    limit?: number;
+  } = {},
+): Promise<AdminCardSynergy[]> {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== '') search.set(key, String(value));
+  }
+  const data = await request<{ relations: AdminCardSynergy[] }>(`/admin/card-synergies?${search.toString()}`, {
+    headers: adminAuthHeaders(),
+  });
+  return data.relations;
+}
+
+export async function adminCreateCardSynergy(input: AdminCardSynergyInput): Promise<AdminCardSynergy> {
+  return request('/admin/card-synergies', {
+    method: 'POST',
+    headers: adminAuthHeaders(),
+    body: JSON.stringify(input),
+  });
+}
+
+export async function adminUpdateCardSynergy(id: string, input: AdminCardSynergyInput): Promise<AdminCardSynergy> {
+  return request(`/admin/card-synergies/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    headers: adminAuthHeaders(),
+    body: JSON.stringify(input),
+  });
 }
 
 export async function adminGetCardOfficialErrata(cardId: string): Promise<CardOfficialErrata | null> {

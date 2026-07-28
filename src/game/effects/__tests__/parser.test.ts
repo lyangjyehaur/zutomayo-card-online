@@ -90,6 +90,36 @@ describe('Effect Parser', () => {
         }
       }
     });
+
+    it('解析 4th SE 三張卡牌的完整效果', () => {
+      const abyssReset = parseEffect(
+        'アビスのカードを8枚選び、裏向きにして混ぜ、デッキの底に置く。そうしない場合、ゲームに敗北する。お互いのパワーチャージャーのカードをすべてアビスに置く。',
+      );
+      expect(abyssReset).toMatchObject({
+        action: {
+          type: 'requestChoice',
+          params: {
+            choiceType: 'abyssToDeckBottomOrLose',
+            min: 8,
+            max: 8,
+            faceDown: true,
+            shuffle: true,
+            moveAllPowerChargersToAbyss: true,
+          },
+        },
+      });
+
+      expect(parseEffect('クロノスの時計を9つ進ませる')).toMatchObject({
+        action: { type: 'clockAdvance', params: { value: 9 } },
+      });
+
+      expect(parseEffect('相手のエリアエンチャントを、相手のアビスに置く')).toMatchObject({
+        action: {
+          type: 'moveOpponentAreaEnchant',
+          params: { target: 'opponent', destination: 'abyss' },
+        },
+      });
+    });
   });
 
   describe('邊界情況', () => {

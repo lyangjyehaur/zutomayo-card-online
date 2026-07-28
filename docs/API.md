@@ -282,7 +282,7 @@ Official Japanese Q&A and errata are read from the active PostgreSQL content-rel
 
 Public responses use five-minute cache headers, stale-while-revalidate, and content ETags. Activation requires all five reviewed translations for every current source version, so a published non-Japanese release never relies on fallback. Repository JSON is never a runtime source. Source synchronization and release operations are documented in [official-rulings.md](official-rulings.md).
 
-Grand Rules and Floor Rules are stored as versioned PostgreSQL documents and ordered sections. The public document endpoint returns Japanese source text beside the requested reviewed translation, section hierarchy, source page numbers, the official PDF URL, and the PDF SHA-256 fingerprint.
+Grand Rules and Floor Rules are stored as versioned PostgreSQL documents and ordered sections. The public document endpoint returns Japanese source text beside the requested reviewed translation, section hierarchy, source page numbers, the official PDF URL, and the PDF SHA-256 fingerprint. Structural chapter and section headings may have an empty body; content-bearing sections preserve the complete source text. Grand Rules translations retain the exact numbered-rule sequence, while Floor Rules translations retain every ordered list, bullet, note, and numbered procedural step from the Japanese source.
 
 ## Matches / 對戰
 
@@ -481,7 +481,7 @@ npm run admin:link -- --email=user@example.com --role=admin
 ```
 
 Supported roles are `viewer`, `moderator`, `operator`, and `admin`.
-The CLI is the bootstrap path for the first full administrator. After that, an `admin` can search registered users and manage linked roles from the **使用者** tab in `/admin`; lower roles cannot see or call the role-management controls.
+The Refine 5 console under `/admin/*` maps navigation resources to these backend permissions and hides unavailable resources. The CLI is the bootstrap path for the first full administrator. After that, an `admin` can search registered users and manage linked roles from `/admin/users`; lower roles cannot see or call the role-management controls. Frontend access control is only a UX boundary; every endpoint continues to enforce its own permission.
 
 ### Deck sharing and official-content administration
 
