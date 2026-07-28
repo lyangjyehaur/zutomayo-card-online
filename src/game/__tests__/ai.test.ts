@@ -9,7 +9,9 @@ import {
   createAIKnowledgeState,
 } from '../ai';
 import { generateTurnPlans } from '../ai/candidates';
+import { createDecisionContext } from '../ai/rng';
 import { sampleUnknownState } from '../ai/sampling';
+import { simulateTurnPlan } from '../ai/simulator';
 import {
   clearPlanEvaluationCache,
   getCachedPlanEvaluation,
@@ -48,6 +50,11 @@ const TEST_CARDS: CardDef[] = [
   ...Array.from({ length: 8 }, (_, i) => makeCard(`test-enchant-${i + 1}`, 'Enchant')),
   ...Array.from({ length: 2 }, (_, i) => makeCard(`test-area-enchant-${i + 1}`, 'Area Enchant')),
   makeCard('test-expensive-character', 'Character', { powerCost: 99, attack: { night: 80, day: 80 } }),
+  makeCard('test-unaffordable-damage', 'Character', {
+    powerCost: 99,
+    attack: { night: 80, day: 80 },
+    effect: '相手に30ダメージを与える。',
+  }),
   makeCard('test-direct-damage', 'Character', {
     attack: { night: 20, day: 20 },
     effect: '相手に30ダメージを与える。',
@@ -361,15 +368,39 @@ describe('AI difficulty policy contracts', () => {
 
     const firstKnowledge = createAIKnowledgeState(first, 0);
     const secondKnowledge = createAIKnowledgeState(second, 0);
-    const firstSample = sampleUnknownState(firstKnowledge, 'sample-seed', 'plan', 0);
-    const repeatedSample = sampleUnknownState(firstKnowledge, 'sample-seed', 'plan', 0);
-    const replacedSample = sampleUnknownState(secondKnowledge, 'sample-seed', 'plan', 0);
+    const firstSample = sampleUnknownState(firstKnowledge, 'sample-seed', 0);
+    const repeatedSample = sampleUnknownState(firstKnowledge, 'sample-seed', 0);
+    const replacedSample = sampleUnknownState(secondKnowledge, 'sample-seed', 0);
 
     expect(firstKnowledge.visibleStateKey).toBe(secondKnowledge.visibleStateKey);
     expect(firstSample.game.players[1].setZoneA?.defId).toBe(repeatedSample.game.players[1].setZoneA?.defId);
     expect(firstSample.game.players[1].setZoneA?.defId).toBe(replacedSample.game.players[1].setZoneA?.defId);
     expect(firstSample.game.players[1].setZoneA?.instanceId).toBe(firstSample.game.setCardsThisTurn[1][0].instanceId);
     expect(firstSample.game.players[1].setZoneA?.defId).toBe(firstSample.game.setCardsThisTurn[1][0].defId);
+  });
+
+  it('resolves a sampled legal opponent response when the opponent has not committed', () => {
+    const G = makeGWithHand(['test-character-1', 'test-character-2']);
+    const knowledge = createAIKnowledgeState(G, 0);
+    const sampled = sampleUnknownState(knowledge, 'opponent-response', 0);
+    const ownPlan = generateTurnPlans(knowledge)[0];
+    const opponentKnowledge = {
+      ...sampled,
+      player: 1 as const,
+      opponent: 0 as const,
+      knownOwnDeckDefIds: sampled.game.players[1].deck.map((card) => card.defId).sort(),
+    };
+    const opponentPlan = generateTurnPlans(opponentKnowledge)[0];
+    const simulation = simulateTurnPlan(
+      sampled,
+      ownPlan,
+      createDecisionContext('hard', 'opponent-response', { seed: 'opponent-response', budgetMs: 1_000 }),
+      opponentPlan,
+    );
+
+    expect(opponentPlan).toHaveLength(1);
+    expect(simulation?.completedTurn).toBe(true);
+    expect(simulation?.state.turnNumber).toBeGreaterThan(G.turnNumber);
   });
 
   it('destroys own deck order before sampling and hard decisions', () => {
@@ -386,10 +417,8 @@ describe('AI difficulty policy contracts', () => {
 
     expect(firstKnowledge.knownOwnDeckDefIds).toEqual(secondKnowledge.knownOwnDeckDefIds);
     expect(firstKnowledge.visibleStateKey).toBe(secondKnowledge.visibleStateKey);
-    expect(
-      sampleUnknownState(firstKnowledge, 'deck-order', 'plan', 0).game.players[0].deck.map((card) => card.defId),
-    ).toEqual(
-      sampleUnknownState(secondKnowledge, 'deck-order', 'plan', 0).game.players[0].deck.map((card) => card.defId),
+    expect(sampleUnknownState(firstKnowledge, 'deck-order', 0).game.players[0].deck.map((card) => card.defId)).toEqual(
+      sampleUnknownState(secondKnowledge, 'deck-order', 0).game.players[0].deck.map((card) => card.defId),
     );
     expect(aiPlanTurn(first, 0, 'hard', { seed: 'deck-order' }).action).toEqual(
       aiPlanTurn(second, 0, 'hard', { seed: 'deck-order' }).action,
@@ -428,6 +457,54 @@ describe('AI difficulty policy contracts', () => {
     G.players[0].hand = Array.from({ length: 5 }, (_, index) => createInstance(`test-character-${index + 1}`));
     expect(aiSelectMulligan(G, 0, 'normal', { seed: 1 }).action).toEqual([]);
     expect(aiSelectMulligan(G, 0, 'hard', { seed: 1 }).action).toEqual([]);
+  });
+
+  it('uses sampled remaining-deck quality for hard mulligan decisions', () => {
+    const makeMulliganState = (deckDefIds: string[]): GameState => {
+      const G = setupGame();
+      G.step = 'mulligan';
+      G.players[0].hand = Array.from({ length: 5 }, (_, index) => createInstance(`test-enchant-${index + 1}`));
+      G.players[0].deck = deckDefIds.map((defId) => createInstance(defId));
+      G.players[0].knownDeckDefIds = [...deckDefIds];
+      return G;
+    };
+    const playableDeck = Array.from({ length: 8 }, (_, index) => `test-character-${index + 6}`);
+    const unplayableDeck = ['test-enchant-6', 'test-enchant-7', 'test-enchant-8', 'test-enchant-6', 'test-enchant-7'];
+
+    expect(aiSelectMulligan(makeMulliganState(playableDeck), 0, 'hard', { seed: 'deck-aware' }).action.length).toBe(1);
+    expect(aiSelectMulligan(makeMulliganState(unplayableDeck), 0, 'hard', { seed: 'deck-aware' }).action).toEqual([]);
+  });
+
+  it('does not score unaffordable effects as if they could resolve', () => {
+    const G = makeGWithHand([
+      'test-unaffordable-damage',
+      'test-character-1',
+      'test-character-2',
+      'test-character-3',
+      'test-character-4',
+    ]);
+    for (const difficulty of ['normal', 'hard'] as const) {
+      const decision = aiPlanTurn(G, 0, difficulty, { seed: `unaffordable:${difficulty}` });
+      const selected = G.players[0].hand[decision.action.selections[0].handIndex];
+      expect(selected.defId).not.toBe('test-unaffordable-damage');
+    }
+  });
+
+  it('scores Character effects when cost reduction makes the card affordable', () => {
+    const G = makeGWithHand([
+      'test-unaffordable-damage',
+      'test-character-1',
+      'test-character-2',
+      'test-character-3',
+      'test-character-4',
+    ]);
+    G.modifiers.powerCostReduction[0] = 99;
+
+    for (const difficulty of ['normal', 'hard'] as const) {
+      const decision = aiPlanTurn(G, 0, difficulty, { seed: `cost-reduction:${difficulty}` });
+      const selected = G.players[0].hand[decision.action.selections[0].handIndex];
+      expect(selected.defId).toBe('test-unaffordable-damage');
+    }
   });
 
   it('prioritizes lethal direct damage over healing at full HP', () => {
@@ -470,6 +547,7 @@ describe('AI difficulty policy contracts', () => {
     const decision = aiSelectEffect(G, 0, 'normal');
     expect(decision?.action).toBe(1);
     expect(decision?.reason).toBe('prioritize-directDamage');
+    expect(aiSelectEffect(G, 0, 'hard')?.factors.some((factor) => factor.label === 'simulatedContinuation')).toBe(true);
   });
 
   it('prioritizes useful healing when HP is low', () => {

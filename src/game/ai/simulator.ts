@@ -21,14 +21,18 @@ export interface SimulatedPlanResult {
   timedOut: boolean;
 }
 
-function bestChoiceFallback(G: GameState, player: PlayerIndex): string[] | null {
+function bestChoiceFallback(G: GameState, player: PlayerIndex, context: AIDecisionContext): string[] | null {
   const choice = G.pendingChoice;
   if (!choice || choice.player !== player) return null;
   const candidates = generatePendingChoiceCandidates(choice, 96);
   let best = defaultPendingChoiceOptionIds(choice);
   let bestScore = Number.NEGATIVE_INFINITY;
+  const before = evaluateState(G, player);
   for (const candidate of candidates) {
-    const score = choiceOptionHeuristic(choice, candidate, G);
+    if (isDecisionTimedOut(context)) break;
+    const sim = structuredClone(G) as GameState;
+    if (!submitPendingChoice(sim, player, candidate, getAIParsedEffects())) continue;
+    const score = choiceOptionHeuristic(choice, candidate, G) + evaluateState(sim, player) - before;
     if (score > bestScore) {
       best = candidate;
       bestScore = score;
@@ -37,31 +41,36 @@ function bestChoiceFallback(G: GameState, player: PlayerIndex): string[] | null 
   return best;
 }
 
-function bestEffectIndex(G: GameState, player: PlayerIndex): number | undefined {
+function bestEffectIndex(G: GameState, player: PlayerIndex, context: AIDecisionContext): number | undefined {
   const legal = getResolvablePendingEffectIndexes(G, player);
   let best: { index: number; score: number } | undefined;
+  const before = evaluateState(G, player);
   for (const index of legal) {
+    if (isDecisionTimedOut(context)) break;
     const pending = G.pendingEffects[player][index];
-    const score = pending ? effectValue(pending.effect, G, player) : Number.NEGATIVE_INFINITY;
+    if (!pending) continue;
+    const sim = structuredClone(G) as GameState;
+    if (!resolvePendingEffect(sim, player, index, getAIParsedEffects())) continue;
+    const score = effectValue(pending.effect, G, player) + evaluateState(sim, player) - before;
     if (!best || score > best.score) best = { index, score };
   }
   return best?.index;
 }
 
-function settleTurn(G: GameState, context: AIDecisionContext): boolean {
+export function settleDecisionChain(G: GameState, context: AIDecisionContext): boolean {
   const parsedEffects = getAIParsedEffects();
   for (let iterations = 0; iterations < 80; iterations++) {
     if (G.step === 'gameOver' || G.step === 'turnSet') return true;
     if (isDecisionTimedOut(context)) return false;
     if (G.pendingChoice) {
       const choice = G.pendingChoice;
-      const optionIds = bestChoiceFallback(G, choice.player) ?? defaultPendingChoiceOptionIds(choice);
+      const optionIds = bestChoiceFallback(G, choice.player, context) ?? defaultPendingChoiceOptionIds(choice);
       if (!optionIds || !submitPendingChoice(G, choice.player, optionIds, parsedEffects)) return false;
       continue;
     }
     if (G.step === 'effectOrder' && G.pendingEffectPlayer !== null) {
       const player = G.pendingEffectPlayer;
-      const index = bestEffectIndex(G, player);
+      const index = bestEffectIndex(G, player, context);
       if (index === undefined || !resolvePendingEffect(G, player, index, parsedEffects)) return false;
       continue;
     }
@@ -91,19 +100,19 @@ export function simulateTurnPlan(
   knowledge: AIKnowledgeState,
   selections: readonly AISelection[],
   context: AIDecisionContext,
+  opponentSelections: readonly AISelection[] = [],
 ): SimulatedPlanResult | null {
   const G = structuredClone(knowledge.game) as GameState;
   const { player, opponent } = knowledge;
   const turnBefore = G.turnNumber;
   if (!applyPlan(G, player, selections)) return null;
 
-  // A visible committed opponent plan can be resolved. If they have not yet
-  // placed the legal minimum, keep the simulation at the current public state.
-  if (!G.ready[opponent] && G.players[opponent].cardsSetThisTurn >= getMinimumSetCount(G, opponent)) {
-    G.ready[opponent] = true;
+  if (!G.ready[opponent] && G.players[opponent].cardsSetThisTurn < getMinimumSetCount(G, opponent)) {
+    if (opponentSelections.length === 0 || !applyPlan(G, opponent, opponentSelections)) return null;
   }
+  if (!G.ready[opponent] && !confirmReady(G, opponent, getAIParsedEffects())) return null;
   if (!confirmReady(G, player, getAIParsedEffects())) return null;
-  const settled = G.ready[opponent] ? settleTurn(G, context) : true;
+  const settled = settleDecisionChain(G, context);
   return {
     state: G,
     score: evaluateState(G, player),

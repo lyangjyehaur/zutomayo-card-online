@@ -4,6 +4,7 @@ import type { GameState } from '../types';
 import { generatePendingChoiceCandidates } from './candidates';
 import { choiceOptionHeuristic, effectValue, evaluateState, getAIParsedEffects } from './evaluate';
 import { isDecisionTimedOut, seededShuffle } from './rng';
+import { settleDecisionChain } from './simulator';
 import type { AIDecision, AIDecisionContext, AIKnowledgeState, AITraceFactor } from './types';
 
 interface RankedAction<T> {
@@ -43,13 +44,15 @@ export function choosePendingChoice(
     }
     const sim = structuredClone(knowledge.game) as GameState;
     if (!submitPendingChoice(sim, knowledge.player, candidate, getAIParsedEffects())) continue;
+    const settled = context.difficulty !== 'hard' || settleDecisionChain(sim, context);
+    if (!settled && isDecisionTimedOut(context)) timedOut = true;
     const stateDelta = evaluateState(sim, knowledge.player) - before;
     ranked.push({
       action: candidate,
       score: heuristic + stateDelta,
       factors: [
         { label: 'choiceHeuristic', value: heuristic },
-        { label: 'simulatedState', value: stateDelta },
+        { label: context.difficulty === 'hard' ? 'simulatedContinuation' : 'simulatedState', value: stateDelta },
       ],
     });
   }
@@ -92,13 +95,15 @@ export function chooseEffectOrder(knowledge: AIKnowledgeState, context: AIDecisi
     }
     const sim = structuredClone(knowledge.game) as GameState;
     if (!resolvePendingEffect(sim, knowledge.player, index, getAIParsedEffects())) continue;
+    const settled = context.difficulty !== 'hard' || settleDecisionChain(sim, context);
+    if (!settled && isDecisionTimedOut(context)) timedOut = true;
     const stateDelta = evaluateState(sim, knowledge.player) - before;
     ranked.push({
       action: index,
       score: immediate + stateDelta,
       factors: [
         { label: 'effectValue', value: immediate, detail: pending.effect.action.type },
-        { label: 'simulatedState', value: stateDelta },
+        { label: context.difficulty === 'hard' ? 'simulatedContinuation' : 'simulatedState', value: stateDelta },
       ],
     });
   }

@@ -107,24 +107,26 @@ export function scoreCardDefinition(
   const power = getPlayerPower(G.players[player], G, player);
   const factors: AITraceFactor[] = [];
   let score = 0;
+  const costReduction = def.type === 'Character' ? (G.modifiers.powerCostReduction?.[player] ?? 0) : 0;
+  const effectiveCost = Math.max(0, def.powerCost - costReduction);
+  const affordable = power >= effectiveCost;
 
   if (def.type === 'Character' && def.attack) {
     const time = projectedTime(G, projectedClock);
     const attack = def.attack[time];
-    const affordable = power >= def.powerCost;
     const attackValue = affordable ? attack : 0;
     score += attackValue;
     factors.push({ label: 'effectiveAttack', value: attackValue, detail: time });
-    const affordability = affordable ? 24 : -70 - def.powerCost * 3;
+    const affordability = affordable ? 24 : -70 - effectiveCost * 3;
     score += affordability;
-    factors.push({ label: 'powerCost', value: affordability, detail: `${power}/${def.powerCost}` });
+    factors.push({ label: 'powerCost', value: affordability, detail: `${power}/${effectiveCost}` });
     const clockValue = Math.max(-18, 10 - Math.abs(def.clock - 2) * 4);
     score += clockValue;
     factors.push({ label: 'chronos', value: clockValue, detail: `${def.clock}` });
   } else {
-    const affordability = power >= def.powerCost ? 25 : -55 - def.powerCost * 2;
+    const affordability = affordable ? 25 : -55 - effectiveCost * 2;
     score += affordability;
-    factors.push({ label: 'powerCost', value: affordability, detail: `${power}/${def.powerCost}` });
+    factors.push({ label: 'powerCost', value: affordability, detail: `${power}/${effectiveCost}` });
     if (def.type === 'Area Enchant') {
       const persistence = G.players[player].setZoneC ? -12 : 22;
       score += persistence;
@@ -133,9 +135,15 @@ export function scoreCardDefinition(
   }
 
   const effects = getAIParsedEffects().get(def.id) ?? [];
-  const effectsScore = effects.reduce((sum, effect) => sum + effectValue(effect, G, player), 0);
+  const effectsScore = affordable ? effects.reduce((sum, effect) => sum + effectValue(effect, G, player), 0) : 0;
   score += effectsScore;
-  if (effects.length > 0) factors.push({ label: 'parsedEffects', value: effectsScore, detail: `${effects.length}` });
+  if (effects.length > 0) {
+    factors.push({
+      label: affordable ? 'parsedEffects' : 'unaffordableEffects',
+      value: effectsScore,
+      detail: `${effects.length}`,
+    });
+  }
   score += def.sendToPower * 2;
   if (def.sendToPower) factors.push({ label: 'futurePower', value: def.sendToPower * 2 });
   return { score, factors };

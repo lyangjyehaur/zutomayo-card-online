@@ -447,15 +447,15 @@ flowchart LR
 
 `src/game/ai.ts` 是相容入口，純策略位於 `src/game/ai/`。所有入口先建立 `AIKnowledgeState`，再次遮蔽雙方牌庫順序、對手手牌與伏牌；策略只接收此知識狀態、seeded RNG 與時間預算。
 
-| 難度   | 策略                                                                                                                                           |
-| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| easy   | seeded 地從合理候選中選擇，會避開明顯有害卡牌、效果與目標，但保留可見失誤                                                                      |
-| normal | 確定性評估有效攻擊、Power、Chronos、解析效果、資源、卡位、效果順序與所有合法指定選擇                                                           |
-| hard   | 以 heuristic 選出最多 18 個完整卡牌 + A/B 卡位計畫，對未知已設置卡取三個 seeded 樣本，以正式規則模擬完整回合與有限下回合，並受 300 ms 預算限制 |
+| 難度   | 策略                                                                                                                                                   |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| easy   | seeded 地從合理候選中選擇，會避開明顯有害卡牌、效果與目標，但保留可見失誤                                                                              |
+| normal | 確定性評估有效攻擊、Power、Chronos、解析效果、資源、卡位、效果順序與所有合法指定選擇                                                                   |
+| hard   | 以 heuristic 選出最多 12 個完整卡牌 + A/B 卡位計畫，在三個共用 seeded 世界中建立合法對手計畫，以正式規則模擬完整回合與有限下回合，並受 300 ms 預算限制 |
 
-`useAIMoves.ts` 只負責統一的 UX delay 與 move 派發。它以 card instance id、slot 和 decision token 保存完整回合計畫，因此可在每次 boardgame.io state 更新後繼續執行第二張牌。困難模擬呼叫正式 `confirmReady`、`resolvePendingEffect` 與 `submitPendingChoice`，搜尋超時或無法模擬時回傳已記錄原因的普通難度合法 fallback。開發環境會發出 `zutomayo:ai-decision` event，`AIDecisionInspector` 在非教學 AI 對戰保留最新 25 筆 score、reason、factor、duration 與 fallback；production 不掛載此 UI。全部 13 種 `PendingChoice` 都有獨立的戰術結果 fixture，並由候選測試覆蓋合法 default fallback。
+`useAIMoves.ts` 只負責統一的 UX delay 與 move 派發。它以 card instance id、slot 和 decision token 保存完整回合計畫，因此可在每次 boardgame.io state 更新後繼續執行第二張牌。困難模擬呼叫正式 `confirmReady`、`resolvePendingEffect` 與 `submitPendingChoice`；對手尚未設置時，會從同一 sampled world 的未知手牌產生合法 heuristic 計畫，避免停在未結算的半回合。Hard 效果順序與指定選擇會把首選候選繼續結算至下一個穩定回合，搜尋超時或無法模擬時回傳已記錄原因的普通難度合法 fallback。開發環境會發出 `zutomayo:ai-decision` event，`AIDecisionInspector` 在非教學 AI 對戰保留最新 25 筆 score、reason、factor、duration 與 fallback；production 不掛載此 UI。全部 13 種 `PendingChoice` 都有獨立的戰術結果 fixture，並由候選測試覆蓋合法 default fallback。
 
-`playerView` 向牌組擁有者提供排序後的剩餘牌組定義，讓 AI 知道合法組成但不知道牌序；對手看不到這份 metadata。`AIKnowledgeState` 會把暗牌轉成跨 zone 一致的 opaque id。`sampling.ts` 以自身剩餘牌組和 published/playable 公開牌池產生可重播未知狀態，`transposition.ts` 的 128-entry LRU 只快取由可見狀態衍生的數值評估。`scripts/aiBenchmark.ts` 是 soak 與矩陣共用的規則驅動對局 runner；`npm run smoke:ai` 用 seeded 隨機牌組做穩定性回歸，`npm run benchmark:ai` 則用四個固定元素 profile、雙邊座位與難度配對輸出勝負、HP 差、回合、重抽、決策覆蓋與延遲 JSON。Node 正式卡表基準低於 300 ms p95；production bundle 的固定牌組瀏覽器基準中，桌面與手機各三次困難搜尋最大為 `6.4 ms` 與 `8.2 ms`，搜尋期間均無 long task。載入與版面切換仍可能產生不屬於 AI 的 long task，因此目前不引入 Worker；只有搜尋本身在後續正式牌組或低階裝置基準超過 `100 ms` 時才移出主執行緒。完整進度與限制見 [AI 難度現況與改造路線](ai-difficulty-roadmap.md)。
+`playerView` 向牌組擁有者提供排序後的剩餘牌組定義，讓 AI 知道合法組成但不知道牌序；對手看不到這份 metadata。`AIKnowledgeState` 會把暗牌轉成跨 zone 一致的 opaque id。`sampling.ts` 以自身剩餘牌組和 published/playable 公開牌池產生可重播未知狀態；同一決策的所有候選共用 sample index 對應的未知世界，避免因各自抽到不同對手牌而產生比較偏差。`transposition.ts` 的 128-entry LRU 只快取由可見狀態衍生的數值評估。`scripts/aiBenchmark.ts` 是 soak 與矩陣共用的規則驅動對局 runner，雙方會先從同一個 pre-commit 狀態決策，再一起派發計畫；`npm run smoke:ai` 用 seeded 隨機牌組做穩定性回歸，`npm run benchmark:ai` 則用四個固定元素 profile、雙邊座位與難度配對輸出勝負、HP 差、回合、重抽、決策覆蓋與延遲 JSON。完整進度、歷史基準與目前限制見 [AI 難度現況與改造路線](ai-difficulty-roadmap.md)。
 
 ### Chronos 時鐘系統（`src/game/chronos.ts`）
 
