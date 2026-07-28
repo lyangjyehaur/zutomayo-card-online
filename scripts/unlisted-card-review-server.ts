@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import http, { type IncomingMessage, type ServerResponse } from 'node:http';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 export type ImageReviewStatus = 'needs_review' | 'approved' | 'needs_better_image' | 'rejected';
@@ -84,7 +85,9 @@ const ledgerPath = path.join(repoRoot, 'data', 'card-unlisted-human-reviews.json
 const suggestionPath = path.join(repoRoot, 'data', 'card-unlisted-review-suggestions.json');
 const uiPath = path.join(repoRoot, 'tools', 'unlisted-card-review', 'index.html');
 const allowedImageRoot = path.join(repoRoot, 'data', 'vision-ocr', 'unlisted-cards');
+const imageBackupRoot = path.join(allowedImageRoot, '.review-backups');
 const host = '127.0.0.1';
+const maxImageBytes = 20 * 1024 * 1024;
 
 function argument(name: string): string | undefined {
   const index = process.argv.indexOf(name);
@@ -313,7 +316,7 @@ function statePayload(
       ...card,
       review: effectiveReview(card, ledger, suggestions),
       machineSuggestion: suggestions.cards[card.candidateId] || null,
-      imageUrl: `/images/${encodeURIComponent(card.candidateId)}`,
+      imageUrl: `/images/${encodeURIComponent(card.candidateId)}?v=${card.sourceSha256.slice(0, 12)}`,
     })),
   };
 }
@@ -340,6 +343,78 @@ async function readBody(req: IncomingMessage): Promise<ReviewRequest> {
   return JSON.parse(Buffer.concat(chunks).toString('utf8')) as ReviewRequest;
 }
 
+async function readBinaryBody(req: IncomingMessage): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of req) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += buffer.length;
+    if (size > maxImageBytes) throw new Error('Image is too large (maximum 20 MB)');
+    chunks.push(buffer);
+  }
+  if (size === 0) throw new Error('Image file is empty');
+  return Buffer.concat(chunks);
+}
+
+export function detectReviewImageExtension(image: Buffer): '.jpg' | '.png' | '.webp' {
+  if (image.length >= 3 && image[0] === 0xff && image[1] === 0xd8 && image[2] === 0xff) return '.jpg';
+  if (
+    image.length >= 8 &&
+    image[0] === 0x89 &&
+    image[1] === 0x50 &&
+    image[2] === 0x4e &&
+    image[3] === 0x47 &&
+    image[4] === 0x0d &&
+    image[5] === 0x0a &&
+    image[6] === 0x1a &&
+    image[7] === 0x0a
+  ) {
+    return '.png';
+  }
+  if (
+    image.length >= 12 &&
+    image.subarray(0, 4).toString('ascii') === 'RIFF' &&
+    image.subarray(8, 12).toString('ascii') === 'WEBP'
+  ) {
+    return '.webp';
+  }
+  throw new Error('Only JPEG, PNG, and WebP card images are supported');
+}
+
+function safeTimestamp(): string {
+  return new Date().toISOString().replace(/[:.]/g, '-');
+}
+
+function replaceReviewImage(
+  card: SourceCard,
+  manifest: SourceManifest,
+  image: Buffer,
+): { imageUrl: string; sha256: string } {
+  const extension = detectReviewImageExtension(image);
+  const previousPath = path.resolve(repoRoot, card.localImagePath);
+  if (!previousPath.startsWith(`${allowedImageRoot}${path.sep}`) || !fs.existsSync(previousPath)) {
+    throw new Error('Local card image not found');
+  }
+
+  fs.mkdirSync(imageBackupRoot, { recursive: true });
+  const backupPath = path.join(
+    imageBackupRoot,
+    `${card.candidateId}-${safeTimestamp()}${path.extname(previousPath).toLowerCase() || '.jpg'}`,
+  );
+  fs.copyFileSync(previousPath, backupPath);
+
+  const nextPath = path.join(allowedImageRoot, `${card.candidateId}${extension}`);
+  const temporaryPath = `${nextPath}.tmp`;
+  fs.writeFileSync(temporaryPath, image);
+  fs.renameSync(temporaryPath, nextPath);
+
+  const sha256 = createHash('sha256').update(image).digest('hex');
+  card.localImagePath = path.relative(repoRoot, nextPath).split(path.sep).join('/');
+  card.sourceSha256 = sha256;
+  writeJsonAtomic(manifestPath, manifest);
+  return { imageUrl: `/images/${encodeURIComponent(card.candidateId)}?v=${sha256.slice(0, 12)}`, sha256 };
+}
+
 function contentType(file: string): string {
   const extension = path.extname(file).toLowerCase();
   if (extension === '.png') return 'image/png';
@@ -357,6 +432,27 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   const manifest = loadManifest();
   if (req.method === 'GET' && url.pathname === '/api/state') {
     json(res, 200, statePayload(manifest, loadLedger(), loadSuggestions()));
+    return;
+  }
+
+  const imageUploadMatch = url.pathname.match(/^\/api\/image\/([A-Za-z0-9_-]+)$/);
+  if (req.method === 'POST' && imageUploadMatch) {
+    const card = manifest.cards.find((entry) => entry.candidateId === imageUploadMatch[1]);
+    if (!card) throw new Error('Card not found');
+    const replacement = replaceReviewImage(card, manifest, await readBinaryBody(req));
+    const ledger = loadLedger();
+    const suggestions = loadSuggestions();
+    const review = effectiveReview(card, ledger, suggestions);
+    const nextReview = { ...review, imageReviewStatus: 'needs_review' as const, reviewedAt: new Date().toISOString() };
+    ledger.reviews[card.candidateId] = nextReview;
+    writeJsonAtomic(ledgerPath, ledger);
+    json(res, 200, {
+      imageUrl: replacement.imageUrl,
+      sha256: replacement.sha256,
+      localImagePath: card.localImagePath,
+      review: nextReview,
+      summary: summary(manifest, ledger, suggestions),
+    });
     return;
   }
 

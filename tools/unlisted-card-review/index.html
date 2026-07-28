@@ -213,12 +213,37 @@
       .toolbar {
         margin-bottom: 10px;
       }
+      .toolbar-actions {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 8px;
+      }
       .image-frame {
+        position: relative;
         max-height: calc(100vh - 158px);
         overflow: auto;
         border: 1px solid var(--line);
         border-radius: 8px;
         background: #0b0c0e;
+      }
+      .image-frame.dragging {
+        border-color: var(--gold);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold) 24%, transparent);
+      }
+      .image-frame.dragging::after {
+        content: '放開以更換目前卡圖';
+        position: absolute;
+        inset: 12px;
+        z-index: 2;
+        display: grid;
+        place-items: center;
+        border: 1px dashed var(--gold);
+        border-radius: 7px;
+        background: #121315e6;
+        color: var(--gold);
+        font-weight: 700;
+        pointer-events: none;
       }
       .image-frame img {
         display: block;
@@ -577,9 +602,9 @@
         $('main').innerHTML = `
           <div class="review-layout">
             <section class="image-panel">
-              <div class="toolbar"><span class="meta">${escapeHtml(card.candidateId)} · ${escapeHtml(card.distributionType)}</span><button id="zoomButton" type="button">放大原圖</button></div>
+              <div class="toolbar"><span class="meta">${escapeHtml(card.candidateId)} · ${escapeHtml(card.distributionType)}</span><div class="toolbar-actions"><button id="replaceImageButton" class="primary" type="button">更換卡圖</button><button id="zoomButton" type="button">放大原圖</button><input id="imageUploadInput" type="file" accept="image/jpeg,image/png,image/webp" hidden /></div></div>
               <div id="imageFrame" class="image-frame"><img id="cardImage" src="${card.imageUrl}" alt="${escapeHtml(review.nameJa || card.name)} 卡面" /></div>
-              <div class="image-meta"><span id="imageDimensions">讀取尺寸中…</span><span>SHA-256 ${escapeHtml(card.sourceSha256.slice(0, 12))}…</span><a href="${escapeHtml(card.sourcePageUrl)}" target="_blank" rel="noreferrer">查看參考頁</a></div>
+              <div class="image-meta"><span id="imageDimensions">讀取尺寸中…</span><span id="imageHash">SHA-256 ${escapeHtml(card.sourceSha256.slice(0, 12))}…</span><span>可點「更換卡圖」或直接拖曳 JPEG／PNG／WebP 到圖片上</span><a href="${escapeHtml(card.sourcePageUrl)}" target="_blank" rel="noreferrer">查看參考頁</a></div>
             </section>
             <section class="form-panel">
               <div class="title-row"><div><span class="meta">${escapeHtml(card.candidateId)}</span><h2>${escapeHtml(review.nameJa || card.name)}</h2><p class="machine-note">目前欄位為 OCR 與規則生成的候選值，需逐項對照卡面。</p></div><span class="badge ${statusClass}">${review.textReviewStatus === 'verified' ? '文本已確認' : '機器草稿'}</span></div>
@@ -673,6 +698,30 @@
           $('imageFrame').classList.toggle('zoomed', state.zoomed);
           $('zoomButton').textContent = state.zoomed ? '適應寬度' : '放大原圖';
         });
+        const uploadInput = $('imageUploadInput');
+        const imageFrame = $('imageFrame');
+        $('replaceImageButton').addEventListener('click', () => uploadInput.click());
+        uploadInput.addEventListener('change', () => {
+          const file = uploadInput.files?.[0];
+          if (file) uploadImage(card, file);
+          uploadInput.value = '';
+        });
+        for (const eventName of ['dragenter', 'dragover']) {
+          imageFrame.addEventListener(eventName, (event) => {
+            event.preventDefault();
+            imageFrame.classList.add('dragging');
+          });
+        }
+        for (const eventName of ['dragleave', 'drop']) {
+          imageFrame.addEventListener(eventName, (event) => {
+            event.preventDefault();
+            imageFrame.classList.remove('dragging');
+          });
+        }
+        imageFrame.addEventListener('drop', (event) => {
+          const file = event.dataTransfer?.files?.[0];
+          if (file) uploadImage(card, file);
+        });
         const updateEffectFields = () => {
           const effectStatus = $('printedEffectStatus').value;
           const hasEffect = effectStatus === 'present';
@@ -739,6 +788,35 @@
         } catch (error) {
           notice.className = 'notice error';
           notice.textContent = error instanceof Error ? error.message : '儲存失敗';
+        }
+      }
+
+      async function uploadImage(card, file) {
+        const notice = $('notice');
+        notice.className = 'notice';
+        notice.textContent = `正在更換 ${card.candidateId} 卡圖…`;
+        try {
+          const response = await fetch(`/api/image/${encodeURIComponent(card.candidateId)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': file.type || 'application/octet-stream' },
+            body: file,
+          });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error || '更換卡圖失敗');
+          card.imageUrl = result.imageUrl;
+          card.localImagePath = result.localImagePath;
+          card.sourceSha256 = result.sha256;
+          card.review = result.review;
+          state.summary = result.summary;
+          $('cardImage').src = result.imageUrl;
+          $('imageHash').textContent = `SHA-256 ${result.sha256.slice(0, 12)}…`;
+          $('imageReviewStatus').value = 'needs_review';
+          renderSummary();
+          renderList();
+          notice.textContent = `已更換 ${card.candidateId} 卡圖，舊圖已自動備份`;
+        } catch (error) {
+          notice.className = 'notice error';
+          notice.textContent = error instanceof Error ? error.message : '更換卡圖失敗';
         }
       }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { applyUnlistedCardReview } from '../unlisted-card-review-server';
+import { applyUnlistedCardReview, detectReviewImageExtension } from '../unlisted-card-review-server';
 
 const sourceCard = {
   candidateId: 'limited_001',
@@ -16,6 +16,18 @@ const sourceCard = {
 };
 
 describe('unlisted-card review service', () => {
+  it('accepts the supported image formats by file signature', () => {
+    expect(detectReviewImageExtension(Buffer.from([0xff, 0xd8, 0xff, 0xe0]))).toBe('.jpg');
+    expect(detectReviewImageExtension(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))).toBe('.png');
+    expect(detectReviewImageExtension(Buffer.from('RIFF0000WEBP', 'ascii'))).toBe('.webp');
+  });
+
+  it('rejects files that are not supported card images', () => {
+    expect(() => detectReviewImageExtension(Buffer.from('not an image'))).toThrow(
+      'Only JPEG, PNG, and WebP card images are supported',
+    );
+  });
+
   it('prefills the known fourth-set SE printed number without dropping the denominator', () => {
     const review = applyUnlistedCardReview(
       {
