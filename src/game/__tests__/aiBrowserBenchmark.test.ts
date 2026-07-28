@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildAIBrowserBenchmarkDeck, runAIBrowserBenchmark } from '../aiBrowserBenchmark';
 import { initCards } from '../cards/loader';
+import { getAIParsedEffects } from '../ai/evaluate';
 import type { CardDef } from '../types';
 
 function card(index: number, type: CardDef['type']): CardDef {
@@ -35,6 +36,20 @@ describe('AI browser benchmark harness', () => {
       buildAIBrowserBenchmarkDeck([...cards].reverse(), '闇', 'stable'),
     );
     expect(new Set(buildAIBrowserBenchmarkDeck(cards, '闇', 'stable'))).toHaveLength(20);
+  });
+
+  it('invalidates parsed effects when the card dataset revision changes', () => {
+    initCards(cards);
+    expect(getAIParsedEffects().get(cards[0].id)).toBeUndefined();
+
+    initCards(
+      cards.map((definition, index) =>
+        index === 0 ? { ...definition, effect: '相手に30ダメージを与える。' } : definition,
+      ),
+    );
+    expect(getAIParsedEffects().get(cards[0].id)).toHaveLength(1);
+
+    initCards(cards);
   });
 
   it('runs a hard decision against the currently loaded card set', async () => {

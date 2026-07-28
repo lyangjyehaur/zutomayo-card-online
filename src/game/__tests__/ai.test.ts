@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { initCards, createInstance, getAllCardDefs } from '../cards/loader';
 import {
   aiPlanTurn,
@@ -64,6 +64,10 @@ const TEST_CARDS: CardDef[] = [
 ];
 
 initCards(TEST_CARDS);
+
+beforeEach(() => {
+  initCards(TEST_CARDS);
+});
 
 const parsedEffects = parseAllEffects(getAllCardDefs().map((card) => ({ id: card.id, effect: card.effect })));
 const TEST_DECK_IDS = TEST_CARDS.slice(0, 20).map((card) => card.id);
@@ -377,6 +381,20 @@ describe('AI difficulty policy contracts', () => {
     expect(firstSample.game.players[1].setZoneA?.defId).toBe(replacedSample.game.players[1].setZoneA?.defId);
     expect(firstSample.game.players[1].setZoneA?.instanceId).toBe(firstSample.game.setCardsThisTurn[1][0].instanceId);
     expect(firstSample.game.players[1].setZoneA?.defId).toBe(firstSample.game.setCardsThisTurn[1][0].defId);
+  });
+
+  it('invalidates the playable sampling pool when the card dataset revision changes', () => {
+    const G = makeGWithHand(['test-character-1']);
+    const hidden = createInstance('test-direct-damage');
+    G.players[1].setZoneA = hidden;
+    G.setCardsThisTurn[1] = [hidden];
+    const knowledge = createAIKnowledgeState(G, 0);
+
+    sampleUnknownState(knowledge, 'warm-playable-pool', 0);
+    initCards([makeCard('replacement-pool-card', 'Character')]);
+
+    const sampled = sampleUnknownState(knowledge, 'replacement-playable-pool', 0);
+    expect(sampled.game.players[1].setZoneA?.defId).toBe('replacement-pool-card');
   });
 
   it('resolves a sampled legal opponent response when the opponent has not committed', () => {

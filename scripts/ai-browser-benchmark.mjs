@@ -32,6 +32,13 @@ function benchmarkUrl() {
   return url.toString();
 }
 
+function isIgnorableConsoleError(message) {
+  return (
+    message.includes('https://static.cloudflareinsights.com/beacon.min.js') &&
+    message.includes('violates the following Content Security Policy directive')
+  );
+}
+
 const browser = await chromium.launch({ executablePath: chromePath, headless: true });
 const results = [];
 
@@ -47,7 +54,7 @@ try {
     const page = await context.newPage();
     const consoleErrors = [];
     page.on('console', (message) => {
-      if (message.type() === 'error') consoleErrors.push(message.text());
+      if (message.type() === 'error' && !isIgnorableConsoleError(message.text())) consoleErrors.push(message.text());
     });
     page.on('pageerror', (error) => consoleErrors.push(error.message));
     await page.addInitScript(() => {
