@@ -173,7 +173,7 @@ describe('card data service', () => {
       {
         card_id: '4th_76',
         lang: 'ja',
-        name_text: 'グレくまくん (形)',
+        name_text: 'グレくまくん（形）',
         effect_text: '',
         name_source: 'official_errata_notice',
         effect_source: 'official_card_print',
@@ -194,7 +194,7 @@ describe('card data service', () => {
     const pool = poolWithRows(rows);
 
     await expect(getCardTextsI18n(pool, '4th_76')).resolves.toMatchObject({
-      ja: { name: 'グレくまくん (形)' },
+      ja: { name: 'グレくまくん（形）' },
       en: { name: 'GUREKUMA-KUN (Pain Give Form)' },
     });
     expect(pool.query).toHaveBeenCalledWith(expect.stringContaining("SELECT id, 'en', en_name_official"), ['4th_76']);

@@ -97,6 +97,9 @@ function successfulQuery(users: Record<string, string> = roleUsers, override?: Q
 describe('PostgreSQL runtime role gate', () => {
   it('includes official source-check history in the application role matrix', () => {
     expect(APPLICATION_TABLES).toContain('official_rulings_sync_runs');
+    expect(APPLICATION_TABLES).toContain('official_qa_item_revisions');
+    expect(APPLICATION_TABLES).toContain('card_official_errata_revisions');
+    expect(APPLICATION_TABLES).toContain('card_revisions');
     expect(APPLICATION_TABLES).toContain('official_rule_documents');
     expect(APPLICATION_TABLES).toContain('official_rule_sections');
     expect(APPLICATION_TABLES).toContain('official_rule_section_translations');
@@ -131,6 +134,12 @@ describe('PostgreSQL runtime role gate', () => {
     expect(statements).toContain('GRANT SELECT ON TABLE public."card_texts_i18n" TO "z_game"');
     expect(statements).toContain('GRANT SELECT ON TABLE public."card_official_errata" TO "z_game"');
     expect(statements).toContain('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public."official_qa_items" TO "z_api"');
+    expect(statements).toContain('GRANT SELECT ON TABLE public."official_qa_item_revisions" TO "z_api"');
+    expect(statements).toContain('GRANT SELECT ON TABLE public."card_official_errata_revisions" TO "z_api"');
+    expect(statements).toContain('GRANT SELECT ON TABLE public."card_revisions" TO "z_api"');
+    expect(statements).not.toContain(
+      'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public."official_qa_item_revisions" TO "z_api"',
+    );
     expect(statements).toContain(
       'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public."official_qa_translations" TO "z_api"',
     );

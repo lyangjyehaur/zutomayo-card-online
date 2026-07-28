@@ -255,11 +255,11 @@ async function loadPostgresSnapshot(client: import('pg').PoolClient) {
   };
 }
 
-async function fetchBaselineApiSnapshot(baseUrl: string) {
+export async function fetchBaselineApiSnapshot(baseUrl: string, fetchImpl: typeof fetch = fetch) {
   const base = `${baseUrl.replace(/\/+$/, '')}/`;
   const [qaResponse, errataResponse] = await Promise.all([
-    fetch(new URL('official/qa?lang=ja', base), { signal: AbortSignal.timeout(20_000) }),
-    fetch(new URL('official/errata?lang=ja', base), { signal: AbortSignal.timeout(20_000) }),
+    fetchImpl(new URL('official/qa?lang=ja', base), { signal: AbortSignal.timeout(20_000) }),
+    fetchImpl(new URL('official/errata?lang=ja', base), { signal: AbortSignal.timeout(20_000) }),
   ]);
   if (!qaResponse.ok || !errataResponse.ok) {
     throw new Error(
@@ -274,6 +274,7 @@ async function fetchBaselineApiSnapshot(baseUrl: string) {
       source?: { question?: unknown; answer?: unknown };
       tags?: unknown;
       relatedCardIds?: unknown;
+      contentHash?: unknown;
     }>;
   };
   const errataBody = (await errataResponse.json()) as {
@@ -293,6 +294,7 @@ async function fetchBaselineApiSnapshot(baseUrl: string) {
         usagePolicy?: unknown;
       };
       sourceUrl?: unknown;
+      contentHash?: unknown;
     }>;
   };
   return {
@@ -304,6 +306,7 @@ async function fetchBaselineApiSnapshot(baseUrl: string) {
       answer: String(item.source?.answer || ''),
       tags: Array.isArray(item.tags) ? item.tags : [],
       relatedCards: Array.isArray(item.relatedCardIds) ? item.relatedCardIds : [],
+      contentHash: String(item.contentHash || ''),
     })) as OfficialQaSnapshotRow[],
     errata: (errataBody.items || []).map((item) => ({
       errataId: String(item.errataId || ''),
@@ -319,6 +322,7 @@ async function fetchBaselineApiSnapshot(baseUrl: string) {
       replacementPolicy: String(item.source?.replacementPolicy || ''),
       usagePolicy: String(item.source?.usagePolicy || ''),
       sourceUrl: String(item.sourceUrl || ''),
+      contentHash: String(item.contentHash || ''),
     })) as OfficialErrataSnapshotRow[],
   };
 }

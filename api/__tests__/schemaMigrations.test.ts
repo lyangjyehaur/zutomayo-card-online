@@ -177,6 +177,32 @@ describe('schema migrations', () => {
     expect(migration).toContain('export const down = false');
   });
 
+  it('keeps immutable candidate and card revision history', () => {
+    const migration = readRepoFile('migrations/000045_content_revision_history.js');
+    const schemaGate = readRepoFile('api/schemaGate.cjs');
+    const initSchema = readRepoFile('api/server.cjs');
+    for (const artifact of [
+      'official_qa_item_revisions',
+      'card_official_errata_revisions',
+      'card_revisions',
+      'reject_immutable_revision_mutation',
+      'validate_official_qa_content_version',
+      'validate_official_errata_content_version',
+      'corrected_japanese_text',
+      'release_snapshot',
+    ]) {
+      expect(migration).toContain(artifact);
+      expect(initSchema).toContain(artifact);
+    }
+    for (const table of ['official_qa_item_revisions', 'card_official_errata_revisions', 'card_revisions']) {
+      expect(schemaGate).toContain(table);
+    }
+    expect(migration).toContain('SECURITY DEFINER');
+    expect(migration).toContain('AFTER INSERT OR UPDATE OR DELETE ON official_qa_items');
+    expect(migration).toContain('BEFORE UPDATE OR DELETE ON card_revisions');
+    expect(migration).toContain('export const down = false');
+  });
+
   it('stores Grand Rules and Floor Rules as versioned translated PostgreSQL documents', () => {
     const migration = readRepoFile('migrations/000041_official_rule_documents.js');
     const schemaGate = readRepoFile('api/schemaGate.cjs');
@@ -315,12 +341,17 @@ describe('schema migrations', () => {
 
   it('keeps reviewed card-source validation in explicit local import workflows', () => {
     const officialImport = readRepoFile('scripts/import-card-official-texts-pg.ts');
+    const cardSeed = readRepoFile('scripts/seed-cards-pg.ts');
     const derivedImport = readRepoFile('scripts/import-card-derived-effects-pg.ts');
     const derivedAudit = readRepoFile('scripts/cardDerivedEffects.ts');
 
     expect(officialImport).toContain('every printed English name/effect must be human-reviewed');
     expect(officialImport).toContain('official errata source must contain 12 unique cards');
     expect(officialImport).toContain('corrected Japanese does not match official card data');
+    expect(officialImport).toContain('ON CONFLICT (errata_id) DO UPDATE');
+    expect(cardSeed).toContain('ON CONFLICT (errata_id) DO UPDATE');
+    expect(officialImport).not.toContain('DELETE FROM card_official_errata');
+    expect(cardSeed).not.toContain('DELETE FROM card_official_errata');
     expect(derivedImport).toContain('PostgreSQL English effect differs from the effective official text');
     expect(derivedAudit).toContain('legacy en is forbidden');
   });
