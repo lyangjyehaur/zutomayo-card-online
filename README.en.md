@@ -2,7 +2,7 @@
 
 **Languages:** [繁體中文](README.md) | [日本語](README.ja.md) | [English](README.en.md)
 
-Current version: **0.2.3**
+Current version: **0.2.4**
 
 > An unofficial digital battle platform for ZUTOMAYO CARD, the official TCG from ZUTOMAYO.
 > Supports local two-player games, AI practice, an interactive tutorial, and real-time online play.
@@ -11,7 +11,7 @@ Current version: **0.2.3**
 
 Version 0.2.0 expands the project from a standalone battle app into a multiplayer platform. `boardgame.io` remains authoritative for card state, Colyseus owns lobby, matchmaking, room, invite, and spectator presence flows, and ChatService owns durable chat, unread state, translation, reports, and moderation.
 
-Version 0.2.3 adds localized Grand Rules and Basic Floor Rules backed by an atomic PostgreSQL release workflow, and completes the AI post-match navigation, battle log, first-visit tutorial entry, and deck-creation experience.
+Version 0.2.4 adds the card catalog, deck-share metadata and synergy recommendations, effects for Fourth Set SE cards 105-107, and the Refine admin console. It also redesigns Chronos, HP, and attack resolution, the Online and AI lobbies, public room discovery, in-match chat, same-room rematches, and the tutorial's shared battle presentation.
 
 ### Game and Battle
 
@@ -19,12 +19,12 @@ Version 0.2.3 adds localized Grand Rules and Basic Floor Rules backed by an atom
 - Complete data for 422 cards across 4 packs, with all 267 effect lines parsed.
 - Rock-paper-scissors, mulligan, initial setup, effect ordering, player choices, battle, and Chronos day/night flow.
 - Authoritative phase timers and timeout recovery prevent disconnected or unresponsive players from blocking a match forever.
-- Battle animations, a responsive battlefield, mobile touch controls, and a redesigned tutorial overlay.
+- Per-card Chronos movement, HP, attack, mitigation, and healing resolution animations, a responsive battlefield, mobile touch controls, and a tutorial that shares the production battle presentation.
 - The result screen can retry ELO and match submission; server writes are idempotent, while local history is deduplicated and retains its post-match chat source.
 
 ### Multiplayer Platform
 
-- Colyseus quick match, custom rooms, friend invitations, spectators, and lobby friend presence.
+- Colyseus public room discovery, custom rooms, friend invitations, spectators, and lobby friend presence; the not-yet-released quick-match entry remains hidden.
 - Stable match handoff and reconnect recovery; online sessions retain platform identity, seat tokens, and boardgame.io credentials.
 - Production uses Redis driver/presence, while local development can use memory mode.
 - Colyseus stores platform-shell state only and never owns hands, decks, effects, or other authoritative game data.
@@ -40,7 +40,7 @@ Version 0.2.3 adds localized Grand Rules and Basic Floor Rules backed by an atom
 ### Other Product Features
 
 - Six UI languages: Traditional Chinese, Cantonese, Simplified Chinese, Japanese, English, and Korean.
-- Deck editor, shared-deck lobby, leaderboard, cross-device match history, profile, OAuth identities, and feedback board.
+- Deck editor, deck sharing and card catalog with card metadata and synergy recommendations, leaderboard, cross-device match history, profile, OAuth identities, and feedback board.
 - Official Grand Rules, Basic Floor Rules, Japanese Q&A and errata, localized reading pages, and a Refine 5 admin console for review and source synchronization.
 - PWA install/update prompts plus app, build, and rules compatibility checks.
 - Admin tooling for cards, translations, users, ELO, chat evidence, sanctions, and feedback.

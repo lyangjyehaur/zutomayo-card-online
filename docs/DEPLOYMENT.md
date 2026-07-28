@@ -377,7 +377,7 @@ Migrations `000039_official_rulings`, `000040_official_rulings_releases`, and `0
 
 ```bash
 cat data/official-rulings-translations.json | npm run release:official-rulings -- \
-  --translations=- --app-version=0.2.3 --build-id="$(git rev-parse HEAD)"
+  --translations=- --app-version=0.2.4 --build-id="$(git rev-parse HEAD)"
 
 OFFICIAL_RULE_DOCUMENTS_FILE=data/official-rule-documents-20260721.json \
   npm run release:official-rule-documents
@@ -769,7 +769,7 @@ server4 最終 checkout 三者完全一致；不支援 `--sha` 或 `--manifest`�
 
 部署順序固定為：備份 `.env`/Compose → 以 migration role 產生新的 `pg_dump -Fc`
 並寫入 SHA-256 → checkout `origin/master` → 同步 `APP_BUILD_ID`、`APP_VERSION`、
-`GAME_RULES_VERSION`、`EXPECTED_SCHEMA_MIGRATION=000036_harden_card_i18n_contract`
+`GAME_RULES_VERSION`、`EXPECTED_SCHEMA_MIGRATION=000044_card_synergies`
 及 migration checksum → 實際檢查三服務 `REDIS_DB` 一致且 Redis
 `maxmemory-policy=noeviction` → 同步並校驗私有 battle 素材 → build →
 `docker compose up --wait` → 透過 SSH tunnel 驗證三服務
