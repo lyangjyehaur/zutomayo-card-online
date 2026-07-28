@@ -94,6 +94,7 @@ function AIBoard(
   const aiMoves = useMemo<ZutomayoMoveDispatchers>(
     () => ({
       janken: boardProps.moves.janken,
+      mulligan: boardProps.moves.mulligan,
       keepHand: boardProps.moves.keepHand,
       setInitialCard: boardProps.moves.setInitialCard,
       setTurnCard: boardProps.moves.setTurnCard,

@@ -361,9 +361,9 @@ export const zhCN: Record<TranslationKey, string> = {
   'difficulty.easy': '简单',
   'difficulty.normal': '普通',
   'difficulty.hard': '困难',
-  'difficulty.easyDesc': '入门节奏',
-  'difficulty.normalDesc': '标准判断',
-  'difficulty.hardDesc': '高压选牌',
+  'difficulty.easyDesc': '合理选择，保留失误',
+  'difficulty.normalDesc': '评估资源与效果',
+  'difficulty.hardDesc': '效果模拟与短期规划',
 
   'deck.random': '随机牌组',
   'deck.randomDesc': '从完整 425 张卡池随机抽取 20 张',

@@ -359,9 +359,9 @@ export const zhTW = {
   'difficulty.easy': '簡單',
   'difficulty.normal': '普通',
   'difficulty.hard': '困難',
-  'difficulty.easyDesc': '入門節奏',
-  'difficulty.normalDesc': '標準判斷',
-  'difficulty.hardDesc': '高壓選牌',
+  'difficulty.easyDesc': '合理選擇，保留失誤',
+  'difficulty.normalDesc': '評估資源與效果',
+  'difficulty.hardDesc': '效果模擬與短期規劃',
 
   'deck.random': '隨機牌組',
   'deck.randomDesc': '從完整 425 張卡池隨機抽取 20 張',

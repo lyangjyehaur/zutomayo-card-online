@@ -445,15 +445,17 @@ flowchart LR
 
 ### AI 決策（`src/game/ai.ts`）
 
-目前三種難度的實際行為如下。完整限制與改造計畫見 [AI 難度現況與改造路線](ai-difficulty-roadmap.md)。
+`src/game/ai.ts` 是相容入口，純策略位於 `src/game/ai/`。所有入口先建立 `AIKnowledgeState`，再次遮蔽雙方牌庫順序、對手手牌與伏牌；策略只接收此知識狀態、seeded RNG 與時間預算。
 
-| 難度   | 目前策略                                                                                                                                       |
-| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| easy   | 隨機排列手牌後取出規則要求的張數；目前不使用 `scoreCard` 判斷品質                                                                              |
-| normal | 依 `scoreCard` 評估當前晝夜攻擊力、Power Cost、Clock 與粗略效果加分，再取最高分卡                                                              |
-| hard   | `hardLookahead()` 枚舉手牌組合與 slot，使用空效果集合模擬當前一次戰鬥，以即時 HP 差與 heuristic 比較；不包含實際卡牌效果、重抽判斷或跨回合預測 |
+| 難度   | 策略                                                                                                      |
+| ------ | --------------------------------------------------------------------------------------------------------- |
+| easy   | seeded 地從合理候選中選擇，會避開明顯有害卡牌、效果與目標，但保留可見失誤                                 |
+| normal | 確定性評估有效攻擊、Power、Chronos、解析效果、資源、卡位、效果順序與所有合法指定選擇                      |
+| hard   | 枚舉完整卡牌 + A/B 卡位計畫，以正式效果與選擇規則模擬完整當前回合，加入有限下回合價值並受 300 ms 預算限制 |
 
-`simulateBattle` 用 `structuredClone(G)` 複製 player-1 `playerView` 狀態後跑 `revealCards` → `advanceChronos` → `placeRevealedCards` → `resolveBattle`，計算 HP 差分。`useAIMoves.ts` 是 React hook，自動驅動 AI 出牌；目前三種難度都固定保留起手牌，效果順序與 prompted choice 主要採用第一個合法選項。
+`useAIMoves.ts` 只負責統一的 UX delay 與 move 派發。它以 card instance id、slot 和 decision token 保存完整回合計畫，因此可在每次 boardgame.io state 更新後繼續執行第二張牌。困難模擬呼叫正式 `confirmReady`、`resolvePendingEffect` 與 `submitPendingChoice`，搜尋超時或無法模擬時回傳已記錄原因的普通難度合法 fallback。開發環境會發出 `zutomayo:ai-decision` event，內容包含 score、reason、factor、duration 與 fallback。
+
+目前未知對手卡以中性未知狀態評估，尚未實作依公開牌組組成的 seeded sampling 或 Web Worker。完整進度與限制見 [AI 難度現況與改造路線](ai-difficulty-roadmap.md)。
 
 ### Chronos 時鐘系統（`src/game/chronos.ts`）
 
