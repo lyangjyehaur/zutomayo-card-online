@@ -50,6 +50,7 @@ These are useful follow-ups, not missing 0.2.0 architecture requirements:
 4. Continue bundle splitting and runtime performance profiling as the lobby and admin surfaces grow.
 5. Keep the multiplayer alignment audit and API documentation updated whenever a new room or conversation type is introduced.
 6. Expand Playwright from core auth/deck/tutorial smoke into live multi-account invite, spectator, and post-match chat scenarios.
+7. Replace the current effect-free, current-turn AI heuristics with the staged mulligan, effect-choice, hidden-information, and bounded-search design in [AI 難度現況與改造路線](ai-difficulty-roadmap.md).
 
 ## Verification / 驗證
 

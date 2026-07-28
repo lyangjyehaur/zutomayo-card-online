@@ -15,7 +15,7 @@ Version 0.2.3 adds localized Grand Rules and Basic Floor Rules backed by an atom
 
 ### Game and Battle
 
-- Local two-player and easy, normal, or hard AI; hard AI uses lookahead simulation.
+- Local two-player and easy, normal, or hard AI; hard currently uses effect-free current-turn lookahead. See the [AI difficulty roadmap](docs/ai-difficulty-roadmap.md) for its limits and planned rewrite.
 - Complete data for 422 cards across 4 packs, with all 267 effect lines parsed.
 - Rock-paper-scissors, mulligan, initial setup, effect ordering, player choices, battle, and Chronos day/night flow.
 - Authoritative phase timers and timeout recovery prevent disconnected or unresponsive players from blocking a match forever.

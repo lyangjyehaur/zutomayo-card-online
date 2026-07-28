@@ -444,15 +444,15 @@ flowchart LR
 
 ### AI 決策（`src/game/ai.ts`）
 
-三種難度：
+目前三種難度的實際行為如下。完整限制與改造計畫見 [AI 難度現況與改造路線](ai-difficulty-roadmap.md)。
 
-| 難度   | 策略                                                                                                                                                      |
-| ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| easy   | 依 `scoreCard`（攻擊力 / power cost / clock）排序後取最高分卡                                                                                             |
-| normal | 同 easy，但會避開 power cost 不足的卡                                                                                                                     |
-| hard   | `hardLookahead()`：枚舉所有手牌組合 × slot 分配，`simulateBattle()` 模擬戰鬥，以 `(damageDealt - damageReceived, damageDealt, heuristicScore)` 比較選最佳 |
+| 難度   | 目前策略                                                                                                                                       |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| easy   | 隨機排列手牌後取出規則要求的張數；目前不使用 `scoreCard` 判斷品質                                                                              |
+| normal | 依 `scoreCard` 評估當前晝夜攻擊力、Power Cost、Clock 與粗略效果加分，再取最高分卡                                                              |
+| hard   | `hardLookahead()` 枚舉手牌組合與 slot，使用空效果集合模擬當前一次戰鬥，以即時 HP 差與 heuristic 比較；不包含實際卡牌效果、重抽判斷或跨回合預測 |
 
-`simulateBattle` 用 `structuredClone(G)` 複製狀態後跑 `revealCards` → `advanceChronos` → `placeRevealedCards` → `resolveBattle`，計算 HP 差分。`useAIMoves.ts` 是 React hook，自動驅動 AI 出牌。
+`simulateBattle` 用 `structuredClone(G)` 複製 player-1 `playerView` 狀態後跑 `revealCards` → `advanceChronos` → `placeRevealedCards` → `resolveBattle`，計算 HP 差分。`useAIMoves.ts` 是 React hook，自動驅動 AI 出牌；目前三種難度都固定保留起手牌，效果順序與 prompted choice 主要採用第一個合法選項。
 
 ### Chronos 時鐘系統（`src/game/chronos.ts`）
 
