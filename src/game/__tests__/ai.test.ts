@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { initCards, isCardsInitialized, createInstance, getAllCardDefs } from '../cards/loader';
+import { initCards, createInstance, getAllCardDefs } from '../cards/loader';
 import {
   aiPlanTurn,
   aiSelectCards,
@@ -63,13 +63,16 @@ const TEST_CARDS: CardDef[] = [
   makeCard('test-night-character', 'Character', { attack: { night: 100, day: 0 } }),
 ];
 
-if (!isCardsInitialized()) {
-  initCards(TEST_CARDS);
-}
+initCards(TEST_CARDS);
 
 const parsedEffects = parseAllEffects(getAllCardDefs().map((card) => ({ id: card.id, effect: card.effect })));
+const TEST_DECK_IDS = TEST_CARDS.slice(0, 20).map((card) => card.id);
 
 // ===== Helpers =====
+
+function setupTestGame(): GameState {
+  return setupGame({ deck0Ids: TEST_DECK_IDS, deck1Ids: TEST_DECK_IDS, skipShuffle: true }, { allowSkipShuffle: true });
+}
 
 function progressToInitialSet(G: GameState): void {
   chooseJanken(G, 0, 'rock');
@@ -87,12 +90,9 @@ function progressToTurnSet(G: GameState): void {
 }
 
 function makeGWithHand(handDefIds: string[], step: 'initialSet' | 'turnSet' = 'turnSet'): GameState {
-  const G = setupGame();
-  if (step === 'initialSet') {
-    progressToInitialSet(G);
-  } else {
-    progressToTurnSet(G);
-  }
+  const G = setupTestGame();
+  G.step = step;
+  G.turnNumber = step === 'turnSet' ? 2 : 1;
   // Replace player 0's hand with specific cards for deterministic testing
   G.players[0].hand = handDefIds.map((id) => createInstance(id));
   G.players[0].cardsSetThisTurn = 0;
@@ -108,7 +108,7 @@ function makeGWithHand(handDefIds: string[], step: 'initialSet' | 'turnSet' = 't
 
 describe('aiSelectCards', () => {
   it('returns empty array when hand is empty', () => {
-    const G = setupGame();
+    const G = setupTestGame();
     progressToTurnSet(G);
     G.players[0].hand = [];
     const result = aiSelectCards(G, 0, 'normal');
@@ -444,7 +444,7 @@ describe('AI difficulty policy contracts', () => {
   });
 
   it('normal and hard redraw an opening with no Character', () => {
-    const G = setupGame();
+    const G = setupTestGame();
     G.step = 'mulligan';
     G.players[0].hand = Array.from({ length: 5 }, (_, index) => createInstance(`test-enchant-${index + 1}`));
     expect(aiSelectMulligan(G, 0, 'normal', { seed: 1 }).action.length).toBeGreaterThan(0);
@@ -452,7 +452,7 @@ describe('AI difficulty policy contracts', () => {
   });
 
   it('keeps a strong and immediately playable Character opening', () => {
-    const G = setupGame();
+    const G = setupTestGame();
     G.step = 'mulligan';
     G.players[0].hand = Array.from({ length: 5 }, (_, index) => createInstance(`test-character-${index + 1}`));
     expect(aiSelectMulligan(G, 0, 'normal', { seed: 1 }).action).toEqual([]);
@@ -461,7 +461,7 @@ describe('AI difficulty policy contracts', () => {
 
   it('uses sampled remaining-deck quality for hard mulligan decisions', () => {
     const makeMulliganState = (deckDefIds: string[]): GameState => {
-      const G = setupGame();
+      const G = setupTestGame();
       G.step = 'mulligan';
       G.players[0].hand = Array.from({ length: 5 }, (_, index) => createInstance(`test-enchant-${index + 1}`));
       G.players[0].deck = deckDefIds.map((defId) => createInstance(defId));
@@ -508,7 +508,7 @@ describe('AI difficulty policy contracts', () => {
   });
 
   it('prioritizes lethal direct damage over healing at full HP', () => {
-    const G = setupGame();
+    const G = setupTestGame();
     G.step = 'effectOrder';
     G.players[0].hp = 100;
     G.players[1].hp = 20;
@@ -551,7 +551,7 @@ describe('AI difficulty policy contracts', () => {
   });
 
   it('prioritizes useful healing when HP is low', () => {
-    const G = setupGame();
+    const G = setupTestGame();
     G.step = 'effectOrder';
     G.players[0].hp = 20;
     G.pendingEffectPlayer = 0;
@@ -590,7 +590,7 @@ describe('AI difficulty policy contracts', () => {
   });
 
   it('chooses the lower-value discard instead of the first option', () => {
-    const G = setupGame();
+    const G = setupTestGame();
     const strong = createInstance('test-character-1');
     const weak = createInstance('test-expensive-character');
     G.players[0].hand = [strong, weak];
@@ -619,7 +619,7 @@ describe('AI difficulty policy contracts', () => {
   });
 
   it('declines an optional discard when replacing a strong card has negative value', () => {
-    const G = setupGame();
+    const G = setupTestGame();
     const strong = createInstance('test-character-1');
     G.players[0].hand = [strong];
     G.step = 'effectOrder';
@@ -644,7 +644,7 @@ describe('AI difficulty policy contracts', () => {
   });
 
   it('swaps a weak hand card for a stronger Abyss card', () => {
-    const G = setupGame();
+    const G = setupTestGame();
     const weak = createInstance('test-expensive-character');
     const strong = createInstance('test-character-1');
     G.players[0].hand = [weak];
@@ -670,7 +670,7 @@ describe('AI difficulty policy contracts', () => {
   });
 
   it('uses the highest-value legal card from the Abyss', () => {
-    const G = setupGame();
+    const G = setupTestGame();
     G.players[0].abyss = [
       { instanceId: 'weak', defId: 'test-expensive-character', faceUp: true },
       { instanceId: 'strong', defId: 'test-character-1', faceUp: true },
@@ -693,7 +693,7 @@ describe('AI difficulty policy contracts', () => {
   });
 
   it('chooses a Chronos position that favors its current Character', () => {
-    const G = setupGame();
+    const G = setupTestGame();
     G.players[0].battleZone = createInstance('test-day-character', true);
     G.players[1].battleZone = createInstance('test-night-character', true);
     G.step = 'effectOrder';
@@ -713,7 +713,7 @@ describe('AI difficulty policy contracts', () => {
   });
 
   it('orders weaker cards first on top of the opponent deck', () => {
-    const G = setupGame();
+    const G = setupTestGame();
     G.players[1].deck = [
       { instanceId: 'strong', defId: 'test-character-1', faceUp: false },
       { instanceId: 'weak', defId: 'test-expensive-character', faceUp: false },
