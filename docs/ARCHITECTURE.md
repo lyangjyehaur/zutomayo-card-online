@@ -290,9 +290,10 @@ boardgame.io 多實例需要**兩個獨立的跨節點層**，兩者職責不同
 
 - 卡牌資料可以保存 canonical 原始 URL；這只是來源資料，不代表瀏覽器可直接載入原圖。
 - 所有玩家端、Admin 與教學 UI 必須使用 `CardImage`。它會透過同源 `/api/imgproxy` 產生尺寸化的 AVIF/WebP/srcset，預設在 imgproxy 失敗時 fail closed，不得靜默回退至原始 R2 URL。
+- CH.02 的三張固定示例是唯一玩家端 bundled-asset 例外：經人工確認的 `public/tutorial/cards/{2nd_40,1st_100,2nd_86}.jpg` 隨前端版本發布，呼叫端必須設定 `bundledAsset` 與非空的 `bundledAssetReason`。這只保證固定教學在 API 或 imgproxy 不可用時仍可閱讀，不適用於牌組、戰場或其他動態卡圖。
 - 若特殊 UI 確實需要原圖回退，必須同時傳入 `fallbackToOriginal={true}` 與非空的 `originalFallbackReason`，在本節記錄用途，並同步審查 CSP／效能 gate 的明確例外。Public Beta 玩家 UI 目前沒有此例外。
 - PWA 只快取 `/api/imgproxy/` 回應；Content Security Policy 不允許玩家端直接向卡圖來源站載入圖片。
-- `npm run image:policy` 會掃描直接 `<img>` 卡圖、未說明的原圖回退、PWA 原圖快取與 CSP 放行；`npm run verify` 包含此檢查。效能 smoke 也會把任何繞過 imgproxy 的實際圖片請求視為失敗。
+- `npm run image:policy` 會掃描直接 `<img>` 卡圖、bundled-asset 數量與理由、未說明的原圖回退、PWA 原圖快取與 CSP 放行；`npm run verify` 包含此檢查。效能 smoke 也會把任何未列入例外而繞過 imgproxy 的實際圖片請求視為失敗。
 - 唯一既有直接來源例外是 `scripts/card-official-text-review-server.ts`：這是 localhost-only 的官方文本人工審查工具，沒有 App/imgproxy runtime；本機 OCR 圖片不存在時會導向 canonical 原圖以供核對。它不會進入玩家端 bundle 或部署服務。
 
 ### 認證流程

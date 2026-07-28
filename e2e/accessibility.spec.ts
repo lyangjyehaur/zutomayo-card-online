@@ -1,10 +1,11 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import {
   openOnlineSeat,
   provisionAuthenticatedOnlineMatch,
   registerAuthenticatedOnlineAccount,
 } from './helpers/online';
+import { openAuthSurface } from './helpers/authUi';
 
 const FOCUSABLE_SELECTOR = [
   'a[href]',
@@ -27,6 +28,22 @@ async function expectNoBlockingAxeViolations(page: Page, surface: string) {
     })
     .join('\n');
   expect(blocking, `${surface} has blocking axe violations:\n${details}`).toEqual([]);
+}
+
+async function waitForModalAnimations(dialog: Locator): Promise<void> {
+  await dialog.evaluate(async (element) => {
+    const modalRoot = element.parentElement;
+    const animations = [...(modalRoot?.getAnimations() ?? []), ...element.getAnimations({ subtree: true })];
+    await Promise.allSettled(animations.map((animation) => animation.finished));
+  });
+}
+
+async function activateByKeyboard(locator: Locator): Promise<void> {
+  await expect(locator).toBeVisible();
+  await expect(locator).toBeEnabled();
+  await locator.focus();
+  await expect(locator).toBeFocused();
+  await locator.press('Enter');
 }
 
 async function createAnonymousFeedbackPost(page: Page, title: string): Promise<void> {
@@ -175,13 +192,9 @@ test.describe('登入 dialog 無障礙 @a11y', () => {
     await page.goto('/');
     await expect(page.getByRole('heading', { level: 1 })).toContainText('ZUTOMAYO', { timeout: 30_000 });
 
-    const trigger = page.getByRole('button', { name: /^登入$/ }).first();
-    await trigger.focus();
-    await page.keyboard.press('Enter');
-
-    const dialog = page.getByRole('dialog');
-    await expect(dialog).toBeVisible();
-    await expectNoBlockingAxeViolations(page, '登入 dialog');
+    const { dialog, entryTrigger, presentation } = await openAuthSurface(page, { keyboard: true });
+    await waitForModalAnimations(dialog);
+    await expectNoBlockingAxeViolations(page, `登入 ${presentation}`);
 
     const root = page.locator('#root');
     await expect(root).toHaveAttribute('aria-hidden', 'true');
@@ -192,6 +205,7 @@ test.describe('登入 dialog 無障礙 @a11y', () => {
     expect(focusableCount).toBeGreaterThan(2);
     const first = focusable.first();
     const last = focusable.last();
+    await first.focus();
     await expect(first).toBeFocused();
 
     // Shift+Tab/Tab 均不能離開 dialog，驗證共用 modal focus trap。
@@ -202,7 +216,7 @@ test.describe('登入 dialog 無障礙 @a11y', () => {
 
     await page.keyboard.press('Escape');
     await expect(dialog).toBeHidden();
-    await expect(trigger).toBeFocused();
+    await expect(entryTrigger).toBeFocused();
     await expect(root).not.toHaveAttribute('aria-hidden', 'true');
     await expect.poll(() => root.evaluate((element) => (element as HTMLElement).inert)).toBe(false);
   });
@@ -221,6 +235,7 @@ test.describe('Feedback 詳情 dialog 無障礙 @a11y @requires-backend', () => 
 
     const dialog = page.getByRole('dialog', { name: title });
     await expect(dialog).toBeVisible();
+    await waitForModalAnimations(dialog);
     await expectNoBlockingAxeViolations(page, 'Feedback 詳情 dialog');
 
     const root = page.locator('#root');
@@ -274,7 +289,7 @@ test.describe('實戰教學覆蓋層無障礙 @a11y @requires-backend', () => {
 
 test.describe('線上 Battle/Result 無障礙 @a11y @requires-backend', () => {
   test('正式 Battle 與結算 Result 通過 axe，且 Battle drawer 維持焦點隔離', async ({ browser, page }) => {
-    test.setTimeout(120_000);
+    test.setTimeout(180_000);
     const baseURL = process.env.E2E_BASE_URL ?? 'http://localhost:3000';
     const guestContext = await browser.newContext({ baseURL });
     const guestPage = await guestContext.newPage();
@@ -293,29 +308,31 @@ test.describe('線上 Battle/Result 無障礙 @a11y @requires-backend', () => {
       await expect(page.locator('[data-game-step="janken"]')).toBeVisible({ timeout: 30_000 });
       await expect(guestPage.locator('[data-game-step="janken"]')).toBeVisible({ timeout: 30_000 });
 
-      await page.locator('[data-tut="janken-rock"]').click();
-      await guestPage.locator('[data-tut="janken-scissors"]').click();
+      await Promise.all([
+        activateByKeyboard(page.locator('[data-tut="janken-rock"]')),
+        activateByKeyboard(guestPage.locator('[data-tut="janken-scissors"]')),
+      ]);
       await expect(page.locator('[data-game-step="mulligan"]')).toBeVisible({ timeout: 20_000 });
       await expect(guestPage.locator('[data-game-step="mulligan"]')).toBeVisible({ timeout: 20_000 });
 
       await Promise.all([
-        page.getByRole('button', { name: '保留手牌' }).click(),
-        guestPage.getByRole('button', { name: '保留手牌' }).click(),
+        activateByKeyboard(page.getByRole('button', { name: '保留手牌' })),
+        activateByKeyboard(guestPage.getByRole('button', { name: '保留手牌' })),
       ]);
       await expect(page.locator('[data-game-step="initialSet"]')).toBeVisible({ timeout: 20_000 });
       await expect(guestPage.locator('[data-game-step="initialSet"]')).toBeVisible({ timeout: 20_000 });
 
       await Promise.all([
-        page.locator('[data-zone="hand"]').getByRole('button').first().click(),
-        guestPage.locator('[data-zone="hand"]').getByRole('button').first().click(),
+        activateByKeyboard(page.locator('[data-zone="hand"]').getByRole('button').first()),
+        activateByKeyboard(guestPage.locator('[data-zone="hand"]').getByRole('button').first()),
       ]);
       await Promise.all([
-        page.getByRole('button', { name: /打出檢視中的牌/ }).click(),
-        guestPage.getByRole('button', { name: /打出檢視中的牌/ }).click(),
+        activateByKeyboard(page.getByRole('button', { name: /打出檢視中的牌/ })),
+        activateByKeyboard(guestPage.getByRole('button', { name: /打出檢視中的牌/ })),
       ]);
       await Promise.all([
-        page.getByRole('button', { name: /確認出牌/ }).click(),
-        guestPage.getByRole('button', { name: /確認出牌/ }).click(),
+        activateByKeyboard(page.getByRole('button', { name: /確認出牌/ })),
+        activateByKeyboard(guestPage.getByRole('button', { name: /確認出牌/ })),
       ]);
       await expect(page.locator('[data-game-step="turnSet"]')).toBeVisible({ timeout: 30_000 });
       await expect(guestPage.locator('[data-game-step="turnSet"]')).toBeVisible({ timeout: 30_000 });
@@ -323,7 +340,7 @@ test.describe('線上 Battle/Result 無障礙 @a11y @requires-backend', () => {
       await expectNoBlockingAxeViolations(page, 'Battle turnSet');
 
       const pause = page.getByRole('button', { name: '暫停' }).first();
-      await pause.click();
+      await activateByKeyboard(pause);
       const drawer = page.getByRole('dialog');
       await expect(drawer).toBeVisible();
       // Axe should measure the settled drawer, not colors composited mid-fade.
@@ -331,9 +348,9 @@ test.describe('線上 Battle/Result 無障礙 @a11y @requires-backend', () => {
       await expect(drawer).toHaveCSS('opacity', '1');
       await expectNoBlockingAxeViolations(page, 'Battle pause drawer');
 
-      const board = page.locator('[data-board-layout="responsive"]');
-      await expect(board).toHaveAttribute('aria-hidden', 'true');
-      await expect.poll(() => board.evaluate((element) => (element as HTMLElement).inert)).toBe(true);
+      const root = page.locator('#root');
+      await expect(root).toHaveAttribute('aria-hidden', 'true');
+      await expect.poll(() => root.evaluate((element) => (element as HTMLElement).inert)).toBe(true);
 
       const drawerFocusable = drawer.locator(FOCUSABLE_SELECTOR);
       const drawerFirst = drawerFocusable.first();
@@ -344,10 +361,11 @@ test.describe('線上 Battle/Result 無障礙 @a11y @requires-backend', () => {
       await page.keyboard.press('Tab');
       await expect(drawerFirst).toBeFocused();
 
-      await drawer.getByRole('button', { name: '取消' }).click();
+      await activateByKeyboard(drawer.getByRole('button', { name: '取消' }));
       await expect(drawer).toBeHidden();
       await expect(pause).toBeFocused();
-      await expect.poll(() => board.evaluate((element) => (element as HTMLElement).inert)).toBe(false);
+      await expect(root).not.toHaveAttribute('aria-hidden', 'true');
+      await expect.poll(() => root.evaluate((element) => (element as HTMLElement).inert)).toBe(false);
 
       const matchSubmissionResponses = Promise.all([
         page.waitForResponse(
@@ -359,8 +377,8 @@ test.describe('線上 Battle/Result 無障礙 @a11y @requires-backend', () => {
           { timeout: 30_000 },
         ),
       ]);
-      await pause.click();
-      await page.getByRole('dialog').getByRole('button', { name: '投降' }).click();
+      await activateByKeyboard(pause);
+      await activateByKeyboard(page.getByRole('dialog').getByRole('button', { name: '投降' }));
       await Promise.all([
         expect(page.locator('[data-result-outcome="defeat"]')).toBeVisible({ timeout: 20_000 }),
         expect(guestPage.locator('[data-result-outcome="victory"]')).toBeVisible({ timeout: 20_000 }),

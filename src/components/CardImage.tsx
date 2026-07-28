@@ -20,6 +20,16 @@ type OriginalFallbackPolicy =
       originalFallbackReason: string;
     };
 
+type BundledAssetPolicy =
+  | {
+      bundledAsset?: false;
+      bundledAssetReason?: never;
+    }
+  | {
+      bundledAsset: true;
+      bundledAssetReason: string;
+    };
+
 export type CardImageProps = Omit<ImgHTMLAttributes<HTMLImageElement>, 'src' | 'srcSet' | 'sizes'> &
   OriginalFallbackPolicy & {
     cardId?: string;
@@ -27,7 +37,7 @@ export type CardImageProps = Omit<ImgHTMLAttributes<HTMLImageElement>, 'src' | '
     context?: CardImageContext;
     sourceKind?: CardImageSourceKind;
     sizes?: string;
-  };
+  } & BundledAssetPolicy;
 
 export function CardImage({
   cardId,
@@ -40,6 +50,8 @@ export function CardImage({
   alt = '',
   fallbackToOriginal = false,
   originalFallbackReason,
+  bundledAsset = false,
+  bundledAssetReason,
   onError,
   ...imgProps
 }: CardImageProps) {
@@ -68,6 +80,22 @@ export function CardImage({
       <img
         {...imgProps}
         data-card-image-delivery="missing"
+        alt={alt}
+        loading={loading}
+        decoding={decoding}
+        onError={onError}
+      />
+    );
+  }
+
+  if (bundledAsset) {
+    const bundledSource = src?.startsWith('/') && !src.startsWith('//') ? src : undefined;
+    return (
+      <img
+        {...imgProps}
+        src={bundledSource}
+        data-card-image-delivery={bundledSource ? 'bundled-asset' : 'missing'}
+        data-card-image-bundled-reason={bundledAssetReason}
         alt={alt}
         loading={loading}
         decoding={decoding}

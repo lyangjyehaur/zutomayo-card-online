@@ -293,7 +293,10 @@ export async function openAuthenticatedOnlineLobby(page: Page): Promise<void> {
 export async function selectAuthenticatedServerDeck(page: Page, account: AuthenticatedOnlineAccount): Promise<void> {
   const deckButton = page.getByRole('button', { name: new RegExp(account.deck.name) });
   await expect(deckButton).toBeVisible({ timeout: 30_000 });
-  await deckButton.click();
+  await expect(deckButton).toBeEnabled();
+  await deckButton.focus();
+  await expect(deckButton).toBeFocused();
+  await deckButton.press('Enter');
   await expect(deckButton).toHaveAttribute('aria-pressed', 'true');
 }
 

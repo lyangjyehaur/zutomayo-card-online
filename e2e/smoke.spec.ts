@@ -100,11 +100,15 @@ test.describe('首頁煙霧測試', () => {
   });
 
   test('未登入也能查看政策、條款與聯絡方式', async ({ page }) => {
-    for (const route of ['/legal', '/legal/privacy', '/legal/terms', '/legal/contact']) {
+    const documents = [
+      ['/legal', '非官方與非營利聲明'],
+      ['/legal/privacy', '隱私政策'],
+      ['/legal/terms', '服務條款'],
+      ['/legal/contact', '聯絡與下架申請'],
+    ] as const;
+    for (const [route, title] of documents) {
       await page.goto(route);
-      await expect(page.getByText('ZUTOMAYO CARD ONLINE Community', { exact: true }).first()).toBeVisible({
-        timeout: 30_000,
-      });
+      await expect(page.getByRole('heading', { level: 1, name: title })).toBeVisible({ timeout: 30_000 });
       await expect(page.getByRole('link', { name: /contact@mail\.zutomayocard\.online/ })).toBeVisible();
     }
   });

@@ -51,8 +51,13 @@ test.describe('牌組編輯器頁面', () => {
     await page.goto('/deck-builder');
     await expect(page.getByRole('button', { name: '新牌組' })).toBeVisible({ timeout: 30_000 });
 
-    // 彈數篩選與屬性篩選的 legend 文字
-    await expect(page.getByText('彈數', { exact: true })).toBeVisible();
+    let packFilter = page.getByLabel('彈數').filter({ visible: true });
+    if ((await packFilter.count()) === 0) {
+      await page.getByRole('button', { name: '篩選' }).click();
+      await expect(page.getByRole('dialog', { name: '篩選' })).toBeVisible();
+      packFilter = page.getByLabel('彈數').filter({ visible: true });
+    }
+    await expect(packFilter).toBeVisible();
   });
 
   test('導入與導出按鈕存在', async ({ page }) => {
@@ -83,7 +88,8 @@ test.describe('牌組編輯 — 卡牌操作 @requires-backend', () => {
     await expect(cardPool).toBeVisible();
   });
 
-  test('桌面右側牌組詳細可獨立滾動', async ({ page }) => {
+  test('桌面右側牌組詳細可獨立滾動', async ({ page, isMobile }) => {
+    test.skip(isMobile, '桌面右側牌組面板不會在手機版佈局顯示');
     await page.goto('/deck-builder');
     await expect(page.getByRole('button', { name: '新牌組' })).toBeVisible({ timeout: 30_000 });
 

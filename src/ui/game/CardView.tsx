@@ -74,7 +74,7 @@ export function CardView({
   const resolvedImageContext: CardImageContext =
     imageContext ?? (size === 'mini' || size === 'sm' ? 'mobile-board' : size === 'xl' ? 'preview' : 'board');
 
-  const handleKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
     if (event.key !== 'Enter' && event.key !== ' ') return;
     event.preventDefault();
     onActivate?.();

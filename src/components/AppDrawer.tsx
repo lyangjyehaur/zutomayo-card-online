@@ -1,5 +1,6 @@
-import { useId, useRef, type ReactNode } from 'react';
+import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { X } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import { t } from '../i18n';
 import { Button, IconButton, type ButtonVariant } from '../ui';
 import { useModalFocus } from '../ui';
@@ -44,9 +45,18 @@ export function AppDrawer({
   const panelRef = useRef<HTMLElement | null>(null);
   useModalFocus(open, panelRef, overlayRef);
 
+  useEffect(() => {
+    if (!open || !onClose) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [onClose, open]);
+
   if (!open) return null;
 
-  return (
+  const drawer = (
     <div ref={overlayRef} className={`app-drawer-overlay ${tone}`} role="presentation">
       <section
         ref={panelRef}
@@ -89,4 +99,7 @@ export function AppDrawer({
       </section>
     </div>
   );
+
+  if (typeof document === 'undefined') return drawer;
+  return createPortal(drawer, document.body);
 }

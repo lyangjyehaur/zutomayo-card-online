@@ -17,7 +17,9 @@ services:
     environment:
       IMGPROXY_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
       IMGPROXY_SALT: fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
-      IMGPROXY_ALLOWED_SOURCES: https://r2.dan.tw/cards/
+      IMGPROXY_ALLOWED_SOURCES: https://r2.dan.tw/cards/,http://game:3000/tutorial/cards/
+      # R2 cold fetches can exceed imgproxy's five-second default in CI.
+      IMGPROXY_DOWNLOAD_TIMEOUT: 15
     healthcheck:
       test: ['CMD', 'imgproxy', 'health']
       interval: 5s
@@ -101,7 +103,7 @@ services:
       - IMGPROXY_INTERNAL_BASE_URL=http://imgproxy:8080
       - IMGPROXY_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
       - IMGPROXY_SALT=fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
-      - IMGPROXY_ALLOWED_SOURCES=https://r2.dan.tw/cards/
+      - IMGPROXY_ALLOWED_SOURCES=https://r2.dan.tw/cards/,http://game:3000/tutorial/cards/
     depends_on:
       postgres:
         condition: service_healthy

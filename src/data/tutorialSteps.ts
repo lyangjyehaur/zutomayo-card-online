@@ -73,7 +73,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     body: 'tutorial.game.mulligan.confirm.body',
     placement: 'bottom',
     padding: 16,
-    completeWhen: (G) => G.mulliganUsed[0],
+    completeWhen: (G) => G.mulliganUsed[0] && G.step === 'initialSet',
   },
 
   // 5. 選擇劇本指定的初始角色卡。

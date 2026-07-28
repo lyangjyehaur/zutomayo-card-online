@@ -19,6 +19,7 @@ export interface CardImagePolicySummary {
   cardImageCallSites: number;
   cardImageFiles: number;
   directCardImageElements: number;
+  bundledAssetExceptions: number;
   originalFallbackExceptions: number;
   nonProductionExceptions: number;
   violations: CardImagePolicyViolation[];
@@ -59,6 +60,13 @@ function attributeIsExplicitFalse(attribute: ts.JsxAttribute): boolean {
   );
 }
 
+function attributeIsExplicitTrue(attribute: ts.JsxAttribute): boolean {
+  if (!attribute.initializer) return true;
+  return (
+    ts.isJsxExpression(attribute.initializer) && attribute.initializer.expression?.kind === ts.SyntaxKind.TrueKeyword
+  );
+}
+
 function lineOf(sourceFile: ts.SourceFile, node: ts.Node): number {
   return sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1;
 }
@@ -74,6 +82,7 @@ export function auditCardImagePolicy(rootDir: string): CardImagePolicySummary {
   const cardImageFiles = new Set<string>();
   let cardImageCallSites = 0;
   let directCardImageElements = 0;
+  let bundledAssetExceptions = 0;
   let originalFallbackExceptions = 0;
 
   for (const absoluteFile of sourceFiles) {
@@ -105,6 +114,26 @@ export function auditCardImagePolicy(rootDir: string): CardImagePolicySummary {
           cardImageCallSites += 1;
           cardImageFiles.add(relativeFile);
           const fallback = jsxAttribute(node, 'fallbackToOriginal');
+          const bundledAsset = jsxAttribute(node, 'bundledAsset');
+          if (bundledAsset) {
+            if (!attributeIsExplicitTrue(bundledAsset)) {
+              violations.push({
+                file: relativeFile,
+                line: lineOf(sourceFile, node),
+                message: 'bundledAsset must be an explicit static true value',
+              });
+            } else {
+              bundledAssetExceptions += 1;
+              const reason = attributeStringValue(jsxAttribute(node, 'bundledAssetReason'))?.trim();
+              if (!reason) {
+                violations.push({
+                  file: relativeFile,
+                  line: lineOf(sourceFile, node),
+                  message: 'bundledAsset requires a non-empty bundledAssetReason',
+                });
+              }
+            }
+          }
           if (fallback && !attributeIsExplicitFalse(fallback)) {
             originalFallbackExceptions += 1;
             const reason = attributeStringValue(jsxAttribute(node, 'originalFallbackReason'))?.trim();
@@ -115,6 +144,13 @@ export function auditCardImagePolicy(rootDir: string): CardImagePolicySummary {
                 message: 'fallbackToOriginal requires a non-empty originalFallbackReason',
               });
             }
+          }
+          if (bundledAsset && fallback && !attributeIsExplicitFalse(fallback)) {
+            violations.push({
+              file: relativeFile,
+              line: lineOf(sourceFile, node),
+              message: 'bundledAsset cannot also enable fallbackToOriginal',
+            });
           }
         }
 
@@ -159,6 +195,20 @@ export function auditCardImagePolicy(rootDir: string): CardImagePolicySummary {
       message: 'CardImage must expose its imgproxy delivery marker for runtime audits',
     });
   }
+  if (!cardImageComponent.includes("'bundled-asset'")) {
+    violations.push({
+      file: 'src/components/CardImage.tsx',
+      line: 1,
+      message: 'CardImage must expose its reviewed bundled-asset delivery marker',
+    });
+  }
+  if (bundledAssetExceptions !== 1) {
+    violations.push({
+      file: 'src/components/TutorialChapterHub.tsx',
+      line: 1,
+      message: 'exactly one reviewed CH.02 bundled card-art exception is allowed',
+    });
+  }
 
   const viteConfig = fs.readFileSync(path.join(rootDir, 'vite.config.ts'), 'utf8');
   if (/urlPattern\s*:\s*\/\^https:\\\/\\\/r2\\\.dan\\\.tw/.test(viteConfig)) {
@@ -192,6 +242,7 @@ export function auditCardImagePolicy(rootDir: string): CardImagePolicySummary {
     cardImageCallSites,
     cardImageFiles: cardImageFiles.size,
     directCardImageElements,
+    bundledAssetExceptions,
     originalFallbackExceptions,
     nonProductionExceptions,
     violations,
@@ -212,6 +263,7 @@ function main() {
   console.log(
     `card image policy: ${summary.cardImageCallSites} CardImage call sites in ${summary.cardImageFiles} files; ` +
       `${summary.directCardImageElements} direct card <img> elements; ` +
+      `${summary.bundledAssetExceptions} reviewed bundled asset exception; ` +
       `${summary.originalFallbackExceptions} player-UI original fallbacks; ` +
       `${summary.nonProductionExceptions} documented non-production exception`,
   );

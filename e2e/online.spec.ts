@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Locator } from '@playwright/test';
 import {
   getOnlineRoom,
   openOnlineSeat,
@@ -6,6 +6,14 @@ import {
   provisionAuthenticatedOnlineMatch,
   registerAuthenticatedOnlineAccount,
 } from './helpers/online';
+
+async function activateWithKeyboard(locator: Locator): Promise<void> {
+  await expect(locator).toBeVisible();
+  await expect(locator).toBeEnabled();
+  await locator.focus();
+  await expect(locator).toBeFocused();
+  await locator.press('Enter');
+}
 
 test.describe.configure({ mode: 'serial' });
 
@@ -59,15 +67,18 @@ test.describe('雙瀏覽器線上對戰 @requires-backend', () => {
       await expect(spectatorPage.locator('[data-tut="janken-panel"]')).toHaveCount(0);
       await expect(spectatorPage.locator('[data-tut^="janken-"]')).toHaveCount(0);
 
+      await expect(page.locator('[data-online-connection-status]')).toHaveCount(0, { timeout: 20_000 });
       await context.setOffline(true);
+      await expect.poll(() => page.evaluate(() => navigator.onLine)).toBe(false);
       await expect(page.locator('[data-online-connection-status="disconnected"]')).toBeVisible({ timeout: 15_000 });
       await context.setOffline(false);
+      await expect.poll(() => page.evaluate(() => navigator.onLine)).toBe(true);
       await expect(page.locator('[data-online-connection-status="rejoined"]')).toBeVisible({ timeout: 20_000 });
       await expect(page.locator('[data-game-step="janken"]')).toBeVisible();
 
-      await page.locator('[data-tut="janken-rock"]').click();
+      await activateWithKeyboard(page.locator('[data-tut="janken-rock"]'));
       await expect(page.locator('[data-tut="janken-rock"]')).toHaveCount(0);
-      await guestPage.locator('[data-tut="janken-scissors"]').click();
+      await activateWithKeyboard(guestPage.locator('[data-tut="janken-scissors"]'));
 
       await expect(page.locator('[data-game-step="mulligan"]')).toBeVisible({ timeout: 20_000 });
       await expect(guestPage.locator('[data-game-step="mulligan"]')).toBeVisible({ timeout: 20_000 });
@@ -80,8 +91,8 @@ test.describe('雙瀏覽器線上對戰 @requires-backend', () => {
 
       // 完成 setup，確認兩個獨立 client 能進入正式回合；對手手牌只能以牌背呈現。
       await Promise.all([
-        page.getByRole('button', { name: '保留手牌' }).click(),
-        guestPage.getByRole('button', { name: '保留手牌' }).click(),
+        activateWithKeyboard(page.getByRole('button', { name: '保留手牌' })),
+        activateWithKeyboard(guestPage.getByRole('button', { name: '保留手牌' })),
       ]);
       await expect(page.locator('[data-game-step="initialSet"]')).toBeVisible({ timeout: 20_000 });
       await expect(guestPage.locator('[data-game-step="initialSet"]')).toBeVisible({ timeout: 20_000 });
@@ -90,24 +101,24 @@ test.describe('雙瀏覽器線上對戰 @requires-backend', () => {
 
       // 每位玩家放置一張初始牌並確認，進入 turnSet 後由玩家 0 投降，驗證完整結算流程。
       await Promise.all([
-        page.locator('[data-zone="hand"]').getByRole('button').first().click(),
-        guestPage.locator('[data-zone="hand"]').getByRole('button').first().click(),
+        activateWithKeyboard(page.locator('[data-zone="hand"]').getByRole('button').first()),
+        activateWithKeyboard(guestPage.locator('[data-zone="hand"]').getByRole('button').first()),
       ]);
       await Promise.all([
-        page.getByRole('button', { name: /打出檢視中的牌/ }).click(),
-        guestPage.getByRole('button', { name: /打出檢視中的牌/ }).click(),
+        activateWithKeyboard(page.getByRole('button', { name: /打出檢視中的牌/ })),
+        activateWithKeyboard(guestPage.getByRole('button', { name: /打出檢視中的牌/ })),
       ]);
       await Promise.all([
-        page.getByRole('button', { name: /確認出牌/ }).click(),
-        guestPage.getByRole('button', { name: /確認出牌/ }).click(),
+        activateWithKeyboard(page.getByRole('button', { name: /確認出牌/ })),
+        activateWithKeyboard(guestPage.getByRole('button', { name: /確認出牌/ })),
       ]);
       await expect(page.locator('[data-game-step="turnSet"]')).toBeVisible({ timeout: 30_000 });
       await expect(guestPage.locator('[data-game-step="turnSet"]')).toBeVisible({ timeout: 30_000 });
 
-      await page.getByRole('button', { name: '暫停' }).first().click();
+      await activateWithKeyboard(page.getByRole('button', { name: '暫停' }).first());
       const surrenderDialog = page.getByRole('dialog');
       await expect(surrenderDialog).toBeVisible();
-      await surrenderDialog.getByRole('button', { name: '投降' }).click();
+      await activateWithKeyboard(surrenderDialog.getByRole('button', { name: '投降' }));
       await expect(page.locator('[data-result-outcome="defeat"]')).toBeVisible({ timeout: 10_000 });
       await expect(guestPage.locator('[data-result-outcome="victory"]')).toBeVisible({ timeout: 10_000 });
       await expect(spectatorPage.locator('[data-result-outcome="spectator"]')).toBeVisible({ timeout: 20_000 });

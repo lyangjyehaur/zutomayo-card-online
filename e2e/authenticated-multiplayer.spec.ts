@@ -7,6 +7,7 @@ import {
   openAuthenticatedOnlineLobby,
   registerAuthenticatedOnlineAccount,
   selectAuthenticatedServerDeck,
+  type AuthenticatedOnlineAccount,
 } from './helpers/online';
 
 /** These tests fail closed unless the runner declares a shared account-cookie topology. */
@@ -52,8 +53,10 @@ function requireAuthenticatedMultiplayer(baseURL: string, requireRankedHistory: 
   throw new Error(`Authenticated multiplayer is required but misconfigured: ${blockers.join('; ')}`);
 }
 
-async function expectAuthenticatedLobby(page: Page, nickname: string): Promise<void> {
-  await expect(page.getByText(nickname, { exact: true }).first()).toBeVisible({ timeout: 30_000 });
+async function expectAuthenticatedLobby(page: Page, account: AuthenticatedOnlineAccount): Promise<void> {
+  const visibleIdentity = page.locator('[data-online-authenticated-user-id]').filter({ visible: true });
+  await expect(visibleIdentity).toHaveAttribute('data-online-authenticated-user-id', account.id, { timeout: 30_000 });
+  await expect(visibleIdentity).toHaveText(account.nickname);
   await expect(page.getByRole('button', { name: '開始匹配' })).toBeEnabled({ timeout: 30_000 });
 }
 
@@ -145,10 +148,10 @@ async function completeSetup(first: Page, second: Page, spectator?: Page): Promi
 async function completeSetupAndSurrender(loser: Page, winner: Page, spectator?: Page): Promise<void> {
   await completeSetup(loser, winner, spectator);
 
-  await loser.getByRole('button', { name: '暫停' }).first().click();
+  await activateWithKeyboard(loser.getByRole('button', { name: '暫停' }).first());
   const surrenderDialog = loser.getByRole('dialog');
   await expect(surrenderDialog).toBeVisible();
-  await surrenderDialog.getByRole('button', { name: '投降' }).click();
+  await activateWithKeyboard(surrenderDialog.getByRole('button', { name: '投降' }));
   await Promise.all([
     expect(loser.locator('[data-result-outcome="defeat"]')).toBeVisible({ timeout: 15_000 }),
     expect(winner.locator('[data-result-outcome="victory"]')).toBeVisible({ timeout: 15_000 }),
@@ -207,6 +210,10 @@ async function completeNaturally(first: Page, second: Page): Promise<[NaturalMat
     // option makes the two deck-consumption paths asymmetric, so a natural
     // overdraw produces a winner instead of relying on surrender or timeout.
     await Promise.all([setOptionalSecondCard(first), setOptionalSecondCard(second)]);
+    const previousTurns = await Promise.all([
+      first.locator('.bf-hud-turn-value').textContent(),
+      second.locator('.bf-hud-turn-value').textContent(),
+    ]);
     await Promise.all([
       activateWithKeyboard(first.getByRole('button', { name: /確認出牌/ })),
       activateWithKeyboard(second.getByRole('button', { name: /確認出牌/ })),
@@ -217,9 +224,12 @@ async function completeNaturally(first: Page, second: Page): Promise<[NaturalMat
         async () => {
           const [firstOutcome, secondOutcome] = await Promise.all([visibleOutcome(first), visibleOutcome(second)]);
           if (firstOutcome && secondOutcome) return 'finished';
-          const firstConfirm = first.getByRole('button', { name: /確認出牌/ });
-          const secondConfirm = second.getByRole('button', { name: /確認出牌/ });
-          const nextTurnReady = (await firstConfirm.count()) > 0 && (await secondConfirm.count()) > 0;
+          const turnValues = await Promise.all([
+            first.locator('.bf-hud-turn-value').allTextContents(),
+            second.locator('.bf-hud-turn-value').allTextContents(),
+          ]);
+          const currentTurns = turnValues.map((values) => values[0] ?? null);
+          const nextTurnReady = currentTurns.every((value, index) => value !== null && value !== previousTurns[index]);
           return nextTurnReady ? 'next-turn' : 'resolving';
         },
         { timeout: 30_000, intervals: [100, 250, 500] },
@@ -279,8 +289,8 @@ test.describe('Authenticated 雙瀏覽器線上流程 @requires-backend', () => 
         selectAuthenticatedServerDeck(guestPage, guestAccount),
       ]);
       await Promise.all([
-        expectAuthenticatedLobby(page, hostAccount.nickname),
-        expectAuthenticatedLobby(guestPage, guestAccount.nickname),
+        expectAuthenticatedLobby(page, hostAccount),
+        expectAuthenticatedLobby(guestPage, guestAccount),
       ]);
       await Promise.all([
         activateWithKeyboard(page.getByRole('button', { name: '開始匹配' })),
@@ -301,15 +311,22 @@ test.describe('Authenticated 雙瀏覽器線上流程 @requires-backend', () => 
       await expect(spectatorPage.locator('[data-tut^="janken-"]')).toHaveCount(0);
 
       await Promise.all([
-        page.getByRole('button', { name: '顯示對戰聊天' }).click(),
-        guestPage.getByRole('button', { name: '顯示對戰聊天' }).click(),
+        activateWithKeyboard(page.getByRole('button', { name: '顯示對戰聊天' })),
+        activateWithKeyboard(guestPage.getByRole('button', { name: '顯示對戰聊天' })),
       ]);
       const chatMessage = `authenticated-chat-${Date.now()}`;
       const chatInput = page.getByRole('textbox', { name: '對戰聊天訊息' });
-      await expect(chatInput).toBeEnabled({ timeout: 20_000 });
+      const guestChatInput = guestPage.getByRole('textbox', { name: '對戰聊天訊息' });
+      await Promise.all([
+        expect(chatInput).toBeEnabled({ timeout: 20_000 }),
+        expect(guestChatInput).toBeEnabled({ timeout: 20_000 }),
+      ]);
       await chatInput.fill(chatMessage);
-      await page.getByRole('button', { name: '發送對戰聊天訊息' }).click();
-      await expect(guestPage.locator('.online-chat-bubble', { hasText: chatMessage })).toBeVisible({ timeout: 20_000 });
+      await chatInput.press('Enter');
+      await Promise.all([
+        expect(page.locator('.online-chat-bubble', { hasText: chatMessage })).toBeVisible({ timeout: 20_000 }),
+        expect(guestPage.locator('.online-chat-bubble', { hasText: chatMessage })).toBeVisible({ timeout: 20_000 }),
+      ]);
 
       await context.setOffline(true);
       await expect(page.locator('[data-online-connection-status="disconnected"]')).toBeVisible({ timeout: 15_000 });
@@ -376,8 +393,8 @@ test.describe('Authenticated 雙瀏覽器線上流程 @requires-backend', () => 
         selectAuthenticatedServerDeck(guestPage, guestAccount),
       ]);
       await Promise.all([
-        expectAuthenticatedLobby(page, hostAccount.nickname),
-        expectAuthenticatedLobby(guestPage, guestAccount.nickname),
+        expectAuthenticatedLobby(page, hostAccount),
+        expectAuthenticatedLobby(guestPage, guestAccount),
       ]);
 
       await Promise.all([
@@ -500,10 +517,7 @@ test.describe('Authenticated 雙瀏覽器線上流程 @requires-backend', () => 
         selectAuthenticatedServerDeck(page, inviter),
         selectAuthenticatedServerDeck(guestPage, recipient),
       ]);
-      await Promise.all([
-        expectAuthenticatedLobby(page, inviter.nickname),
-        expectAuthenticatedLobby(guestPage, recipient.nickname),
-      ]);
+      await Promise.all([expectAuthenticatedLobby(page, inviter), expectAuthenticatedLobby(guestPage, recipient)]);
       const sendInvite = page.locator(`[data-friend-invite-action="send"][data-friend-user-id="${recipient.id}"]`);
       const acceptInvite = guestPage.locator(
         `[data-friend-invite-action="accept"][data-friend-user-id="${inviter.id}"]`,

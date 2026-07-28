@@ -613,6 +613,24 @@ export function OnlineGame({
     resyncTimer.current = setTimeout(() => setResyncingState(false), 5000);
   }, []);
 
+  useEffect(() => {
+    const handleOffline = () => {
+      if (statusTimer.current) clearTimeout(statusTimer.current);
+      setResyncingState(false);
+      setConnectionStatus(connectedOnce.current ? 'disconnected' : 'reconnecting');
+    };
+    const handleOnline = () => {
+      if (connectedOnce.current) rebuildOnlineClient();
+    };
+
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('online', handleOnline);
+    return () => {
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('online', handleOnline);
+    };
+  }, [rebuildOnlineClient]);
+
   const handleStateMismatch = useCallback(
     (reason: OnlineStateMismatchReason) => {
       console.warn(`[online-sync] detected ${reason}; rebuilding client to resync authoritative state`);

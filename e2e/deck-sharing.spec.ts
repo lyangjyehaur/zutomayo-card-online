@@ -1,5 +1,5 @@
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { cardDataHeaders } from './helpers/cardData';
 
 const cardIds = Array.from({ length: 20 }, (_, index) => `card_${index}`);
@@ -72,6 +72,14 @@ async function expectNoBlockingAxeViolations(page: Page, surface: string) {
   ).toEqual([]);
 }
 
+async function waitForModalAnimations(dialog: Locator): Promise<void> {
+  await dialog.evaluate(async (element) => {
+    const modalRoot = element.parentElement;
+    const animations = [...(modalRoot?.getAnimations() ?? []), ...element.getAnimations({ subtree: true })];
+    await Promise.allSettled(animations.map((animation) => animation.finished));
+  });
+}
+
 test.describe('牌組分享大廳', () => {
   test.beforeEach(async ({ page }) => {
     const cardHeaders = await cardDataHeaders(page, cards.length);
@@ -121,6 +129,13 @@ test.describe('牌組分享大廳', () => {
   });
 
   test('訪客可用鍵盤從大廳開啟詳情與卡牌 Sheet', async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'share', { configurable: true, value: undefined });
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: { writeText: async () => undefined },
+      });
+    });
     await page.goto('/deck-shares');
     await expect(page.getByRole('heading', { name: '探索玩家分享的牌組' })).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole('button', { name: '分享牌組' })).toHaveCount(0);
@@ -135,6 +150,7 @@ test.describe('牌組分享大廳', () => {
     const sheet = page.getByRole('dialog', { name: 'Test Card 0' });
     await expect(sheet).toBeVisible();
     await expect(sheet.getByText('Test effect 0')).toBeVisible();
+    await waitForModalAnimations(sheet);
     await expectNoBlockingAxeViolations(page, '分享卡牌詳情 Sheet');
     await sheet.getByRole('button', { name: '關閉' }).click();
     await page.getByRole('button', { name: '分享連結' }).first().click();

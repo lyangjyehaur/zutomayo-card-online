@@ -225,7 +225,7 @@ export function AuthSection({
             onChange={switchMode}
           />
           <label className="group flex flex-col gap-1">
-            <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40 transition-colors duration-[var(--motion-duration-base)] group-focus-within:text-accent-primary/70">
+            <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary transition-colors duration-[var(--motion-duration-base)] group-focus-within:text-accent-primary">
               {t('auth.email')}
             </span>
             <Input
@@ -239,7 +239,7 @@ export function AuthSection({
           </label>
           {mode === 'register' && (
             <label className="group flex flex-col gap-1">
-              <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40 transition-colors duration-[var(--motion-duration-base)] group-focus-within:text-accent-primary/70">
+              <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary transition-colors duration-[var(--motion-duration-base)] group-focus-within:text-accent-primary">
                 {t('auth.nickname')}
               </span>
               <Input
@@ -253,7 +253,7 @@ export function AuthSection({
             </label>
           )}
           <label className="group flex flex-col gap-1">
-            <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40 transition-colors duration-[var(--motion-duration-base)] group-focus-within:text-accent-primary/70">
+            <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary transition-colors duration-[var(--motion-duration-base)] group-focus-within:text-accent-primary">
               {t('auth.password')}
             </span>
             <Input
@@ -314,7 +314,7 @@ export function AuthSection({
       )}
       {oauthProviders.length > 0 && (
         <div className={`grid gap-2 ${localAuthEnabled ? 'border-t border-content-primary/10 pt-3' : ''}`}>
-          <span className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">
+          <span className="font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary">
             {localAuthEnabled ? t('auth.oauthLogin') : t('auth.accountLogin')}
           </span>
           <div className={localAuthEnabled ? 'grid gap-2 sm:grid-cols-3' : 'grid gap-2'}>

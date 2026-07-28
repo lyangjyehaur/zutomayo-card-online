@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useRef } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Client } from 'boardgame.io/react';
 import { Local } from 'boardgame.io/multiplayer';
 import type { BoardProps } from 'boardgame.io/react';
@@ -48,27 +48,27 @@ interface AIGameProps {
   tutorialPresentationState?: GameState;
 }
 
-function AIBoard(
-  props: BoardProps<GameState> & {
-    difficulty: AIDifficulty;
-    onGameStateChange?: (state: GameState) => void;
-    tutorialMode?: boolean;
-    hideSetupOverlay?: boolean;
-    aiPaused?: boolean;
-    aiScript?: TutorialAIScript;
-    onSetupFeedbackDismiss?: () => void;
-    onNoticeDismiss?: () => void;
-    onTutorialAction?: (action: TutorialBoardAction, cardDefId: string) => void;
-    tutorialAllowedSetCardDefIds?: string[];
-    tutorialRequiredSetCardDefIds?: string[];
-    tutorialSetInteractionEnabled?: boolean;
-    tutorialAutoReplay?: 'flow' | 'turn2' | 'effects';
-    tutorialSuppressNotices?: boolean;
-    tutorialEffectOverlayVisible?: boolean;
-    tutorialPresentationState?: GameState;
-    gameOverActions?: BoardGameOverActions;
-  },
-) {
+type AIBoardProps = BoardProps<GameState> & {
+  difficulty: AIDifficulty;
+  onGameStateChange?: (state: GameState) => void;
+  tutorialMode?: boolean;
+  hideSetupOverlay?: boolean;
+  aiPaused?: boolean;
+  aiScript?: TutorialAIScript;
+  onSetupFeedbackDismiss?: () => void;
+  onNoticeDismiss?: () => void;
+  onTutorialAction?: (action: TutorialBoardAction, cardDefId: string) => void;
+  tutorialAllowedSetCardDefIds?: string[];
+  tutorialRequiredSetCardDefIds?: string[];
+  tutorialSetInteractionEnabled?: boolean;
+  tutorialAutoReplay?: 'flow' | 'turn2' | 'effects';
+  tutorialSuppressNotices?: boolean;
+  tutorialEffectOverlayVisible?: boolean;
+  tutorialPresentationState?: GameState;
+  gameOverActions?: BoardGameOverActions;
+};
+
+function AIBoard(props: AIBoardProps) {
   const {
     difficulty,
     onGameStateChange,
@@ -209,52 +209,6 @@ export function AIGame({
   tutorialEffectOverlayVisible,
   tutorialPresentationState,
 }: AIGameProps) {
-  // 動態 props 用 ref 持有，board 回調從 ref 讀取最新值。
-  // Client 只建立一次（useState 初始化），若直接在 board 回調閉包中捕獲 props，
-  // 會永遠拿到初始值（如 hideSetupOverlay=true），prop 變化後不會更新。
-  const dynamicPropsRef = useRef({
-    difficulty,
-    onGameStateChange,
-    tutorialMode,
-    hideSetupOverlay,
-    aiPaused,
-    aiScript,
-    onSetupFeedbackDismiss,
-    onNoticeDismiss,
-    onTutorialAction,
-    tutorialAllowedSetCardDefIds,
-    tutorialRequiredSetCardDefIds,
-    tutorialSetInteractionEnabled,
-    tutorialAutoReplay,
-    tutorialSuppressNotices,
-    tutorialEffectOverlayVisible,
-    tutorialPresentationState,
-    onBack,
-    onRematch,
-    onChooseSetup,
-  });
-  dynamicPropsRef.current = {
-    difficulty,
-    onGameStateChange,
-    tutorialMode,
-    hideSetupOverlay,
-    aiPaused,
-    aiScript,
-    onSetupFeedbackDismiss,
-    onNoticeDismiss,
-    onTutorialAction,
-    tutorialAllowedSetCardDefIds,
-    tutorialRequiredSetCardDefIds,
-    tutorialSetInteractionEnabled,
-    tutorialAutoReplay,
-    tutorialSuppressNotices,
-    tutorialEffectOverlayVisible,
-    tutorialPresentationState,
-    onBack,
-    onRematch,
-    onChooseSetup,
-  };
-
   // 標記對戰模式（AI / tutorial），便於 Sentry 後台區分錯誤來源。
   useEffect(() => {
     Sentry.setTag('match_mode', tutorialMode ? 'tutorial' : 'ai');
@@ -264,57 +218,53 @@ export function AIGame({
   }, [tutorialMode]);
 
   const [AIClient] = useState(() =>
-    Client({
+    Client<GameState, AIBoardProps>({
       game: createZutomayoCard({ deck0Name, deck1Name, deck0Ids, deck1Ids, skipShuffle }),
-      board: (props: BoardProps<GameState>) => {
-        const dp = dynamicPropsRef.current;
-        return (
-          <AIBoard
-            {...props}
-            difficulty={dp.difficulty}
-            onGameStateChange={dp.onGameStateChange}
-            tutorialMode={dp.tutorialMode}
-            hideSetupOverlay={dp.hideSetupOverlay}
-            aiPaused={dp.aiPaused}
-            aiScript={dp.aiScript}
-            onSetupFeedbackDismiss={dp.onSetupFeedbackDismiss}
-            onNoticeDismiss={dp.onNoticeDismiss}
-            onTutorialAction={dp.onTutorialAction}
-            tutorialAllowedSetCardDefIds={dp.tutorialAllowedSetCardDefIds}
-            tutorialRequiredSetCardDefIds={dp.tutorialRequiredSetCardDefIds}
-            tutorialSetInteractionEnabled={dp.tutorialSetInteractionEnabled}
-            tutorialAutoReplay={dp.tutorialAutoReplay}
-            tutorialSuppressNotices={dp.tutorialSuppressNotices}
-            tutorialEffectOverlayVisible={dp.tutorialEffectOverlayVisible}
-            tutorialPresentationState={dp.tutorialPresentationState}
-            gameOverActions={
-              !dp.tutorialMode && dp.onRematch && dp.onChooseSetup
-                ? {
-                    primary: { label: t('board.playAgain'), onClick: dp.onRematch },
-                    secondary: {
-                      label: t('board.result.changeSetup'),
-                      onClick: dp.onChooseSetup,
-                      variant: 'secondary',
-                    },
-                    tertiary: { label: t('common.backToLobby'), onClick: dp.onBack, variant: 'secondary' },
-                  }
-                : undefined
-            }
-          />
-        );
-      },
+      board: AIBoard,
       numPlayers: 2,
       multiplayer: Local(),
       debug: false,
     }),
   );
 
+  const gameOverActions: BoardGameOverActions | undefined =
+    !tutorialMode && onRematch && onChooseSetup
+      ? {
+          primary: { label: t('board.playAgain'), onClick: onRematch },
+          secondary: {
+            label: t('board.result.changeSetup'),
+            onClick: onChooseSetup,
+            variant: 'secondary',
+          },
+          tertiary: { label: t('common.backToLobby'), onClick: onBack, variant: 'secondary' },
+        }
+      : undefined;
+  const dynamicBoardProps = {
+    difficulty,
+    onGameStateChange,
+    tutorialMode,
+    hideSetupOverlay,
+    aiPaused,
+    aiScript,
+    onSetupFeedbackDismiss,
+    onNoticeDismiss,
+    onTutorialAction,
+    tutorialAllowedSetCardDefIds,
+    tutorialRequiredSetCardDefIds,
+    tutorialSetInteractionEnabled,
+    tutorialAutoReplay,
+    tutorialSuppressNotices,
+    tutorialEffectOverlayVisible,
+    tutorialPresentationState,
+    gameOverActions,
+  };
+
   return (
     <PageShell>
       <div className="board-client-frame h-full w-full">
-        <AIClient playerID="0" />
+        <AIClient playerID="0" {...dynamicBoardProps} />
         <div className="hidden-client">
-          <AIClient playerID="1" />
+          <AIClient playerID="1" {...dynamicBoardProps} />
         </div>
       </div>
     </PageShell>

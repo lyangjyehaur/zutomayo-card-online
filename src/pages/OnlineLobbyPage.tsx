@@ -1254,7 +1254,10 @@ export function OnlineLobbyPage({
                     <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">
                       {t('anonymous.identity')}
                     </div>
-                    <div className="mt-1 truncate font-mono text-sm text-accent-primary">
+                    <div
+                      className="mt-1 truncate font-mono text-sm text-accent-primary"
+                      data-online-authenticated-user-id={profile?.id}
+                    >
                       {profile ? profile.nickname : editingAnonymousName ? draftPreview : anonymousDisplayName}
                     </div>
                   </div>
