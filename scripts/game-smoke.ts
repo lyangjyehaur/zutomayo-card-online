@@ -1872,6 +1872,7 @@ function fivePowerCards() {
       max: 4,
       faceDown: true,
       shuffle: true,
+      moveAllPowerChargersToAbyss: false,
     },
   });
   assert.deepEqual(parsedCardEffect('4th_6').action, abyssFourPayment.action);
@@ -1909,6 +1910,7 @@ function fivePowerCards() {
       max: 'available',
       faceDown: true,
       shuffle: true,
+      moveAllPowerChargersToAbyss: false,
     },
   });
   assert.deepEqual(parsedCardEffect('4th_27').action, abyssVariablePayment.action);
@@ -1935,6 +1937,7 @@ function fivePowerCards() {
       max: 6,
       faceDown: true,
       shuffle: true,
+      moveAllPowerChargersToAbyss: false,
     },
   });
   assert.deepEqual(parsedCardEffect('4th_28').action, abyssSixPayment.action);
@@ -1951,6 +1954,7 @@ function fivePowerCards() {
       max: 1,
       faceDown: false,
       shuffle: false,
+      moveAllPowerChargersToAbyss: false,
       followUpChoiceType: 'reorderOpponentDeckTop',
       followUpCount: 3,
     },
