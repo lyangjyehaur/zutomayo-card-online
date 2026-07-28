@@ -27,7 +27,7 @@ test.describe('認證 UI', () => {
     await expect(page.getByRole('button', { name: /^登入$/ })).toBeVisible();
   });
 
-  test('點擊登入開啟認證對話框', async ({ page }) => {
+  test('點擊登入開啟認證對話框 @core', async ({ page }) => {
     await page.goto('/');
     await expect(page.getByRole('heading', { level: 1 })).toContainText('ZUTOMAYO', { timeout: 30_000 });
 

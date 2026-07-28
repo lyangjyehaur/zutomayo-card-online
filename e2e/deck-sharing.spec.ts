@@ -346,7 +346,7 @@ test.describe('牌組分享大廳', () => {
     });
 
     await page.goto('/admin');
-    await page.getByRole('button', { name: '牌組分享' }).click();
+    await page.getByRole('link', { name: '分享審核' }).click();
     await expect(page.getByRole('heading', { name: '牌組分享審核' })).toBeVisible();
     await page.getByRole('button', { name: '隱藏分享' }).click();
     await expect(page.getByText('沒有牌組分享檢舉', { exact: true })).toBeVisible();

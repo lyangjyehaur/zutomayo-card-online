@@ -443,11 +443,88 @@ jobs:
           include-hidden-files: true
           retention-days: 30
 
+  full-browser-ci:
+    name: Full browser CI
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    needs: preflight
+    timeout-minutes: 35
+    env:
+      PG_PASSWORD: e2e-test-password
+      PG_MIGRATION_USER: zutomayo_migrator
+      PG_MIGRATION_PASSWORD: e2e-test-migration-password
+      PG_APP_USER: zutomayo_app
+      PG_APP_PASSWORD: e2e-test-app-password
+      JWT_SECRET: e2e-test-jwt-secret-32chars-min
+      REDIS_PASSWORD: ''
+      METRICS_TOKEN: e2e-test-metrics-token
+      PGSSLMODE: disable
+    steps:
+      - name: Checkout exact release candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ needs.preflight.outputs.release_sha }}
+          fetch-depth: 0
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies and Chromium
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Run production PWA suite
+        run: npm run e2e:pwa
+      - name: Run full service-stack E2E
+        run: |
+          set -o pipefail
+          log_file="$(mktemp)"
+          mkdir -p playwright-report test-results
+          export EXPECTED_SCHEMA_MIGRATION="$(find migrations -maxdepth 1 -type f -name '*.js' -printf '%f\n' | sort | tail -n 1 | sed 's/\.js$//')"
+          export EXPECTED_SCHEMA_CHECKSUM="$(sha256sum "migrations/${EXPECTED_SCHEMA_MIGRATION}.js" | awk '{print $1}')"
+          compose=(docker compose -f docker-compose.yml -f docker-compose.e2e.yml)
+          if "${compose[@]}" up --build --wait --wait-timeout 180 game api platform \
+            2>&1 | tee "$log_file" \
+            && "${compose[@]}" build e2e 2>&1 | tee -a "$log_file" \
+            && "${compose[@]}" run --rm e2e npm run e2e:full 2>&1 | tee -a "$log_file"; then
+            exit 0
+          fi
+          service_status="$("${compose[@]}" ps --all --format '{{.Service}}={{.State}}/{{.ExitCode}}' | tr '\n' ' ')"
+          echo "::error title=E2E service status::$service_status"
+          for service in game api platform e2e; do
+            service_log="$("${compose[@]}" logs --no-color --tail 40 "$service" | tr '\n' ' ' | sed 's/%/%25/g')"
+            echo "::error title=E2E $service log::$service_log"
+          done
+          "${compose[@]}" logs --no-color --tail 80 migrate seed game api platform e2e \
+            2>&1 | tee -a "$log_file" || true
+          details="$(tail -n 60 "$log_file" | tr '\n' ' ' | sed 's/%/%25/g')"
+          echo "::error title=Full E2E service stack::$details"
+          exit 1
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: full-playwright-report-${{ needs.preflight.outputs.release_sha }}
+          path: playwright-report/
+          retention-days: 30
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: full-playwright-results-${{ needs.preflight.outputs.release_sha }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Cleanup
+        if: always()
+        run: docker compose -f docker-compose.yml -f docker-compose.e2e.yml down -v || true
+
   release-gate:
     name: Release gate (${{ inputs.environment }})
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch'
-    needs: [preflight, manual-release]
+    needs: [preflight, manual-release, full-browser-ci]
     permissions:
       contents: read
       actions: read

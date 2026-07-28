@@ -17,7 +17,7 @@ test.describe('首頁煙霧測試', () => {
     });
   });
 
-  test('首頁能載入且標題正確', async ({ page }) => {
+  test('首頁能載入且標題正確 @core', async ({ page }) => {
     await page.goto('/');
 
     // 等待 AppBootLoader 結束、主內容出現。
@@ -57,7 +57,7 @@ test.describe('首頁煙霧測試', () => {
 
     // Hero 區的線上對戰與教學按鈕
     await expect(page.getByRole('button', { name: /CH\.01.*線上房間/ })).toBeVisible();
-    await expect(page.getByRole('button', { name: /GUIDE.*新手教學/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /CH\.03.*新手教學/ })).toBeVisible();
   });
 
   test('頁尾連結使用斜線完整分隔', async ({ page }) => {

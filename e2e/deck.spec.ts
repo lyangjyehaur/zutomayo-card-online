@@ -19,7 +19,7 @@ test.describe('牌組編輯器頁面', () => {
     });
   });
 
-  test('牌組編輯器頁面能載入', async ({ page }) => {
+  test('牌組編輯器頁面能載入 @core', async ({ page }) => {
     await page.goto('/deck-builder');
 
     // 等待頁面載入完成（boot loader 結束）

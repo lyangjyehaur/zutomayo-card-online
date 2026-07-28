@@ -110,6 +110,8 @@
     "relationship:outbox:pg-smoke": "node scripts/relationship-outbox-pg-smoke.cjs",
     "prepare": "husky",
     "e2e": "playwright test",
+    "e2e:core": "playwright test --grep @core",
+    "e2e:full": "playwright test --grep-invert '@staging-only|@pwa-only'",
     "e2e:pwa": "npm run build && E2E_PWA_OFFLINE=1 playwright test --config=playwright.pwa.config.ts",
     "e2e:ui": "playwright test --ui",
     "e2e:report": "playwright show-report",
