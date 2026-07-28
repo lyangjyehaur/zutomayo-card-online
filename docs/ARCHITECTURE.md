@@ -453,9 +453,9 @@ flowchart LR
 | normal | 確定性評估有效攻擊、Power、Chronos、解析效果、資源、卡位、效果順序與所有合法指定選擇                                                           |
 | hard   | 以 heuristic 選出最多 18 個完整卡牌 + A/B 卡位計畫，對未知已設置卡取三個 seeded 樣本，以正式規則模擬完整回合與有限下回合，並受 300 ms 預算限制 |
 
-`useAIMoves.ts` 只負責統一的 UX delay 與 move 派發。它以 card instance id、slot 和 decision token 保存完整回合計畫，因此可在每次 boardgame.io state 更新後繼續執行第二張牌。困難模擬呼叫正式 `confirmReady`、`resolvePendingEffect` 與 `submitPendingChoice`，搜尋超時或無法模擬時回傳已記錄原因的普通難度合法 fallback。開發環境會發出 `zutomayo:ai-decision` event，內容包含 score、reason、factor、duration 與 fallback。
+`useAIMoves.ts` 只負責統一的 UX delay 與 move 派發。它以 card instance id、slot 和 decision token 保存完整回合計畫，因此可在每次 boardgame.io state 更新後繼續執行第二張牌。困難模擬呼叫正式 `confirmReady`、`resolvePendingEffect` 與 `submitPendingChoice`，搜尋超時或無法模擬時回傳已記錄原因的普通難度合法 fallback。開發環境會發出 `zutomayo:ai-decision` event，內容包含 score、reason、factor、duration 與 fallback。全部 13 種 `PendingChoice` 都有獨立的戰術結果 fixture，並由候選測試覆蓋合法 default fallback。
 
-`playerView` 向牌組擁有者提供排序後的剩餘牌組定義，讓 AI 知道合法組成但不知道牌序；對手看不到這份 metadata。`AIKnowledgeState` 會把暗牌轉成跨 zone 一致的 opaque id。`sampling.ts` 以自身剩餘牌組和 published/playable 公開牌池產生可重播未知狀態，`transposition.ts` 的 128-entry LRU 只快取由可見狀態衍生的數值評估。Node 正式卡表基準已低於 300 ms p95；Web Worker 保留為瀏覽器 long-task 或手機基準未達標時的後續措施。完整進度與限制見 [AI 難度現況與改造路線](ai-difficulty-roadmap.md)。
+`playerView` 向牌組擁有者提供排序後的剩餘牌組定義，讓 AI 知道合法組成但不知道牌序；對手看不到這份 metadata。`AIKnowledgeState` 會把暗牌轉成跨 zone 一致的 opaque id。`sampling.ts` 以自身剩餘牌組和 published/playable 公開牌池產生可重播未知狀態，`transposition.ts` 的 128-entry LRU 只快取由可見狀態衍生的數值評估。Node 正式卡表基準低於 300 ms p95；production bundle 的固定牌組瀏覽器基準中，桌面與手機各三次困難搜尋最大為 `6.4 ms` 與 `8.2 ms`，搜尋期間均無 long task。載入與版面切換仍可能產生不屬於 AI 的 long task，因此目前不引入 Worker；只有搜尋本身在後續正式牌組或低階裝置基準超過 `100 ms` 時才移出主執行緒。完整進度與限制見 [AI 難度現況與改造路線](ai-difficulty-roadmap.md)。
 
 ### Chronos 時鐘系統（`src/game/chronos.ts`）
 
