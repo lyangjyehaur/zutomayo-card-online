@@ -151,6 +151,13 @@ test.describe('登入 dialog 無障礙 @a11y', () => {
 
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
+    await expect
+      .poll(() =>
+        dialog.evaluate((element) =>
+          element.getAnimations({ subtree: true }).every((animation) => animation.playState === 'finished'),
+        ),
+      )
+      .toBe(true);
     await expectNoBlockingAxeViolations(page, '登入 dialog');
 
     const root = page.locator('#root');

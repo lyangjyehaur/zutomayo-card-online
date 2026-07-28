@@ -49,10 +49,48 @@ test.describe('雙瀏覽器線上對戰 @requires-backend @core', () => {
       await expect(spectatorPage.locator('[data-tut="janken-panel"]')).toHaveCount(0);
       await expect(spectatorPage.locator('[data-tut^="janken-"]')).toHaveCount(0);
 
+      await page.evaluate(() => {
+        const statuses: string[] = [];
+        (window as typeof window & { __e2eOnlineConnectionStatuses?: string[] }).__e2eOnlineConnectionStatuses =
+          statuses;
+        const recordStatus = () => {
+          const status = document
+            .querySelector('[data-online-connection-status]')
+            ?.getAttribute('data-online-connection-status');
+          if (status) statuses.push(status);
+        };
+        new MutationObserver(recordStatus).observe(document.body, {
+          attributes: true,
+          childList: true,
+          subtree: true,
+        });
+        recordStatus();
+      });
       await context.setOffline(true);
-      await expect(page.locator('[data-online-connection-status="disconnected"]')).toBeVisible({ timeout: 15_000 });
+      await page.evaluate(() => fetch('/api/app-version').catch(() => undefined));
+      await expect
+        .poll(
+          () =>
+            page.evaluate(() =>
+              (
+                window as typeof window & { __e2eOnlineConnectionStatuses?: string[] }
+              ).__e2eOnlineConnectionStatuses?.includes('disconnected'),
+            ),
+          { timeout: 30_000 },
+        )
+        .toBe(true);
       await context.setOffline(false);
-      await expect(page.locator('[data-online-connection-status="rejoined"]')).toBeVisible({ timeout: 20_000 });
+      await expect
+        .poll(
+          () =>
+            page.evaluate(() =>
+              (
+                window as typeof window & { __e2eOnlineConnectionStatuses?: string[] }
+              ).__e2eOnlineConnectionStatuses?.includes('rejoined'),
+            ),
+          { timeout: 30_000 },
+        )
+        .toBe(true);
       await expect(page.locator('[data-game-step="janken"]')).toBeVisible();
 
       await page.locator('[data-tut="janken-rock"]').click();

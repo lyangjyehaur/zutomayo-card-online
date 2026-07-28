@@ -86,7 +86,9 @@ test.describe('牌組編輯 — 卡牌操作 @requires-backend', () => {
     await expect(cardPool).toBeVisible();
   });
 
-  test('桌面右側牌組詳細可獨立滾動', async ({ page }) => {
+  test('桌面右側牌組詳細可獨立滾動', async ({ page }, testInfo) => {
+    test.skip(Boolean(testInfo.project.use.isMobile), '手機版使用底部牌組操作列，不顯示桌面右側 aside');
+
     await page.goto('/deck-builder');
     await expect(page.getByRole('button', { name: '新牌組' })).toBeVisible({ timeout: 30_000 });
 
