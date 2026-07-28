@@ -59,7 +59,7 @@
 
 ### `card_official_errata`
 
-保存 12 條官方勘誤的歷史資訊，包括錯誤文本、日期、受影響欄位、英文複核狀態、英文來源類型和官方網址。修正後日文與英文不在此表重複保存，管理 API 會依受影響欄位從 canonical `cards` 即時回傳。
+目前的 12 條官方勘誤保存在 `card_official_errata`，包括錯誤文本、日期、受影響欄位、英文複核狀態、英文來源類型和官方網址。修正後日文與英文不在目前資料表重複保存，管理 API 會依受影響欄位從 canonical `cards` 即時回傳；每次變更的完整資料列與當時修正後日文則追加至不可變的 `card_official_errata_revisions`。
 
 `corrected_english_source` 只能是：
 

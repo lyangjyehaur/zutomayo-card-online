@@ -88,6 +88,9 @@ describe('production schema gate', () => {
     expect(REQUIRED_RUNTIME_TABLES).toContain('card_texts_i18n');
     expect(REQUIRED_RUNTIME_TABLES).toContain('card_official_errata');
     expect(REQUIRED_RUNTIME_TABLES).toContain('official_qa_items');
+    expect(REQUIRED_RUNTIME_TABLES).toContain('official_qa_item_revisions');
+    expect(REQUIRED_RUNTIME_TABLES).toContain('card_official_errata_revisions');
+    expect(REQUIRED_RUNTIME_TABLES).toContain('card_revisions');
     expect(REQUIRED_RUNTIME_TABLES).toContain('official_qa_translations');
     expect(REQUIRED_RUNTIME_TABLES).toContain('card_official_errata_translations');
     expect(REQUIRED_RUNTIME_TABLES).toContain('official_rulings_sync_runs');
@@ -101,6 +104,9 @@ describe('production schema gate', () => {
     expect(REQUIRED_RUNTIME_COLUMNS.card_official_errata).toContain('corrected_english_source');
     expect(REQUIRED_RUNTIME_COLUMNS.card_official_errata).toContain('content_version');
     expect(REQUIRED_RUNTIME_COLUMNS.official_qa_items).toContain('question_ja');
+    expect(REQUIRED_RUNTIME_COLUMNS.official_qa_item_revisions).toContain('content_version');
+    expect(REQUIRED_RUNTIME_COLUMNS.card_official_errata_revisions).toContain('corrected_japanese_text');
+    expect(REQUIRED_RUNTIME_COLUMNS.card_revisions).toContain('name');
     expect(REQUIRED_RUNTIME_COLUMNS.official_qa_translations).toContain('question_text');
     expect(REQUIRED_RUNTIME_COLUMNS.official_rulings_sync_runs).toContain('diff');
     expect(REQUIRED_RUNTIME_COLUMNS.official_rule_documents).toContain('source_sha256');
@@ -113,6 +119,9 @@ describe('production schema gate', () => {
         tableName: 'card_texts_i18n',
         constraintName: 'card_texts_i18n_derived_lang_check',
       }),
+    );
+    expect(REQUIRED_RUNTIME_CONSTRAINTS).toContainEqual(
+      expect.objectContaining({ tableName: 'official_qa_item_revisions', constraintType: 'p' }),
     );
     expect(REQUIRED_RUNTIME_CONSTRAINTS).toContainEqual(
       expect.objectContaining({

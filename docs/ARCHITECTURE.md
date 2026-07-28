@@ -155,6 +155,7 @@ flowchart LR
 - 核心 `t()` / `translate()` 在 `src/i18n/index.ts`，語言偏好存 localStorage。
 - 卡牌名稱與效果由 API `/api/cards/texts` 一次載入；日英投影自 `cards`，衍生語言來自 `card_texts_i18n`，顯示統一經 `game/cards/i18n.ts` 處理。
 - UI、卡牌文本與官方裁定共用 `src/rulesTerminology.ts` 的規則術語契約；`Power Cost`、`SEND TO POWER` 等保留標記與本地化卡種／區域由測試及發布閘門共同檢查。Q&A API 以官方日文 `tagIds` 維持跨語言篩選，本地化 `tags` 僅用於顯示，兩者對齊由 API 契約測試與 E2E 檢查。
+- 正式裁定仍由 immutable release snapshots 與 active pointer 控制公開版本；candidate Q&A、勘誤及 canonical 卡牌則由 PostgreSQL revision triggers 保存完整資料列歷史。runtime API 對 revision tables 只有讀取權限，內容版本不連續或歷史表改寫會 fail closed。
 
 ---
 

@@ -15,11 +15,14 @@ const APPLICATION_TABLES = Object.freeze([
   'deck_share_reports',
   'matches',
   'cards',
+  'card_revisions',
   'card_texts_i18n',
   'card_synergy_groups',
   'card_synergy_relations',
   'card_official_errata',
+  'card_official_errata_revisions',
   'official_qa_items',
+  'official_qa_item_revisions',
   'official_qa_translations',
   'card_official_errata_translations',
   'official_rulings_sync_runs',
@@ -76,6 +79,11 @@ const APPLICATION_TABLES = Object.freeze([
 
 const ALL_TABLES = Object.freeze([...PROTECTED_SCHEMA_TABLES, ...APPLICATION_TABLES]);
 const ALL_RELATIONS = ALL_TABLES;
+const IMMUTABLE_HISTORY_TABLES = Object.freeze([
+  'card_revisions',
+  'card_official_errata_revisions',
+  'official_qa_item_revisions',
+]);
 const ROLE_TYPES = Object.freeze(['api', 'game', 'platform', 'retention', 'monitor', 'backup', 'wal']);
 const APP_ALIAS_TYPES = Object.freeze(new Set(['api', 'game', 'platform']));
 const TABLE_PRIVILEGES = Object.freeze(['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER']);
@@ -259,7 +267,12 @@ function tableRulesFor(roleUsers, requiredRoleTypes) {
 
   // API owns the HTTP data plane. It gets row-level application CRUD but no
   // DDL, privilege-management, or writes to migration history.
-  grant('api', APPLICATION_TABLES, ['SELECT', 'INSERT', 'UPDATE', 'DELETE']);
+  grant(
+    'api',
+    APPLICATION_TABLES.filter((tableName) => !IMMUTABLE_HISTORY_TABLES.includes(tableName)),
+    ['SELECT', 'INSERT', 'UPDATE', 'DELETE'],
+  );
+  grant('api', IMMUTABLE_HISTORY_TABLES, ['SELECT']);
   grant('api', PROTECTED_SCHEMA_TABLES, ['SELECT']);
 
   grant('game', GAME_READ_TABLES, ['SELECT']);

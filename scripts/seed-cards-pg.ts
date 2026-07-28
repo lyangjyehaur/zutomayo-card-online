@@ -318,15 +318,18 @@ async function main(): Promise<void> {
       );
     }
 
-    await client.query(`
+    await client.query(
+      `
       UPDATE cards
       SET has_official_errata = FALSE,
           official_errata_id = NULL,
           official_errata_affects_name = FALSE,
           official_errata_affects_effect = FALSE,
-          official_errata_url = '';
-      DELETE FROM card_official_errata;
-    `);
+          official_errata_url = ''
+      WHERE NOT (id = ANY($1::text[]));
+    `,
+      [officialErrata.map((entry) => entry.cardId)],
+    );
     for (const entry of officialErrata) {
       const card = cardsById.get(entry.cardId);
       if (!card) throw new Error(`${entry.cardId}: missing seed card after validation`);
@@ -361,12 +364,22 @@ async function main(): Promise<void> {
           correctedEnglish,
         ],
       );
-      await client.query(
+      const errataResult = await client.query(
         `INSERT INTO card_official_errata (
            errata_id, card_id, published_at, affects_name, affects_effect,
            incorrect_text, corrected_english_status, corrected_english_source, source_url
          )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         ON CONFLICT (errata_id) DO UPDATE SET
+           corrected_english_status = EXCLUDED.corrected_english_status,
+           corrected_english_source = EXCLUDED.corrected_english_source,
+           source_url = EXCLUDED.source_url,
+           updated_at = NOW()
+         WHERE card_official_errata.card_id = EXCLUDED.card_id
+           AND card_official_errata.published_at = EXCLUDED.published_at
+           AND card_official_errata.affects_name = EXCLUDED.affects_name
+           AND card_official_errata.affects_effect = EXCLUDED.affects_effect
+           AND card_official_errata.incorrect_text = EXCLUDED.incorrect_text`,
         [
           entry.errataId,
           entry.cardId,
@@ -379,6 +392,9 @@ async function main(): Promise<void> {
           entry.sourceUrl,
         ],
       );
+      if (errataResult.rowCount !== 1) {
+        throw new Error(`${entry.errataId}: Japanese errata source differs; run the official-rulings sync`);
+      }
     }
 
     for (const [cardId, translations] of Object.entries(cardTexts)) {

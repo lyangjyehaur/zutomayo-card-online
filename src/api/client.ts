@@ -833,6 +833,7 @@ export interface OfficialQaItem {
   translationStatus: OfficialTranslationStatus;
   sourceUrl: string;
   lastSyncedAt: string;
+  contentHash: string;
   contentVersion: number;
 }
 
@@ -856,6 +857,7 @@ export interface OfficialErrataItem {
   translationStatus: OfficialTranslationStatus;
   sourceUrl: string;
   lastSyncedAt: string;
+  contentHash: string;
   contentVersion: number;
 }
 

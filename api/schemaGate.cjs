@@ -15,7 +15,10 @@ const REQUIRED_RUNTIME_TABLES = Object.freeze([
   'card_synergy_relations',
   'card_texts_i18n',
   'card_official_errata',
+  'card_revisions',
+  'card_official_errata_revisions',
   'official_qa_items',
+  'official_qa_item_revisions',
   'official_qa_translations',
   'card_official_errata_translations',
   'official_rulings_sync_runs',
@@ -176,6 +179,45 @@ const REQUIRED_RUNTIME_COLUMNS = Object.freeze({
     'content_version',
     'publication_status',
     'last_seen_at',
+  ],
+  official_qa_item_revisions: [
+    'qa_id',
+    'revision',
+    'operation',
+    'recorded_from',
+    'release_id',
+    'question_ja',
+    'answer_ja',
+    'content_hash',
+    'content_version',
+    'publication_status',
+    'recorded_at',
+  ],
+  card_official_errata_revisions: [
+    'errata_id',
+    'revision',
+    'operation',
+    'recorded_from',
+    'release_id',
+    'card_id',
+    'corrected_japanese_text',
+    'content_hash',
+    'content_version',
+    'publication_status',
+    'recorded_at',
+  ],
+  card_revisions: [
+    'card_id',
+    'revision',
+    'operation',
+    'name',
+    'en_name_official',
+    'effect',
+    'en_effect_official',
+    'catalog_status',
+    'publication_status',
+    'source_sha256',
+    'recorded_at',
   ],
   official_qa_translations: [
     'qa_id',
@@ -574,6 +616,17 @@ const REQUIRED_RUNTIME_COLUMN_CONTRACTS = Object.freeze([
 // / pg_indexes output after identifier and whitespace normalization.
 const REQUIRED_RUNTIME_CONSTRAINTS = Object.freeze([
   {
+    tableName: 'official_qa_item_revisions',
+    constraintType: 'p',
+    fragments: ['primary key (qa_id, revision)'],
+  },
+  {
+    tableName: 'card_official_errata_revisions',
+    constraintType: 'p',
+    fragments: ['primary key (errata_id, revision)'],
+  },
+  { tableName: 'card_revisions', constraintType: 'p', fragments: ['primary key (card_id, revision)'] },
+  {
     tableName: 'card_texts_i18n',
     constraintName: 'card_texts_i18n_derived_lang_check',
     constraintType: 'c',
@@ -677,6 +730,21 @@ const REQUIRED_RUNTIME_CONSTRAINTS = Object.freeze([
 ]);
 
 const REQUIRED_RUNTIME_INDEXES = Object.freeze([
+  {
+    tableName: 'official_qa_item_revisions',
+    indexName: 'idx_official_qa_item_revisions_content',
+    fragments: ['qa_id', 'content_version', 'recorded_at'],
+  },
+  {
+    tableName: 'card_official_errata_revisions',
+    indexName: 'idx_card_official_errata_revisions_content',
+    fragments: ['errata_id', 'content_version', 'recorded_at'],
+  },
+  {
+    tableName: 'card_revisions',
+    indexName: 'idx_card_revisions_recorded',
+    fragments: ['card_id', 'recorded_at'],
+  },
   {
     tableName: 'matches',
     indexName: 'idx_matches_action_log_retention',

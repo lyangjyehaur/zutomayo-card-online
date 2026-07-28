@@ -33,6 +33,7 @@ const qaRow = {
   tags: ['基本ルール'],
   related_card_ids: ['1st_1'],
   source_url: 'https://zutomayocard.net/qa/',
+  content_hash: 'a'.repeat(64),
   content_version: 2,
   last_seen_at: '2026-07-20T00:00:00.000Z',
 };
@@ -63,6 +64,7 @@ describe('official rulings service', () => {
       localized: { question: '問題', answer: '答案' },
       effectiveLocale: 'zh-TW',
       translationStatus: 'verified',
+      contentHash: 'a'.repeat(64),
     });
   });
 
@@ -198,6 +200,7 @@ describe('official rulings service', () => {
           pack: 'Pack',
           rarity: 'UR',
           source_url: 'https://zutomayocard.net/errata/001/',
+          content_hash: 'b'.repeat(64),
           last_seen_at: '2026-07-20T00:00:00.000Z',
           content_version: 1,
         },
@@ -207,6 +210,7 @@ describe('official rulings service', () => {
       cardName: '卡牌',
       localized: { correctedText: '修正內容' },
       translationStatus: 'source',
+      contentHash: 'b'.repeat(64),
     });
   });
 

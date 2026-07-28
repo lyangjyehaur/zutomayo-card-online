@@ -10,6 +10,7 @@ export interface OfficialQaSnapshotRow {
   answer: string;
   tags: string[];
   relatedCards: string[];
+  contentHash?: string;
 }
 
 export interface OfficialErrataSnapshotRow {
@@ -26,6 +27,7 @@ export interface OfficialErrataSnapshotRow {
   replacementPolicy: string;
   usagePolicy: string;
   sourceUrl: string;
+  contentHash?: string;
 }
 
 export const OFFICIAL_TRANSLATION_LOCALES = ['zh-TW', 'zh-CN', 'zh-HK', 'en', 'ko'] as const;
