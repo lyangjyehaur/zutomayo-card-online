@@ -73,8 +73,7 @@ test.describe('首頁煙霧測試', () => {
     await page.goto('/');
     await expect(page.getByRole('heading', { level: 1 })).toContainText('ZUTOMAYO', { timeout: 30_000 });
 
-    // 點擊 CH.03 牌組編輯器頻道
-    await page.getByText('CH.03', { exact: true }).click();
+    await page.getByRole('button', { name: /牌組編輯器/ }).click();
 
     // 牌組編輯器頁面應該載入（URL 變更）
     await expect(page).toHaveURL(/\/deck-builder/);

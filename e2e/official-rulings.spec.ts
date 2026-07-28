@@ -300,8 +300,7 @@ test.describe('官方規則管理', () => {
       });
     });
 
-    await page.goto('/admin');
-    await page.getByRole('link', { name: '官方裁定' }).click();
+    await page.goto('/admin/official-rulings');
     await expect(page.getByRole('heading', { name: '官方規則翻譯' })).toBeVisible();
     await expect(page.getByText('Q.74', { exact: true })).toBeVisible();
 
