@@ -215,6 +215,7 @@ export const en: Record<TranslationKey, string> = {
 
   'lobby.aiBattle': 'Practice vs AI',
   'lobby.createRoom': 'Create Room',
+  'lobby.createPublicRoom': 'Create Public Room',
   'lobby.joinRoom': 'Join Room',
   'lobby.deckEditor': 'Deck Editor',
   'lobby.matchHistory': 'Match History',
@@ -245,6 +246,12 @@ export const en: Record<TranslationKey, string> = {
   'lobby.guestRank': 'Guest',
   'lobby.beginMatch': 'Begin Match',
   'lobby.customRooms': 'Custom Rooms',
+  'lobby.availableRooms': 'Available Rooms',
+  'lobby.availableRoomsHint': 'Public rooms waiting for an opponent',
+  'lobby.refreshRooms': 'Refresh room list',
+  'lobby.loadingRooms': 'Syncing rooms...',
+  'lobby.availableRoomsEmpty': 'No rooms are waiting right now',
+  'lobby.availableRoomsUnavailable': 'The room list is temporarily unavailable',
   'lobby.noDeckSelected': 'No deck selected',
   'lobby.loginRequired': 'Login required to match',
   'presence.currentOnline': 'Current Online',
@@ -688,6 +695,8 @@ export const en: Record<TranslationKey, string> = {
   'online.reloadAction': 'Reload',
   'online.createNewRoom': 'Create New Room',
   'online.creatingRoom': 'Creating...',
+  'online.rematchPreparing': 'Preparing a rematch with the same opponent...',
+  'online.rematchFailed': 'Unable to start the rematch. Please try again or create a new room.',
   'online.createRoomFailed': 'Could not create a new room. Try again later.',
   'online.watchMatch': 'Watch Match',
   'online.leaveRoom': 'Leave Room',
@@ -700,7 +709,7 @@ export const en: Record<TranslationKey, string> = {
   'online.roomReadyHelper': 'Your opponent joined. Preparing the match.',
   'online.shareReconnectHint': 'Share with your opponent, or reopen it later to reconnect.',
   'online.copySuccessHelp': 'Link copied. Paste it to your opponent.',
-  'online.gameOverHelper': 'The online match is over. Return to the lobby or create a new room for another match.',
+  'online.gameOverHelper': 'Play again with the same opponent, return to the lobby, or create a different room.',
 
   'network.offlineTitle': 'Network offline',
   'network.offlineBody': 'You are disconnected. Online matches will keep trying after the network returns.',
@@ -1208,19 +1217,20 @@ export const en: Record<TranslationKey, string> = {
     'The previous chapter completed battle preparation: you are the Night-side player, both players have 100 HP, and Chronos starts at 0 (true midnight). Each player set 1 initial card face-down in the Battle Zone, and both cards have now been revealed as Characters.\n\nPreparation ends here. No one plays another card yet. Turn one now resolves in order: advance Chronos → resolve effects and compare attack → change HP → draw at turn end. Click “Next” to see how Chronos advances.',
   'tutorial.game.clockAdvance.title': 'Clock Advance',
   'tutorial.game.clockAdvance.body':
-    'The highlighted notice shows this advance. Your initial Character has Clock 2 and the opponent’s has Clock 1. No non-Character was revealed during preparation, so there is no extra Clock: 2 + 1 = 3.\n\nChronos advances from 0 to 3, and position 3 is Night. Both Characters therefore use Night attack, and you—the Night-side player—have effect priority. Click “Confirm” in the notice.',
+    'The battlefield animation shows each Clock source in sequence. Your initial Character has Clock 2 and the opponent’s has Clock 1. No non-Character was revealed during preparation, so there is no extra Clock: 2 + 1 = 3.\n\nChronos advances 3 spaces and stops on the Night side. Both Characters therefore use Night attack, and you—the Night-side player—have effect priority. Resolution continues automatically when the animation finishes.',
   'tutorial.game.revealClock.title': 'Simultaneous Reveal and Clock Advance',
   'tutorial.game.revealClock.body':
-    'After both players confirm, the set cards are revealed together. Your Character has Clock 1, your Area Enchant has Clock 2, and the opponent’s Enchant has Clock 4: 1 + 2 + 4 = 7.\n\nChronos was at 3, so it moves to 3 + 7 = 10. Position 10 is Day, which selects your new Character’s Day attack and satisfies the Area Enchant’s Day condition. Click “Confirm” in the notice.',
+    'After both players confirm, the set cards are revealed together. Your Character has Clock 1, your Area Enchant has Clock 2, and the opponent’s Enchant has Clock 4: 1 + 2 + 4 = 7.\n\nThe battlefield animation totals the three cards in sequence and advances Chronos 7 spaces to the Day side. This selects your new Character’s Day attack and satisfies the Area Enchant’s Day condition. The tutorial advances automatically when the animation finishes.',
   'tutorial.game.characterReplacement.title': 'Character Replacement',
   'tutorial.game.characterReplacement.body':
     'The highlighted Battle Zone now contains your new Character. It moved from Set Zone A and replaced the old Character. If 2 Characters are played in one turn, only the Character in Zone A has this priority.\n\nThe replaced Character does not remain there. Its SEND TO POWER 2 sends it to the Power Charger rather than the Abyss, which the next step highlights.',
   'tutorial.game.hpCalc.title': 'HP Calculation',
   'tutorial.game.hpCalc.body':
-    'The “-20” in the highlighted notice is damage, not a card cost, and it does not remove Power. It is Night: your Character has 30 Night attack and the opponent has 50. Both have Power Cost 0, so both attack values are valid.\n\nThe lower side takes the difference: 50 - 30 = 20, so your HP becomes 100 - 20 = 80. You lost this battle, so you may play up to 2 cards next turn. Click “Confirm.”',
+    'The “-20” on the battlefield is damage, not a card cost, and it does not remove Power. It is Night: your Character has 30 Night attack and the opponent has 50. Both have Power Cost 0, so both attack values are valid.\n\nThe lower side takes the difference: 50 - 30 = 20, so your HP becomes 100 - 20 = 80. You lost this battle, so you may play up to 2 cards next turn. The tutorial advances to turn end when the damage animation finishes.',
   'tutorial.game.hpCalc.turn2.title': 'Effect Conditions and HP Calculation',
   'tutorial.game.hpCalc.turn2.body':
-    'It is Day. Your Character has 80 Day attack and the Area Enchant in Zone C adds 20: 80 + 20 = 100. The opponent’s Enchant boosts attack only if your Character has Power Cost 0 or 1. Yours has 2, so that condition fails and the opponent stays at 30.\n\nThe result is 100 versus 30: 100 - 30 = 70, so the opponent’s HP becomes 100 - 70 = 30. Meeting Power Cost and meeting an effect’s written condition are separate checks. Click “Confirm.”',
+    'It is Day. Your Character has 80 Day attack and the Area Enchant in Zone C adds 20: 80 + 20 = 100. The opponent’s Enchant boosts attack only if your Character has Power Cost 0 or 1. Yours has 2, so that condition fails and the opponent stays at 30.\n\nThe result is 100 versus 30: 100 - 30 = 70, so the opponent’s HP becomes 100 - 70 = 30. Meeting Power Cost and meeting an effect’s written condition are separate checks. The tutorial advances automatically when the damage animation finishes.',
+  'tutorial.game.resolutionPlaying': 'Playing battlefield resolution…',
   'tutorial.game.powerCharging.title': 'Power Charger',
   'tutorial.game.powerCharging.body':
     'The highlighted Power Charger now contains the replaced Character. Its SEND TO POWER is 2, so your current Power total is 2.\n\nThe new Character also has Power Cost 2, so 2 ≥ 2 and its attack and effects work normally. Power Cost checks a threshold only; attacking or activating effects does not spend this 2 Power.',

@@ -216,6 +216,7 @@ export const ja: Record<TranslationKey, string> = {
 
   'lobby.aiBattle': 'コンピュータ対戦',
   'lobby.createRoom': 'ルーム作成',
+  'lobby.createPublicRoom': '公開ルームを作成',
   'lobby.joinRoom': 'ルーム参加',
   'lobby.deckEditor': 'デッキエディタ',
   'lobby.matchHistory': '対戦履歴',
@@ -246,6 +247,12 @@ export const ja: Record<TranslationKey, string> = {
   'lobby.guestRank': 'ゲスト',
   'lobby.beginMatch': 'マッチ開始',
   'lobby.customRooms': 'カスタムルーム',
+  'lobby.availableRooms': '参加可能なルーム',
+  'lobby.availableRoomsHint': '対戦相手を待っている公開ルーム',
+  'lobby.refreshRooms': 'ルーム一覧を更新',
+  'lobby.loadingRooms': 'ルームを同期中...',
+  'lobby.availableRoomsEmpty': '現在待機中のルームはありません',
+  'lobby.availableRoomsUnavailable': 'ルーム一覧を一時的に取得できません',
   'lobby.noDeckSelected': 'デッキ未選択',
   'lobby.loginRequired': 'ログインが必要です',
   'presence.currentOnline': '現在オンライン',
@@ -689,6 +696,8 @@ export const ja: Record<TranslationKey, string> = {
   'online.reloadAction': '再読み込み',
   'online.createNewRoom': '新しいルームを作成',
   'online.creatingRoom': '作成中...',
+  'online.rematchPreparing': '同じ相手との再戦を準備しています...',
+  'online.rematchFailed': '再戦を開始できませんでした。もう一度試すか、新しいルームを作成してください。',
   'online.createRoomFailed': '新しいルームを作成できません。あとでもう一度お試しください。',
   'online.watchMatch': '観戦',
   'online.leaveRoom': 'ルームを退出',
@@ -701,7 +710,7 @@ export const ja: Record<TranslationKey, string> = {
   'online.roomReadyHelper': '相手が参加しました。対戦を準備しています。',
   'online.shareReconnectHint': '相手に共有できます。あとで再接続にも使えます。',
   'online.copySuccessHelp': 'リンクをコピーしました。相手に貼り付けてください。',
-  'online.gameOverHelper': 'オンライン対戦は終了しました。ロビーへ戻るか、新しいルームを作成できます。',
+  'online.gameOverHelper': '同じ相手と再戦するか、ロビーへ戻るか、新しいルームを作成できます。',
 
   'network.offlineTitle': 'ネットワークがオフラインです',
   'network.offlineBody': '接続できません。オンライン対戦は復帰後に再試行します。',
@@ -1204,19 +1213,20 @@ export const ja: Record<TranslationKey, string> = {
     '前の章で準備が完了しました。あなたは夜側、双方のHPは100、クロノスは0（真夜中）から開始します。双方が初期カード1枚をバトルゾーンへ裏向きで置き、今は同時に公開されてキャラクターになっています。\n\nここで準備は終了です。まだ次のカードは出さず、「クロノス進行→効果と攻撃力比較→HP減少→ターン終了ドロー」の順で第1ターンを処理します。「次へ」でクロノス進行を確認してください。',
   'tutorial.game.clockAdvance.title': '時計推進',
   'tutorial.game.clockAdvance.body':
-    'ハイライトされた通知が今回の計算です。あなたの初期キャラクターの時計は2、相手は1です。準備中に非キャラクターを公開していないので追加分はなく、2 + 1 = 3です。\n\nクロノスは0から3へ進み、位置3は夜です。双方は夜攻撃力を使い、夜側のあなたが効果を先に処理します。通知の「確認」をクリックしてください。',
+    '盤面のアニメーションが今回の時計元を順番に表示します。あなたの初期キャラクターの時計は2、相手は1です。準備中に非キャラクターを公開していないので追加分はなく、2 + 1 = 3です。\n\nクロノスは3マス進んで夜側に止まります。双方は夜攻撃力を使い、夜側のあなたが効果を先に処理します。アニメーション終了後、自動的に次の処理へ進みます。',
   'tutorial.game.revealClock.title': '同時公開と時計の進行',
   'tutorial.game.revealClock.body':
-    '双方が確定するとカードを同時に公開します。あなたのキャラクターは時計1、エリアエンチャントは2、相手のエンチャントは4なので、1 + 2 + 4 = 7です。\n\nクロノスは3から3 + 7 = 10へ進み、位置10は昼です。新キャラクターは昼攻撃力を使い、エリアエンチャントの昼条件も成立します。通知の「確認」をクリックしてください。',
+    '双方が確定するとカードを同時に公開します。あなたのキャラクターは時計1、エリアエンチャントは2、相手のエンチャントは4なので、1 + 2 + 4 = 7です。\n\n盤面のアニメーションが3枚を順番に合計し、クロノスを7マス進めて昼側に止めます。新キャラクターは昼攻撃力を使い、エリアエンチャントの昼条件も成立します。アニメーション終了後、自動的に次へ進みます。',
   'tutorial.game.characterReplacement.title': 'キャラクターの入れ替え',
   'tutorial.game.characterReplacement.body':
     'ハイライトされたバトルゾーンには新しいキャラクターが入りました。セットゾーンAから移動して以前のキャラクターと入れ替わります。同じターンに2枚出した場合も、Aゾーンのキャラクターだけが優先されます。\n\n以前のキャラクターはSEND TO POWER 2のため、次に示すチャージゾーンへ送られます。',
   'tutorial.game.hpCalc.title': 'HP計算',
   'tutorial.game.hpCalc.body':
-    '通知の「-20」はダメージであり、カードの費用でもPower消費でもありません。現在は夜で、あなたの夜攻撃力は30、相手は50です。双方ともPower Cost 0なので攻撃力は有効です。\n\n低い側が差分を受けるため、50 - 30 = 20。あなたのHPは100 - 20 = 80です。敗者になったため次のターンは最大2枚出せます。「確認」をクリックしてください。',
+    '盤面の「-20」はダメージであり、カードの費用でもPower消費でもありません。現在は夜で、あなたの夜攻撃力は30、相手は50です。双方ともPower Cost 0なので攻撃力は有効です。\n\n低い側が差分を受けるため、50 - 30 = 20。あなたのHPは100 - 20 = 80です。敗者になったため次のターンは最大2枚出せます。ダメージアニメーション終了後、自動的にターン終了へ進みます。',
   'tutorial.game.hpCalc.turn2.title': '効果条件とHP計算',
   'tutorial.game.hpCalc.turn2.body':
-    '現在は昼です。あなたの昼攻撃力80にCゾーンのエリアエンチャントが20を加え、80 + 20 = 100です。相手のエンチャントはあなたのPower Costが0か1のときだけ有効ですが、今回は2なので相手は30のままです。\n\n100 - 30 = 70ダメージとなり、相手HPは100 - 70 = 30です。Power Cost達成と効果文の条件達成は別々に確認します。「確認」をクリックしてください。',
+    '現在は昼です。あなたの昼攻撃力80にCゾーンのエリアエンチャントが20を加え、80 + 20 = 100です。相手のエンチャントはあなたのPower Costが0か1のときだけ有効ですが、今回は2なので相手は30のままです。\n\n100 - 30 = 70ダメージとなり、相手HPは100 - 70 = 30です。Power Cost達成と効果文の条件達成は別々に確認します。ダメージアニメーション終了後、自動的に次へ進みます。',
+  'tutorial.game.resolutionPlaying': '盤面の解決アニメーションを再生中…',
   'tutorial.game.powerCharging.title': 'チャージゾーン',
   'tutorial.game.powerCharging.body':
     'ハイライトされたチャージゾーンに、入れ替わったキャラクターが入りました。SEND TO POWERは2なので、現在のPower合計は2です。\n\n新しいキャラクターのPower Costも2で、2 ≥ 2を満たします。Power Costは条件確認だけで、攻撃や効果発動で2 Powerを消費しません。',

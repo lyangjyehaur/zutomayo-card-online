@@ -210,6 +210,7 @@ export const zhHK: Record<TranslationKey, string> = {
 
   'lobby.aiBattle': '同電腦打',
   'lobby.createRoom': '開房',
+  'lobby.createPublicRoom': '建立公開房間',
   'lobby.joinRoom': '加入房間',
   'lobby.deckEditor': '牌組編輯器',
   'lobby.matchHistory': '遊戲紀錄',
@@ -240,6 +241,12 @@ export const zhHK: Record<TranslationKey, string> = {
   'lobby.guestRank': '訪客',
   'lobby.beginMatch': '開始匹配',
   'lobby.customRooms': '自訂房間',
+  'lobby.availableRooms': '可加入嘅房間',
+  'lobby.availableRoomsHint': '等候中嘅公開房間',
+  'lobby.refreshRooms': '更新房間列表',
+  'lobby.loadingRooms': '正在同步房間...',
+  'lobby.availableRoomsEmpty': '暫時未有等候中嘅房間',
+  'lobby.availableRoomsUnavailable': '暫時無法取得房間列表',
   'lobby.noDeckSelected': '尚未選擇牌組',
   'lobby.loginRequired': '登入後方可配對',
   'presence.currentOnline': '當前在線人數',
@@ -679,6 +686,8 @@ export const zhHK: Record<TranslationKey, string> = {
   'online.reloadAction': '重新載入',
   'online.createNewRoom': '開新房',
   'online.creatingRoom': '開房中...',
+  'online.rematchPreparing': '準備緊同一位對手再戰...',
+  'online.rematchFailed': '未能開始再戰，請重試或者開新房。',
   'online.createRoomFailed': '開唔到新房，請稍後再試。',
   'online.watchMatch': '觀戰',
   'online.leaveRoom': '離開房間',
@@ -691,7 +700,7 @@ export const zhHK: Record<TranslationKey, string> = {
   'online.roomReadyHelper': '對手已加入，正在準備開始對戰。',
   'online.shareReconnectHint': '可分享畀對手，之後亦可用嚟重新連線。',
   'online.copySuccessHelp': '連結已複製，可以貼畀對手。',
-  'online.gameOverHelper': '綫上對戰已結束。可以返大廳或者開新房再打一局。',
+  'online.gameOverHelper': '可以同一位對手再戰、返大廳，或者開另一間房。',
 
   'network.offlineTitle': '網絡已離線',
   'network.offlineBody': '目前無法連線。綫上對戰會喺恢復連線後繼續嘗試。',
@@ -1166,19 +1175,20 @@ export const zhHK: Record<TranslationKey, string> = {
     '上一章已完成戰鬥準備：你係夜側玩家，雙方 HP 都係 100，Chronos 由 0（真夜中）開始；雙方各將 1 張初始卡蓋放到戰鬥區，並已同時翻開為角色卡。\n\n準備階段到此結束。接落嚟唔再出牌，而係依次結算第 1 回合嘅「推進 Chronos → 處理效果同比較攻擊力 → 扣除 HP → 回合末抽牌」。撳「下一頁」，先睇 Chronos 點樣推進。',
   'tutorial.game.clockAdvance.title': '時鐘推進',
   'tutorial.game.clockAdvance.body':
-    '高亮通知顯示今次推進結果。你嘅初始角色時鐘係 2，對手係 1；準備階段冇翻開非角色卡，所以冇額外時鐘。合計係 2 + 1 = 3。\n\nChronos 由 0 推進到 3，而位置 3 屬於夜。之後雙方使用角色嘅夜攻擊力，並由夜側嘅你先處理效果。請撳通知中嘅「確認」。',
+    '場上動畫會依次顯示今次嘅時計來源。你嘅初始角色時計係 2，對手係 1；準備階段冇翻開非角色卡，所以冇額外時計。合計係 2 + 1 = 3。\n\nChronos 會向前推進 3 格並停喺夜側。之後雙方使用角色嘅夜攻擊力，並由夜側嘅你先處理效果；動畫播放完成後會自動繼續結算。',
   'tutorial.game.hpCalc.title': 'HP 計算',
   'tutorial.game.revealClock.title': '同時公開同時間推進',
   'tutorial.game.revealClock.body':
-    '雙方確認後，設置區嘅卡同時公開。你嘅角色時鐘係 1、區域附魔係 2，對手附魔係 4，所以本回合推進量係 1 + 2 + 4 = 7。\n\nChronos 原本喺 3，推進後係 3 + 7 = 10；位置 10 屬於晝。新角色會使用晝攻擊力，亦滿足區域附魔嘅晝條件。請撳通知中嘅「確認」。',
+    '雙方確認後，設置區嘅卡同時公開。你嘅角色時計係 1、區域附魔係 2，對手附魔係 4，所以本回合推進量係 1 + 2 + 4 = 7。\n\n場上動畫會依次彙總三張卡並令 Chronos 向前推進 7 格，最後停喺晝側。新角色會使用晝攻擊力，亦滿足區域附魔嘅晝條件；動畫播放完成後會自動進入下一步。',
   'tutorial.game.characterReplacement.title': '角色替換',
   'tutorial.game.characterReplacement.body':
     '高亮嘅戰鬥區已換上本回合新角色：佢由設置區 A 移入並取代舊角色。若同回合打出 2 張角色，只有 A 區角色有呢項優先權。\n\n被替換嘅舊角色有 SEND TO POWER 2，所以下一步會進入充能區，而唔係深淵。',
   'tutorial.game.hpCalc.body':
-    '高亮通知中嘅「-20」係本回合受到嘅傷害，唔係卡牌費用，亦唔會扣除 Power。而家係夜：你嘅角色夜攻擊力係 30，對手係 50；兩張角色嘅 Power Cost 都係 0，所以攻擊力都有效。\n\n較低一方承受差值：50 - 30 = 20，所以你嘅 HP 由 100 - 20 = 80。你係本回合落敗方，下一回合最多可打出 2 張卡。請撳「確認」。',
+    '場上嘅「-20」係本回合受到嘅傷害，唔係卡牌費用，亦唔會扣除 Power。而家係夜：你嘅角色夜攻擊力係 30，對手係 50；兩張角色嘅 Power Cost 都係 0，所以攻擊力都有效。\n\n較低一方承受差值：50 - 30 = 20，所以你嘅 HP 由 100 - 20 = 80。你係本回合落敗方，下一回合最多可打出 2 張卡；傷害動畫播放完成後會自動進入回合末。',
   'tutorial.game.hpCalc.turn2.title': '條件效果同 HP 計算',
   'tutorial.game.hpCalc.turn2.body':
-    '而家係晝。你嘅角色晝攻擊力係 80，C 區區域附魔再加 20，所以係 80 + 20 = 100。對手附魔只喺你嘅角色 Power Cost 為 0 或 1 時強化攻擊；你嘅角色係 2，條件唔成立，所以對手維持 30。\n\n結果係 100 對 30：100 - 30 = 70，對手 HP 由 100 - 70 = 30。Power Cost 達標同效果文字條件係兩項唔同嘅檢查。請撳「確認」。',
+    '而家係晝。你嘅角色晝攻擊力係 80，C 區區域附魔再加 20，所以係 80 + 20 = 100。對手附魔只喺你嘅角色 Power Cost 為 0 或 1 時強化攻擊；你嘅角色係 2，條件唔成立，所以對手維持 30。\n\n結果係 100 對 30：100 - 30 = 70，對手 HP 由 100 - 70 = 30。Power Cost 達標同效果文字條件係兩項唔同嘅檢查；傷害動畫播放完成後會自動進入下一步。',
+  'tutorial.game.resolutionPlaying': '正在播放場上結算動畫…',
   'tutorial.game.powerCharging.title': '充能區',
   'tutorial.game.powerCharging.body':
     '高亮嘅充能區而家放入被替換嘅舊角色。佢嘅 SEND TO POWER 係 2，所以目前 Power 總量係 2。\n\n新角色嘅 Power Cost 亦係 2，所以 2 ≥ 2，攻擊力同效果可以正常使用。Power Cost 只檢查門檻；攻擊或發動效果唔會消耗呢 2 Power。',

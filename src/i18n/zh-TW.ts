@@ -208,6 +208,7 @@ export const zhTW = {
 
   'lobby.aiBattle': '與電腦對戰',
   'lobby.createRoom': '創建房間',
+  'lobby.createPublicRoom': '建立公開房間',
   'lobby.joinRoom': '加入房間',
   'lobby.deckEditor': '牌組編輯器',
   'lobby.matchHistory': '對戰紀錄',
@@ -238,6 +239,12 @@ export const zhTW = {
   'lobby.guestRank': '訪客',
   'lobby.beginMatch': '開始匹配',
   'lobby.customRooms': '自訂房間',
+  'lobby.availableRooms': '可加入房間',
+  'lobby.availableRoomsHint': '等待中的公開房間',
+  'lobby.refreshRooms': '更新房間列表',
+  'lobby.loadingRooms': '正在同步房間...',
+  'lobby.availableRoomsEmpty': '暫時沒有等待中的房間',
+  'lobby.availableRoomsUnavailable': '暫時無法取得房間列表',
   'lobby.noDeckSelected': '尚未選擇牌組',
   'lobby.loginRequired': '登入後方可配對',
   'presence.currentOnline': '當前在線人數',
@@ -677,6 +684,8 @@ export const zhTW = {
   'online.reloadAction': '重新載入',
   'online.createNewRoom': '建立新房間',
   'online.creatingRoom': '建立中...',
+  'online.rematchPreparing': '正在準備與同一位對手再戰...',
+  'online.rematchFailed': '無法開始再戰，請重試或建立新房間。',
   'online.createRoomFailed': '無法建立新房間，請稍後再試。',
   'online.watchMatch': '觀戰',
   'online.leaveRoom': '離開房間',
@@ -689,7 +698,7 @@ export const zhTW = {
   'online.roomReadyHelper': '對手已加入，正在準備開始對戰。',
   'online.shareReconnectHint': '可分享給對手，也可日後用來重新連線。',
   'online.copySuccessHelp': '連結已複製，可貼給對手。',
-  'online.gameOverHelper': '線上對戰已結束。可回大廳或建立新房間再打一局。',
+  'online.gameOverHelper': '可與同一位對手再戰、返回大廳，或建立其他房間。',
 
   'network.offlineTitle': '網路已離線',
   'network.offlineBody': '目前無法連線。線上對戰會在恢復連線後繼續嘗試。',
@@ -1163,19 +1172,20 @@ export const zhTW = {
     '上一章已完成戰鬥準備：你是夜側玩家，雙方 HP 都是 100，Chronos 從 0（真夜中）開始；雙方各將 1 張初始卡蓋放到戰鬥區，並已同時翻開為角色卡。\n\n準備階段到此結束。接下來不再出牌，而是依序結算第 1 回合的「推進 Chronos → 處理效果與比較攻擊力 → 扣除 HP → 回合末抽牌」。點擊「下一頁」，先看 Chronos 如何推進。',
   'tutorial.game.clockAdvance.title': '時鐘推進',
   'tutorial.game.clockAdvance.body':
-    '高亮通知顯示這次的推進結果。你的初始角色時鐘是 2，對手的是 1；準備階段沒有翻開非角色卡，因此沒有額外時鐘。合計為 2 + 1 = 3。\n\nChronos 從 0 推進到 3，而位置 3 屬於夜。接下來雙方使用角色的夜攻擊力，且由夜側的你先處理效果。請點擊通知中的「確認」繼續結算。',
+    '場上動畫會依序顯示這次的時計來源。你的初始角色時計是 2，對手的是 1；準備階段沒有翻開非角色卡，因此沒有額外時計。合計為 2 + 1 = 3。\n\nChronos 會向前推進 3 格並停在夜側。接下來雙方使用角色的夜攻擊力，且由夜側的你先處理效果；動畫播放完成後會自動繼續結算。',
   'tutorial.game.revealClock.title': '同時公開與時間推進',
   'tutorial.game.revealClock.body':
-    '雙方確認後，設置區的卡同時公開。你的角色時鐘是 1、區域附魔是 2，對手附魔是 4，所以本回合推進量為 1 + 2 + 4 = 7。\n\nChronos 原本在 3，推進後是 3 + 7 = 10；位置 10 屬於晝。這使你的新角色使用晝攻擊力，也滿足區域附魔的晝條件。請點擊通知中的「確認」。',
+    '雙方確認後，設置區的卡同時公開。你的角色時計是 1、區域附魔是 2，對手附魔是 4，所以本回合推進量為 1 + 2 + 4 = 7。\n\n場上動畫會依序彙總三張卡並讓 Chronos 向前推進 7 格，最後停在晝側。這使你的新角色使用晝攻擊力，也滿足區域附魔的晝條件；動畫播放完成後會自動進入下一步。',
   'tutorial.game.characterReplacement.title': '角色替換',
   'tutorial.game.characterReplacement.body':
     '高亮的戰鬥區已換上本回合的新角色：它從設置區 A 移入並取代舊角色。若同回合打出 2 張角色，只有 A 區的角色具有這項優先權。\n\n被替換的舊角色不會留在戰鬥區；它有 SEND TO POWER 2，因此下一步會進入充能區，而不是深淵。',
   'tutorial.game.hpCalc.title': 'HP 計算',
   'tutorial.game.hpCalc.body':
-    '高亮通知中的「-20」是本回合受到的傷害，不是卡牌費用，也不會扣除 Power。現在是夜：你的角色夜攻擊力是 30，對手是 50；兩張角色的 Power Cost 都是 0，因此攻擊力都有效。\n\n攻擊力較低的一方承受差值：50 - 30 = 20，所以你的 HP 從 100 - 20 = 80。你是本回合落敗方，下一回合最多可以打出 2 張卡。請點擊「確認」。',
+    '場上的「-20」是本回合受到的傷害，不是卡牌費用，也不會扣除 Power。現在是夜：你的角色夜攻擊力是 30，對手是 50；兩張角色的 Power Cost 都是 0，因此攻擊力都有效。\n\n攻擊力較低的一方承受差值：50 - 30 = 20，所以你的 HP 從 100 - 20 = 80。你是本回合落敗方，下一回合最多可以打出 2 張卡；傷害動畫播放完成後會自動進入回合末。',
   'tutorial.game.hpCalc.turn2.title': '條件效果與 HP 計算',
   'tutorial.game.hpCalc.turn2.body':
-    '現在是晝。你的角色晝攻擊力是 80，C 區的區域附魔再加 20，所以是 80 + 20 = 100。對手附魔只在你的角色 Power Cost 為 0 或 1 時強化攻擊；你的角色是 2，條件不成立，因此對手維持 30。\n\n比較結果是 100 對 30：100 - 30 = 70，對手 HP 從 100 - 70 = 30。這也示範了 Power Cost 達標與效果文字條件是兩項不同的檢查。請點擊「確認」。',
+    '現在是晝。你的角色晝攻擊力是 80，C 區的區域附魔再加 20，所以是 80 + 20 = 100。對手附魔只在你的角色 Power Cost 為 0 或 1 時強化攻擊；你的角色是 2，條件不成立，因此對手維持 30。\n\n比較結果是 100 對 30：100 - 30 = 70，對手 HP 從 100 - 70 = 30。這也示範了 Power Cost 達標與效果文字條件是兩項不同的檢查；傷害動畫播放完成後會自動進入下一步。',
+  'tutorial.game.resolutionPlaying': '正在播放場上結算動畫…',
   'tutorial.game.powerCharging.title': '充能區',
   'tutorial.game.powerCharging.body':
     '高亮的充能區現在放入了被替換的舊角色。它的 SEND TO POWER 是 2，因此目前 Power 總量為 2。\n\n新角色的 Power Cost 也是 2，所以 2 ≥ 2，攻擊力與效果可以正常使用。Power Cost 只檢查門檻；攻擊或發動效果不會消耗這 2 Power。',

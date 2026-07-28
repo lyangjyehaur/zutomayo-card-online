@@ -210,6 +210,7 @@ export const zhCN: Record<TranslationKey, string> = {
 
   'lobby.aiBattle': '与电脑对战',
   'lobby.createRoom': '创建房间',
+  'lobby.createPublicRoom': '创建公开房间',
   'lobby.joinRoom': '加入房间',
   'lobby.deckEditor': '牌组编辑器',
   'lobby.matchHistory': '对战记录',
@@ -240,6 +241,12 @@ export const zhCN: Record<TranslationKey, string> = {
   'lobby.guestRank': '访客',
   'lobby.beginMatch': '开始匹配',
   'lobby.customRooms': '自定义房间',
+  'lobby.availableRooms': '可加入房间',
+  'lobby.availableRoomsHint': '等待中的公开房间',
+  'lobby.refreshRooms': '刷新房间列表',
+  'lobby.loadingRooms': '正在同步房间...',
+  'lobby.availableRoomsEmpty': '暂时没有等待中的房间',
+  'lobby.availableRoomsUnavailable': '暂时无法获取房间列表',
   'lobby.noDeckSelected': '尚未选择牌组',
   'lobby.loginRequired': '登录后方可匹配',
   'presence.currentOnline': '当前在线人数',
@@ -679,6 +686,8 @@ export const zhCN: Record<TranslationKey, string> = {
   'online.reloadAction': '重新载入',
   'online.createNewRoom': '创建新房间',
   'online.creatingRoom': '创建中...',
+  'online.rematchPreparing': '正在准备与同一位对手再战...',
+  'online.rematchFailed': '无法开始再战，请重试或创建新房间。',
   'online.createRoomFailed': '无法创建新房间，请稍后再试。',
   'online.watchMatch': '观战',
   'online.leaveRoom': '离开房间',
@@ -691,7 +700,7 @@ export const zhCN: Record<TranslationKey, string> = {
   'online.roomReadyHelper': '对手已加入，正在准备开始对战。',
   'online.shareReconnectHint': '可分享给对手，也可之后用来重新连接。',
   'online.copySuccessHelp': '链接已复制，可粘贴给对手。',
-  'online.gameOverHelper': '在线对战已结束。可回大厅或创建新房间再打一局。',
+  'online.gameOverHelper': '可与同一位对手再战、返回大厅，或创建其他房间。',
 
   'network.offlineTitle': '网络已离线',
   'network.offlineBody': '目前无法连接。在线对战会在恢复连接后继续尝试。',
@@ -1165,19 +1174,20 @@ export const zhCN: Record<TranslationKey, string> = {
     '上一章已完成战斗准备：你是夜侧玩家，双方 HP 都是 100，Chronos 从 0（真夜中）开始；双方各将 1 张初始卡盖放到战斗区，并已同时翻开为角色卡。\n\n准备阶段到此结束。接下来不再出牌，而是依序结算第 1 回合的“推进 Chronos → 处理效果与比较攻击力 → 扣除 HP → 回合末抽牌”。点击“下一页”，先看 Chronos 如何推进。',
   'tutorial.game.clockAdvance.title': '时钟推进',
   'tutorial.game.clockAdvance.body':
-    '高亮通知显示本次的推进结果。你的初始角色时钟是 2，对手的是 1；准备阶段没有翻开非角色卡，因此没有额外时钟。合计为 2 + 1 = 3。\n\nChronos 从 0 推进到 3，而位置 3 属于夜。接下来双方使用角色的夜攻击力，且由夜侧的你先处理效果。请点击通知中的“确认”继续结算。',
+    '场上动画会依次显示本次的时钟来源。你的初始角色时钟是 2，对手的是 1；准备阶段没有翻开非角色卡，因此没有额外时钟。合计为 2 + 1 = 3。\n\nChronos 会向前推进 3 格并停在夜侧。接下来双方使用角色的夜攻击力，且由夜侧的你先处理效果；动画播放完成后会自动继续结算。',
   'tutorial.game.hpCalc.title': 'HP 计算',
   'tutorial.game.revealClock.title': '同时公开与时间推进',
   'tutorial.game.revealClock.body':
-    '双方确认后，设置区的卡同时公开。你的角色时钟是 1、区域附魔是 2，对手附魔是 4，所以本回合推进量为 1 + 2 + 4 = 7。\n\nChronos 原本在 3，推进后是 3 + 7 = 10；位置 10 属于昼。这使你的新角色使用昼攻击力，也满足区域附魔的昼条件。请点击通知中的“确认”。',
+    '双方确认后，设置区的卡同时公开。你的角色时钟是 1、区域附魔是 2，对手附魔是 4，所以本回合推进量为 1 + 2 + 4 = 7。\n\n场上动画会依次汇总三张卡并让 Chronos 向前推进 7 格，最后停在昼侧。这使你的新角色使用昼攻击力，也满足区域附魔的昼条件；动画播放完成后会自动进入下一步。',
   'tutorial.game.characterReplacement.title': '角色替换',
   'tutorial.game.characterReplacement.body':
     '高亮的战斗区已换上本回合的新角色：它从设置区 A 移入并取代旧角色。若同回合打出 2 张角色，只有 A 区的角色具有这项优先权。\n\n被替换的旧角色不会留在战斗区；它有 SEND TO POWER 2，因此下一步会进入充能区，而不是深渊。',
   'tutorial.game.hpCalc.body':
-    '高亮通知中的“-20”是本回合受到的伤害，不是卡牌费用，也不会扣除 Power。现在是夜：你的角色夜攻击力是 30，对手是 50；两张角色的 Power Cost 都是 0，因此攻击力都有效。\n\n攻击力较低的一方承受差值：50 - 30 = 20，所以你的 HP 从 100 - 20 = 80。你是本回合落败方，下一回合最多可以打出 2 张卡。请点击“确认”。',
+    '场上的“-20”是本回合受到的伤害，不是卡牌费用，也不会扣除 Power。现在是夜：你的角色夜攻击力是 30，对手是 50；两张角色的 Power Cost 都是 0，因此攻击力都有效。\n\n攻击力较低的一方承受差值：50 - 30 = 20，所以你的 HP 从 100 - 20 = 80。你是本回合落败方，下一回合最多可以打出 2 张卡；伤害动画播放完成后会自动进入回合末。',
   'tutorial.game.hpCalc.turn2.title': '条件效果与 HP 计算',
   'tutorial.game.hpCalc.turn2.body':
-    '现在是昼。你的角色昼攻击力是 80，C 区的区域附魔再加 20，所以是 80 + 20 = 100。对手附魔只在你的角色 Power Cost 为 0 或 1 时强化攻击；你的角色是 2，条件不成立，因此对手维持 30。\n\n比较结果是 100 对 30：100 - 30 = 70，对手 HP 从 100 - 70 = 30。这也示范了 Power Cost 达标与效果文字条件是两项不同的检查。请点击“确认”。',
+    '现在是昼。你的角色昼攻击力是 80，C 区的区域附魔再加 20，所以是 80 + 20 = 100。对手附魔只在你的角色 Power Cost 为 0 或 1 时强化攻击；你的角色是 2，条件不成立，因此对手维持 30。\n\n比较结果是 100 对 30：100 - 30 = 70，对手 HP 从 100 - 70 = 30。这也示范了 Power Cost 达标与效果文字条件是两项不同的检查；伤害动画播放完成后会自动进入下一步。',
+  'tutorial.game.resolutionPlaying': '正在播放场上结算动画…',
   'tutorial.game.powerCharging.title': '充能区',
   'tutorial.game.powerCharging.body':
     '高亮的充能区现在放入了被替换的旧角色。它的 SEND TO POWER 是 2，因此目前 Power 总量为 2。\n\n新角色的 Power Cost 也是 2，所以 2 ≥ 2，攻击力与效果可以正常使用。Power Cost 只检查门槛；攻击或发动效果不会消耗这 2 Power。',

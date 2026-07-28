@@ -214,6 +214,7 @@ export const ko: Record<TranslationKey, string> = {
 
   'lobby.aiBattle': 'AI 연습',
   'lobby.createRoom': '방 만들기',
+  'lobby.createPublicRoom': '공개 방 만들기',
   'lobby.joinRoom': '방 참가',
   'lobby.deckEditor': '덱 에디터',
   'lobby.matchHistory': '전투 기록',
@@ -244,6 +245,12 @@ export const ko: Record<TranslationKey, string> = {
   'lobby.guestRank': '게스트',
   'lobby.beginMatch': '매치 시작',
   'lobby.customRooms': '커스텀 방',
+  'lobby.availableRooms': '참가 가능한 방',
+  'lobby.availableRoomsHint': '상대를 기다리는 공개 방',
+  'lobby.refreshRooms': '방 목록 새로고침',
+  'lobby.loadingRooms': '방 목록 동기화 중...',
+  'lobby.availableRoomsEmpty': '현재 대기 중인 방이 없습니다',
+  'lobby.availableRoomsUnavailable': '현재 방 목록을 불러올 수 없습니다',
   'lobby.noDeckSelected': '덱 미선택',
   'lobby.loginRequired': '로그인이 필요합니다',
   'presence.currentOnline': '현재 온라인',
@@ -686,6 +693,8 @@ export const ko: Record<TranslationKey, string> = {
   'online.reloadAction': '다시 불러오기',
   'online.createNewRoom': '새 방 만들기',
   'online.creatingRoom': '만드는 중...',
+  'online.rematchPreparing': '같은 상대와의 재대전을 준비하는 중...',
+  'online.rematchFailed': '재대전을 시작하지 못했습니다. 다시 시도하거나 새 방을 만들어 주세요.',
   'online.createRoomFailed': '새 방을 만들 수 없습니다. 나중에 다시 시도하세요.',
   'online.watchMatch': '관전',
   'online.leaveRoom': '방 나가기',
@@ -698,7 +707,7 @@ export const ko: Record<TranslationKey, string> = {
   'online.roomReadyHelper': '상대가 참가했습니다. 대전을 준비 중입니다.',
   'online.shareReconnectHint': '상대에게 공유하거나 나중에 재연결할 때 사용할 수 있습니다.',
   'online.copySuccessHelp': '링크가 복사되었습니다. 상대에게 붙여넣으세요.',
-  'online.gameOverHelper': '온라인 대전이 끝났습니다. 로비로 돌아가거나 새 방을 만들 수 있습니다.',
+  'online.gameOverHelper': '같은 상대와 다시 대전하거나 로비로 돌아가거나 새 방을 만들 수 있습니다.',
 
   'network.offlineTitle': '네트워크 오프라인',
   'network.offlineBody': '현재 연결할 수 없습니다. 온라인 대전은 연결 복구 후 계속 시도합니다.',
@@ -1197,19 +1206,20 @@ export const ko: Record<TranslationKey, string> = {
     '이전 장에서 준비를 마쳤습니다. 당신은 야간 측이고 양쪽 HP는 100, 크로노스는 0(한밤중)에서 시작합니다. 양쪽이 초기 카드 1장을 배틀 존에 뒷면으로 놓았고 지금은 동시에 공개되어 캐릭터가 되었습니다.\n\n준비는 여기서 끝입니다. 아직 새 카드를 내지 않고 「크로노스 진행→효과와 공격력 비교→HP 감소→턴 종료 드로우」 순서로 첫 턴을 처리합니다. 「다음」을 눌러 크로노스 진행을 확인하세요.',
   'tutorial.game.clockAdvance.title': '시계 추진',
   'tutorial.game.clockAdvance.body':
-    '강조된 알림이 이번 계산을 보여 줍니다. 당신의 초기 캐릭터 시계는 2, 상대는 1입니다. 준비 중 비캐릭터를 공개하지 않았으므로 추가 값 없이 2 + 1 = 3입니다.\n\n크로노스는 0에서 3으로 진행하고 위치 3은 야간입니다. 양쪽은 야간 공격력을 사용하며 야간 측인 당신이 효과를 먼저 처리합니다. 알림의 「확인」을 클릭하세요.',
+    '필드 애니메이션이 이번 시계 원천을 순서대로 보여 줍니다. 당신의 초기 캐릭터 시계는 2, 상대는 1입니다. 준비 중 비캐릭터를 공개하지 않았으므로 추가 값 없이 2 + 1 = 3입니다.\n\n크로노스는 3칸 진행해 야간 측에 멈춥니다. 양쪽은 야간 공격력을 사용하며 야간 측인 당신이 효과를 먼저 처리합니다. 애니메이션이 끝나면 자동으로 다음 처리로 진행합니다.',
   'tutorial.game.revealClock.title': '동시 공개와 시계 진행',
   'tutorial.game.revealClock.body':
-    '양쪽이 확정하면 카드를 동시에 공개합니다. 당신의 캐릭터 시계는 1, 에리어 인챈트는 2, 상대 인챈트는 4이므로 1 + 2 + 4 = 7입니다.\n\n크로노스는 3에서 3 + 7 = 10으로 진행하며 위치 10은 주간입니다. 새 캐릭터는 주간 공격력을 사용하고 에리어 인챈트의 주간 조건도 성립합니다. 알림의 「확인」을 클릭하세요.',
+    '양쪽이 확정하면 카드를 동시에 공개합니다. 당신의 캐릭터 시계는 1, 에리어 인챈트는 2, 상대 인챈트는 4이므로 1 + 2 + 4 = 7입니다.\n\n필드 애니메이션이 세 카드를 순서대로 합산하고 크로노스를 7칸 진행해 주간 측에 멈춥니다. 새 캐릭터는 주간 공격력을 사용하고 에리어 인챈트의 주간 조건도 성립합니다. 애니메이션이 끝나면 자동으로 다음 단계로 진행합니다.',
   'tutorial.game.characterReplacement.title': '캐릭터 교체',
   'tutorial.game.characterReplacement.body':
     '강조된 배틀 존에 새 캐릭터가 들어왔습니다. 세트 존 A에서 이동해 이전 캐릭터를 교체합니다. 같은 턴에 캐릭터 2장을 냈어도 A 존의 캐릭터만 우선합니다.\n\n교체된 캐릭터는 SEND TO POWER 2이므로 다음에 강조되는 충전 구역으로 이동합니다.',
   'tutorial.game.hpCalc.title': 'HP 계산',
   'tutorial.game.hpCalc.body':
-    '알림의 「-20」은 피해이며 카드 비용이나 Power 감소가 아닙니다. 현재는 야간으로 당신의 야간 공격력은 30, 상대는 50입니다. 두 캐릭터 모두 Power Cost 0이라 공격력이 유효합니다.\n\n낮은 쪽이 차이를 받으므로 50 - 30 = 20, 당신의 HP는 100 - 20 = 80입니다. 이 전투의 패자가 되어 다음 턴에 최대 2장을 낼 수 있습니다. 「확인」을 클릭하세요.',
+    '필드의 「-20」은 피해이며 카드 비용이나 Power 감소가 아닙니다. 현재는 야간으로 당신의 야간 공격력은 30, 상대는 50입니다. 두 캐릭터 모두 Power Cost 0이라 공격력이 유효합니다.\n\n낮은 쪽이 차이를 받으므로 50 - 30 = 20, 당신의 HP는 100 - 20 = 80입니다. 이 전투의 패자가 되어 다음 턴에 최대 2장을 낼 수 있습니다. 피해 애니메이션이 끝나면 자동으로 턴 종료로 진행합니다.',
   'tutorial.game.hpCalc.turn2.title': '효과 조건과 HP 계산',
   'tutorial.game.hpCalc.turn2.body':
-    '현재는 주간입니다. 당신의 주간 공격력 80에 C 존 에리어 인챈트가 20을 더해 80 + 20 = 100입니다. 상대 인챈트는 당신의 Power Cost가 0 또는 1일 때만 유효하지만 이번에는 2라 상대는 30을 유지합니다.\n\n100 - 30 = 70 피해로 상대 HP는 100 - 70 = 30입니다. Power Cost 충족과 효과 문구 조건 충족은 별도 검사입니다. 「확인」을 클릭하세요.',
+    '현재는 주간입니다. 당신의 주간 공격력 80에 C 존 에리어 인챈트가 20을 더해 80 + 20 = 100입니다. 상대 인챈트는 당신의 Power Cost가 0 또는 1일 때만 유효하지만 이번에는 2라 상대는 30을 유지합니다.\n\n100 - 30 = 70 피해로 상대 HP는 100 - 70 = 30입니다. Power Cost 충족과 효과 문구 조건 충족은 별도 검사입니다. 피해 애니메이션이 끝나면 자동으로 다음 단계로 진행합니다.',
+  'tutorial.game.resolutionPlaying': '필드 해결 애니메이션 재생 중…',
   'tutorial.game.powerCharging.title': '충전 구역',
   'tutorial.game.powerCharging.body':
     '강조된 충전 구역에 교체된 캐릭터가 들어왔습니다. SEND TO POWER가 2이므로 현재 Power 합계는 2입니다.\n\n새 캐릭터의 Power Cost도 2라 2 ≥ 2를 충족합니다. Power Cost는 기준만 확인하며 공격하거나 효과를 발동해도 이 2 Power는 소모되지 않습니다.',

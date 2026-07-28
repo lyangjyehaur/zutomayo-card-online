@@ -188,6 +188,7 @@ export type BoardGameOverAction = {
   label: string;
   onClick: () => void;
   variant?: 'primary' | 'secondary';
+  disabled?: boolean;
 };
 
 export type BoardGameOverActions = {
@@ -219,8 +220,8 @@ type Props = BoardProps<GameState> & {
   hideSetupOverlay?: boolean;
   // 教學模式：setupFeedback 彈窗（如猜拳結果）確認按鈕點擊時的通知
   onSetupFeedbackDismiss?: () => void;
-  // 教學模式：GameNoticeOverlay 彈窗（時鐘推進、HP 計算）確認按鈕點擊時的通知
-  onNoticeDismiss?: () => void;
+  // 教學模式：場上時計／戰鬥結算動畫完整播放後通知劇本引擎推進。
+  onResolutionComplete?: () => void;
   // 教學模式：限制當前步驟可從手牌打出的卡，讓固定劇本不會因誤觸偏離。
   tutorialAllowedSetCardDefIds?: string[];
   // 教學模式：確認前必須已放置的卡（例如追趕回合要求的兩張牌）。
@@ -746,166 +747,6 @@ function renderNoticeContent(notice: GameNotice, me?: PlayerIndex): ReactNode {
   }
 }
 
-/** 教學模式下判斷 notice 是否需要手動確認（時鐘推進、HP 計算等含明細的彈框）。
- *  一般對戰一律自動消失，避免確認操作阻塞回合或結算流程。 */
-function noticeNeedsConfirm(notice: GameNotice, manualConfirm: boolean): boolean {
-  if (!manualConfirm) return false;
-  if (notice.kind === 'chronosChange') return true;
-  if (notice.kind === 'hpChange' && notice.breakdown) return true;
-  return false;
-}
-
-function GameNoticeOverlay({
-  G,
-  me,
-  onNoticeDismiss,
-  onActivityChange,
-  suppress = false,
-}: {
-  G: GameState;
-  me?: PlayerIndex;
-  onNoticeDismiss?: () => void;
-  onActivityChange?: (active: boolean) => void;
-  suppress?: boolean;
-}) {
-  const lastSeenIdRef = useRef<number>(-1);
-  const [queue, setQueue] = useState<GameNotice[]>([]);
-  const [current, setCurrent] = useState<GameNotice | null>(null);
-  const [busy, setBusy] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const manualConfirm = Boolean(onNoticeDismiss);
-
-  // 用原始型別（最後一筆 id + 數量）作為 effect 依賴，避免 boardgame.io immer/playerView
-  // 淺拷貝導致 recentGameNotices 參考比較失效的邊界情況。
-  const notices = G.recentGameNotices ?? [];
-  const lastNoticeId = notices.length > 0 ? notices[notices.length - 1].id : 0;
-  const noticeCount = notices.length;
-
-  useEffect(() => {
-    if (!suppress) return;
-    lastSeenIdRef.current = lastNoticeId;
-    setQueue([]);
-    setCurrent(null);
-    setBusy(false);
-  }, [lastNoticeId, noticeCount, suppress]);
-
-  useEffect(() => {
-    const arr = G.recentGameNotices ?? [];
-    const maxId = arr.reduce((max, n) => Math.max(max, n.id), 0);
-    if (suppress) {
-      lastSeenIdRef.current = maxId;
-      return;
-    }
-    if (lastSeenIdRef.current === -1) {
-      lastSeenIdRef.current = maxId;
-      return;
-    }
-    const newOnes = arr
-      .filter((n) => n.id > lastSeenIdRef.current)
-      .filter(
-        (notice) =>
-          manualConfirm ||
-          !(
-            notice.kind === 'chronosChange' ||
-            (notice.kind === 'hpChange' && notice.reason === 'battle') ||
-            notice.kind === 'battleResult'
-          ),
-      );
-    lastSeenIdRef.current = maxId;
-    if (newOnes.length === 0) return;
-    setBusy(true);
-    setQueue((prev) => [...prev, ...newOnes]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lastNoticeId, noticeCount, suppress]);
-
-  useEffect(() => {
-    if (current || queue.length === 0) return;
-    const next = queue[0];
-    setCurrent(next);
-    setQueue((prev) => prev.slice(1));
-  }, [current, queue]);
-
-  useEffect(() => {
-    if (!current || noticeNeedsConfirm(current, manualConfirm)) return;
-    // 一般通知依情境自動消失；進入 gameOver 時縮短最後提示，避免拖慢結算頁。
-    const timer = setTimeout(() => setCurrent(null), noticeDuration(current, G.step === 'gameOver'));
-    timerRef.current = timer;
-    return () => {
-      clearTimeout(timer);
-      if (timerRef.current === timer) timerRef.current = null;
-    };
-  }, [G.step, current, manualConfirm]);
-
-  useEffect(() => {
-    if (current || queue.length > 0) {
-      setBusy(true);
-      return;
-    }
-    const timer = setTimeout(() => setBusy(false), 0);
-    return () => clearTimeout(timer);
-  }, [current, queue]);
-
-  useEffect(() => {
-    onActivityChange?.(busy);
-  }, [busy, onActivityChange]);
-
-  const dismissCurrent = () => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-    setCurrent(null);
-    // 教學模式：通知教學引擎彈窗已確認關閉（用於 clock-advance/hp-calc 步驟推進）
-    if (current && noticeNeedsConfirm(current, manualConfirm)) {
-      onNoticeDismiss?.();
-    }
-  };
-
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
-  }, []);
-
-  if (suppress || !current) return null;
-
-  let content: ReactNode;
-  try {
-    content = renderNoticeContent(current, me);
-  } catch {
-    content = <strong>Notice render error</strong>;
-  }
-
-  const needsConfirm = noticeNeedsConfirm(current, manualConfirm);
-
-  return (
-    <div
-      className={`phase-message-overlay game-notice-overlay phase-message-${current.tone}`}
-      role="status"
-      aria-live="polite"
-    >
-      {needsConfirm && <div className="game-notice-backdrop" />}
-      <div
-        className={`phase-message-panel ${needsConfirm ? 'hp-change-confirm' : 'hp-change-float'}`}
-        data-tut="game-notice-panel"
-      >
-        {content}
-        {needsConfirm && (
-          <Button
-            className="mt-3 bg-content-primary px-6 py-2 text-caption font-medium uppercase tracking-[var(--tracking-kicker)] text-surface-base transition hover:bg-accent-primary active:scale-95"
-            type="button"
-            variant="primary"
-            size="sm"
-            onClick={dismissCurrent}
-          >
-            {t('common.confirm' as never)}
-          </Button>
-        )}
-      </div>
-    </div>
-  );
-}
-
 function TimedResolutionNotice({
   notice,
   me,
@@ -948,27 +789,40 @@ function ResolutionTimeline({
   onActivityChange,
   onBattleAnimatingChange,
   onIngestion,
+  suppress = false,
 }: {
   G: GameState;
   me?: PlayerIndex;
   onActivityChange?: (active: boolean) => void;
   onBattleAnimatingChange?: (active: boolean) => void;
   onIngestion?: (maxNoticeId: number, hasPlayback: boolean) => void;
+  suppress?: boolean;
 }) {
   const lastSeenIdRef = useRef(-1);
+  const suppressedRef = useRef(suppress);
   const [queue, setQueue] = useState<GameNotice[]>([]);
   const [current, setCurrent] = useState<GameNotice | null>(null);
   const notices = G.recentGameNotices ?? [];
   const lastNoticeId = notices.at(-1)?.id ?? 0;
   const noticeCount = notices.length;
   const hasPendingIngestion =
-    lastSeenIdRef.current === -1
+    !suppress && lastSeenIdRef.current === -1
       ? initialResolutionNotices(notices).length > 0
-      : notices.some((notice) => notice.id > lastSeenIdRef.current);
+      : !suppress && notices.some((notice) => notice.id > lastSeenIdRef.current);
 
   useEffect(() => {
     const ordered = G.recentGameNotices ?? [];
     const maxId = ordered.reduce((max, notice) => Math.max(max, notice.id), 0);
+    const resumed = suppressedRef.current && !suppress;
+    suppressedRef.current = suppress;
+    if (suppress) {
+      lastSeenIdRef.current = maxId;
+      setQueue([]);
+      setCurrent(null);
+      onIngestion?.(maxId, false);
+      return;
+    }
+    if (resumed) lastSeenIdRef.current = -1;
     if (lastSeenIdRef.current === -1) {
       lastSeenIdRef.current = maxId;
       const initial = initialResolutionNotices(ordered);
@@ -987,7 +841,7 @@ function ResolutionTimeline({
     });
     // current is intentionally excluded: notice IDs and queue state provide de-duplication.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [G.recentGameNotices, lastNoticeId, noticeCount, onIngestion]);
+  }, [G.recentGameNotices, lastNoticeId, noticeCount, onIngestion, suppress]);
 
   useEffect(() => {
     if (current || queue.length === 0) return;
@@ -1434,6 +1288,7 @@ function GameOverScreen({ G, ctx, playerID, matchID, gameOverActions, spectator 
                   type="button"
                   variant={gameOverActions.primary.variant === 'secondary' ? 'secondary' : 'primary'}
                   onClick={gameOverActions.primary.onClick}
+                  disabled={gameOverActions.primary.disabled}
                 >
                   {gameOverActions.primary.label}
                 </Button>
@@ -1443,6 +1298,7 @@ function GameOverScreen({ G, ctx, playerID, matchID, gameOverActions, spectator 
                     type="button"
                     variant={gameOverActions.secondary.variant === 'secondary' ? 'secondary' : 'primary'}
                     onClick={gameOverActions.secondary.onClick}
+                    disabled={gameOverActions.secondary.disabled}
                   >
                     {gameOverActions.secondary.label}
                   </Button>
@@ -1453,6 +1309,7 @@ function GameOverScreen({ G, ctx, playerID, matchID, gameOverActions, spectator 
                     type="button"
                     variant={gameOverActions.tertiary.variant === 'secondary' ? 'secondary' : 'primary'}
                     onClick={gameOverActions.tertiary.onClick}
+                    disabled={gameOverActions.tertiary.disabled}
                   >
                     {gameOverActions.tertiary.label}
                   </Button>
@@ -1986,7 +1843,7 @@ function BattleBoard({
   useServerTimer = false,
   opponentLabel,
   selfLabel,
-  onNoticeDismiss,
+  onResolutionComplete,
   onTutorialAction,
   tutorialMode,
   tutorialAllowedSetCardDefIds,
@@ -2009,13 +1866,17 @@ function BattleBoard({
   const me = G.players[meIndex];
   const opponent = G.players[opponentIndex];
   const [resolutionTimelineActive, setResolutionTimelineActive] = useState(false);
+  const resolutionWasActiveRef = useRef(false);
   const animationActivityRef = useRef({ board: false, battleResolution: false });
   const handleResolutionTimelineActivity = useCallback(
     (active: boolean) => {
+      const wasActive = resolutionWasActiveRef.current;
+      resolutionWasActiveRef.current = active;
       setResolutionTimelineActive(active);
       onNoticeActivityChange?.(active);
+      if (wasActive && !active) onResolutionComplete?.();
     },
-    [onNoticeActivityChange],
+    [onNoticeActivityChange, onResolutionComplete],
   );
   const reportAnimationActivity = useCallback(
     (kind: keyof typeof animationActivityRef.current, active: boolean) => {
@@ -2193,7 +2054,7 @@ function BattleBoard({
     }
     // 教學流程不使用真實倒數；一般本機與線上模式皆走同一 timeoutSkip 規則，
     // 未達最低出牌數時由規則層自動設置合法卡牌，避免 00 秒後仍可無限操作。
-    if (onNoticeDismiss) return;
+    if (tutorialMode) return;
     if (useServerTimer) {
       const now = Date.now();
       if (timeoutExpiredAtRef.current === null) timeoutExpiredAtRef.current = now;
@@ -2220,7 +2081,7 @@ function BattleBoard({
     G.ready,
     meIndex,
     moves,
-    onNoticeDismiss,
+    tutorialMode,
     retryTick,
     useServerTimer,
     awaitingPlayersKey,
@@ -2405,7 +2266,7 @@ function BattleBoard({
         time={time}
         timeLeft={timeLeft}
         timerActive={
-          !onNoticeDismiss && (useServerTimer ? awaitingPlayers.length > 0 : G.step === 'turnSet' && !G.ready[meIndex])
+          !tutorialMode && (useServerTimer ? awaitingPlayers.length > 0 : G.step === 'turnSet' && !G.ready[meIndex])
         }
         onPause={onPause}
         onPanelChange={setActiveSidePanel}
@@ -2722,23 +2583,14 @@ function BattleBoard({
         />
       )}
 
-      {onNoticeDismiss ? (
-        <GameNoticeOverlay
-          G={G}
-          me={meIndex}
-          onNoticeDismiss={onNoticeDismiss}
-          onActivityChange={handleResolutionTimelineActivity}
-          suppress={tutorialSuppressNotices}
-        />
-      ) : (
-        <ResolutionTimeline
-          G={G}
-          me={meIndex}
-          onActivityChange={handleResolutionTimelineActivity}
-          onBattleAnimatingChange={handleBattleResolutionChange}
-          onIngestion={onResolutionIngestion}
-        />
-      )}
+      <ResolutionTimeline
+        G={G}
+        me={meIndex}
+        onActivityChange={handleResolutionTimelineActivity}
+        onBattleAnimatingChange={handleBattleResolutionChange}
+        onIngestion={onResolutionIngestion}
+        suppress={tutorialSuppressNotices}
+      />
       <BattleAnimationLayer G={G} me={meIndex} onAnimatingChange={handleBoardAnimationChange} />
     </BoardLayout>
   );

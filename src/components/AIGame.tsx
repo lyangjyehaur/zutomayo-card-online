@@ -16,6 +16,8 @@ interface AIGameProps {
   onBack: () => void;
   onRematch?: () => void;
   onChooseSetup?: () => void;
+  /** 呼叫端可覆寫結算頁操作；教學等特殊流程不應退回一般 AI 的重賽動線。 */
+  gameOverActions?: BoardGameOverActions;
   deck0Name?: string;
   deck1Name?: string;
   /** 固定牌組（教學模式）：優先於 deck0Name/deck1Name */
@@ -30,7 +32,7 @@ interface AIGameProps {
   hideSetupOverlay?: boolean;
   aiPaused?: boolean;
   onSetupFeedbackDismiss?: () => void;
-  onNoticeDismiss?: () => void;
+  onResolutionComplete?: () => void;
   onTutorialAction?: (action: TutorialBoardAction, cardDefId: string) => void;
   /** 教學模式：限制目前步驟可從手牌打出的卡，避免偏離固定劇本。 */
   tutorialAllowedSetCardDefIds?: string[];
@@ -57,7 +59,7 @@ function AIBoard(
     aiPaused?: boolean;
     aiScript?: TutorialAIScript;
     onSetupFeedbackDismiss?: () => void;
-    onNoticeDismiss?: () => void;
+    onResolutionComplete?: () => void;
     onTutorialAction?: (action: TutorialBoardAction, cardDefId: string) => void;
     tutorialAllowedSetCardDefIds?: string[];
     tutorialRequiredSetCardDefIds?: string[];
@@ -77,7 +79,7 @@ function AIBoard(
     aiPaused,
     aiScript,
     onSetupFeedbackDismiss,
-    onNoticeDismiss,
+    onResolutionComplete,
     onTutorialAction,
     tutorialAllowedSetCardDefIds,
     tutorialRequiredSetCardDefIds,
@@ -170,13 +172,13 @@ function AIBoard(
       tutorialMode={tutorialMode}
       hideSetupOverlay={hideSetupOverlay}
       onSetupFeedbackDismiss={onSetupFeedbackDismiss}
-      onNoticeDismiss={onNoticeDismiss}
+      onResolutionComplete={boardProps.playerID === '0' ? onResolutionComplete : undefined}
       onTutorialAction={onTutorialAction}
       tutorialAllowedSetCardDefIds={tutorialAllowedSetCardDefIds}
       tutorialRequiredSetCardDefIds={tutorialRequiredSetCardDefIds}
       tutorialSetInteractionEnabled={tutorialSetInteractionEnabled}
       tutorialAutoReplay={tutorialAutoReplay}
-      tutorialSuppressNotices={tutorialSuppressNotices}
+      tutorialSuppressNotices={tutorialMode && boardProps.playerID !== '0' ? true : tutorialSuppressNotices}
       tutorialEffectOverlayVisible={tutorialEffectOverlayVisible}
       gameOverActions={gameOverActions}
     />
@@ -188,6 +190,7 @@ export function AIGame({
   onBack,
   onRematch,
   onChooseSetup,
+  gameOverActions,
   deck0Name,
   deck1Name,
   deck0Ids,
@@ -199,7 +202,7 @@ export function AIGame({
   hideSetupOverlay,
   aiPaused,
   onSetupFeedbackDismiss,
-  onNoticeDismiss,
+  onResolutionComplete,
   onTutorialAction,
   tutorialAllowedSetCardDefIds,
   tutorialRequiredSetCardDefIds,
@@ -220,7 +223,7 @@ export function AIGame({
     aiPaused,
     aiScript,
     onSetupFeedbackDismiss,
-    onNoticeDismiss,
+    onResolutionComplete,
     onTutorialAction,
     tutorialAllowedSetCardDefIds,
     tutorialRequiredSetCardDefIds,
@@ -232,6 +235,7 @@ export function AIGame({
     onBack,
     onRematch,
     onChooseSetup,
+    gameOverActions,
   });
   dynamicPropsRef.current = {
     difficulty,
@@ -241,7 +245,7 @@ export function AIGame({
     aiPaused,
     aiScript,
     onSetupFeedbackDismiss,
-    onNoticeDismiss,
+    onResolutionComplete,
     onTutorialAction,
     tutorialAllowedSetCardDefIds,
     tutorialRequiredSetCardDefIds,
@@ -253,6 +257,7 @@ export function AIGame({
     onBack,
     onRematch,
     onChooseSetup,
+    gameOverActions,
   };
 
   // 標記對戰模式（AI / tutorial），便於 Sentry 後台區分錯誤來源。
@@ -278,7 +283,7 @@ export function AIGame({
             aiPaused={dp.aiPaused}
             aiScript={dp.aiScript}
             onSetupFeedbackDismiss={dp.onSetupFeedbackDismiss}
-            onNoticeDismiss={dp.onNoticeDismiss}
+            onResolutionComplete={dp.onResolutionComplete}
             onTutorialAction={dp.onTutorialAction}
             tutorialAllowedSetCardDefIds={dp.tutorialAllowedSetCardDefIds}
             tutorialRequiredSetCardDefIds={dp.tutorialRequiredSetCardDefIds}
@@ -288,7 +293,8 @@ export function AIGame({
             tutorialEffectOverlayVisible={dp.tutorialEffectOverlayVisible}
             tutorialPresentationState={dp.tutorialPresentationState}
             gameOverActions={
-              !dp.tutorialMode && dp.onRematch && dp.onChooseSetup
+              dp.gameOverActions ??
+              (!dp.tutorialMode && dp.onRematch && dp.onChooseSetup
                 ? {
                     primary: { label: t('board.playAgain'), onClick: dp.onRematch },
                     secondary: {
@@ -298,7 +304,7 @@ export function AIGame({
                     },
                     tertiary: { label: t('common.backToLobby'), onClick: dp.onBack, variant: 'secondary' },
                   }
-                : undefined
+                : undefined)
             }
           />
         );

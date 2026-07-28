@@ -86,6 +86,7 @@ export function TutorialGamePage(props: TutorialGamePageProps) {
               setBattleSession(null);
               setView('hub');
             }}
+            onLobby={() => navigate('/')}
             onComplete={() => {
               markTutorialChapterComplete('flow');
               setBattleSession(null);
@@ -106,12 +107,14 @@ function TutorialBattle({
   startAtFlow,
   onPreparationReturn,
   onExit,
+  onLobby,
   onComplete,
 }: TutorialGamePageProps & {
   stopAfterPreparation: boolean;
   startAtFlow: boolean;
   onPreparationReturn: () => void;
   onExit: () => void;
+  onLobby: () => void;
   onComplete: () => void;
 }) {
   const [gameState, setGameState] = useState<GameState | null>(null);
@@ -239,11 +242,10 @@ function TutorialBattle({
     }
   }, [currentStep, jankenResultStepIndex, goNext]);
 
-  // 時鐘推進/HP 計算彈窗的確認按鈕點擊時，若教學正在對應步驟，自動推進到下一步。
-  // 用 advanceOnNoticeDismiss 旗標判斷，支援多回合重複步驟（T1/T2 各一次 clock-advance/hp-calc）。
-  const handleNoticeDismiss = useCallback(() => {
+  // 時計／戰鬥結算沿用正式場上動畫；完整播放後才推進教學步驟。
+  const handleResolutionComplete = useCallback(() => {
     const step = TUTORIAL_STEPS[currentStep];
-    if (step?.advanceOnNoticeDismiss) {
+    if (step?.advanceOnResolutionComplete) {
       goNext();
     }
   }, [currentStep, goNext]);
@@ -310,6 +312,7 @@ function TutorialBattle({
 
   const activeStep = TUTORIAL_STEPS[currentStep];
   const activePhase = activeStep?.phase ?? '';
+  const resolutionPlaybackActive = activeStep?.advanceOnResolutionComplete === true;
   const tutorialPresentationState = useMemo(
     () =>
       buildTutorialPresentationState({
@@ -367,18 +370,30 @@ function TutorialBattle({
           skipShuffle
           aiScript={tutorialFinished ? undefined : TUTORIAL_AI_SCRIPT}
           onBack={() => exitTutorial('back')}
+          gameOverActions={
+            tutorialFinished
+              ? {
+                  primary: { label: t('tutorial.game.complete.return'), onClick: completeTutorial },
+                  secondary: {
+                    label: t('common.backToLobby'),
+                    onClick: onLobby,
+                    variant: 'secondary',
+                  },
+                }
+              : undefined
+          }
           onGameStateChange={handleGameStateChange}
           tutorialMode={!tutorialFinished}
           hideSetupOverlay={!tutorialFinished && (autoPreparing || hideSetupOverlay)}
           aiPaused={!tutorialFinished && aiPaused}
           onSetupFeedbackDismiss={tutorialFinished ? undefined : handleSetupFeedbackDismiss}
-          onNoticeDismiss={tutorialFinished ? undefined : handleNoticeDismiss}
+          onResolutionComplete={tutorialFinished ? undefined : handleResolutionComplete}
           onTutorialAction={tutorialFinished ? undefined : handleTutorialAction}
           tutorialAllowedSetCardDefIds={tutorialFinished ? undefined : tutorialAllowedSetCards}
           tutorialRequiredSetCardDefIds={tutorialFinished ? undefined : tutorialRequiredSetCards}
           tutorialSetInteractionEnabled={tutorialFinished || tutorialSetInteractionEnabled}
           tutorialAutoReplay={!tutorialFinished ? (replayTarget ?? undefined) : undefined}
-          tutorialSuppressNotices={!tutorialFinished && (replayTarget === 'turn2' || replayTarget === 'effects')}
+          tutorialSuppressNotices={!tutorialFinished && !resolutionPlaybackActive}
           tutorialEffectOverlayVisible={tutorialFinished ? undefined : activePhase === 'effectOrder-action'}
           tutorialPresentationState={tutorialFinished ? undefined : tutorialPresentationState}
         />

@@ -995,7 +995,7 @@
 }
 
 .chronosdial-slot-inner {
-  width: var(--chronos-slot-size);
+  width: 100%;
   aspect-ratio: 1;
   border-radius: 50%;
   overflow: visible;
@@ -1008,13 +1008,22 @@
 }
 
 .chronosdial[data-selectable='true'] .chronosdial-slot {
-  width: max(var(--touch-target-min), var(--chronos-slot-size));
   border: 0;
   padding: 0;
   background: transparent;
   color: inherit;
   cursor: pointer;
   pointer-events: auto;
+}
+
+.chronosdial[data-selectable='true'] .chronosdial-slot::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: max(var(--touch-target-min), 100%);
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
 }
 
 .chronosdial[data-selectable='true'] .chronosdial-slot:hover .chronosdial-slot-inner,
