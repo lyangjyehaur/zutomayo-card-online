@@ -91,10 +91,11 @@ export function hasUnknownOpponentCommitment(knowledge: AIKnowledgeState): boole
 export function sampleUnknownState(
   knowledge: AIKnowledgeState,
   decisionSeed: string | number,
-  planToken: string,
   sampleIndex: number,
 ): AIKnowledgeState {
-  const seed = `${decisionSeed}|${knowledge.visibleStateKey}|${planToken}|${sampleIndex}`;
+  // Every candidate in one decision must face the same sampled hidden world.
+  // Including the candidate token here would make plan scores incomparable.
+  const seed = `${decisionSeed}|${knowledge.visibleStateKey}|world|${sampleIndex}`;
   const game = structuredClone(knowledge.game) as GameState;
 
   const ownDefinitions = seededShuffle(knowledge.knownOwnDeckDefIds, createSeededRng(`${seed}|own-deck`));

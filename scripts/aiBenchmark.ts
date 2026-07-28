@@ -315,16 +315,21 @@ export function playAIMatch(options: AIMatchOptions, samples: DecisionSample[]):
       );
       actions++;
     } else if (G.step === 'initialSet' || G.step === 'turnSet') {
-      for (const player of [0, 1] as const) {
-        if (G.step !== 'initialSet' && G.step !== 'turnSet') break;
-        if (G.ready[player]) continue;
-        const placementStep: 'initialSet' | 'turnSet' = G.step;
-        const difficulty = options.difficulties[player];
-        const decision = aiPlanTurn(G, player, difficulty, {
-          seed: matchDecisionSeed(options.seed, G, player, actions),
+      const placementStep: 'initialSet' | 'turnSet' = G.step;
+      const plans = ([0, 1] as const)
+        .filter((player) => !G.ready[player])
+        .map((player) => {
+          const difficulty = options.difficulties[player];
+          const decision = aiPlanTurn(G, player, difficulty, {
+            seed: matchDecisionSeed(options.seed, G, player, actions),
+          });
+          recordDecision(samples, player, difficulty, decision);
+          assert.ok(decision.action.selections.length > 0, `AI returned an empty required plan for player ${player}`);
+          return { player, decision };
         });
-        recordDecision(samples, player, difficulty, decision);
-        assert.ok(decision.action.selections.length > 0, `AI returned an empty required plan for player ${player}`);
+      // Both players choose from the same pre-commit state. Applying player 0
+      // first must not give player 1 extra hidden information in the benchmark.
+      for (const { player, decision } of plans) {
         for (const selection of decision.action.selections) {
           const handIndex = G.players[player].hand.findIndex((card) => card.instanceId === selection.cardInstanceId);
           assert.notEqual(handIndex, -1, `planned card ${selection.cardInstanceId} is no longer in hand`);
@@ -335,6 +340,8 @@ export function playAIMatch(options: AIMatchOptions, samples: DecisionSample[]):
           assert.equal(placed, true, `planned ${selection.slot} placement rejected for player ${player}`);
           actions++;
         }
+      }
+      for (const { player } of plans) {
         assert.equal(confirmReady(G, player, options.parsedEffects), true, `ready rejected for player ${player}`);
         actions++;
       }

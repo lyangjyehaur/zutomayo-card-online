@@ -30,6 +30,7 @@
 
 ### Changed
 
+- **AI 困難策略**：所有候選改在相同的未知牌樣本與合法對手回應下比較；起手重抽會抽樣剩餘牌組，效果與指定選擇會延伸結算，且不可支付的卡牌效果不再取得策略分數。
 - **新卡維護流程**：未收錄卡牌從管理後台建立時預設為 `unlisted + draft + disabled`，需人工補齊來源、文本、狀態與翻譯複核後才能發布；卡圖欄位只保存待審 URL，不會由後台自動上傳 R2。
 - **新卡部署順序**：Server4 在 migration 後先串流並發布已複核增量卡，再執行核心 422 張資料的衍生效果稽核；只有帶 `reviewed-unlisted-release:v1` provenance 的 allowlist 卡可超出核心基準。
 - **後台認證與權限**：Refine 統一接管帳號 session 交換、傳統 TOTP 登入、登出、受保護路由與資源級 RBAC，並依 `viewer`、`moderator`、`operator`、`admin` 導向實際可用的第一個資源。

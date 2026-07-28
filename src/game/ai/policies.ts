@@ -13,7 +13,7 @@ interface RankedPlan {
   factors: AITraceFactor[];
 }
 
-const HARD_PLAN_BEAM_WIDTH = 18;
+const HARD_PLAN_BEAM_WIDTH = 12;
 
 function heuristicPlan(knowledge: AIKnowledgeState, selections: AISelection[]): RankedPlan {
   const totalClock = selections.reduce((sum, selection) => {
@@ -55,6 +55,16 @@ function projectedNextTurnValue(state: ReturnType<typeof createAIKnowledgeState>
   return bestHeuristicPlan(state, futurePlans)?.score ?? 0;
 }
 
+function sampledOpponentPlan(knowledge: AIKnowledgeState): AISelection[] {
+  const opponentKnowledge: AIKnowledgeState = {
+    ...knowledge,
+    player: knowledge.opponent,
+    opponent: knowledge.player,
+    knownOwnDeckDefIds: knowledge.game.players[knowledge.opponent].deck.map((card) => card.defId).sort(),
+  };
+  return bestHeuristicPlan(opponentKnowledge, generateTurnPlans(opponentKnowledge))?.selections ?? [];
+}
+
 function chooseEasyPlan(
   knowledge: AIKnowledgeState,
   plans: AISelection[][],
@@ -78,7 +88,7 @@ function chooseHardPlan(
     .map((selections) => heuristicPlan(knowledge, selections))
     .sort((left, right) => right.score - left.score)
     .slice(0, HARD_PLAN_BEAM_WIDTH);
-  const sampleCount = hasUnknownOpponentCommitment(knowledge) ? 3 : 1;
+  const sampleCount = 3;
   for (const heuristic of searchOrder) {
     if (isDecisionTimedOut(context)) return { plan: best ?? fallback, fallback: 'search-budget-exhausted' };
     const selections = heuristic.selections;
@@ -90,8 +100,9 @@ function chooseHardPlan(
       let total = 0;
       for (let sampleIndex = 0; sampleIndex < sampleCount; sampleIndex++) {
         if (isDecisionTimedOut(context)) break;
-        const sampledKnowledge = sampleUnknownState(knowledge, context.seed, planToken, sampleIndex);
-        const simulation = simulateTurnPlan(sampledKnowledge, selections, context);
+        const sampledKnowledge = sampleUnknownState(knowledge, context.seed, sampleIndex);
+        const opponentSelections = hasUnknownOpponentCommitment(knowledge) ? [] : sampledOpponentPlan(sampledKnowledge);
+        const simulation = simulateTurnPlan(sampledKnowledge, selections, context, opponentSelections);
         if (!simulation) continue;
         const futureKnowledge = createAIKnowledgeState(simulation.state, knowledge.player);
         const future = simulation.completedTurn ? projectedNextTurnValue(futureKnowledge) * 0.2 : 0;
