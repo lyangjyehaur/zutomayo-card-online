@@ -1,6 +1,7 @@
 import { ArrowRight, BookOpen, ChevronLeft, ChevronRight, ExternalLink, Filter, Search, Sparkles } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { compareCardIds, sortCardsById } from '../../api/cardOrder.cjs';
 import { fetchCardRecommendations, fetchCatalogCards, type CardRecommendation } from '../api/client';
 import { CardImage } from '../components/CardImage';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
@@ -162,7 +163,7 @@ export function CardCatalogPage() {
     setError('');
     void fetchCatalogCards()
       .then((result) => {
-        if (active) setCards(result);
+        if (active) setCards(sortCardsById(result));
       })
       .catch(() => {
         if (active) setError(t('cardCatalog.loadError'));
@@ -175,7 +176,10 @@ export function CardCatalogPage() {
     };
   }, []);
 
-  const packs = useMemo(() => [...new Set(cards.map((card) => card.pack).filter(Boolean))].sort(), [cards]);
+  const packs = useMemo(
+    () => [...new Set(cards.map((card) => card.pack).filter(Boolean))].sort(compareCardIds),
+    [cards],
+  );
   const visibleCards = useMemo(
     () =>
       cards.filter(
