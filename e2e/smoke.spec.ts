@@ -95,7 +95,7 @@ test.describe('首頁煙霧測試', () => {
     await page.goto('/');
     await expect(page.getByRole('heading', { level: 1 })).toContainText('ZUTOMAYO', { timeout: 30_000 });
 
-    await page.getByText('CH.06', { exact: true }).click();
+    await page.getByRole('button', { name: /排行榜/ }).click();
     await expect(page).toHaveURL(/\/leaderboard/);
     await expect(page.getByText('排行榜', { exact: true }).first()).toBeVisible();
     await expect(page.getByRole('tab', { name: '全域排行', exact: true })).toBeVisible();
