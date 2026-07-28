@@ -574,6 +574,20 @@ function RouterShell() {
   // 沉浸頁面暫不顯示跨頁的對局恢復提示；全域舊 NavBar 已移除。
   const suppressResumePrompt = isFullscreenRoute(location.pathname);
 
+  useEffect(() => {
+    if (!cardsReady || new URLSearchParams(location.search).get('ai-performance') !== '1') return;
+    let cancelled = false;
+    let uninstall: (() => void) | undefined;
+    void import('./game/aiBrowserBenchmark').then(({ installAIBrowserBenchmark }) => {
+      if (cancelled) return;
+      uninstall = installAIBrowserBenchmark();
+    });
+    return () => {
+      cancelled = true;
+      uninstall?.();
+    };
+  }, [cardsReady, location.search]);
+
   if (!appResourcesReady) return <AppBootLoader />;
 
   return (
