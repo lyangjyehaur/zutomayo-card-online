@@ -589,6 +589,14 @@
         return `<option value="${escapeHtml(value)}" ${value === current ? 'selected' : ''}>${escapeHtml(label)}</option>`;
       }
 
+      function packOptions(current) {
+        return [
+          ...new Set([...state.cards.map((card) => String(card.pack || '').trim()), String(current || '').trim()]),
+        ]
+          .filter(Boolean)
+          .sort((left, right) => left.localeCompare(right, 'ja', { numeric: true }));
+      }
+
       function renderCard() {
         const card = state.cards.find((entry) => entry.candidateId === state.activeId);
         if (!card) {
@@ -616,7 +624,7 @@
                   <label><span>稀有度<em class="required-mark">*</em></span><select id="rarity" aria-required="true">${['', 'N', 'R', 'SR', 'UR', 'SE'].map((v) => option(v, v || '未確認', review.rarity)).join('')}</select></label>
                   <label><span>卡牌種類<em class="required-mark">*</em></span><select id="type" aria-required="true">${['', 'Character', 'Enchant', 'Area Enchant'].map((v) => option(v, v || '未確認', review.type)).join('')}</select></label>
                   <label><span>屬性<em class="required-mark">*</em></span><select id="element" aria-required="true">${['', '闇', '炎', '電気', '風', 'カオス'].map((v) => option(v, v || '未確認', review.element)).join('')}</select></label>
-                  <label><span>卡包／分類<em class="required-mark">*</em></span><input id="pack" aria-required="true" value="${escapeHtml(review.pack)}" /></label>
+                  <label><span>卡包／分類<em class="required-mark">*</em></span><select id="pack" aria-required="true">${['', ...packOptions(review.pack)].map((v) => option(v, v || '未確認', review.pack)).join('')}</select></label>
                 </div>
               </section>
               <section class="section">

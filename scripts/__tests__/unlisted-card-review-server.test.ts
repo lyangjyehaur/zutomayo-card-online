@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 
 import { applyUnlistedCardReview, detectReviewImageExtension } from '../unlisted-card-review-server';
@@ -16,6 +19,14 @@ const sourceCard = {
 };
 
 describe('unlisted-card review service', () => {
+  it('uses constrained selectors for card type and pack classification', () => {
+    const reviewUi = readFileSync(resolve(process.cwd(), 'tools/unlisted-card-review/index.html'), 'utf8');
+
+    expect(reviewUi).toContain('<select id="type" aria-required="true">');
+    expect(reviewUi).toContain('<select id="pack" aria-required="true">');
+    expect(reviewUi).not.toContain('<input id="pack"');
+  });
+
   it('accepts the supported image formats by file signature', () => {
     expect(detectReviewImageExtension(Buffer.from([0xff, 0xd8, 0xff, 0xe0]))).toBe('.jpg');
     expect(detectReviewImageExtension(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))).toBe('.png');
