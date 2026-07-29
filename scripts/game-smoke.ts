@@ -242,7 +242,10 @@ function fivePowerCards() {
   );
   assert.notEqual(player0.getState()?.G.players[0].battleZone?.defId, '__hidden__');
   assert.equal(player1.getState()?.G.players[0].battleZone?.defId, '__hidden__');
-  assert.equal(player1.getState()?.G.players[0].battleZone?.instanceId, 'hidden-p0-battle');
+  const ownerBattleCard = player0.getState()?.G.players[0].battleZone;
+  const hiddenBattleCard = player1.getState()?.G.players[0].battleZone;
+  assert.match(hiddenBattleCard?.instanceId ?? '', /^hidden-p0-card-\d+$/);
+  assert.notEqual(hiddenBattleCard?.instanceId, ownerBattleCard?.instanceId);
   player1.moves.setInitialCard(0);
   player0.moves.confirmReady();
   const opponentSetLog = (player1.getState()?.G.actionLog ?? []).find(
@@ -1140,6 +1143,9 @@ function fivePowerCards() {
   assert.equal(executeEffect(opponentDeckTopPowerToPower!, opponentDeckTopPowerState, 0).success, true);
   // 被公開的卡留在對手牌庫頂（不消耗）
   assert.equal(opponentDeckTopPowerState.players[1].deck[0].instanceId, costlyDeckTop.instanceId);
+  assert.equal(costlyDeckTop.faceUp, true);
+  assert.equal(opponentDeckTopPowerState.pendingChoice?.type, 'acknowledgeRevealedHand');
+  assert.equal(submitPendingChoice(opponentDeckTopPowerState, 0, []), true);
   assert.equal(costlyDeckTop.faceUp, false);
   // 厳戒態勢自身移到擁有者的 powerCharger
   assert.equal(opponentDeckTopPowerState.players[0].setZoneC, null);
@@ -2566,10 +2572,13 @@ function fivePowerCards() {
   G.players[1].powerCharger = fivePowerCards();
 
   const choices = aiSelectCards(G, 1, 'hard');
-  assert.deepEqual(choices, [
-    { handIndex: 1, slot: 'A' },
-    { handIndex: 0, slot: 'B' },
-  ]);
+  assert.deepEqual(
+    [...choices].sort((left, right) => left.slot.localeCompare(right.slot)),
+    [
+      { handIndex: 1, slot: 'A' },
+      { handIndex: 0, slot: 'B' },
+    ],
+  );
 }
 
 {
@@ -3304,6 +3313,9 @@ function fivePowerCards() {
   deckTopSendToPowerBoostState.players[1].deck = [createInstance('1st_1', false)];
   assert.equal(executeEffect(parsedCardEffect('3rd_103'), deckTopSendToPowerBoostState, 0).success, true);
   assert.equal(deckTopSendToPowerBoostState.modifiers.attack[0], 30);
+  assert.equal(deckTopSendToPowerBoostState.players[1].deck[0].faceUp, true);
+  assert.equal(deckTopSendToPowerBoostState.pendingChoice?.type, 'acknowledgeRevealedHand');
+  assert.equal(submitPendingChoice(deckTopSendToPowerBoostState, 0, []), true);
   assert.equal(deckTopSendToPowerBoostState.players[1].deck[0].faceUp, false);
 
   const deckTopSendToPowerMoveState = preparedState();
@@ -3499,13 +3511,19 @@ function fivePowerCards() {
     [],
   ];
   assert.equal(executeEffect(parsedCardEffect('3rd_47'), nameGuessState, 0).success, true);
-  const guessOption = nameGuessState.pendingChoice?.options.find(
-    (option) => option.id === `hand:0:guess:${guessedCard.defId}`,
+  const declarationOption = nameGuessState.pendingChoice?.options.find(
+    (option) => option.id === `declare:${guessedCard.defId}`,
   );
-  assert.ok(guessOption);
-  assert.equal(submitPendingChoice(nameGuessState, 0, [guessOption.id], noEffects), true);
+  assert.ok(declarationOption);
+  assert.equal(submitPendingChoice(nameGuessState, 0, [declarationOption.id], noEffects), true);
+  assert.equal(nameGuessState.pendingChoice?.type, 'selectOpponentHandCard');
+  const positionOption = nameGuessState.pendingChoice.options.find((option) => option.id === 'hand-position:0');
+  assert.ok(positionOption);
+  assert.equal(submitPendingChoice(nameGuessState, 0, [positionOption.id], noEffects), true);
+  assert.equal(nameGuessState.pendingChoice?.type, 'acknowledgeRevealedHand');
   assert.equal(nameGuessState.modifiers.attack[0], 50);
   assert.deepEqual(nameGuessState.revealedHandCardIds[1], [guessedCard.instanceId]);
+  assert.equal(submitPendingChoice(nameGuessState, 0, [], noEffects), true);
 
   const delayedDamageState = preparedState();
   delayedDamageState.players[0].battleZone = createInstance('1st_12', true);
