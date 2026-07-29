@@ -20,7 +20,7 @@ const sourceCard = {
 };
 
 describe('unlisted-card review service', () => {
-  it('normalizes fullwidth ASCII characters in English effect text', () => {
+  it('normalizes fullwidth ASCII characters in English review text', () => {
     expect(toHalfwidthAscii('（When played，gain ＋１０ HP！）　')).toBe('(When played,gain +10 HP!) ');
   });
 
@@ -96,6 +96,14 @@ describe('unlisted-card review service', () => {
     });
 
     expect(review.effectEnOfficial).toBe('Regain 10 HP(once per turn)!');
+  });
+
+  it('normalizes submitted English card names before saving', () => {
+    const review = applyUnlistedCardReview(sourceCard, undefined, {
+      nameEnOfficial: 'UNIGURI（Local ver.）！',
+    });
+
+    expect(review.nameEnOfficial).toBe('UNIGURI(Local ver.)!');
   });
 
   it('keeps text verification and image approval as independent decisions', () => {

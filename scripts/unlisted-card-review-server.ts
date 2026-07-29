@@ -187,6 +187,7 @@ function effectiveReview(
   return {
     ...review,
     cardId: withoutPromoPrefix(review.cardId),
+    nameEnOfficial: toHalfwidthAscii(review.nameEnOfficial),
     effectEnOfficial: toHalfwidthAscii(review.effectEnOfficial),
   };
 }
@@ -223,7 +224,9 @@ export function applyUnlistedCardReview(
     cardId: withoutPromoPrefix(textValue(request.cardId ?? base.cardId, 'card ID', 100)),
     printedNumber: textValue(request.printedNumber ?? base.printedNumber, 'printed number', 100),
     nameJa: textValue(request.nameJa ?? base.nameJa, 'Japanese name', 500),
-    nameEnOfficial: textValue(request.nameEnOfficial ?? base.nameEnOfficial, 'official English name', 500),
+    nameEnOfficial: toHalfwidthAscii(
+      textValue(request.nameEnOfficial ?? base.nameEnOfficial, 'official English name', 500),
+    ),
     effectJa: textValue(request.effectJa ?? base.effectJa, 'Japanese effect', 5000),
     effectEnOfficial: toHalfwidthAscii(
       textValue(request.effectEnOfficial ?? base.effectEnOfficial, 'official English effect', 5000),

@@ -188,7 +188,9 @@ function suggestion(card: SourceCard, ocr: OCRCard): Suggestion {
     cardId: generatedCardId(card),
     printedNumber: printedNumber(card, ocr.lines),
     nameJa: card.name,
-    nameEnOfficial: !hasJapanese(card.name) && latinCount(card.name) >= 4 ? card.name : englishName(ocr.lines),
+    nameEnOfficial: toHalfwidthAscii(
+      !hasJapanese(card.name) && latinCount(card.name) >= 4 ? card.name : englishName(ocr.lines),
+    ),
     effectJa: japaneseEffect,
     effectEnOfficial: officialEnglishEffect,
     printedEffectStatus,
