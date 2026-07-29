@@ -1,8 +1,27 @@
-import { ArrowRight, BookOpen, ChevronLeft, ChevronRight, ExternalLink, Filter, Search, Sparkles } from 'lucide-react';
+import {
+  ArrowRight,
+  BookOpen,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  ExternalLink,
+  Filter,
+  PackageCheck,
+  Search,
+  Sparkles,
+} from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { compareCardIds, sortCardsById } from '../../api/cardOrder.cjs';
-import { fetchCardRecommendations, fetchCatalogCards, type CardRecommendation } from '../api/client';
+import {
+  fetchCardRecommendations,
+  fetchCatalogCards,
+  getOwnedCardIds,
+  isLoggedIn,
+  mergeOwnedCards,
+  setOwnedCard,
+  type CardRecommendation,
+} from '../api/client';
+import { clearLocalOwnedCardIds, readLocalOwnedCardIds, setLocalCardOwned } from '../cardCollection';
 import { CardImage } from '../components/CardImage';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import {
@@ -11,21 +30,21 @@ import {
   getLocalizedSongTitle,
   matchesLocalizedCardSearch,
 } from '../game/cards/i18n';
-import type { CardDef, CardDistributionType, CardType, Element } from '../game/types';
-import { t, useLocale } from '../i18n';
+import { getCardElementTranslationKey } from '../game/cards/taxonomy';
+import {
+  CARD_DISTRIBUTION_TYPES,
+  type CardDef,
+  type CardDistributionType,
+  type CardType,
+  type Element,
+} from '../game/types';
+import { availableLocales, t, useLocale } from '../i18n';
+import { compareCardIds, sortCardsById } from '../lib/cardOrder';
 import { Alert, AppHeader, Badge, Button, EmptyState, LoadingState, PageShell, SearchInput, Select } from '../ui';
 
 const ELEMENTS: Array<Element | ''> = ['', '闇', '炎', '電気', '風', 'カオス'];
 const TYPES: Array<CardType | ''> = ['', 'Character', 'Enchant', 'Area Enchant'];
-const DISTRIBUTIONS: Array<CardDistributionType | ''> = [
-  '',
-  'standard',
-  'bonus',
-  'collaboration',
-  'live',
-  'event',
-  'regional',
-];
+const RARITIES = ['N', 'R', 'SR', 'UR', 'SE'] as const;
 const CATALOG_PAGE_SIZE = 48;
 
 const REASON_KEYS: Record<string, string> = {
@@ -47,6 +66,10 @@ const REASON_KEYS: Record<string, string> = {
 
 function distributionLabel(value: CardDistributionType | undefined): string {
   return t(`cardCatalog.distribution.${value || 'standard'}` as Parameters<typeof t>[0]);
+}
+
+function elementLabel(value: Element): string {
+  return t(getCardElementTranslationKey(value));
 }
 
 function cardTypeLabel(value: CardType): string {
@@ -101,7 +124,8 @@ function RecommendationCard({
     >
       <span className="aspect-[5/7] overflow-hidden rounded-sm bg-surface-canvas [&>picture]:block [&>picture]:h-full [&>picture]:w-full">
         <CardImage
-          cardId={entry.card.id}
+          src={entry.card.image}
+          sourceKind="url"
           context="thumbnail"
           alt=""
           className="h-full w-full object-contain transition duration-300 group-hover:scale-[1.03]"
@@ -143,15 +167,24 @@ export function CardCatalogPage() {
   const [error, setError] = useState('');
   const [recommendations, setRecommendations] = useState<CardRecommendation[]>([]);
   const [recommendationsLoading, setRecommendationsLoading] = useState(false);
+  const [ownedCardIds, setOwnedCardIds] = useState<Set<string>>(new Set());
+  const [collectionScope, setCollectionScope] = useState<'account' | 'local'>('local');
+  const [collectionLoading, setCollectionLoading] = useState(true);
+  const [collectionSavingCardId, setCollectionSavingCardId] = useState('');
+  const [collectionError, setCollectionError] = useState('');
 
   const query = searchParams.get('q') || '';
   const rawElement = searchParams.get('element') || '';
   const rawType = searchParams.get('type') || '';
   const pack = searchParams.get('pack') || '';
+  const rawRarity = searchParams.get('rarity') || '';
+  const rawOwnership = searchParams.get('ownership') || '';
   const rawDistribution = searchParams.get('distribution') || '';
   const element = ELEMENTS.includes(rawElement as Element | '') ? (rawElement as Element | '') : '';
   const type = TYPES.includes(rawType as CardType | '') ? (rawType as CardType | '') : '';
-  const distribution = DISTRIBUTIONS.includes(rawDistribution as CardDistributionType | '')
+  const rarity = RARITIES.includes(rawRarity as (typeof RARITIES)[number]) ? rawRarity : '';
+  const ownership = rawOwnership === 'owned' || rawOwnership === 'unowned' ? rawOwnership : '';
+  const distribution = CARD_DISTRIBUTION_TYPES.includes(rawDistribution as CardDistributionType)
     ? (rawDistribution as CardDistributionType | '')
     : '';
   const requestedPage = Math.max(1, Number.parseInt(searchParams.get('page') || '1', 10) || 1);
@@ -176,21 +209,64 @@ export function CardCatalogPage() {
     };
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    const localCardIds = readLocalOwnedCardIds();
+    if (!isLoggedIn()) {
+      setOwnedCardIds(new Set(localCardIds));
+      setCollectionScope('local');
+      setCollectionLoading(false);
+      return () => {
+        active = false;
+      };
+    }
+
+    void getOwnedCardIds()
+      .then(async (accountCardIds) => {
+        const mergedCardIds = localCardIds.length > 0 ? await mergeOwnedCards(localCardIds) : accountCardIds;
+        if (!active) return;
+        if (localCardIds.length > 0) clearLocalOwnedCardIds();
+        setOwnedCardIds(new Set(mergedCardIds));
+        setCollectionScope('account');
+      })
+      .catch(() => {
+        if (!active) return;
+        setOwnedCardIds(new Set(localCardIds));
+        setCollectionScope('local');
+        setCollectionError(t('cardCatalog.collectionLoadError'));
+      })
+      .finally(() => {
+        if (active) setCollectionLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const packs = useMemo(
     () => [...new Set(cards.map((card) => card.pack).filter(Boolean))].sort(compareCardIds),
+    [cards],
+  );
+  const distributions = useMemo(
+    () =>
+      CARD_DISTRIBUTION_TYPES.filter((value) => cards.some((card) => (card.distributionType || 'standard') === value)),
     [cards],
   );
   const visibleCards = useMemo(
     () =>
       cards.filter(
         (card) =>
-          (!query || matchesLocalizedCardSearch(card, query, [locale, 'ja', 'en'])) &&
+          (!query || matchesLocalizedCardSearch(card, query, availableLocales)) &&
           (!element || card.element === element) &&
           (!type || card.type === type) &&
           (!pack || card.pack === pack) &&
+          (!rarity || card.rarity === rarity) &&
+          (collectionLoading ||
+            !ownership ||
+            (ownership === 'owned' ? ownedCardIds.has(card.id) : !ownedCardIds.has(card.id))) &&
           (!distribution || (card.distributionType || 'standard') === distribution),
       ),
-    [cards, distribution, element, locale, pack, query, type],
+    [cards, collectionLoading, distribution, element, ownedCardIds, ownership, pack, query, rarity, type],
   );
   const totalPages = Math.max(1, Math.ceil(visibleCards.length / CATALOG_PAGE_SIZE));
   const currentPage = Math.min(requestedPage, totalPages);
@@ -204,7 +280,7 @@ export function CardCatalogPage() {
   const previousCard = selectedCardIndex > 0 ? cards[selectedCardIndex - 1] : undefined;
   const nextCard =
     selectedCardIndex >= 0 && selectedCardIndex < cards.length - 1 ? cards[selectedCardIndex + 1] : undefined;
-  const hasFilters = Boolean(query || element || type || pack || distribution);
+  const hasFilters = Boolean(query || element || type || pack || rarity || ownership || distribution);
   const synergyRecommendations = recommendations.filter((entry) => entry.recommendationType === 'synergy');
   const sameSongRecommendations = recommendations.filter((entry) => entry.recommendationType === 'same_song');
 
@@ -278,6 +354,32 @@ export function CardCatalogPage() {
     navigate({ pathname: '/cards', search: nextParams.size > 0 ? `?${nextParams.toString()}` : '', hash: '' });
   };
 
+  const toggleCardOwnership = async (cardId: string) => {
+    if (collectionLoading || collectionSavingCardId) return;
+    const owned = !ownedCardIds.has(cardId);
+    const previous = ownedCardIds;
+    const next = new Set(previous);
+    if (owned) next.add(cardId);
+    else next.delete(cardId);
+    setOwnedCardIds(next);
+    setCollectionError('');
+
+    if (collectionScope === 'local') {
+      setLocalCardOwned(cardId, owned);
+      return;
+    }
+
+    setCollectionSavingCardId(cardId);
+    try {
+      await setOwnedCard(cardId, owned);
+    } catch {
+      setOwnedCardIds(previous);
+      setCollectionError(t('cardCatalog.collectionSaveError'));
+    } finally {
+      setCollectionSavingCardId('');
+    }
+  };
+
   const clearFilters = () => {
     navigate('/cards', { replace: true });
   };
@@ -292,6 +394,19 @@ export function CardCatalogPage() {
           actions={<LanguageSwitcher />}
         />
         <main className="relative mx-auto w-full max-w-7xl px-4 pb-14 pt-24 md:px-6 md:pt-28">
+          {collectionScope === 'local' && !collectionLoading && (
+            <Alert className="mb-6" tone="info">
+              {t('cardCatalog.localCollectionNotice')}{' '}
+              <Link className="font-semibold text-accent-action underline underline-offset-4" to="/profile">
+                {t('cardCatalog.signInToSync')}
+              </Link>
+            </Alert>
+          )}
+          {collectionError && (
+            <Alert className="mb-6" tone="danger" role="alert">
+              {collectionError}
+            </Alert>
+          )}
           {loading ? (
             <LoadingState className="min-h-[60vh]" label={t('cardCatalog.loading')} />
           ) : error ? (
@@ -310,7 +425,8 @@ export function CardCatalogPage() {
                 <div className="lg:sticky lg:top-28">
                   <div className="mx-auto aspect-[5/7] w-full max-w-[22rem] overflow-hidden rounded-md border border-border-soft bg-surface-canvas shadow-card [&>picture]:block [&>picture]:h-full [&>picture]:w-full">
                     <CardImage
-                      cardId={selectedCard.id}
+                      src={selectedCard.image}
+                      sourceKind="url"
                       context="detail"
                       alt={getLocalizedCardName(selectedCard, locale)}
                       className="h-full w-full object-contain"
@@ -322,7 +438,9 @@ export function CardCatalogPage() {
                 <div className="min-w-0">
                   <header className="border-b border-border-soft pb-6">
                     <div className="flex flex-wrap gap-2">
-                      {selectedCard.hasElement !== false && <Badge tone="gold">{selectedCard.element}</Badge>}
+                      {selectedCard.hasElement !== false && selectedCard.element && (
+                        <Badge tone="gold">{elementLabel(selectedCard.element)}</Badge>
+                      )}
                       <Badge>{cardTypeLabel(selectedCard.type)}</Badge>
                       <Badge>{selectedCard.rarity}</Badge>
                       <Badge>{distributionLabel(selectedCard.distributionType)}</Badge>
@@ -405,6 +523,20 @@ export function CardCatalogPage() {
                   </section>
 
                   <div className="flex flex-wrap gap-3 border-t border-border-soft pt-6">
+                    <Button
+                      variant={ownedCardIds.has(selectedCard.id) ? 'primary' : 'secondary'}
+                      disabled={collectionLoading || collectionSavingCardId === selectedCard.id}
+                      leftIcon={
+                        ownedCardIds.has(selectedCard.id) ? (
+                          <Check className="size-4" aria-hidden="true" />
+                        ) : (
+                          <PackageCheck className="size-4" aria-hidden="true" />
+                        )
+                      }
+                      onClick={() => void toggleCardOwnership(selectedCard.id)}
+                    >
+                      {ownedCardIds.has(selectedCard.id) ? t('cardCatalog.markNotOwned') : t('cardCatalog.markOwned')}
+                    </Button>
                     <Button
                       variant="primary"
                       disabled={selectedCard.playStatus === 'display_only'}
@@ -585,11 +717,11 @@ export function CardCatalogPage() {
               </Button>
             )}
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
             <Select value={element} onChange={(event) => updateCatalogParam('element', event.target.value)}>
               {ELEMENTS.map((value) => (
                 <option key={value || 'all'} value={value}>
-                  {value || t('cardCatalog.allElements')}
+                  {value ? elementLabel(value) : t('cardCatalog.allElements')}
                 </option>
               ))}
             </Select>
@@ -608,15 +740,47 @@ export function CardCatalogPage() {
                 </option>
               ))}
             </Select>
+            <Select value={rarity} onChange={(event) => updateCatalogParam('rarity', event.target.value)}>
+              <option value="">{t('cardCatalog.allRarities')}</option>
+              {RARITIES.map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
+            </Select>
+            <Select
+              value={ownership}
+              disabled={collectionLoading}
+              onChange={(event) => updateCatalogParam('ownership', event.target.value)}
+            >
+              <option value="">{t('cardCatalog.allOwnership')}</option>
+              <option value="owned">{t('cardCatalog.ownedOnly')}</option>
+              <option value="unowned">{t('cardCatalog.unownedOnly')}</option>
+            </Select>
             <Select value={distribution} onChange={(event) => updateCatalogParam('distribution', event.target.value)}>
-              {DISTRIBUTIONS.map((value) => (
+              <option value="">{t('cardCatalog.allDistributions')}</option>
+              {distributions.map((value) => (
                 <option key={value || 'all'} value={value}>
-                  {value ? distributionLabel(value) : t('cardCatalog.allDistributions')}
+                  {distributionLabel(value)}
                 </option>
               ))}
             </Select>
           </div>
         </section>
+
+        {collectionScope === 'local' && !collectionLoading && (
+          <Alert tone="info">
+            {t('cardCatalog.localCollectionNotice')}{' '}
+            <Link className="font-semibold text-accent-action underline underline-offset-4" to="/profile">
+              {t('cardCatalog.signInToSync')}
+            </Link>
+          </Alert>
+        )}
+        {collectionError && (
+          <Alert tone="danger" role="alert">
+            {collectionError}
+          </Alert>
+        )}
 
         <div
           className="flex flex-wrap items-center justify-between gap-2 font-mono text-caption text-content-dim"
@@ -661,7 +825,8 @@ export function CardCatalogPage() {
                 >
                   <span className="block aspect-[5/7] overflow-hidden bg-surface-canvas [&>picture]:block [&>picture]:h-full [&>picture]:w-full">
                     <CardImage
-                      cardId={card.id}
+                      src={card.image}
+                      sourceKind="url"
                       context="thumbnail"
                       alt={getLocalizedCardName(card, locale)}
                       className="h-full w-full object-contain transition duration-300 group-hover:scale-[1.03]"
@@ -670,15 +835,23 @@ export function CardCatalogPage() {
                   <span className="grid gap-1.5 p-3">
                     <span className="flex items-center justify-between gap-2">
                       <span className="font-mono text-minutia text-content-dim">{card.id}</span>
-                      {card.playStatus === 'display_only' && <Badge>{t('cardCatalog.displayOnly')}</Badge>}
+                      <span className="flex flex-wrap justify-end gap-1">
+                        {ownedCardIds.has(card.id) && (
+                          <Badge tone="gold">
+                            <PackageCheck className="mr-1 size-3" aria-hidden="true" />
+                            {t('cardCatalog.owned')}
+                          </Badge>
+                        )}
+                        {card.playStatus === 'display_only' && <Badge>{t('cardCatalog.displayOnly')}</Badge>}
+                      </span>
                     </span>
                     <strong className="line-clamp-2 min-h-10 text-body-sm leading-snug text-content-primary">
                       {getLocalizedCardName(card, locale)}
                     </strong>
                     <span className="truncate text-caption text-content-muted">
-                      {card.hasElement === false
+                      {card.hasElement === false || !card.element
                         ? cardTypeLabel(card.type)
-                        : `${card.element} · ${cardTypeLabel(card.type)}`}
+                        : `${elementLabel(card.element)} · ${cardTypeLabel(card.type)}`}
                     </span>
                   </span>
                 </Link>

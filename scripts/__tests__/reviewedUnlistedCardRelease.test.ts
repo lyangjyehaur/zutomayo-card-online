@@ -111,7 +111,7 @@ function inputs() {
     distributionType: candidateId.startsWith('4th_') ? 'standard' : 'collaboration',
     publicationStatus: 'published',
     playStatus,
-    ...(candidateId === '4th_105' ? { translations: completeTranslations(cardId) } : {}),
+    translations: completeTranslations(cardId),
   }));
   return {
     sources: { cards: sourceCards },
@@ -132,7 +132,7 @@ describe('reviewed unlisted card release', () => {
     expect(release.cards.map((card) => card.id)).toEqual(candidates.map((card) => card.cardId));
     expect(release.cards.every((card) => card.sourceNote === REVIEWED_UNLISTED_SOURCE_NOTE)).toBe(true);
     expect(release.cards[0]).toMatchObject({ attack: { night: 0, day: 250 }, playStatus: 'playable' });
-    expect(release.cards[1].translations).toEqual({});
+    expect(release.cards[1].translations).toEqual(manifest.cards[1].translations);
     expect(release.cards[2]).toMatchObject({
       id: 'collaboration_007',
       element: '',
@@ -147,7 +147,25 @@ describe('reviewed unlisted card release', () => {
     const { sources, reviews, manifest } = inputs();
     delete (manifest.cards[0].translations as Record<string, unknown>)['zh-HK'];
     expect(() => buildReviewedUnlistedRelease(sources, reviews, manifest)).toThrow(
-      'reviewed translations must be empty or complete',
+      'reviewed translations must be complete',
+    );
+  });
+
+  it('rejects a published card without derived translations', () => {
+    const { sources, reviews, manifest } = inputs();
+    delete manifest.cards[2].translations;
+    expect(() => buildReviewedUnlistedRelease(sources, reviews, manifest)).toThrow(
+      'reviewed translations must be complete',
+    );
+  });
+
+  it('rejects non-canonical terminology in reviewed effects', () => {
+    const { sources, reviews, manifest } = inputs();
+    const translation = manifest.cards[0].translations?.['zh-TW'];
+    if (!translation) throw new Error('test fixture translation missing');
+    translation.effect = '將克洛諾斯推進8格';
+    expect(() => buildReviewedUnlistedRelease(sources, reviews, manifest)).toThrow(
+      'non-canonical rules terminology (克洛諾斯 -> Chronos)',
     );
   });
 

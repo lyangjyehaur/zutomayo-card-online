@@ -6,14 +6,14 @@ import { Controller, useForm } from 'react-hook-form';
 import { useParams } from 'react-router-dom';
 import { z } from 'zod';
 import { adminUpdateCardI18n, fetchCardTextsI18n, type AdminCardTextUpdate } from '../api/client';
-import type { CardDef } from '../game/types';
+import { CARD_DISTRIBUTION_TYPES, type CardDef } from '../game/types';
 import { CardImage } from '../components/CardImage';
 import { Alert, Badge, Button, EmptyState, FormField, Input, LoadingState, Select, Textarea } from '../ui';
 
 const elements = ['闇', '炎', '電気', '風', 'カオス'] as const;
 const cardTypes = ['Character', 'Enchant', 'Area Enchant'] as const;
 const catalogStatuses = ['listed', 'pending_listing', 'unlisted'] as const;
-const distributionTypes = ['standard', 'bonus', 'collaboration', 'live', 'event', 'regional'] as const;
+const distributionTypes = CARD_DISTRIBUTION_TYPES;
 const publicationStatuses = ['draft', 'reviewed', 'published', 'retired'] as const;
 const playStatuses = ['playable', 'display_only', 'disabled'] as const;
 

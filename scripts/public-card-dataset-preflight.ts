@@ -16,6 +16,34 @@ type PublicCardText = {
 
 type PublicCardTexts = Record<string, Record<string, PublicCardText>>;
 
+export function evaluateCatalogTranslations(
+  catalogCards: ReadonlyArray<Pick<CardDef, 'id' | 'effect'>>,
+  texts: PublicCardTexts,
+) {
+  const failures: string[] = [];
+  let verifiedCatalogTranslationRows = 0;
+
+  for (const card of catalogCards) {
+    for (const lang of DERIVED_LANGUAGES) {
+      const entry = texts[card.id]?.[lang];
+      const validName = typeof entry?.name === 'string' && entry.name.trim() !== '';
+      const validEffect = !card.effect.trim() || (typeof entry?.effect === 'string' && entry.effect.trim() !== '');
+      const verified = entry?.reviewStatus === 'verified';
+      if (validName && validEffect && verified) {
+        verifiedCatalogTranslationRows += 1;
+      } else {
+        failures.push(`incomplete catalog translation: ${card.id}/${lang}`);
+      }
+    }
+  }
+
+  return {
+    metrics: { verifiedCatalogTranslationRows },
+    checks: { catalogTranslationsComplete: failures.length === 0 },
+    failures,
+  };
+}
+
 export function cardTextsToRows(texts: PublicCardTexts): CardTranslationSnapshot[] {
   return Object.keys(texts)
     .sort()
@@ -132,6 +160,7 @@ async function main(): Promise<void> {
   }
   const smoke = gameSmoke(base);
   const catalogReport = evaluatePublicCatalog(cards, catalogCards);
+  const catalogTranslationReport = evaluateCatalogTranslations(catalogCards, texts);
   const report = evaluateCardDataset(
     {
       cards,
@@ -144,7 +173,7 @@ async function main(): Promise<void> {
     },
     { expectedCardCount: EXPECTED_PLAYABLE_CARD_COUNT, gameSmokePassed: smoke.passed },
   );
-  const failures = [...report.failures, ...catalogReport.failures];
+  const failures = [...report.failures, ...catalogReport.failures, ...catalogTranslationReport.failures];
   console.log(
     JSON.stringify(
       {
@@ -154,8 +183,8 @@ async function main(): Promise<void> {
         source: base.toString(),
         status: failures.length === 0 ? 'passed' : 'failed',
         datasetSha256: report.datasetSha256,
-        metrics: { ...report.metrics, ...catalogReport.metrics },
-        checks: { ...report.checks, ...catalogReport.checks },
+        metrics: { ...report.metrics, ...catalogReport.metrics, ...catalogTranslationReport.metrics },
+        checks: { ...report.checks, ...catalogReport.checks, ...catalogTranslationReport.checks },
         failures,
         gameSmokeOutput: smoke.output,
       },

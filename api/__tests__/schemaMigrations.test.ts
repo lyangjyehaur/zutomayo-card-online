@@ -17,6 +17,17 @@ function readMigrations(): string {
 }
 
 describe('schema migrations', () => {
+  it('persists physical card ownership for signed-in users', () => {
+    const migration = readRepoFile('migrations/000046_user_card_collection.js');
+    const initSchema = readRepoFile('api/server.cjs');
+    const schemaGate = readRepoFile('api/schemaGate.cjs');
+    for (const artifact of ['user_card_collection', 'user_id', 'card_id', 'acquired_at', 'updated_at']) {
+      expect(migration).toContain(artifact);
+      expect(initSchema).toContain(artifact);
+      expect(schemaGate).toContain(artifact);
+    }
+  });
+
   it('persists reviewed card synergy groups and recommendation relations', () => {
     const migration = readRepoFile('migrations/000044_card_synergies.js');
     const initSchema = readRepoFile('api/server.cjs');

@@ -7,6 +7,7 @@ const PROTECTED_SCHEMA_TABLES = Object.freeze(['schema_migrations', 'schema_migr
 const APPLICATION_TABLES = Object.freeze([
   'users',
   'user_identities',
+  'user_card_collection',
   'decks',
   'deck_reservations',
   'deck_shares',

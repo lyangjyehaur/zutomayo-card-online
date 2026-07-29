@@ -75,6 +75,12 @@ describe('rules terminology glossary', () => {
     expect(rulesTerminologyViolations('ko', 'Chronos 시계')).toEqual(['Chronos -> 크로노스']);
   });
 
+  it('rejects transliterated Chronos in Chinese rules text', () => {
+    expect(rulesTerminologyViolations('zh-TW', '將克洛諾斯推進9格')).toEqual(['克洛諾斯 -> Chronos']);
+    expect(rulesTerminologyViolations('zh-CN', '将克洛诺斯推进9格')).toEqual(['克洛诺斯 -> Chronos']);
+    expect(rulesTerminologyViolations('zh-HK', '將 Chronos 推進9格')).toEqual([]);
+  });
+
   it('uses the official Japanese name for Chronos', () => {
     expect(RULES_TERMINOLOGY.ja.chronos).toBe('クロノス');
     expect(rulesTerminologyViolations('ja', 'クロノス')).toEqual([]);

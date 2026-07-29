@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { parseEffect } from '../src/game/effects/parser';
-import type { CardDef } from '../src/game/types';
+import { rulesTerminologyViolations } from '../src/rulesTerminology';
+import { CARD_DISTRIBUTION_TYPES, type CardDef } from '../src/game/types';
 
 export const REVIEWED_UNLISTED_SOURCE_NOTE = 'reviewed-unlisted-release:v2';
 export const REVIEWED_UNLISTED_LANGS = ['zh-TW', 'zh-CN', 'zh-HK', 'ko'] as const;
@@ -97,6 +98,7 @@ const SUPPORTED_RELEASE_ACTIONS = new Set([
 ]);
 const ELEMENTS = new Set(['闇', '炎', '電気', '風', 'カオス']);
 const CARD_TYPES = new Set(['Character', 'Enchant', 'Area Enchant']);
+const DISTRIBUTION_TYPES = new Set<string>(CARD_DISTRIBUTION_TYPES);
 
 function readJson<T>(path: string): T {
   return JSON.parse(readFileSync(path, 'utf8')) as T;
@@ -174,6 +176,9 @@ export function buildReviewedUnlistedRelease(
     if (release.catalogStatus !== source.catalogStatus || release.distributionType !== source.distributionType) {
       throw new Error(`${cardId}: release catalog metadata differs from reviewed source`);
     }
+    if (!DISTRIBUTION_TYPES.has(release.distributionType)) {
+      throw new Error(`${cardId}: unsupported distribution type ${release.distributionType}`);
+    }
     if (!CARD_TYPES.has(review.type)) throw new Error(`${cardId}: unsupported card type ${review.type}`);
     if (review.playStatus === 'playable' && !ELEMENTS.has(review.element)) {
       throw new Error(`${cardId}: playable card has unsupported element ${review.element}`);
@@ -200,8 +205,8 @@ export function buildReviewedUnlistedRelease(
       }
     }
     const translatedLangs = Object.keys(release.translations ?? {});
-    if (translatedLangs.length > 0 && translatedLangs.length !== REVIEWED_UNLISTED_LANGS.length) {
-      throw new Error(`${cardId}: reviewed translations must be empty or complete for every derived language`);
+    if (translatedLangs.length !== REVIEWED_UNLISTED_LANGS.length) {
+      throw new Error(`${cardId}: reviewed translations must be complete for every derived language`);
     }
     for (const lang of translatedLangs as ReviewedLang[]) {
       const translation = release.translations?.[lang];
@@ -210,6 +215,10 @@ export function buildReviewedUnlistedRelease(
       }
       assertNonempty(translation.name, `${cardId}/${lang}.name`);
       if (review.effectJa) assertNonempty(translation.effect, `${cardId}/${lang}.effect`);
+      const terminologyViolations = rulesTerminologyViolations(lang, translation.effect);
+      if (terminologyViolations.length > 0) {
+        throw new Error(`${cardId}/${lang}: non-canonical rules terminology (${terminologyViolations.join(', ')})`);
+      }
     }
 
     const attackNight = optionalInteger(review.attackNight, `${cardId}.attackNight`);

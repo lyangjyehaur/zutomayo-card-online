@@ -136,6 +136,18 @@ Response: same shape as `GET /api/profile`.
 
 Errors: `400`, `401`.
 
+### Card collection / 實體卡收藏
+
+All collection endpoints require an authenticated account. Only published cards visible in the public catalog may be stored.
+
+| Method | Path                                   | Body                            | Description                                               |
+| ------ | -------------------------------------- | ------------------------------- | --------------------------------------------------------- |
+| `GET`  | `/api/profile/card-collection`         | —                               | Return `{ "cardIds": [...] }` for the signed-in user.     |
+| `PUT`  | `/api/profile/card-collection/:cardId` | `{ "owned": true \| false }`    | Add or remove one physical-card ownership mark.           |
+| `POST` | `/api/profile/card-collection/merge`   | `{ "cardIds": ["1st_1", ...] }` | Merge up to 1,000 local ownership marks into the account. |
+
+The merge operation is additive and idempotent. It does not remove cards already stored on the account.
+
 ## Friends / 好友
 
 All friend endpoints require an authenticated account. Friendships are stored bidirectionally and are also used by direct-chat and Colyseus invite authorization.
