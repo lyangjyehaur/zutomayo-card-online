@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { executeEffect } from '../executor';
-import { initCards, createInstance, resetInstanceCounter } from '../../cards/loader';
-import { emptyModifiers } from '../../GameLogic';
+import { getAllCardDefs, initCards, createInstance, resetInstanceCounter } from '../../cards/loader';
+import { emptyModifiers, submitPendingChoice } from '../../GameLogic';
 import type { CardDef, CardType, GameState, PlayerIndex } from '../../types';
 import type { ParsedEffect, EffectAction } from '../types';
 
@@ -238,11 +238,14 @@ describe('effect executor', () => {
   describe('setOpponentAttack', () => {
     it('設定對手攻擊力並重置累積修飾器', () => {
       const G = makeG();
+      G.players[1].battleZone = cardInstance('char-basic');
+      G.players[1].powerCharger = [cardInstance('char-power')];
       G.modifiers.attack[1] = 15;
       const result = runEffect(makeEffect('setOpponentAttack', { value: 50 }), G);
       expect(result.success).toBe(true);
       expect(G.modifiers.attackSetTo![1]).toBe(50);
       expect(G.modifiers.attack[1]).toBe(0);
+      expect(G.modifiers.attackSources?.[1]).toEqual([expect.objectContaining({ kind: 'set', from: 35, setTo: 50 })]);
     });
   });
 
@@ -265,9 +268,22 @@ describe('effect executor', () => {
     it('回復自己 HP', () => {
       const G = makeG();
       G.players[0].hp = 50;
-      const result = runEffect(makeEffect('heal', { value: 20 }), G);
+      const result = runEffect(makeEffect('heal', { value: 20 }), G, 0, {
+        cardDefId: 'enchant-fire',
+        cardInstanceId: 'heal-source-instance',
+      });
       expect(result.success).toBe(true);
       expect(G.players[0].hp).toBe(70);
+      expect(G.recentGameNotices.at(-1)).toMatchObject({
+        kind: 'hpChange',
+        reason: 'heal',
+        player: 0,
+        delta: 20,
+        hpBefore: 50,
+        hpAfter: 70,
+        sourceCardDefId: 'enchant-fire',
+        sourceCardInstanceId: 'heal-source-instance',
+      });
     });
 
     it('回復不超過 100', () => {
@@ -337,10 +353,17 @@ describe('effect executor', () => {
 
     it('timing=turnEnd 排入延遲效果', () => {
       const G = makeG();
-      const result = runEffect(makeEffect('directDamage', { value: 15, timing: 'turnEnd' }), G);
+      const result = runEffect(makeEffect('directDamage', { value: 15, timing: 'turnEnd' }), G, 0, {
+        cardDefId: 'enchant-fire',
+        cardInstanceId: 'delayed-source-instance',
+      });
       expect(result.success).toBe(true);
       expect(G.delayedEffects!.length).toBe(1);
-      expect(G.delayedEffects![0].effect.trigger).toBe('onTurnEnd');
+      expect(G.delayedEffects![0]).toMatchObject({
+        cardDefId: 'enchant-fire',
+        cardInstanceId: 'delayed-source-instance',
+        effect: { trigger: 'onTurnEnd' },
+      });
     });
 
     it('reducedThisTurn 使用當回合已減傷量', () => {
@@ -671,11 +694,38 @@ describe('effect executor', () => {
       G.players[1].deck = [cardInstance('char-basic')]; // powerCost 2
       const result = runEffect(makeEffect('moveOpponentDeckTopByPowerCost', { minPowerCost: 3 }), G);
       expect(result.success).toBe(true);
-      expect(G.players[1].deck[0].faceUp).toBe(false);
+      expect(G.players[1].deck[0].faceUp).toBe(true);
+      expect(G.pendingChoice).toMatchObject({
+        type: 'acknowledgeRevealedHand',
+        player: 0,
+        payload: {
+          revealedPlayer: 1,
+          sourceZone: 'deck',
+          deckComparison: { stat: 'powerCost', value: 2, threshold: 3, matched: false },
+        },
+      });
       expect(G.actionLog.at(-1)).toMatchObject({
         action: 'revealCards',
         payload: { targetPlayer: 1, sourceZone: 'deck', cardDefIds: ['char-basic'] },
       });
+      const revealedId = G.players[1].deck[0].instanceId;
+      expect(submitPendingChoice(G, 0, [])).toBe(true);
+      expect(G.players[1].deck.find((card) => card.instanceId === revealedId)?.faceUp).toBe(false);
+    });
+
+    it('條件成立但來源 Area Enchant 已離場時仍會在確認後蓋牌', () => {
+      const G = makeG();
+      G.players[1].deck = [cardInstance('char-power')];
+      const result = runEffect(makeEffect('moveOpponentDeckTopByPowerCost', { minPowerCost: 3 }), G);
+
+      expect(result.success).toBe(false);
+      expect(G.players[1].deck[0].faceUp).toBe(true);
+      expect(G.pendingChoice).toMatchObject({
+        type: 'acknowledgeRevealedHand',
+        payload: { deckComparison: { matched: true } },
+      });
+      expect(submitPendingChoice(G, 0, [])).toBe(true);
+      expect(G.players[1].deck[0].faceUp).toBe(false);
     });
 
     it('對手牌庫為空時回傳失敗', () => {
@@ -705,15 +755,46 @@ describe('effect executor', () => {
       expect(result.success).toBe(true);
       expect(G.modifiers.attack[0]).toBe(10);
     });
+
+    it('條件成立但來源 Area Enchant 已離場時仍會在確認後蓋牌', () => {
+      const G = makeG();
+      G.players[1].deck = [cardInstance('char-power')];
+      const result = runEffect(makeEffect('revealOpponentDeckTopBySendToPower', { minSendToPower: 1 }), G);
+
+      expect(result.success).toBe(false);
+      expect(G.players[1].deck[0].faceUp).toBe(true);
+      expect(G.pendingChoice).toMatchObject({
+        type: 'acknowledgeRevealedHand',
+        payload: { deckComparison: { matched: true } },
+      });
+      expect(submitPendingChoice(G, 0, [])).toBe(true);
+      expect(G.players[1].deck[0].faceUp).toBe(false);
+    });
   });
 
   describe('revealOpponentHand', () => {
-    it('公開對手手牌', () => {
+    it('公開對手手牌並等待查看方確認', () => {
       const G = makeG();
       G.players[1].hand = [cardInstance('char-basic'), cardInstance('char-dark')];
-      const result = runEffect(makeEffect('revealOpponentHand'), G);
+      const source = cardInstance('enchant-fire', true);
+      const result = runEffect(makeEffect('revealOpponentHand'), G, 0, {
+        cardDefId: source.defId,
+        cardInstanceId: source.instanceId,
+      });
       expect(result.success).toBe(true);
       expect(G.revealedHandCardIds[1].length).toBe(2);
+      expect(G.pendingChoice).toMatchObject({
+        type: 'acknowledgeRevealedHand',
+        player: 0,
+        min: 0,
+        max: 0,
+        options: [],
+        sourceCardDefId: source.defId,
+        sourceCardInstanceId: source.instanceId,
+        payload: { revealedPlayer: 1 },
+      });
+      expect(G.actionLog.at(-1)?.payload).toMatchObject({ sourceZone: 'hand', cardCount: 2 });
+      expect(G.actionLog.at(-1)?.payload).not.toHaveProperty('cardDefIds');
     });
   });
 
@@ -887,6 +968,19 @@ describe('effect executor', () => {
       // requestChoice 會建立 pendingChoice 或依條件失敗
       expect(result.success).toBe(true);
       expect(G.pendingChoice).not.toBeNull();
+    });
+
+    it('builds one searchable declaration option per card before choosing a hidden hand position', () => {
+      const G = makeG();
+      G.players[1].hand = [cardInstance('char-basic'), cardInstance('char-dark')];
+      const result = runEffect(
+        makeEffect('requestChoice', { choiceType: 'nameGuessOpponentHandReveal', attackBoost: 20 }),
+        G,
+      );
+      expect(result.success).toBe(true);
+      expect(G.pendingChoice?.type).toBe('declareOpponentHandCardName');
+      expect(G.pendingChoice?.options).toHaveLength(getAllCardDefs().length);
+      expect(G.pendingChoice?.options.every((option) => option.cardDefId && !option.cardInstanceId)).toBe(true);
     });
   });
 

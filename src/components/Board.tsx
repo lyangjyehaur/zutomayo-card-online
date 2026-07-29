@@ -1,5 +1,5 @@
 import type { BoardProps } from 'boardgame.io/react';
-import { Activity, BookOpen, Info, Pause, X } from 'lucide-react';
+import { Activity, ArrowDown, ArrowUp, BookOpen, Info, Pause, Search, X } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -13,6 +13,7 @@ import type {
   GameNotice,
   HpChangeBreakdown,
   JankenChoice,
+  PendingChoiceOption,
   PlayerIndex,
 } from '../game/types';
 import { getCardDef } from '../game/cards/loader';
@@ -34,6 +35,7 @@ import {
   ChronosPanel,
   ChronosResolutionLayer,
   DeckZone,
+  EffectHpResolutionLayer,
   HandZone,
   PhaseIndicator,
   PlayerStatus,
@@ -347,6 +349,14 @@ function formatLogEntry(
     const cardDefIds = Array.isArray(payload?.cardDefIds)
       ? payload.cardDefIds.filter((id): id is string => typeof id === 'string')
       : [];
+    const sourceZone = payload?.sourceZone as string | undefined;
+    const cardCount = Number(payload?.cardCount ?? cardDefIds.length);
+    if (sourceZone === 'hand' && cardDefIds.length === 0) {
+      return {
+        segments: [seg(`${p} ${t('board.revealedHand.log')} ${cardCount} ${t('board.cardsUnit')}`)],
+        tone: 'effect',
+      };
+    }
     const segments: LogSegment[] = [seg(`${p} ${t('board.phaseReveal')} `)];
     for (const [index, cardDefId] of cardDefIds.entries()) {
       if (index > 0) segments.push(seg(' · '));
@@ -578,38 +588,12 @@ function FeedbackOverlay({ message, onAction }: { message: FeedbackMessage | nul
   );
 }
 
-/**
- * 格式化 breakdown 明細行的 value。
- * - 若該行附帶 cardDefId，同時顯示卡名與數值（如「卡名 30」）。
- * - 若 value 是 i18n key（以 'board.' 開頭），翻譯後顯示。
- * - 否則直接顯示原始 value（數字、+/- 等）。
- */
-function formatBreakdownValue(value: string, cardDefId?: string): string {
-  if (cardDefId) {
-    const def = getCardDef(cardDefId);
-    if (def?.name) return `${getLocalizedCardName(def, getLocale())} ${value}`;
-  }
-  if (value.startsWith('board.')) return t(value as never);
-  return value;
-}
-
 function localizedCardNameById(cardDefId?: string): string | undefined {
   if (!cardDefId) return undefined;
   const def = getCardDef(cardDefId);
   return def ? getLocalizedCardName(def, getLocale()) : undefined;
 }
 
-/**
- * 統一遊戲事件提示 overlay（置中面板、無遮罩）。
- *
- * 監聯 G.recentGameNotices 的新增項目（以 id 去重），佇列依序顯示：
- * HP 變化、時鐘推進、戰鬥結果（平手 / 傷害減免）、回合切換。
- * 每筆顯示固定時長後自動消失，期間累積的事件排隊播放，避免多個浮層互相競爭定位。
- *
- * 採用 phase-message-panel 樣式，與 FeedbackOverlay 視覺一致。
- * 元件首次 mount 時跳過歷史 notice（lastSeenId 初始化為 -1，首次設為當前 max 並 return），
- * 僅顯示 mount 後新增的事件。
- */
 function noticeDuration(notice: GameNotice, isGameOver: boolean): number {
   const reduced = prefersReducedMotion();
   if (isGameOver) return reduced ? 500 : 1200;
@@ -617,144 +601,35 @@ function noticeDuration(notice: GameNotice, isGameOver: boolean): number {
   return reduced ? 600 : 1400;
 }
 
-function BreakdownBlock({ breakdown }: { breakdown: HpChangeBreakdown }) {
-  const participantNames = breakdown.participantCardDefIds
-    .map((id) => localizedCardNameById(id))
-    .filter((n): n is string => Boolean(n));
-  return (
-    <div className="mt-1 min-w-[240px] max-w-[340px] border-t border-content-primary/10 pt-2">
-      <div className="mb-1 font-mono text-micro uppercase tracking-[var(--tracking-meta)] text-accent-primary/70">
-        {t(breakdown.title as never)}
-      </div>
-      <div className="flex flex-col gap-0.5">
-        {breakdown.lines.map((line, idx) => (
-          <div
-            key={idx}
-            className="flex items-baseline justify-between gap-2 font-mono text-minutia text-content-primary/80"
-          >
-            <span className="text-content-primary/55">{t(line.label as never)}</span>
-            <span
-              className={
-                line.cardDefId
-                  ? 'max-w-[220px] truncate text-accent-primary-soft'
-                  : line.value.startsWith('-')
-                    ? 'text-accent-action/85'
-                    : line.value.startsWith('+')
-                      ? 'text-accent-info/85'
-                      : 'text-content-primary/85'
-              }
-              title={line.cardDefId ? formatBreakdownValue(line.value, line.cardDefId) : undefined}
-            >
-              {formatBreakdownValue(line.value, line.cardDefId)}
-            </span>
-          </div>
-        ))}
-      </div>
-      {participantNames.length > 0 && (
-        <div className="mt-1 flex flex-wrap gap-1 border-t border-content-primary/10 pt-1">
-          <span className="font-mono text-micro uppercase tracking-[var(--tracking-control)] text-content-primary/40">
-            {t('board.hpChange.participants' as never)}
-          </span>
-          {participantNames.map((n, i) => (
-            <span
-              key={`${n}-${i}`}
-              className="rounded-sm border border-accent-success/30 bg-accent-success/10 px-1 py-px font-mono text-micro text-accent-success"
-            >
-              {n}
-            </span>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function renderNoticeContent(notice: GameNotice, me?: PlayerIndex): ReactNode {
-  switch (notice.kind) {
-    case 'hpChange': {
-      const isHeal = (notice.delta ?? 0) > 0;
-      const cardName = localizedCardNameById(notice.sourceCardDefId);
-      const ownerName = notice.player !== undefined ? playerName(notice.player) : '';
-      return (
-        <>
-          <div className="phase-message-kicker">
-            {ownerName}
-            {cardName ? ` · ${cardName}` : ''}
-          </div>
-          <strong
-            className={`phase-message-title font-display text-4xl font-bold ${isHeal ? 'text-accent-info' : 'text-accent-action'}`}
-          >
-            {isHeal ? '+' : ''}
-            {notice.delta}
-          </strong>
-          {notice.breakdown && <BreakdownBlock breakdown={notice.breakdown} />}
-        </>
-      );
-    }
-    case 'chronosChange': {
-      const sourceCardName = localizedCardNameById(notice.chronosSourceCardDefId);
-      const isCardEffect = notice.chronosSourceKind === 'cardEffect';
-      const mode = notice.chronosEffectMode ?? ((notice.chronosDelta ?? 0) < 0 ? 'rewind' : 'advance');
-      const moveAmount = notice.chronosMoveAmount ?? notice.chronosAdvanceAmount ?? Math.abs(notice.chronosDelta ?? 0);
-      const operation =
-        mode === 'set'
-          ? t('board.chronosResolution.setPosition' as never)
-          : `${t(
-              (mode === 'rewind' ? 'board.chronosResolution.rewind' : 'board.chronosResolution.advance') as never,
-            )} ${moveAmount} ${t('board.chronosResolution.spaces' as never)}`;
-      const sideLabel =
-        isCardEffect && notice.player !== undefined && me !== undefined
-          ? notice.player === me
-            ? t('board.me' as never)
-            : t('board.opponent' as never)
-          : undefined;
-      return (
-        <>
-          <div className="phase-message-kicker">
-            {t(notice.titleKey as never)}
-            {sideLabel ? ` · ${sideLabel}` : ''}
-            {sourceCardName ? ` · ${sourceCardName}` : ''}
-          </div>
-          <strong className="phase-message-title font-display text-3xl font-bold">{operation}</strong>
-          {notice.breakdown && <BreakdownBlock breakdown={notice.breakdown} />}
-        </>
-      );
-    }
-    case 'battleResult': {
-      return (
-        <>
-          <div className="phase-message-kicker">{t('board.notice.battle' as never)}</div>
-          <strong className="phase-message-title font-display text-2xl font-bold">{t(notice.titleKey as never)}</strong>
-          <p className="mt-1 font-mono text-caption uppercase tracking-[var(--tracking-meta)] text-content-primary/50">
-            {notice.winnerAttack} vs {notice.loserAttack}
-          </p>
-          {notice.breakdown && <BreakdownBlock breakdown={notice.breakdown} />}
-        </>
-      );
-    }
-    case 'turnStart': {
-      return (
-        <>
-          <div className="phase-message-kicker">{t('board.notice.turnStart' as never)}</div>
-          <strong className="phase-message-title font-display text-3xl font-bold">
-            {notice.turn} {t('board.notice.turnUnit' as never)}
-          </strong>
-        </>
-      );
-    }
-    default:
-      return null;
+function renderGeneralNoticeContent(notice: GameNotice): ReactNode {
+  if (notice.kind === 'effectFailure') {
+    const sourceName = localizedCardNameById(notice.sourceCardDefId) ?? notice.sourceCardDefId;
+    const reasonKey = `board.notice.effectFailure.${notice.failureReason ?? 'condition'}`;
+    return (
+      <>
+        <div className="phase-message-kicker">{t('board.notice.effectFailure' as never)}</div>
+        <strong className="phase-message-title">{sourceName ?? t('board.phaseEffectTitle')}</strong>
+        <p>{t(reasonKey as never)}</p>
+      </>
+    );
   }
+  if (notice.kind !== 'turnStart') return null;
+  return (
+    <>
+      <div className="phase-message-kicker">{t('board.notice.turnStart' as never)}</div>
+      <strong className="phase-message-title font-display text-3xl font-bold">
+        {notice.turn} {t('board.notice.turnUnit' as never)}
+      </strong>
+    </>
+  );
 }
 
 function TimedResolutionNotice({
   notice,
-  me,
   isGameOver,
   onResolved,
 }: {
   notice: GameNotice | null;
-  me?: PlayerIndex;
   isGameOver: boolean;
   onResolved: (noticeId: number) => void;
 }) {
@@ -767,34 +642,32 @@ function TimedResolutionNotice({
   if (!notice) return null;
   let content: ReactNode;
   try {
-    content = renderNoticeContent(notice, me);
+    content = renderGeneralNoticeContent(notice);
   } catch {
     content = <strong>Notice render error</strong>;
   }
   return (
     <div
-      className={`phase-message-overlay game-notice-overlay phase-message-${notice.tone}`}
+      className={`phase-message-overlay timed-resolution-overlay phase-message-${notice.tone}`}
       role="status"
       aria-live="polite"
       data-notice-id={notice.id}
     >
-      <div className="phase-message-panel hp-change-float">{content}</div>
+      <div className="phase-message-panel timed-resolution-notice">{content}</div>
     </div>
   );
 }
 
 function ResolutionTimeline({
   G,
-  me,
   onActivityChange,
-  onBattleAnimatingChange,
+  onSpatialAnimatingChange,
   onIngestion,
   suppress = false,
 }: {
   G: GameState;
-  me?: PlayerIndex;
   onActivityChange?: (active: boolean) => void;
-  onBattleAnimatingChange?: (active: boolean) => void;
+  onSpatialAnimatingChange?: (channel: 'battle' | 'effectHp', active: boolean) => void;
   onIngestion?: (maxNoticeId: number, hasPlayback: boolean) => void;
   suppress?: boolean;
 }) {
@@ -865,11 +738,16 @@ function ResolutionTimeline({
         G={G}
         notice={channel === 'battle' ? current : null}
         onResolved={resolveCurrent}
-        onAnimatingChange={onBattleAnimatingChange}
+        onAnimatingChange={(active) => onSpatialAnimatingChange?.('battle', active)}
+      />
+      <EffectHpResolutionLayer
+        G={G}
+        notice={channel === 'hp' ? current : null}
+        onResolved={resolveCurrent}
+        onAnimatingChange={(active) => onSpatialAnimatingChange?.('effectHp', active)}
       />
       <TimedResolutionNotice
         notice={channel === 'general' ? current : null}
-        me={me}
         isGameOver={G.step === 'gameOver'}
         onResolved={resolveCurrent}
       />
@@ -1348,6 +1226,43 @@ function powerTotal(G: GameState, player: PlayerIndex): number {
   return G.players[player].powerCharger.reduce((sum, card) => sum + (getCardDef(card.defId)?.sendToPower ?? 0), 0);
 }
 
+function combatStatusItems(G: GameState, player: PlayerIndex) {
+  const statuses: Array<{ label: string; value?: string; tone?: 'neutral' | 'warning' }> = [];
+  const modifiers = G.modifiers;
+  const element = modifiers.elementOverride?.[player];
+  if (element) {
+    statuses.push({
+      label: t('board.status.element' as never),
+      value: t(getCardElementTranslationKey(element) as never),
+    });
+  }
+  const costReduction = modifiers.powerCostReduction?.[player] ?? 0;
+  if (costReduction) statuses.push({ label: t('board.status.cost' as never), value: `-${costReduction}` });
+  if (modifiers.cardClockSetTo !== null && modifiers.cardClockSetTo !== undefined) {
+    statuses.push({ label: t('board.status.clock' as never), value: `${modifiers.cardClockSetTo}` });
+  }
+  if (modifiers.effectsDisabled?.[player]) {
+    statuses.push({ label: t('board.status.effectsDisabled' as never), tone: 'warning' });
+  } else if (modifiers.enchantEffectsDisabled?.[player]) {
+    statuses.push({ label: t('board.status.enchantDisabled' as never), tone: 'warning' });
+  }
+  if (G.midnightRange > 0) statuses.push({ label: t('board.status.midnight' as never), value: `±${G.midnightRange}` });
+  const handSize = modifiers.handSize?.[player] ?? 0;
+  if (handSize)
+    statuses.push({ label: t('board.status.hand' as never), value: `${handSize > 0 ? '+' : ''}${handSize}` });
+  const extraSet = modifiers.extraSettableCards?.[player] ?? 0;
+  if (extraSet) statuses.push({ label: t('board.status.set' as never), value: `+${extraSet}` });
+  if (modifiers.clockContributionDisabled?.[player]) {
+    statuses.push({ label: t('board.status.clockDisabled' as never), tone: 'warning' });
+  }
+  const attackTime = modifiers.attackTimeOverride?.[player];
+  if (attackTime) statuses.push({ label: t('board.status.attackTime' as never), value: attackTime });
+  if (modifiers.swapAttack?.[player]) statuses.push({ label: t('board.status.attackSwap' as never) });
+  const sendToPower = modifiers.sendToPower?.[player] ?? 0;
+  if (sendToPower) statuses.push({ label: t('card.charge'), value: `+${sendToPower}` });
+  return statuses;
+}
+
 function wasSetThisTurn(G: GameState, player: PlayerIndex, card: CardInstance | null): boolean {
   return !!card && G.setCardsThisTurn[player].some((item) => item.instanceId === card.instanceId);
 }
@@ -1374,6 +1289,39 @@ function translatedChoicePrompt(G: GameState, locale: string): string | null {
   if (!sourceEffect) return choice.prompt;
   const def = getCardDef(sourceEffect.cardDefId);
   return (def ? getLocalizedCardEffect(def, locale) : null) || choice.prompt;
+}
+
+function findChoiceCard(
+  G: GameState,
+  option: PendingChoiceOption,
+  forceHidden = false,
+): { card: CardInstance; owner: PlayerIndex } | null {
+  if (forceHidden) {
+    return {
+      card: { instanceId: option.id, defId: '__hidden__', faceUp: false },
+      owner: 1,
+    };
+  }
+  for (const owner of [0, 1] as const) {
+    const player = G.players[owner];
+    const cards = [
+      ...player.hand,
+      ...player.deck,
+      ...player.abyss,
+      ...player.powerCharger,
+      player.battleZone,
+      player.setZoneA,
+      player.setZoneB,
+      player.setZoneC,
+    ].filter((card): card is CardInstance => Boolean(card));
+    const card = cards.find((candidate) => candidate.instanceId === option.cardInstanceId);
+    if (card) return { card: { ...card, faceUp: option.cardDefId ? true : card.faceUp }, owner };
+  }
+  if (!option.cardDefId) return null;
+  return {
+    card: { instanceId: option.cardInstanceId ?? option.id, defId: option.cardDefId, faceUp: true },
+    owner: 0,
+  };
 }
 
 function EffectOrderPanel({
@@ -1437,16 +1385,21 @@ function PendingChoicePanel({
   playerID,
   selected,
   onSelectionChange,
+  onInspectCard,
 }: {
   G: GameState;
   moves: Props['moves'];
   playerID: Props['playerID'];
   selected: string[];
   onSelectionChange: (selected: string[]) => void;
+  onInspectCard: (card: CardInstance, owner: PlayerIndex) => void;
 }) {
   const locale = useLocale();
   const choice = G.pendingChoice;
   const meIndex = Number(playerID ?? '0') as PlayerIndex;
+  const [searchText, setSearchText] = useState('');
+
+  useEffect(() => setSearchText(''), [choice?.id]);
 
   if (!choice) return null;
 
@@ -1460,22 +1413,52 @@ function PendingChoicePanel({
       onSelectionChange(selected.filter((item) => item !== optionId));
       return;
     }
-    if (selected.length >= choice.max) return;
-    onSelectionChange([...selected, optionId]);
+    if (choice.max === 1) {
+      onSelectionChange([optionId]);
+      return;
+    }
+    if (selected.length < choice.max) onSelectionChange([...selected, optionId]);
   };
-  const isChronosPositionChoice = choice.type === 'clockPosition';
+  const isChronosPositionChoice = choice.type === 'clockPosition' || choice.type === 'clockAdvance';
+  const isDeclarationChoice = choice.type === 'declareOpponentHandCardName';
+  const isHiddenHandChoice = choice.type === 'selectOpponentHandCard';
+  const isReorderChoice = choice.type === 'reorderOpponentDeckTop';
+  const normalizedSearch = searchText.trim().toLocaleLowerCase(locale);
+  const matchingOptions = isDeclarationChoice
+    ? choice.options.filter((option) => {
+        if (!normalizedSearch) return true;
+        const def = option.cardDefId ? getCardDef(option.cardDefId) : undefined;
+        const fields = [option.label, option.cardDefId, def?.name, def?.enNameOfficial, def?.song, def?.pack];
+        return fields.some((field) => field?.toLocaleLowerCase(locale).includes(normalizedSearch));
+      })
+    : choice.options;
+  const visibleOptions = isDeclarationChoice && !normalizedSearch ? matchingOptions.slice(0, 36) : matchingOptions;
+  const isVisualChoice =
+    isHiddenHandChoice || visibleOptions.some((option) => option.cardDefId || option.cardInstanceId);
+  const moveReorderSelection = (optionId: string, direction: -1 | 1) => {
+    const index = selected.indexOf(optionId);
+    const nextIndex = index + direction;
+    if (index < 0 || nextIndex < 0 || nextIndex >= selected.length) return;
+    const next = [...selected];
+    [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+    onSelectionChange(next);
+  };
 
   return (
     <section
-      className={`effect-order-panel pending-choice-panel ${isChronosPositionChoice ? 'pending-choice-panel-clock' : ''}`}
+      className={`effect-order-panel pending-choice-panel ${isChronosPositionChoice ? 'pending-choice-panel-clock' : ''} ${isVisualChoice ? 'pending-choice-panel-visual' : ''}`}
       aria-label={t('board.pendingChoice')}
     >
       <div className="effect-order-heading">
         <strong>
           {isCurrentPlayer
             ? isChronosPositionChoice
-              ? t('board.chronosResolution.setPosition' as never)
-              : t('board.chooseCards')
+              ? choice.type === 'clockAdvance'
+                ? t('board.chronosResolution.advance' as never)
+                : t('board.chronosResolution.setPosition' as never)
+              : isDeclarationChoice
+                ? t('board.choiceDeclareCardName' as never)
+                : t('board.chooseCards')
             : t('board.waitingChoicePlayer')}
         </strong>
         <span>{playerName(choice.player)}</span>
@@ -1487,13 +1470,100 @@ function PendingChoicePanel({
             {t('board.choiceCount')} {selected.length}/{choice.max} · {t('board.choiceRequired')} {choice.min}–
             {choice.max}
           </p>
+          {isDeclarationChoice && (
+            <label className="pending-choice-search">
+              <Search aria-hidden="true" />
+              <input
+                type="search"
+                value={searchText}
+                onChange={(event) => setSearchText(event.target.value)}
+                placeholder={t('board.choiceSearchPlaceholder' as never)}
+                autoComplete="off"
+              />
+              <span>{matchingOptions.length}</span>
+            </label>
+          )}
+          {isReorderChoice && selected.length > 0 && (
+            <div className="pending-choice-order" aria-label={t('board.choiceDeckOrder' as never)}>
+              <strong>{t('board.choiceDeckTop' as never)}</strong>
+              {selected.map((optionId, index) => {
+                const option = choice.options.find((item) => item.id === optionId);
+                return (
+                  <div key={optionId}>
+                    <span>{index + 1}</span>
+                    <b>{option?.label ?? optionId}</b>
+                    <button
+                      type="button"
+                      disabled={index === 0}
+                      onClick={() => moveReorderSelection(optionId, -1)}
+                      aria-label={t('board.choiceMoveUp' as never)}
+                    >
+                      <ArrowUp aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      disabled={index === selected.length - 1}
+                      onClick={() => moveReorderSelection(optionId, 1)}
+                      aria-label={t('board.choiceMoveDown' as never)}
+                    >
+                      <ArrowDown aria-hidden="true" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
           {isChronosPositionChoice ? (
             <p className="pending-choice-clock-hint">{t('board.choiceChronosPositionHint' as never)}</p>
           ) : (
-            <div className="effect-order-list">
-              {choice.options.map((option) => {
+            <div className={`effect-order-list ${isVisualChoice ? 'pending-choice-card-grid' : ''}`}>
+              {visibleOptions.map((option) => {
                 const isSelected = selected.includes(option.id);
                 const order = selected.indexOf(option.id) + 1;
+                const found = findChoiceCard(G, option, isHiddenHandChoice);
+                const def = option.cardDefId ? getCardDef(option.cardDefId) : undefined;
+                const label = isHiddenHandChoice
+                  ? `${t('board.choiceHandPosition' as never)} ${Number(option.value) + 1}`
+                  : def
+                    ? getLocalizedCardName(def, locale)
+                    : option.label;
+                if (found) {
+                  return (
+                    <div key={option.id} className="pending-choice-card-option" data-selected={isSelected || undefined}>
+                      <div className="pending-choice-card-frame">
+                        <CardView
+                          card={found.card}
+                          size="md"
+                          imageContext="thumbnail"
+                          state={isSelected ? 'selected' : 'targetable'}
+                          onActivate={() => toggle(option.id)}
+                          onInspect={
+                            found.card.defId !== '__hidden__' ? () => onInspectCard(found.card, found.owner) : undefined
+                          }
+                          ariaLabel={label}
+                        />
+                        {isSelected && (
+                          <strong className="pending-choice-card-order">{isReorderChoice ? order : '✓'}</strong>
+                        )}
+                      </div>
+                      <div className="pending-choice-card-caption">
+                        <span>{label}</span>
+                        {choice.type === 'handAbyssSwap' && (
+                          <small>{option.id.startsWith('hand:') ? t('board.hand') : t('board.abyss')}</small>
+                        )}
+                        {found.card.defId !== '__hidden__' && (
+                          <button
+                            type="button"
+                            onClick={() => onInspectCard(found.card, found.owner)}
+                            aria-label={`${t('board.choiceDetails' as never)} ${label}`}
+                          >
+                            <Info aria-hidden="true" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                }
                 return (
                   <button
                     key={option.id}
@@ -1512,6 +1582,9 @@ function PendingChoicePanel({
                   </button>
                 );
               })}
+              {isDeclarationChoice && visibleOptions.length === 0 && (
+                <p className="pending-choice-empty">{t('board.choiceNoSearchResults' as never)}</p>
+              )}
             </div>
           )}
           {semanticError && (
@@ -1537,6 +1610,197 @@ function PendingChoicePanel({
         <p>{t('board.waitingOpponent')}</p>
       )}
     </section>
+  );
+}
+
+function RevealedHandChoicePanel({
+  G,
+  moves,
+  playerID,
+  spectator,
+  onInspectCard,
+}: {
+  G: GameState;
+  moves: Props['moves'];
+  playerID: Props['playerID'];
+  spectator: boolean;
+  onInspectCard: (card: CardInstance, owner: PlayerIndex) => void;
+}) {
+  const locale = useLocale();
+  const choice = G.pendingChoice;
+  const overlayRef = useRef<HTMLDivElement | null>(null);
+  const panelRef = useRef<HTMLElement | null>(null);
+  const open = choice?.type === 'acknowledgeRevealedHand';
+  const [sourceRect, setSourceRect] = useState<CSSProperties | null>(null);
+  const [panelReady, setPanelReady] = useState(false);
+  useModalFocus(open && panelReady, panelRef, overlayRef);
+  useEffect(() => {
+    if (!open) {
+      setPanelReady(false);
+      return;
+    }
+    const delay = choice?.sourceCardInstanceId ? (prefersReducedMotion() ? 180 : 650) : 0;
+    const timer = window.setTimeout(() => setPanelReady(true), delay);
+    return () => window.clearTimeout(timer);
+  }, [choice?.id, choice?.sourceCardInstanceId, open]);
+  useLayoutEffect(() => {
+    if (!open || !choice?.sourceCardInstanceId) {
+      setSourceRect(null);
+      return;
+    }
+    const update = () => {
+      const source = document.querySelector<HTMLElement>(
+        `.bf-main [data-anim-card="${CSS.escape(choice.sourceCardInstanceId ?? '')}"]`,
+      );
+      const rect = source?.getBoundingClientRect();
+      setSourceRect(
+        rect && rect.width > 0 && rect.height > 0
+          ? { left: rect.left, top: rect.top, width: rect.width, height: rect.height }
+          : null,
+      );
+    };
+    const frame = requestAnimationFrame(update);
+    window.addEventListener('resize', update);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener('resize', update);
+    };
+  }, [choice?.sourceCardInstanceId, open]);
+  if (choice?.type !== 'acknowledgeRevealedHand') return null;
+  const meIndex = Number(playerID ?? '0') as PlayerIndex;
+  const canReview = !spectator && choice.player === meIndex;
+  const revealedPlayer = choice.payload.revealedPlayer;
+  const sourceZone = choice.payload.sourceZone ?? 'hand';
+  const revealedIds = choice.payload.revealedCardInstanceIds ? new Set(choice.payload.revealedCardInstanceIds) : null;
+  const sourceCards = sourceZone === 'deck' ? G.players[revealedPlayer].deck : G.players[revealedPlayer].hand;
+  const cards = sourceCards
+    .filter((card) => !revealedIds || revealedIds.has(card.instanceId))
+    .map((card) => ({ ...card, faceUp: card.defId !== '__hidden__' }));
+  const canView = canReview || revealedPlayer === meIndex || sourceZone === 'deck';
+  const sourceDef = choice.sourceCardDefId ? getCardDef(choice.sourceCardDefId) : undefined;
+  const sourceName = sourceDef ? getLocalizedCardName(sourceDef, locale) : null;
+  const guessedDef = choice.payload.guessedCardDefId ? getCardDef(choice.payload.guessedCardDefId) : undefined;
+  const guessedName = guessedDef ? getLocalizedCardName(guessedDef, locale) : choice.payload.guessedCardDefId;
+  const title =
+    sourceZone === 'deck'
+      ? t('board.revealedHand.deckTitle' as never)
+      : choice.payload.guessedCardDefId
+        ? t('board.revealedHand.guessTitle' as never)
+        : revealedPlayer === meIndex && !canReview
+          ? t('board.revealedHand.ownTitle' as never)
+          : t('board.revealedHand.title');
+
+  return (
+    <div ref={overlayRef} className="revealed-hand-overlay">
+      {sourceRect && <span className="revealed-hand-source-highlight" style={sourceRect} aria-hidden="true" />}
+      {panelReady && (
+        <section
+          ref={panelRef}
+          className="revealed-hand-panel"
+          data-reviewer={canReview || undefined}
+          role="dialog"
+          aria-modal="true"
+          aria-label={canView ? title : t('board.revealedHand.waiting')}
+          tabIndex={-1}
+        >
+          <header className="revealed-hand-heading">
+            <div>
+              <span>{sourceName ?? t('board.phaseEffectTitle')}</span>
+              <h2>{canView ? title : t('board.revealedHand.waiting')}</h2>
+            </div>
+            <strong>{cards.length}</strong>
+          </header>
+          {canView ? (
+            <>
+              <p className="revealed-hand-description">
+                {sourceZone === 'deck'
+                  ? t('board.revealedHand.deckDescription' as never)
+                  : revealedPlayer === meIndex && !canReview
+                    ? t('board.revealedHand.ownDescription' as never)
+                    : t('board.revealedHand.description')}
+              </p>
+              {choice.payload.guessedCardDefId && (
+                <div className="revealed-hand-result" data-matched={choice.payload.matched || undefined}>
+                  <span>
+                    {t('board.revealedHand.declared' as never)} <strong>{guessedName}</strong>
+                  </span>
+                  <b>
+                    {choice.payload.matched
+                      ? t('board.revealedHand.hit' as never)
+                      : t('board.revealedHand.miss' as never)}
+                  </b>
+                  <code>
+                    {t('board.attackLabel')} +{choice.payload.attackBoost ?? 0}
+                  </code>
+                </div>
+              )}
+              {choice.payload.boostPerCard !== undefined && (
+                <div className="revealed-hand-result" data-matched="true">
+                  <span>{t('board.revealedHand.attackFormula' as never)}</span>
+                  <code>
+                    {cards.length} × {choice.payload.boostPerCard} = +{choice.payload.attackBoost ?? 0}
+                  </code>
+                </div>
+              )}
+              {choice.payload.deckComparison && (
+                <div className="revealed-hand-result" data-matched={choice.payload.deckComparison.matched || undefined}>
+                  <span>
+                    {choice.payload.deckComparison.stat === 'powerCost' ? t('board.energy') : t('card.charge')}
+                  </span>
+                  <code>
+                    {choice.payload.deckComparison.value} {choice.payload.deckComparison.matched ? '≥' : '<'}{' '}
+                    {choice.payload.deckComparison.threshold}
+                    {choice.payload.deckComparison.attackBoost !== undefined
+                      ? ` · ${t('board.attackLabel')} +${choice.payload.deckComparison.attackBoost}`
+                      : ''}
+                  </code>
+                </div>
+              )}
+              {cards.length > 0 ? (
+                <div
+                  className="revealed-hand-cards"
+                  role="list"
+                  aria-label={sourceZone === 'deck' ? t('board.deck') : t('board.opponentHand')}
+                >
+                  {cards.map((card) => {
+                    const def = card.defId !== '__hidden__' ? getCardDef(card.defId) : undefined;
+                    const name = def ? getLocalizedCardName(def, locale) : t('card.back');
+                    return (
+                      <div className="revealed-hand-card" role="listitem" key={card.instanceId}>
+                        <CardView
+                          card={card}
+                          size="md"
+                          imageContext="thumbnail"
+                          onActivate={def ? () => onInspectCard(card, revealedPlayer) : undefined}
+                          ariaLabel={name}
+                        />
+                        <span>{name}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="revealed-hand-empty">{t('board.revealedHand.empty')}</p>
+              )}
+              <footer className="revealed-hand-footer">
+                <span>
+                  {canReview ? t('board.revealedHand.temporary') : t('board.revealedHand.waitingDescription')}
+                </span>
+                {canReview && (
+                  <Button variant="primary" type="button" onClick={() => moves.submitPendingChoice([])}>
+                    {t('board.revealedHand.done')}
+                  </Button>
+                )}
+              </footer>
+            </>
+          ) : (
+            <p className="revealed-hand-waiting" aria-live="polite">
+              {t('board.revealedHand.waitingDescription')}
+            </p>
+          )}
+        </section>
+      )}
+    </div>
   );
 }
 
@@ -1750,10 +2014,10 @@ function BattleHud({
   );
 }
 
-function BattleOverlayLayer({ children }: { children: ReactNode }) {
+function BattleOverlayLayer({ children, wide = false }: { children: ReactNode; wide?: boolean }) {
   return (
     <div className="board-effect-overlay pointer-events-none absolute inset-0 z-[var(--z-overlay)] flex items-center justify-center">
-      <div className="pointer-events-auto w-full max-w-md px-4">{children}</div>
+      <div className={`pointer-events-auto w-full px-4 ${wide ? 'max-w-5xl' : 'max-w-md'}`}>{children}</div>
     </div>
   );
 }
@@ -1867,7 +2131,7 @@ function BattleBoard({
   const opponent = G.players[opponentIndex];
   const [resolutionTimelineActive, setResolutionTimelineActive] = useState(false);
   const resolutionWasActiveRef = useRef(false);
-  const animationActivityRef = useRef({ board: false, battleResolution: false });
+  const animationActivityRef = useRef({ board: false, battleResolution: false, effectHpResolution: false });
   const handleResolutionTimelineActivity = useCallback(
     (active: boolean) => {
       const wasActive = resolutionWasActiveRef.current;
@@ -1889,8 +2153,9 @@ function BattleBoard({
     (active: boolean) => reportAnimationActivity('board', active),
     [reportAnimationActivity],
   );
-  const handleBattleResolutionChange = useCallback(
-    (active: boolean) => reportAnimationActivity('battleResolution', active),
+  const handleSpatialResolutionChange = useCallback(
+    (channel: 'battle' | 'effectHp', active: boolean) =>
+      reportAnimationActivity(channel === 'battle' ? 'battleResolution' : 'effectHpResolution', active),
     [reportAnimationActivity],
   );
   // 設定名稱 override（AI 對戰時為「玩家」/「電腦」），formatLogEntry 等純函數透過 module-level 變數讀取。
@@ -1970,18 +2235,34 @@ function BattleBoard({
   ]);
 
   const chronosPositionChoice =
-    G.pendingChoice?.type === 'clockPosition' && G.pendingChoice.player === meIndex ? G.pendingChoice : null;
+    (G.pendingChoice?.type === 'clockPosition' || G.pendingChoice?.type === 'clockAdvance') &&
+    G.pendingChoice.player === meIndex
+      ? G.pendingChoice
+      : null;
+  const chronosOptionPosition = (value: number) =>
+    chronosPositionChoice?.type === 'clockAdvance'
+      ? (((G.chronos.position + value) % CHRONOS_MAPPING.positions) + CHRONOS_MAPPING.positions) %
+        CHRONOS_MAPPING.positions
+      : value;
   const chronosTargetPositions = chronosPositionChoice
-    ? chronosPositionChoice.options.map((option) => Number(option.value)).filter((value) => Number.isInteger(value))
+    ? chronosPositionChoice.options
+        .map((option) => Number(option.value))
+        .filter((value) => Number.isInteger(value))
+        .map(chronosOptionPosition)
     : undefined;
   const selectedChronosTarget = chronosPositionChoice
-    ? Number(
-        chronosPositionChoice.options.find((option) => selectedPendingChoiceOptions.includes(option.id))?.value ?? NaN,
+    ? chronosOptionPosition(
+        Number(
+          chronosPositionChoice.options.find((option) => selectedPendingChoiceOptions.includes(option.id))?.value ??
+            NaN,
+        ),
       )
     : null;
   const selectChronosTarget = chronosPositionChoice
     ? (position: number) => {
-        const option = chronosPositionChoice.options.find((item) => Number(item.value) === position);
+        const option = chronosPositionChoice.options.find(
+          (item) => chronosOptionPosition(Number(item.value)) === position,
+        );
         if (option) setSelectedPendingChoiceOptions([option.id]);
       }
     : undefined;
@@ -2145,7 +2426,7 @@ function BattleBoard({
   const primaryActionTitle = G.ready[meIndex]
     ? t('board.readyWaiting')
     : G.pendingChoice
-      ? G.pendingChoice.type === 'clockPosition'
+      ? G.pendingChoice.type === 'clockPosition' || G.pendingChoice.type === 'clockAdvance'
         ? t('board.chronosResolution.setPosition' as never)
         : t('board.chooseCards')
       : G.step === 'effectOrder'
@@ -2287,6 +2568,7 @@ function BattleBoard({
                 meta={opponentMeta}
                 tutId="opponent-hp"
                 animationZone={`p${opponentIndex}:status`}
+                statuses={combatStatusItems(G, opponentIndex)}
               />
               {mobileAbyssButton(opponentIndex, opponent.abyss.length)}
             </div>
@@ -2471,6 +2753,7 @@ function BattleBoard({
                   meta={meMeta}
                   tutId="player-hp"
                   animationZone={`p${meIndex}:status`}
+                  statuses={combatStatusItems(G, meIndex)}
                 />
                 {mobileAbyssButton(meIndex, me.abyss.length)}
               </div>
@@ -2530,8 +2813,24 @@ function BattleBoard({
         !resolutionTimelineActive &&
         (G.step === 'effectOrder' || G.pendingChoice) &&
         (G.pendingChoice || tutorialMode || legalPendingEffectIndexes.length > 1) &&
-        (!tutorialMode || tutorialEffectOverlayVisible !== false) && (
-          <BattleOverlayLayer>
+        (!tutorialMode || tutorialEffectOverlayVisible !== false) &&
+        (G.pendingChoice?.type === 'acknowledgeRevealedHand' ? (
+          <RevealedHandChoicePanel
+            G={G}
+            moves={moves}
+            playerID={playerID}
+            spectator={spectator}
+            onInspectCard={(card, owner) => {
+              inspect(card, owner, t('board.opponentHand'));
+              setDetailSheetOpen(true);
+            }}
+          />
+        ) : (
+          <BattleOverlayLayer
+            wide={Boolean(
+              G.pendingChoice && G.pendingChoice.type !== 'clockPosition' && G.pendingChoice.type !== 'clockAdvance',
+            )}
+          >
             {G.pendingChoice ? (
               <PendingChoicePanel
                 G={G}
@@ -2539,12 +2838,16 @@ function BattleBoard({
                 playerID={playerID}
                 selected={selectedPendingChoiceOptions}
                 onSelectionChange={setSelectedPendingChoiceOptions}
+                onInspectCard={(card, owner) => {
+                  inspect(card, owner, t('board.pendingChoice'));
+                  if (touchLike) setDetailSheetOpen(true);
+                }}
               />
             ) : (
               <EffectOrderPanel G={G} moves={moves} playerID={playerID} />
             )}
           </BattleOverlayLayer>
-        )}
+        ))}
 
       <BattleSideSheet
         activePanel={activeSidePanel}
@@ -2585,9 +2888,8 @@ function BattleBoard({
 
       <ResolutionTimeline
         G={G}
-        me={meIndex}
         onActivityChange={handleResolutionTimelineActivity}
-        onBattleAnimatingChange={handleBattleResolutionChange}
+        onSpatialAnimatingChange={handleSpatialResolutionChange}
         onIngestion={onResolutionIngestion}
         suppress={tutorialSuppressNotices}
       />

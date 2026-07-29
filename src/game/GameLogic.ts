@@ -13,6 +13,7 @@ import type {
   CombatModifiers,
   Element,
   GameState,
+  GameNotice,
   HpChangeBreakdown,
   HpChangeBreakdownLine,
   JankenChoice,
@@ -165,6 +166,7 @@ function recordGameOverTrace(G: GameState): void {
 export function emptyModifiers(): CombatModifiers {
   return {
     attack: [0, 0],
+    attackSources: [[], []],
     attackSetTo: [null, null],
     attackTimeOverride: [null, null],
     cardClockSetTo: null,
@@ -1156,6 +1158,31 @@ function timingCandidateCards(G: GameState, player: PlayerIndex): CardInstance[]
     .filter((card, index, all) => all.findIndex((other) => other.instanceId === card.instanceId) === index);
 }
 
+function notifyGameEffectFailure(
+  G: GameState,
+  player: PlayerIndex,
+  cardDefId: string,
+  cardInstanceId: string | undefined,
+  failureReason: NonNullable<GameNotice['failureReason']>,
+  failureMessage?: string,
+): void {
+  recordAction(G, player, 'effectFailed', {
+    cardDefId,
+    reason: failureReason,
+    ...(failureMessage ? { message: failureMessage } : {}),
+  });
+  pushGameNotice(G, {
+    kind: 'effectFailure',
+    tone: 'danger',
+    titleKey: 'board.notice.effectFailure',
+    player,
+    sourceCardDefId: cardDefId,
+    ...(cardInstanceId ? { sourceCardInstanceId: cardInstanceId } : {}),
+    failureReason,
+    ...(failureMessage ? { failureMessage } : {}),
+  });
+}
+
 export function resolveTimingEvent(
   G: GameState,
   parsedEffects: Map<string, ParsedEffect[]> = emptyParsedEffects(),
@@ -1191,7 +1218,16 @@ export function resolveTimingEvent(
     const delayed = G.delayedEffects;
     G.delayedEffects = [];
     for (const pendingEffect of delayed) {
-      if (areEffectsDisabledForCard(G, pendingEffect.player, pendingEffect.cardDefId)) continue;
+      if (areEffectsDisabledForCard(G, pendingEffect.player, pendingEffect.cardDefId)) {
+        notifyGameEffectFailure(
+          G,
+          pendingEffect.player,
+          pendingEffect.cardDefId,
+          pendingEffect.cardInstanceId,
+          'disabled',
+        );
+        continue;
+      }
       const result = executeEffectWithChronosResolution(
         G,
         parsedEffects,
@@ -1204,6 +1240,16 @@ export function resolveTimingEvent(
         automaticResolution.context,
       );
       if (result.success) G.log.push(`Player ${pendingEffect.player}: ${result.message}.`);
+      else {
+        notifyGameEffectFailure(
+          G,
+          pendingEffect.player,
+          pendingEffect.cardDefId,
+          pendingEffect.cardInstanceId,
+          'condition',
+          result.message,
+        );
+      }
       options.onEffectExecuted?.({
         cardDefId: pendingEffect.cardDefId,
         effect: pendingEffect.effect,
@@ -1226,11 +1272,16 @@ export function resolveTimingEvent(
 
   for (const player of players) {
     for (const card of timingCandidateCards(G, player)) {
-      if (areEffectsDisabledForCard(G, player, card.defId)) continue;
+      const effects = (parsedEffects.get(card.defId) ?? []).filter(
+        (effect) => effect.trigger === trigger && (!options.effectFilter || options.effectFilter(effect)),
+      );
+      if (effects.length === 0) continue;
+      if (areEffectsDisabledForCard(G, player, card.defId)) {
+        notifyGameEffectFailure(G, player, card.defId, card.instanceId, 'disabled');
+        continue;
+      }
       const definition = getCardDef(card.defId);
-      for (const effect of parsedEffects.get(card.defId) ?? []) {
-        if (effect.trigger !== trigger) continue;
-        if (options.effectFilter && !options.effectFilter(effect)) continue;
+      for (const effect of effects) {
         // 官方 QA Q80：「HPがX以下になったらすぐにYに置く」效果（onDamageReceived
         // + hpLessOrEqual + moveSelfAreaEnchant）是條件觸發的自動移動，非效果発動，
         // 無視 power cost 檢查。其他效果仍需檢查 power cost。
@@ -1238,8 +1289,13 @@ export function resolveTimingEvent(
           effect.trigger === 'onDamageReceived' &&
           effect.action.type === 'moveSelfAreaEnchant' &&
           effect.conditions?.some((c) => c.type === 'hpLessOrEqual');
-        if (!definition || (!isImmediateHpMove && getPlayerPower(G.players[player], G, player) < definition.powerCost))
+        if (
+          !definition ||
+          (!isImmediateHpMove && getPlayerPower(G.players[player], G, player) < definition.powerCost)
+        ) {
+          notifyGameEffectFailure(G, player, card.defId, card.instanceId, 'powerCost');
           continue;
+        }
         const result = executeEffectWithChronosResolution(
           G,
           parsedEffects,
@@ -1249,6 +1305,9 @@ export function resolveTimingEvent(
           automaticResolution.context,
         );
         if (result.success) G.log.push(`Player ${player}: ${result.message}.`);
+        else if (result.message !== 'Condition not met') {
+          notifyGameEffectFailure(G, player, card.defId, card.instanceId, 'condition', result.message);
+        }
         options.onEffectExecuted?.({ cardDefId: card.defId, effect, player, success: result.success });
         if ((G.step as GameState['step']) === 'gameOver') {
           recordGameOverTrace(G);
@@ -1268,6 +1327,10 @@ export function resolveBattle(G: GameState, parsedEffects: Map<string, ParsedEff
     const card = G.players[index].battleZone;
     return card ? getEffectiveAttack(card, G, index) : 0;
   }) as [number, number];
+  const attackModifierSources = [
+    [...(G.modifiers.attackSources?.[0] ?? [])],
+    [...(G.modifiers.attackSources?.[1] ?? [])],
+  ] as NonNullable<GameNotice['attackModifierSources']>;
   G.players[0].rawAttack = attacks[0];
   G.players[1].rawAttack = attacks[1];
   if (attacks[0] === attacks[1]) {
@@ -1318,6 +1381,7 @@ export function resolveBattle(G: GameState, parsedEffects: Map<string, ParsedEff
       loserAttack: attacks[1],
       damage: 0,
       battleCards,
+      attackModifierSources,
       breakdown: drawBreakdown,
     });
     // 平手無 HP 變化，但記錄到 actionLog 讓玩家能回溯戰鬥攻擊力比較。
@@ -1402,6 +1466,7 @@ export function resolveBattle(G: GameState, parsedEffects: Map<string, ParsedEff
       ...(winnerCard ? [winnerCard.defId] : []),
       ...(loserCard ? [loserCard.defId] : []),
       ...damageReductionSources.map((source) => source.cardDefId),
+      ...attackModifierSources.flatMap((sources) => sources.flatMap((source) => source.cardDefId ?? [])),
     ],
   };
   pushHpChange(G, loser, G.players[loser].hp - loserHpBefore, 'battle', undefined, battleBreakdown, {
@@ -1411,6 +1476,7 @@ export function resolveBattle(G: GameState, parsedEffects: Map<string, ParsedEff
     damage,
     battleCards,
     damageReductionSources,
+    attackModifierSources,
   });
   // 傷害被完全減免（damage=0）時 pushHpChange 因 delta=0 不會推 notice，
   // 這裡補一筆 battleResult notice，讓 UI 提示「傷害全減免」並顯示減傷明細。
@@ -1428,6 +1494,7 @@ export function resolveBattle(G: GameState, parsedEffects: Map<string, ParsedEff
       damage: 0,
       battleCards,
       damageReductionSources,
+      attackModifierSources,
       breakdown: battleBreakdown,
     });
   }
@@ -1641,7 +1708,11 @@ export function getResolvablePendingEffectIndexes(G: GameState, player: PlayerIn
 function pruneDisabledPendingEffects(G: GameState, player: PlayerIndex): void {
   G.pendingEffects[player] = G.pendingEffects[player].filter((pendingEffect) => {
     const rulesSourceCardDefId = pendingEffect.rulesSourceCardDefId ?? pendingEffect.cardDefId;
-    if (areEffectsDisabledForCard(G, player, rulesSourceCardDefId)) return false;
+    const rulesSourceCardInstanceId = pendingEffect.rulesSourceCardInstanceId ?? pendingEffect.cardInstanceId;
+    if (areEffectsDisabledForCard(G, player, rulesSourceCardDefId)) {
+      notifyGameEffectFailure(G, player, rulesSourceCardDefId, rulesSourceCardInstanceId, 'disabled');
+      return false;
+    }
     // 官方規則指南 B：效果在「処理する時点」のパワー総数 >= パワーコスト 時才發動。
     // 執行前重新檢查パワーコスト，避免效果處理途中パワー下降後仍發動。
     // 官方 QA Q48：複製 Enchant 時檢查實際發動複製的卡，不檢查被複製卡的費用。
@@ -1650,7 +1721,10 @@ function pruneDisabledPendingEffects(G: GameState, player: PlayerIndex): void {
     if (!def) return true;
     const reduction = def.type === 'Character' ? (G.modifiers.powerCostReduction?.[player] ?? 0) : 0;
     const cost = Math.max(0, def.powerCost - reduction);
-    if (getPlayerPower(G.players[player], G, player) < cost) return false;
+    if (getPlayerPower(G.players[player], G, player) < cost) {
+      notifyGameEffectFailure(G, player, rulesSourceCardDefId, rulesSourceCardInstanceId, 'powerCost');
+      return false;
+    }
     return true;
   });
 }
@@ -1737,6 +1811,16 @@ export function resolvePendingEffect(
     },
   );
   if (result.success) G.log.push(`Player ${player}: ${result.message}.`);
+  else {
+    notifyGameEffectFailure(
+      G,
+      player,
+      pendingEffect.rulesSourceCardDefId ?? pendingEffect.cardDefId,
+      pendingEffect.rulesSourceCardInstanceId ?? pendingEffect.cardInstanceId,
+      'condition',
+      result.message,
+    );
+  }
   if ((G.step as GameState['step']) === 'gameOver') {
     recordGameOverTrace(G);
     clearPendingEffects(G);

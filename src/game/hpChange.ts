@@ -17,6 +17,7 @@ export const MAX_HP_CHANGES_KEPT = 20;
  * - reason 區分戰鬥傷害、直接傷害、回復等，讓提示能標註成因。
  * - sourceCardDefId 為觸發效果之卡牌定義 ID（戰鬥傷害時為 undefined），
  *   供 UI 顯示卡名（若有）。
+ * - sourceCardInstanceId 讓場上動畫能精確指向同名卡牌中的實際觸發來源。
  *
  * 抽成獨立模組以避免 GameLogic ↔ effects/executor 之間的循環依賴。
  */
@@ -29,8 +30,15 @@ export function pushHpChange(
   breakdown?: HpChangeBreakdown,
   noticeSnapshot?: Pick<
     GameNotice,
-    'winner' | 'winnerAttack' | 'loserAttack' | 'damage' | 'battleCards' | 'damageReductionSources'
+    | 'winner'
+    | 'winnerAttack'
+    | 'loserAttack'
+    | 'damage'
+    | 'battleCards'
+    | 'damageReductionSources'
+    | 'attackModifierSources'
   >,
+  sourceCardInstanceId?: string,
 ): void {
   if (delta === 0) return;
   const hpAfter = Math.round(G.players[player].hp);
@@ -46,6 +54,7 @@ export function pushHpChange(
     hpAfter,
     reason,
     ...(sourceCardDefId ? { sourceCardDefId } : {}),
+    ...(sourceCardInstanceId ? { sourceCardInstanceId } : {}),
     ...(breakdown ? { breakdown } : {}),
     turn: G.turnNumber,
     timestamp: Date.now(),
@@ -61,6 +70,7 @@ export function pushHpChange(
     before: hpBefore,
     after: hpAfter,
     ...(sourceCardDefId ? { sourceCardDefId } : {}),
+    ...(sourceCardInstanceId ? { sourceCardInstanceId } : {}),
     ...(breakdown ? { breakdown } : {}),
   });
   // 同步推一筆 hpChange GameNotice，由統一播放時間線依序顯示。
@@ -75,6 +85,7 @@ export function pushHpChange(
     hpAfter,
     reason,
     ...(sourceCardDefId ? { sourceCardDefId } : {}),
+    ...(sourceCardInstanceId ? { sourceCardInstanceId } : {}),
     ...(breakdown ? { breakdown } : {}),
     ...(noticeSnapshot ?? {}),
   });

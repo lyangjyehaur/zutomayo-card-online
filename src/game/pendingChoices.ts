@@ -362,39 +362,147 @@ const revealHandAttackBoostHandler: ChoiceHandler = {
         .map((optionId) => playerState.hand.find((card) => card.instanceId === optionId)?.defId)
         .filter((defId): defId is string => Boolean(defId)),
     });
-    G.modifiers.attack[player] += optionIds.length * c.payload.boostPerCard;
-    return { status: 'ok' };
+    const attackBoost = optionIds.length * c.payload.boostPerCard;
+    G.modifiers.attack[player] += attackBoost;
+    if (attackBoost !== 0) {
+      if (!G.modifiers.attackSources) G.modifiers.attackSources = [[], []];
+      G.modifiers.attackSources[player].push({
+        kind: 'boost',
+        player,
+        targetPlayer: player,
+        amount: attackBoost,
+        ...(choice.sourceCardDefId ? { cardDefId: choice.sourceCardDefId } : {}),
+        ...(choice.sourceCardInstanceId ? { cardInstanceId: choice.sourceCardInstanceId } : {}),
+      });
+    }
+    if (optionIds.length === 0) return { status: 'ok' };
+    return {
+      status: 'ok',
+      nextChoice: {
+        id: `${choice.id}:reveal-result`,
+        player: (1 - player) as PlayerIndex,
+        type: 'acknowledgeRevealedHand',
+        min: 0,
+        max: 0,
+        prompt: choice.prompt,
+        payload: {
+          revealedPlayer: player,
+          sourceZone: 'hand',
+          revealedCardInstanceIds: optionIds,
+          attackBoost,
+          boostPerCard: c.payload.boostPerCard,
+        },
+        options: [],
+        ...(choice.sourceCardDefId ? { sourceCardDefId: choice.sourceCardDefId } : {}),
+        ...(choice.sourceCardInstanceId ? { sourceCardInstanceId: choice.sourceCardInstanceId } : {}),
+      },
+    };
   },
 };
 
-const nameGuessOpponentHandRevealHandler: ChoiceHandler = {
+const declareOpponentHandCardNameHandler: ChoiceHandler = {
   summarize(choice) {
-    const c = choice as Extract<PendingChoice, { type: 'nameGuessOpponentHandReveal' }>;
+    const c = choice as Extract<PendingChoice, { type: 'declareOpponentHandCardName' }>;
     return {
       targetPlayer: c.payload.opponentPlayer,
-      effectLabel: 'nameGuessOpponentHandReveal',
+      effectLabel: 'declareOpponentHandCardName',
     };
   },
   apply({ G, player, choice, optionIds }) {
-    const c = choice as Extract<PendingChoice, { type: 'nameGuessOpponentHandReveal' }>;
-    const match = optionIds[0]?.match(/^hand:([0-9]+):guess:([^:]+)$/);
-    if (!match || c.payload.opponentPlayer !== ((1 - player) as PlayerIndex)) return { status: 'invalid' };
-    const [, handIndexText, guessedDefId] = match;
+    const c = choice as Extract<PendingChoice, { type: 'declareOpponentHandCardName' }>;
+    const option = choice.options.find((candidate) => candidate.id === optionIds[0]);
+    const guessedCardDefId = typeof option?.value === 'string' ? option.value : undefined;
+    if (!guessedCardDefId || !getCardDef(guessedCardDefId)) return { status: 'invalid' };
     const opponent = G.players[c.payload.opponentPlayer];
-    const selected = opponent.hand[Number(handIndexText)];
+    if (opponent.hand.length === 0 || c.payload.opponentPlayer !== ((1 - player) as PlayerIndex)) {
+      return { status: 'invalid' };
+    }
+    return {
+      status: 'ok',
+      nextChoice: {
+        id: `${choice.id}:select-hand`,
+        player,
+        type: 'selectOpponentHandCard',
+        min: 1,
+        max: 1,
+        prompt: choice.prompt,
+        payload: { ...c.payload, guessedCardDefId },
+        options: opponent.hand.map((_card, handIndex) => ({
+          id: `hand-position:${handIndex}`,
+          label: `Opponent hand ${handIndex + 1}`,
+          value: handIndex,
+        })),
+        ...(choice.sourceCardDefId ? { sourceCardDefId: choice.sourceCardDefId } : {}),
+        ...(choice.sourceCardInstanceId ? { sourceCardInstanceId: choice.sourceCardInstanceId } : {}),
+      },
+    };
+  },
+};
+
+const selectOpponentHandCardHandler: ChoiceHandler = {
+  summarize(choice) {
+    const c = choice as Extract<PendingChoice, { type: 'selectOpponentHandCard' }>;
+    return {
+      targetPlayer: c.payload.opponentPlayer,
+      guessedCardDefId: c.payload.guessedCardDefId,
+      effectLabel: 'selectOpponentHandCard',
+    };
+  },
+  apply({ G, player, choice, optionIds }) {
+    const c = choice as Extract<PendingChoice, { type: 'selectOpponentHandCard' }>;
+    const option = choice.options.find((candidate) => candidate.id === optionIds[0]);
+    const handIndex = Number(option?.value);
+    if (!Number.isInteger(handIndex) || c.payload.opponentPlayer !== ((1 - player) as PlayerIndex)) {
+      return { status: 'invalid' };
+    }
+    const opponent = G.players[c.payload.opponentPlayer];
+    const selected = opponent.hand[handIndex];
     if (!selected) return { status: 'invalid' };
     const revealed = new Set(G.revealedHandCardIds[c.payload.opponentPlayer] ?? []);
     revealed.add(selected.instanceId);
     G.revealedHandCardIds[c.payload.opponentPlayer] = [...revealed];
+    const matched = selected.defId === c.payload.guessedCardDefId;
     recordAction(G, player, 'revealCards', {
       targetPlayer: c.payload.opponentPlayer,
       sourceZone: 'hand',
       cardDefIds: [selected.defId],
+      guessedCardDefId: c.payload.guessedCardDefId,
+      matched,
     });
-    if (selected.defId === guessedDefId) {
+    if (matched) {
       G.modifiers.attack[player] += c.payload.attackBoost;
+      if (!G.modifiers.attackSources) G.modifiers.attackSources = [[], []];
+      G.modifiers.attackSources[player].push({
+        kind: 'boost',
+        player,
+        targetPlayer: player,
+        amount: c.payload.attackBoost,
+        ...(choice.sourceCardDefId ? { cardDefId: choice.sourceCardDefId } : {}),
+        ...(choice.sourceCardInstanceId ? { cardInstanceId: choice.sourceCardInstanceId } : {}),
+      });
     }
-    return { status: 'ok' };
+    return {
+      status: 'ok',
+      nextChoice: {
+        id: `${choice.id}:result`,
+        player,
+        type: 'acknowledgeRevealedHand',
+        min: 0,
+        max: 0,
+        prompt: choice.prompt,
+        payload: {
+          revealedPlayer: c.payload.opponentPlayer,
+          sourceZone: 'hand',
+          revealedCardInstanceIds: [selected.instanceId],
+          guessedCardDefId: c.payload.guessedCardDefId,
+          matched,
+          attackBoost: matched ? c.payload.attackBoost : 0,
+        },
+        options: [],
+        ...(choice.sourceCardDefId ? { sourceCardDefId: choice.sourceCardDefId } : {}),
+        ...(choice.sourceCardInstanceId ? { sourceCardInstanceId: choice.sourceCardInstanceId } : {}),
+      },
+    };
   },
 };
 
@@ -596,6 +704,24 @@ const clockAdvanceHandler: ChoiceHandler = {
   },
 };
 
+const acknowledgeRevealedHandHandler: ChoiceHandler = {
+  summarize(choice) {
+    const c = choice as Extract<PendingChoice, { type: 'acknowledgeRevealedHand' }>;
+    return { targetPlayer: c.payload.revealedPlayer, effectLabel: 'acknowledgeRevealedHand' };
+  },
+  apply({ G, choice }) {
+    const c = choice as Extract<PendingChoice, { type: 'acknowledgeRevealedHand' }>;
+    G.revealedHandCardIds[c.payload.revealedPlayer] = [];
+    if (c.payload.sourceZone === 'deck') {
+      const revealedIds = new Set(c.payload.revealedCardInstanceIds ?? []);
+      for (const card of G.players[c.payload.revealedPlayer].deck) {
+        if (revealedIds.has(card.instanceId)) card.faceUp = false;
+      }
+    }
+    return { status: 'ok' };
+  },
+};
+
 const choiceHandlers: Record<ChoiceType, ChoiceHandler> = {
   handToDeckBottomThenDraw: handToDeckBottomThenDrawHandler,
   cardMove: cardMoveHandler,
@@ -606,10 +732,12 @@ const choiceHandlers: Record<ChoiceType, ChoiceHandler> = {
   useFromAbyss: useFromAbyssHandler,
   useFromHand: useFromHandHandler,
   revealHandAttackBoost: revealHandAttackBoostHandler,
-  nameGuessOpponentHandReveal: nameGuessOpponentHandRevealHandler,
+  declareOpponentHandCardName: declareOpponentHandCardNameHandler,
+  selectOpponentHandCard: selectOpponentHandCardHandler,
   handAbyssSwap: handAbyssSwapHandler,
   clockPosition: clockPositionHandler,
   clockAdvance: clockAdvanceHandler,
+  acknowledgeRevealedHand: acknowledgeRevealedHandHandler,
 };
 
 export function choiceDestinationSummary(choice: PendingChoice): Record<string, unknown> {

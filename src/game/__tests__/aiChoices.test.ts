@@ -237,20 +237,20 @@ describe('AI PendingChoice tactical fixtures', () => {
       const G = choiceState({
         id: 'guess',
         player: 0,
-        type: 'nameGuessOpponentHandReveal',
+        type: 'declareOpponentHandCardName',
         min: 1,
         max: 1,
         payload: { opponentPlayer: 1, attackBoost: 20 },
         options: [
-          { id: 'hand:0:guess:test-enchant-1', label: 'enchant', value: 'test-enchant-1' },
-          { id: 'hand:0:guess:test-character-1', label: 'character', value: 'test-character-1' },
+          { id: 'declare:test-enchant-1', label: 'enchant', value: 'test-enchant-1' },
+          { id: 'declare:test-character-1', label: 'character', value: 'test-character-1' },
         ],
       });
       G.players[1].hand = [instance('hidden', hiddenDefId, false)];
       return G;
     };
-    expect(choose(makeState('test-character-2'))).toEqual(['hand:0:guess:test-character-1']);
-    expect(choose(makeState('test-enchant-1'))).toEqual(['hand:0:guess:test-character-1']);
+    expect(choose(makeState('test-character-2'))).toEqual(['declare:test-character-1']);
+    expect(choose(makeState('test-enchant-1'))).toEqual(['declare:test-character-1']);
   });
 
   it('swaps a weak hand card for a stronger Abyss card', () => {

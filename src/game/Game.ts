@@ -134,7 +134,8 @@ function redactPlayerForViewer(
       knownDeckDefIds: player.deck.map((card) => card.defId).sort(),
     };
   }
-  const revealedHandIds = new Set(G.revealedHandCardIds?.[owner] ?? []);
+  // 暫時公開屬於對局玩家取得的私密資訊；觀戰者不可藉由 playerView 讀取。
+  const revealedHandIds = new Set(viewer === null ? [] : (G.revealedHandCardIds?.[owner] ?? []));
 
   return {
     ...player,
@@ -194,6 +195,19 @@ function redactActionLogForViewer(G: GameState, viewer: PlayerIndex | null, both
       ) {
         delete (payload as Record<string, unknown>).cardDefId;
       }
+      if (viewer === null && payload && typeof payload === 'object') {
+        const privatePayload = payload as Record<string, unknown>;
+        if (entry.action === 'revealCards' && privatePayload.sourceZone === 'hand') {
+          const cardDefIds = Array.isArray(privatePayload.cardDefIds) ? privatePayload.cardDefIds : [];
+          privatePayload.cardCount = Number(privatePayload.cardCount ?? cardDefIds.length);
+          delete privatePayload.cardDefIds;
+          delete privatePayload.guessedCardDefId;
+          delete privatePayload.matched;
+        }
+        if (entry.action === 'submitPendingChoice' && privatePayload.choiceType === 'selectOpponentHandCard') {
+          delete privatePayload.guessedCardDefId;
+        }
+      }
       return { ...entry, payload };
     });
 }
@@ -214,8 +228,21 @@ function playerView({ G, playerID }: { G: GameState; playerID: string | null }):
     if (bothChose || viewer === index || revealJankenForAI) return choice;
     return null;
   }) as GameState['jankenChoices'];
-  const pendingChoice =
+  let pendingChoice =
     !G.pendingChoice || G.pendingChoice.player === viewer ? G.pendingChoice : { ...G.pendingChoice, options: [] };
+  if (
+    viewer === null &&
+    pendingChoice?.type === 'acknowledgeRevealedHand' &&
+    (pendingChoice.payload.sourceZone ?? 'hand') === 'hand'
+  ) {
+    pendingChoice = {
+      ...pendingChoice,
+      payload: {
+        revealedPlayer: pendingChoice.payload.revealedPlayer,
+        sourceZone: 'hand',
+      },
+    };
+  }
 
   return {
     ...G,
@@ -227,6 +254,9 @@ function playerView({ G, playerID }: { G: GameState; playerID: string | null }):
       redactPlayedCardsForViewer(G, 0, viewer, hiddenIds, explicitlyRevealedIds),
       redactPlayedCardsForViewer(G, 1, viewer, hiddenIds, explicitlyRevealedIds),
     ] as [CardInstance[], CardInstance[]],
+    // 觀戰者連暫時公開清單中的手牌 instance ID 也不應收到，避免透過
+    // 重連或其他狀態快照將隱藏卡牌跨區域關聯起來。
+    revealedHandCardIds: viewer === null ? [[], []] : G.revealedHandCardIds,
     jankenChoices,
     pendingChoice,
     actionLog: redactActionLogForViewer(G, viewer, bothChose),

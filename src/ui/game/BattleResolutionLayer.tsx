@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { ShieldCheck } from 'lucide-react';
 import { getCardDef } from '../../game/cards/loader';
 import { getLocalizedCardName } from '../../game/cards/i18n';
-import type { DamageReductionSource, GameNotice, GameState, PlayerIndex } from '../../game/types';
+import type { AttackModifierSource, DamageReductionSource, GameNotice, GameState, PlayerIndex } from '../../game/types';
 import { getLocale, t } from '../../i18n';
 import { CardView } from './CardView';
 
@@ -39,6 +39,7 @@ interface BattleResultView {
   attacks: Record<PlayerIndex, number>;
   baseAttacks: Record<PlayerIndex, number>;
   attackAdjustments: Record<PlayerIndex, number>;
+  attackSources: Record<PlayerIndex, AttackModifierSource[]>;
   insufficient: Record<PlayerIndex, boolean>;
   rawDamage: number;
   finalDamage: number;
@@ -58,6 +59,7 @@ const STRIKE_HOLD_MS = 720;
 const MITIGATED_STRIKE_HOLD_MS = 1200;
 const DAMAGE_HOLD_MS = 1500;
 const REDUCED_MOTION_HOLD_MS = 2400;
+const LAYOUT_CAPTURE_TIMEOUT_MS = 1000;
 
 function latestBattleNotice(G: GameState): GameNotice | null {
   const notices = G.recentGameNotices ?? [];
@@ -175,6 +177,18 @@ export function battleResultView(notice: GameNotice): BattleResultView {
     0: attacks[0] - baseAttacks[0],
     1: attacks[1] - baseAttacks[1],
   };
+  const attackSources: Record<PlayerIndex, AttackModifierSource[]> = {
+    0: (notice.attackModifierSources?.[0] ?? []).filter(
+      (source) => source.kind !== 'set' || source.from === undefined || source.from !== source.setTo,
+    ),
+    1: (notice.attackModifierSources?.[1] ?? []).filter(
+      (source) => source.kind !== 'set' || source.from === undefined || source.from !== source.setTo,
+    ),
+  };
+  for (const player of [0, 1] as const) {
+    const setSource = attackSources[player].find((source) => source.kind === 'set' && source.from !== undefined);
+    if (setSource?.from !== undefined) baseAttacks[player] = setSource.from;
+  }
   const rawDamage = winner === null ? 0 : Math.max(0, winnerAttack - loserAttack);
   const finalDamage = Math.max(0, notice.damage ?? (notice.kind === 'hpChange' ? Math.abs(notice.delta ?? 0) : 0));
   const reduction = Math.max(0, rawDamage - finalDamage);
@@ -202,6 +216,7 @@ export function battleResultView(notice: GameNotice): BattleResultView {
     attacks,
     baseAttacks,
     attackAdjustments,
+    attackSources,
     insufficient,
     rawDamage,
     finalDamage,
@@ -282,6 +297,12 @@ export function BattleResolutionLayer({
   }, [active]);
 
   const layoutReady = Boolean(layout);
+  useEffect(() => {
+    if (!active || layoutReady) return;
+    const timer = window.setTimeout(finishActive, LAYOUT_CAPTURE_TIMEOUT_MS);
+    return () => window.clearTimeout(timer);
+  }, [active, finishActive, layoutReady]);
+
   useEffect(() => {
     if (!active || !layoutReady || startedNoticeIdRef.current === active.id) return;
 
@@ -488,9 +509,13 @@ export function BattleResolutionLayer({
       {([0, 1] as const).map((player) => {
         const rect = layout.attackRects[player];
         if (!rect || sequence.phase === 'strike' || sequence.phase === 'damage') return null;
-        const hasCalculation = result.baseAttacks[player] !== result.attacks[player];
-        const focusWidth = hasCalculation ? Math.max(rect.width + 88, 148) : rect.width;
-        const focusHeight = hasCalculation ? Math.max(rect.height + 10, 52) : rect.height;
+        const finalSource = result.attackSources[player].at(-1);
+        const finalSourceContainsResult =
+          finalSource?.kind === 'set' && (finalSource.setTo ?? result.attacks[player]) === result.attacks[player];
+        const hasCalculation =
+          result.baseAttacks[player] !== result.attacks[player] || result.attackSources[player].length > 0;
+        const focusWidth = hasCalculation ? Math.max(rect.width + 140, 200) : rect.width;
+        const focusHeight = hasCalculation ? Math.max(rect.height + 26, 68) : rect.height;
         return (
           <span
             className="battle-resolution-attack-focus"
@@ -509,20 +534,50 @@ export function BattleResolutionLayer({
               <>
                 <span className="battle-resolution-attack-calculation">
                   <small>{result.baseAttacks[player]}</small>
-                  {!result.insufficient[player] && (
-                    <em>
-                      {result.attackAdjustments[player] > 0 ? '+' : '−'}
-                      {Math.abs(result.attackAdjustments[player])}
-                    </em>
+                  {!result.insufficient[player] && result.attackSources[player].length > 0
+                    ? result.attackSources[player].map((source, index) => (
+                        <em key={`${source.cardInstanceId ?? source.cardDefId ?? source.kind}-${index}`}>
+                          {source.kind === 'set'
+                            ? `=${source.setTo ?? result.attacks[player]}`
+                            : `${source.kind === 'reduce' ? '−' : '+'}${Math.abs(source.amount)}`}
+                        </em>
+                      ))
+                    : !result.insufficient[player] &&
+                      result.attackAdjustments[player] !== 0 && (
+                        <em>
+                          {result.attackAdjustments[player] > 0 ? '+' : '−'}
+                          {Math.abs(result.attackAdjustments[player])}
+                        </em>
+                      )}
+                  {!finalSourceContainsResult && (
+                    <>
+                      <span>→</span>
+                      <strong>{result.attacks[player]}</strong>
+                    </>
                   )}
-                  <span>→</span>
-                  <strong>{result.attacks[player]}</strong>
                 </span>
                 <span className="battle-resolution-attack-reason">
                   {result.insufficient[player]
                     ? t('board.hpChange.insufficientPower' as never)
                     : t('board.hpChange.effectiveAttack' as never)}
                 </span>
+                {result.attackSources[player].length > 0 && (
+                  <span className="battle-resolution-attack-sources">
+                    {result.attackSources[player].map((source, index) => {
+                      const def = source.cardDefId ? getCardDef(source.cardDefId) : undefined;
+                      const name = def ? getLocalizedCardName(def, getLocale()) : t('board.phaseEffectTitle' as never);
+                      const value =
+                        source.kind === 'set'
+                          ? `=${source.setTo ?? result.attacks[player]}`
+                          : `${source.kind === 'reduce' ? '−' : '+'}${Math.abs(source.amount)}`;
+                      return (
+                        <span key={`${source.cardInstanceId ?? source.cardDefId ?? source.kind}-${index}`}>
+                          {name} {value}
+                        </span>
+                      );
+                    })}
+                  </span>
+                )}
               </>
             ) : (
               <strong className="battle-resolution-attack-direct">{result.attacks[player]}</strong>

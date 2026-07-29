@@ -69,6 +69,7 @@ export interface HpChangeEntry {
   hpAfter?: number;
   reason: HpChangeReason;
   sourceCardDefId?: string;
+  sourceCardInstanceId?: string;
   breakdown?: HpChangeBreakdown;
   turn: number;
   timestamp: number;
@@ -100,7 +101,7 @@ export interface DamageReductionSource {
  *
  * titleKey / kickerKey 存 i18n key 字串，由 UI 層翻譯（引擎層不依賴 i18n）。
  */
-export type GameNoticeKind = 'hpChange' | 'chronosChange' | 'battleResult' | 'turnStart';
+export type GameNoticeKind = 'hpChange' | 'chronosChange' | 'battleResult' | 'turnStart' | 'effectFailure';
 export type GameNoticeTone = 'success' | 'danger' | 'neutral' | 'phase';
 
 export interface GameNotice {
@@ -118,6 +119,9 @@ export interface GameNotice {
   hpAfter?: number;
   reason?: HpChangeReason;
   sourceCardDefId?: string;
+  sourceCardInstanceId?: string;
+  failureReason?: 'disabled' | 'powerCost' | 'condition';
+  failureMessage?: string;
   breakdown?: HpChangeBreakdown;
   /** chronosChange 專用：from→to 位置與晝夜轉換、來源歸因。 */
   chronosFrom?: number;
@@ -143,6 +147,8 @@ export interface GameNotice {
   damage?: number;
   /** 戰鬥當下實際套用的減傷來源，供場上因果動畫使用。 */
   damageReductionSources?: DamageReductionSource[];
+  /** 戰鬥雙方逐張卡牌的攻擊修正來源。 */
+  attackModifierSources?: [AttackModifierSource[], AttackModifierSource[]];
   /** 戰鬥發生當下的雙方卡牌快照，避免後續回合換牌污染延遲播放。 */
   battleCards?: [CardInstance | null, CardInstance | null];
   /** notice 產生時所屬回合；由 pushGameNotice 統一補入。 */
@@ -337,6 +343,27 @@ export interface PendingNameGuessOpponentHandRevealPayload {
   attackBoost: number;
 }
 
+export interface PendingSelectOpponentHandRevealPayload extends PendingNameGuessOpponentHandRevealPayload {
+  guessedCardDefId: string;
+}
+
+export interface PendingRevealAcknowledgementPayload {
+  revealedPlayer: PlayerIndex;
+  sourceZone?: 'hand' | 'deck';
+  revealedCardInstanceIds?: string[];
+  guessedCardDefId?: string;
+  matched?: boolean;
+  attackBoost?: number;
+  boostPerCard?: number;
+  deckComparison?: {
+    stat: 'powerCost' | 'sendToPower';
+    value: number;
+    threshold: number;
+    matched: boolean;
+    attackBoost?: number;
+  };
+}
+
 export interface PendingChoiceBase {
   id: string;
   player: PlayerIndex;
@@ -386,8 +413,12 @@ export type PendingChoice =
       payload: PendingRevealHandAttackBoostPayload;
     })
   | (PendingChoiceBase & {
-      type: 'nameGuessOpponentHandReveal';
+      type: 'declareOpponentHandCardName';
       payload: PendingNameGuessOpponentHandRevealPayload;
+    })
+  | (PendingChoiceBase & {
+      type: 'selectOpponentHandCard';
+      payload: PendingSelectOpponentHandRevealPayload;
     })
   | (PendingChoiceBase & {
       type: 'handAbyssSwap';
@@ -400,6 +431,11 @@ export type PendingChoice =
   | (PendingChoiceBase & {
       type: 'clockAdvance';
       payload: Record<string, never>;
+    })
+  | (PendingChoiceBase & {
+      /** 暫時公開手牌後，由查看方確認已閱讀；不代表選擇任何卡牌。 */
+      type: 'acknowledgeRevealedHand';
+      payload: PendingRevealAcknowledgementPayload;
     });
 
 export interface PlayerState {
@@ -430,8 +466,22 @@ export interface LastBattleResult {
   loserAttack: number;
 }
 
+export interface AttackModifierSource {
+  kind: 'boost' | 'reduce' | 'set';
+  player: PlayerIndex;
+  targetPlayer: PlayerIndex;
+  amount: number;
+  /** `set` 專用：直接指定發生前的實際攻擊力。 */
+  from?: number;
+  setTo?: number;
+  cardDefId?: string;
+  cardInstanceId?: string;
+}
+
 export interface CombatModifiers {
   attack: [number, number];
+  /** 攻擊修正逐筆來源；舊對局狀態可能沒有此欄位。 */
+  attackSources?: [AttackModifierSource[], AttackModifierSource[]];
   attackSetTo: [number | null, number | null];
   attackTimeOverride: [ChronosTime | null, ChronosTime | null];
   cardClockSetTo: number | null;

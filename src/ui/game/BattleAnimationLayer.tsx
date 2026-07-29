@@ -167,6 +167,37 @@ export function BattleAnimationLayer({
         }
       }
 
+      // 對手只比較雙方本來就看得到的公開區域；絕不讀取手牌、牌庫或伏牌的實例 ID。
+      const opponent = (1 - me) as PlayerIndex;
+      const opponentPublicZones: ZoneName[] = ['battleZone', 'setZoneC', 'powerCharger', 'abyss'];
+      for (const sourceZone of opponentPublicZones) {
+        for (const oldCard of before.players[opponent][sourceZone]) {
+          if (!oldCard.faceUp) continue;
+          const destination = findCard(next.players[opponent], oldCard.instanceId);
+          if (
+            !destination ||
+            destination.zone === sourceZone ||
+            !opponentPublicZones.includes(destination.zone) ||
+            !destination.card.faceUp
+          ) {
+            continue;
+          }
+          const from = zoneRect(opponent, sourceZone, oldCard, previousRects.current, previousZoneRects.current);
+          const to = zoneRect(opponent, destination.zone, destination.card, nextRects, nextZoneRects);
+          if (!from || !to) continue;
+          generated.push({
+            id: `move-${next.turn}-${oldCard.instanceId}-${sourceZone}-${destination.zone}`,
+            kind: 'move',
+            card: destination.card,
+            rect: from,
+            dx: to.left - from.left,
+            dy: to.top - from.top,
+            scaleX: to.width / from.width,
+            scaleY: to.height / from.height,
+          });
+        }
+      }
+
       // 抽牌與牌庫頂公開移動在舊快照中沒有可識別實例；以牌庫區域作來源，
       // 只對自己新取得或進入公開區域的卡播放。抽牌動畫固定使用卡背。
       const previousKnown = new Set(
@@ -194,6 +225,38 @@ export function BattleAnimationLayer({
               dy: to.top - deckSource.top,
               scaleX: to.width / deckSource.width,
               scaleY: to.height / deckSource.height,
+            });
+          }
+        }
+      }
+
+      const opponentKnownPublic = new Set(
+        opponentPublicZones.flatMap((zone) =>
+          before.players[opponent][zone].filter((card) => card.faceUp).map((card) => card.instanceId),
+        ),
+      );
+      const opponentDeckSource = zoneRect(
+        opponent,
+        'deck',
+        undefined,
+        previousRects.current,
+        previousZoneRects.current,
+      );
+      if (opponentDeckSource) {
+        for (const destinationZone of ['abyss', 'powerCharger'] as const) {
+          for (const card of next.players[opponent][destinationZone]) {
+            if (!card.faceUp || opponentKnownPublic.has(card.instanceId)) continue;
+            const to = zoneRect(opponent, destinationZone, card, nextRects, nextZoneRects);
+            if (!to) continue;
+            generated.push({
+              id: `public-draw-${next.turn}-${card.instanceId}-${destinationZone}`,
+              kind: 'move',
+              card,
+              rect: opponentDeckSource,
+              dx: to.left - opponentDeckSource.left,
+              dy: to.top - opponentDeckSource.top,
+              scaleX: to.width / opponentDeckSource.width,
+              scaleY: to.height / opponentDeckSource.height,
             });
           }
         }
