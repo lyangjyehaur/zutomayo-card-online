@@ -83,11 +83,15 @@ describe('card data service', () => {
       illustrator: '',
       rarity: '',
       element: '闇',
+      hasElement: true,
       type: 'Character',
       clock: 2,
+      hasClock: true,
       attack: { night: 10, day: 20 },
       powerCost: 1,
+      hasPowerCost: true,
       sendToPower: 2,
+      hasSendToPower: true,
       effect: '',
       enEffectOfficial: 'Effect',
       image: '',
@@ -105,6 +109,27 @@ describe('card data service', () => {
       sourceUrl: '',
       sourceNote: '',
       sourceSha256: '',
+    });
+  });
+
+  it('marks absent display-only gameplay fields without inventing values', () => {
+    expect(
+      cardRowToDef({
+        ...dbCard,
+        id: 'collaboration_007',
+        element: '',
+        power_cost: null,
+        send_to_power: null,
+        play_status: 'display_only',
+      }),
+    ).toMatchObject({
+      element: '',
+      hasElement: false,
+      powerCost: 0,
+      hasPowerCost: false,
+      sendToPower: 0,
+      hasSendToPower: false,
+      playStatus: 'display_only',
     });
   });
 

@@ -50,7 +50,7 @@ async function main(): Promise<void> {
            source_url, source_note, source_sha256
          ) VALUES (
            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, '',
-           FALSE, NULL, FALSE, FALSE, '', $18, $19, 'published', 'playable', $20, $21, $22, $23
+           FALSE, NULL, FALSE, FALSE, '', $18, $19, $20, $21, $22, $23, $24, $25
          )
          ON CONFLICT (id) DO UPDATE SET
            name = EXCLUDED.name, en_name_official = EXCLUDED.en_name_official, pack = EXCLUDED.pack,
@@ -86,6 +86,8 @@ async function main(): Promise<void> {
           card.image,
           card.catalogStatus,
           card.distributionType,
+          card.publicationStatus,
+          card.playStatus,
           card.playStatusReason,
           card.sourceUrl,
           REVIEWED_UNLISTED_SOURCE_NOTE,
@@ -94,6 +96,7 @@ async function main(): Promise<void> {
       );
       for (const lang of REVIEWED_UNLISTED_LANGS) {
         const translation = card.translations[lang];
+        if (!translation) continue;
         await client.query(
           `INSERT INTO card_texts_i18n (
              card_id, lang, name_text, effect_text, name_source, effect_source, review_status, review_note
@@ -115,7 +118,7 @@ async function main(): Promise<void> {
     }
 
     const verification = await client.query(
-      `SELECT cards.id, cards.source_note,
+      `SELECT cards.id, cards.source_note, cards.play_status,
               COUNT(texts.lang)::integer AS verified_translation_count
        FROM cards
        LEFT JOIN card_texts_i18n AS texts
@@ -123,21 +126,29 @@ async function main(): Promise<void> {
         AND texts.lang = ANY($2::text[])
         AND texts.review_status = 'verified'
         AND NULLIF(BTRIM(texts.name_text), '') IS NOT NULL
-        AND NULLIF(BTRIM(texts.effect_text), '') IS NOT NULL
+        AND (
+          NULLIF(BTRIM(cards.effect), '') IS NULL
+          OR NULLIF(BTRIM(texts.effect_text), '') IS NOT NULL
+        )
        WHERE cards.id = ANY($1::text[])
          AND cards.publication_status = 'published'
-         AND cards.play_status = 'playable'
-       GROUP BY cards.id, cards.source_note
+         AND cards.play_status IN ('playable', 'display_only')
+       GROUP BY cards.id, cards.source_note, cards.play_status
        ORDER BY cards.id`,
       [release.cards.map((card) => card.id), [...REVIEWED_UNLISTED_LANGS]],
     );
+    const cardById = new Map(release.cards.map((card) => [card.id, card]));
     if (
       verification.rows.length !== release.cards.length ||
-      verification.rows.some(
-        (row) =>
+      verification.rows.some((row) => {
+        const card = cardById.get(String(row.id));
+        return (
+          !card ||
           String(row.source_note) !== REVIEWED_UNLISTED_SOURCE_NOTE ||
-          Number(row.verified_translation_count) !== REVIEWED_UNLISTED_LANGS.length,
-      )
+          String(row.play_status) !== card.playStatus ||
+          Number(row.verified_translation_count) !== Object.keys(card.translations).length
+        );
+      })
     ) {
       throw new Error('post-write verification failed for reviewed unlisted cards');
     }
@@ -152,6 +163,9 @@ async function main(): Promise<void> {
           reviewedAt: release.reviewedAt,
           sourceNote: REVIEWED_UNLISTED_SOURCE_NOTE,
           cards: release.cards.map((card) => card.id),
+          reviewedTranslationCards: release.cards
+            .filter((card) => Object.keys(card.translations).length > 0)
+            .map((card) => card.id),
           languages: REVIEWED_UNLISTED_LANGS,
         }),
       ],

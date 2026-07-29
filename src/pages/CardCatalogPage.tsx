@@ -104,7 +104,7 @@ function RecommendationCard({
           cardId={entry.card.id}
           context="thumbnail"
           alt=""
-          className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+          className="h-full w-full object-contain transition duration-300 group-hover:scale-[1.03]"
         />
       </span>
       <span className="min-w-0 py-0.5">
@@ -313,7 +313,7 @@ export function CardCatalogPage() {
                       cardId={selectedCard.id}
                       context="detail"
                       alt={getLocalizedCardName(selectedCard, locale)}
-                      className="h-full w-full object-cover"
+                      className="h-full w-full object-contain"
                     />
                   </div>
                   <p className="mt-3 text-center font-mono text-caption text-content-dim">{selectedCard.id}</p>
@@ -322,7 +322,7 @@ export function CardCatalogPage() {
                 <div className="min-w-0">
                   <header className="border-b border-border-soft pb-6">
                     <div className="flex flex-wrap gap-2">
-                      <Badge tone="gold">{selectedCard.element}</Badge>
+                      {selectedCard.hasElement !== false && <Badge tone="gold">{selectedCard.element}</Badge>}
                       <Badge>{cardTypeLabel(selectedCard.type)}</Badge>
                       <Badge>{selectedCard.rarity}</Badge>
                       <Badge>{distributionLabel(selectedCard.distributionType)}</Badge>
@@ -351,9 +351,18 @@ export function CardCatalogPage() {
                       {t('cardCatalog.cardDetails')}
                     </h2>
                     <dl className="grid grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-4">
-                      <DetailMetric label="Power Cost" value={selectedCard.powerCost} />
-                      <DetailMetric label="SEND TO POWER" value={selectedCard.sendToPower} />
-                      <DetailMetric label={t('cardCatalog.clock')} value={selectedCard.clock} />
+                      <DetailMetric
+                        label="Power Cost"
+                        value={selectedCard.hasPowerCost === false ? '—' : selectedCard.powerCost}
+                      />
+                      <DetailMetric
+                        label="SEND TO POWER"
+                        value={selectedCard.hasSendToPower === false ? '—' : selectedCard.sendToPower}
+                      />
+                      <DetailMetric
+                        label={t('cardCatalog.clock')}
+                        value={selectedCard.hasClock === false ? '—' : selectedCard.clock}
+                      />
                       <DetailMetric
                         label={t('cardCatalog.attack')}
                         value={selectedCard.attack ? `${selectedCard.attack.night} / ${selectedCard.attack.day}` : '—'}
@@ -655,7 +664,7 @@ export function CardCatalogPage() {
                       cardId={card.id}
                       context="thumbnail"
                       alt={getLocalizedCardName(card, locale)}
-                      className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+                      className="h-full w-full object-contain transition duration-300 group-hover:scale-[1.03]"
                     />
                   </span>
                   <span className="grid gap-1.5 p-3">
@@ -667,7 +676,9 @@ export function CardCatalogPage() {
                       {getLocalizedCardName(card, locale)}
                     </strong>
                     <span className="truncate text-caption text-content-muted">
-                      {card.element} · {cardTypeLabel(card.type)}
+                      {card.hasElement === false
+                        ? cardTypeLabel(card.type)
+                        : `${card.element} · ${cardTypeLabel(card.type)}`}
                     </span>
                   </span>
                 </Link>

@@ -96,7 +96,7 @@ export function AdminDeckShareReportsPanel({ token }: { token: string }) {
                     cardId={cardId}
                     context="thumbnail"
                     alt=""
-                    className="aspect-[5/7] w-full rounded-sm object-cover ring-1 ring-border-soft"
+                    className="aspect-[5/7] w-full rounded-sm object-contain ring-1 ring-border-soft"
                   />
                 ))}
               </div>

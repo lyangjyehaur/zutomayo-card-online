@@ -852,9 +852,9 @@ function parseAction(text: string): EffectAction | null {
   const healOpponentMatch = text.match(/相手のHP[をが]([0-9０-９]+)回復/);
   if (healOpponentMatch) return { type: 'healOpponent', params: { value: parseNum(healOpponentMatch[1]) } };
 
-  // "HPをX回復"
-  const healMatch = text.match(/HP[をが]([0-9０-９]+)回復/);
-  if (healMatch) return { type: 'heal', params: { value: parseNum(healMatch[1]) } };
+  // "HPをX回復" and printed promotional-card shorthand "HPXを回復"
+  const healMatch = text.match(/HP(?:[をが]([0-9０-９]+)|([0-9０-９]+)を)回復/);
+  if (healMatch) return { type: 'heal', params: { value: parseNum(healMatch[1] ?? healMatch[2]) } };
 
   // "HP+20" or "HP+50" (without を/が)
   const hpBoostMatch = text.match(/HP[＋+]([0-9０-９]+)/);

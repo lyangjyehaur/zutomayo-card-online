@@ -130,7 +130,7 @@ async function main(): Promise<void> {
 
   const snapshot = await loadSnapshot();
   const smoke = runGameSmoke();
-  const expectedCardCount = Number(process.env.EXPECTED_CARD_COUNT || 425);
+  const expectedCardCount = Number(process.env.EXPECTED_CARD_COUNT || 479);
   if (!Number.isInteger(expectedCardCount) || expectedCardCount <= 0) {
     throw new Error('EXPECTED_CARD_COUNT must be a positive integer');
   }

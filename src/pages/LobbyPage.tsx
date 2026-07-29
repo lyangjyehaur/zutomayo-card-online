@@ -729,7 +729,12 @@ export function LobbyPage({ onAuthChanged, deckSharingEnabled }: LobbyPageProps)
                   {catalogCards.map((card, index) => (
                     <span key={card.id} className={`catalog-card-slot catalog-card-slot-${index + 1}`}>
                       <span className="catalog-card-frame">
-                        <CardImage cardId={card.id} context="thumbnail" alt="" className="h-full w-full object-cover" />
+                        <CardImage
+                          cardId={card.id}
+                          context="thumbnail"
+                          alt=""
+                          className="h-full w-full object-contain"
+                        />
                       </span>
                     </span>
                   ))}

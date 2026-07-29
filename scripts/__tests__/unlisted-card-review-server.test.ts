@@ -130,6 +130,7 @@ describe('unlisted-card review service', () => {
   it('requires complete printed metadata before verifying text', () => {
     expect(() =>
       applyUnlistedCardReview(sourceCard, undefined, {
+        playStatus: 'playable',
         textReviewStatus: 'verified',
       }),
     ).toThrow('clock must be an integer');
@@ -211,5 +212,53 @@ describe('unlisted-card review service', () => {
         textReviewStatus: 'verified',
       }),
     ).toThrow('play status reason is required');
+  });
+
+  it('allows verified display-only cards without gameplay-only metadata', () => {
+    const review = applyUnlistedCardReview(sourceCard, undefined, {
+      cardId: 'collaboration_007',
+      printedNumber: '07/**',
+      nameJa: '仲間のドクロ',
+      nameEnOfficial: 'Nakamano Dokuro',
+      type: 'Character',
+      rarity: 'SR+',
+      element: '',
+      clock: '5',
+      powerCost: '',
+      sendToPower: '',
+      attackNight: '2021',
+      attackDay: '817',
+      pack: 'ZUTOMAYO PREMIUM',
+      printedEffectStatus: 'none',
+      playStatus: 'display_only',
+      playStatusReason: '沒有明確的屬性、Power Cost 等，無法加入遊戲',
+      textReviewStatus: 'verified',
+    });
+
+    expect(review).toMatchObject({
+      element: '',
+      powerCost: '',
+      sendToPower: '',
+      textReviewStatus: 'verified',
+    });
+  });
+
+  it('still requires complete gameplay metadata for verified playable cards', () => {
+    expect(() =>
+      applyUnlistedCardReview(sourceCard, undefined, {
+        cardId: 'bonus_001',
+        printedNumber: '001/007',
+        nameEnOfficial: 'Test Card',
+        type: 'Enchant',
+        rarity: 'SR',
+        element: '',
+        clock: '',
+        powerCost: '',
+        sendToPower: '',
+        printedEffectStatus: 'none',
+        playStatus: 'playable',
+        textReviewStatus: 'verified',
+      }),
+    ).toThrow('clock must be an integer');
   });
 });

@@ -420,7 +420,7 @@ gameOver（endIf 回傳 { winner } 或 { draw: true }）
 
 ```mermaid
 flowchart LR
-    JP[日文效果文字\n270 行] -->|parseEffect\nregex + 條件分詞| Parsed[ParsedEffect\ntrigger/conditions/action]
+    JP[日文效果文字\n322 行] -->|parseEffect\nregex + 條件分詞| Parsed[ParsedEffect\ntrigger/conditions/action]
     Parsed -->|executeEffect\nhandler registry| State[GameState 變更]
     State -->|requestChoice handler| Pending[PendingChoice\n待玩家選擇]
     Pending -->|submitPendingChoice\nresolvePendingEffect| State
@@ -431,7 +431,7 @@ flowchart LR
 - `parseEffect(rawText)` 將日文效果文字轉成 `{ trigger, conditions[], action, priority?, expiry? }`。
 - 步驟：正規化（去 `<br>`/`<a>`/`※`）→ 偵測 trigger（`onUse`/`onTurnStart`/`onTurnEnd`/`onBattle`/`onDamageReceived`/`onChronosChanged`/`onZoneEntered`）→ 拆出條件（chronos / element / HP / powerCost / zoneCount / namedCard ...）→ `parseAction` 對應到 `ActionType`。
 - `parseAllEffects()` 批次解析所有卡牌，並合併 `expiry`（Area Enchant 自動失效條件）與 secondary effects。
-- 覆蓋率：425 張卡 / 253 張效果卡 / 270 行效果 100% 解析；其中第四彈 105～107 由獨立複核 manifest 交易式發布。
+- 覆蓋率：479 張 playable 卡 / 305 張效果卡 / 322 行效果 100% 解析；另有 7 張 display-only 卡只進圖鑑。增量卡由 reviewed-unlisted manifest v2 交易式發布。
 
 **`effects/executor.ts`（handler registry）**：
 

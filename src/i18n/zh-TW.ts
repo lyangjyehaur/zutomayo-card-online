@@ -364,7 +364,7 @@ export const zhTW = {
   'difficulty.hardDesc': '效果模擬與短期規劃',
 
   'deck.random': '隨機牌組',
-  'deck.randomDesc': '從完整 425 張卡池隨機抽取 20 張',
+  'deck.randomDesc': '從完整 479 張卡池隨機抽取 20 張',
   'deck.dark': '闇影牌組',
   'deck.flame': '炎爆牌組',
   'deck.electric': '電閃牌組',

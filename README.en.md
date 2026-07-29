@@ -2,7 +2,7 @@
 
 **Languages:** [繁體中文](README.md) | [日本語](README.ja.md) | [English](README.en.md)
 
-Current version: **0.2.4**
+Current version: **0.2.5**
 
 > An unofficial digital battle platform for ZUTOMAYO CARD, the official TCG from ZUTOMAYO.
 > Supports local two-player games, AI practice, an interactive tutorial, and real-time online play.
@@ -11,12 +11,12 @@ Current version: **0.2.4**
 
 Version 0.2.0 expands the project from a standalone battle app into a multiplayer platform. `boardgame.io` remains authoritative for card state, Colyseus owns lobby, matchmaking, room, invite, and spectator presence flows, and ChatService owns durable chat, unread state, translation, reports, and moderation.
 
-Version 0.2.4 adds the card catalog, deck-share metadata and synergy recommendations, effects for Fourth Set SE cards 105-107, and the Refine admin console. It also redesigns Chronos, HP, and attack resolution, the Online and AI lobbies, public room discovery, in-match chat, same-room rematches, and the tutorial's shared battle presentation.
+Version 0.2.5 expands the reviewed incremental-card pipeline and adds 54 playable limited cards plus 7 catalog-only cards. Card images are published as aspect-preserving JPEGs, while collectible cards without printed elements or costs no longer display invented gameplay values.
 
 ### Game and Battle
 
 - Local two-player and easy, normal, or hard AI with strategic mulligans, effect and target scoring, and bounded rules-driven turn simulation on hard.
-- Complete data for 425 cards across 4 packs, with all 270 effect lines parsed, including the separately reviewed and audited Fourth Set SE cards 105-107.
+- Complete data for 479 playable cards and 7 catalog-only cards, with all 322 playable effect lines parsed; incremental limited cards pass separate image, official Japanese/English text, and rules audits.
 - Rock-paper-scissors, mulligan, initial setup, effect ordering, player choices, battle, and Chronos day/night flow.
 - Authoritative phase timers and timeout recovery prevent disconnected or unresponsive players from blocking a match forever.
 - Per-card Chronos movement, HP, attack, mitigation, and healing resolution animations, a responsive battlefield, mobile touch controls, and a tutorial that shares the production battle presentation.
