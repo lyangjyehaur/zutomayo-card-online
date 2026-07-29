@@ -1,6 +1,8 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
+import { toHalfwidthAscii } from './reviewTextNormalization';
+
 type SourceCard = {
   candidateId: string;
   expectedCardId?: string;
@@ -178,7 +180,8 @@ function illustrator(lines: OCRLine[]): string {
 function suggestion(card: SourceCard, ocr: OCRCard): Suggestion {
   const type = cardType(card, ocr.lines);
   const japaneseEffect = effectLines(ocr.lines, 'ja');
-  const officialEnglishEffect = type === 'Character' && !japaneseEffect ? '' : effectLines(ocr.lines, 'en');
+  const officialEnglishEffect =
+    type === 'Character' && !japaneseEffect ? '' : toHalfwidthAscii(effectLines(ocr.lines, 'en'));
   const printedEffectStatus =
     japaneseEffect || officialEnglishEffect ? 'present' : type === 'Character' ? 'none' : 'unknown';
   const review: Record<string, string> = {
