@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
+import { toHalfwidthAscii } from '../reviewTextNormalization';
 import { applyUnlistedCardReview, detectReviewImageExtension } from '../unlisted-card-review-server';
 
 const sourceCard = {
@@ -19,6 +20,10 @@ const sourceCard = {
 };
 
 describe('unlisted-card review service', () => {
+  it('normalizes fullwidth ASCII characters in English effect text', () => {
+    expect(toHalfwidthAscii('（When played，gain ＋１０ HP！）　')).toBe('(When played,gain +10 HP!) ');
+  });
+
   it('uses constrained selectors for card type and pack classification', () => {
     const reviewUi = readFileSync(resolve(process.cwd(), 'tools/unlisted-card-review/index.html'), 'utf8');
 
@@ -83,6 +88,14 @@ describe('unlisted-card review service', () => {
     const review = applyUnlistedCardReview(sourceCard, undefined, { cardId: 'promo_bonus_001' });
 
     expect(review.cardId).toBe('bonus_001');
+  });
+
+  it('normalizes submitted English effect text before saving', () => {
+    const review = applyUnlistedCardReview(sourceCard, undefined, {
+      effectEnOfficial: 'Regain １０ HP（once per turn）！',
+    });
+
+    expect(review.effectEnOfficial).toBe('Regain 10 HP(once per turn)!');
   });
 
   it('keeps text verification and image approval as independent decisions', () => {

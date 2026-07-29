@@ -4,6 +4,8 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
+import { toHalfwidthAscii } from './reviewTextNormalization';
+
 export type ImageReviewStatus = 'needs_review' | 'approved' | 'needs_better_image' | 'rejected';
 export type TextReviewStatus = 'draft' | 'verified';
 export type PrintedEffectStatus = 'unknown' | 'present' | 'none';
@@ -182,7 +184,11 @@ function effectiveReview(
     ...defaultReview(card, suggestions.cards[card.candidateId]),
     ...ledger.reviews[card.candidateId],
   };
-  return { ...review, cardId: withoutPromoPrefix(review.cardId) };
+  return {
+    ...review,
+    cardId: withoutPromoPrefix(review.cardId),
+    effectEnOfficial: toHalfwidthAscii(review.effectEnOfficial),
+  };
 }
 
 function textValue(value: unknown, label: string, maxLength: number): string {
@@ -219,7 +225,9 @@ export function applyUnlistedCardReview(
     nameJa: textValue(request.nameJa ?? base.nameJa, 'Japanese name', 500),
     nameEnOfficial: textValue(request.nameEnOfficial ?? base.nameEnOfficial, 'official English name', 500),
     effectJa: textValue(request.effectJa ?? base.effectJa, 'Japanese effect', 5000),
-    effectEnOfficial: textValue(request.effectEnOfficial ?? base.effectEnOfficial, 'official English effect', 5000),
+    effectEnOfficial: toHalfwidthAscii(
+      textValue(request.effectEnOfficial ?? base.effectEnOfficial, 'official English effect', 5000),
+    ),
     printedEffectStatus: enumValue(
       request.printedEffectStatus ?? base.printedEffectStatus ?? 'unknown',
       'printed effect status',
