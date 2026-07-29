@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { initCards, isCardsInitialized, getAllCardDefs, createInstance } from '../cards/loader';
 import { parseAllEffects, parseEffect } from '../effects/parser';
+import { collectTurnEffects } from '../effects/executor';
 import { ZutomayoCard } from '../Game';
 import { CHRONOS_MAPPING, type CardDef, type CardType, type GameState, type PendingEffect } from '../types';
 import {
@@ -702,6 +703,68 @@ describe('getPlayerPower and getEffectiveAttack', () => {
     });
   });
 
+  it('snapshots per-card attack modifier sources into the battle notice', () => {
+    const G = setupGame();
+    const boostSource = createInstance('test-enchant-1', true);
+    const reduceSource = createInstance('test-enchant-2', true);
+    G.chronos.position = 0;
+    G.chronos.nightSidePlayer = 0;
+    G.players[0].battleZone = createInstance('test-character-1', true);
+    G.players[1].battleZone = createInstance('test-character-2', true);
+    G.modifiers.attack = [20, -5];
+    G.modifiers.attackSources = [
+      [
+        {
+          kind: 'boost',
+          player: 0,
+          targetPlayer: 0,
+          amount: 20,
+          cardDefId: boostSource.defId,
+          cardInstanceId: boostSource.instanceId,
+        },
+      ],
+      [
+        {
+          kind: 'reduce',
+          player: 0,
+          targetPlayer: 1,
+          amount: 5,
+          cardDefId: reduceSource.defId,
+          cardInstanceId: reduceSource.instanceId,
+        },
+      ],
+    ];
+
+    resolveBattle(G);
+
+    expect(G.recentGameNotices?.at(-1)).toMatchObject({
+      kind: 'hpChange',
+      reason: 'battle',
+      attackModifierSources: [
+        [
+          {
+            kind: 'boost',
+            player: 0,
+            targetPlayer: 0,
+            amount: 20,
+            cardDefId: boostSource.defId,
+            cardInstanceId: boostSource.instanceId,
+          },
+        ],
+        [
+          {
+            kind: 'reduce',
+            player: 0,
+            targetPlayer: 1,
+            amount: 5,
+            cardDefId: reduceSource.defId,
+            cardInstanceId: reduceSource.instanceId,
+          },
+        ],
+      ],
+    });
+  });
+
   it('keeps the battle HP snapshot when a later turn-end effect heals the loser', () => {
     const G = setupGame();
     const winnerCard = createInstance('test-character-1', true);
@@ -751,6 +814,316 @@ describe('getPlayerPower and getEffectiveAttack', () => {
     G.modifiers.attack = [-10, 0];
     const card = createInstance('test-character-1');
     expect(getEffectiveAttack(card, G, 0)).toBe(10);
+  });
+});
+
+describe('effect failure notices', () => {
+  const onUseBoost = {
+    trigger: 'onUse' as const,
+    conditions: [],
+    action: { type: 'boostAttack' as const, params: { value: 10 } },
+    rawText: 'Gain 10 attack',
+  };
+
+  it('identifies disabled and insufficient-Power effects before they enter the effect queue', () => {
+    const disabled = setupGame();
+    const disabledSource = createInstance('test-character-1', true);
+    disabled.players[0].battleZone = disabledSource;
+    disabled.modifiers.effectsDisabled![0] = true;
+    const disabledEffects = new Map([[disabledSource.defId, [onUseBoost]]]);
+
+    expect(collectTurnEffects(disabled, disabledEffects, [[disabledSource], []])[0]).toHaveLength(0);
+    expect(disabled.recentGameNotices.at(-1)).toMatchObject({
+      kind: 'effectFailure',
+      player: 0,
+      sourceCardDefId: disabledSource.defId,
+      sourceCardInstanceId: disabledSource.instanceId,
+      failureReason: 'disabled',
+    });
+
+    const insufficient = setupGame();
+    const insufficientSource = createInstance('test-character-power-hungry', true);
+    insufficient.players[0].battleZone = insufficientSource;
+    insufficient.players[0].powerCharger = [];
+    const insufficientEffects = new Map([[insufficientSource.defId, [onUseBoost]]]);
+
+    expect(collectTurnEffects(insufficient, insufficientEffects, [[insufficientSource], []])[0]).toHaveLength(0);
+    expect(insufficient.recentGameNotices.at(-1)).toMatchObject({
+      kind: 'effectFailure',
+      player: 0,
+      sourceCardDefId: insufficientSource.defId,
+      sourceCardInstanceId: insufficientSource.instanceId,
+      failureReason: 'powerCost',
+    });
+  });
+
+  it('does not report a disabled effect for a card with no eligible effect', () => {
+    const G = setupGame();
+    const source = createInstance('test-character-1', true);
+    G.players[0].battleZone = source;
+    G.modifiers.effectsDisabled![0] = true;
+
+    expect(collectTurnEffects(G, new Map(), [[source], []])[0]).toHaveLength(0);
+    expect(G.recentGameNotices.some((notice) => notice.kind === 'effectFailure')).toBe(false);
+  });
+
+  it('reports disabled automatic effects only when their timing trigger matches', () => {
+    const G = setupGame();
+    const source = createInstance('test-character-1', true);
+    G.players[0].battleZone = source;
+    G.modifiers.effectsDisabled![0] = true;
+    const timingEffects = new Map([
+      [
+        source.defId,
+        [
+          {
+            trigger: 'onTurnStart' as const,
+            conditions: [],
+            action: { type: 'heal' as const, params: { value: 10 } },
+            rawText: 'Heal at turn start',
+          },
+        ],
+      ],
+    ]);
+
+    resolveTimingEvent(G, timingEffects, { type: 'turnEnd' });
+    expect(G.recentGameNotices.some((notice) => notice.kind === 'effectFailure')).toBe(false);
+
+    resolveTimingEvent(G, timingEffects, { type: 'turnStart' });
+    expect(G.recentGameNotices.at(-1)).toMatchObject({
+      kind: 'effectFailure',
+      sourceCardInstanceId: source.instanceId,
+      failureReason: 'disabled',
+    });
+  });
+
+  it('reports insufficient Power for an automatic effect that reaches its timing window', () => {
+    const G = setupGame();
+    const source = createInstance('test-character-power-hungry', true);
+    G.players[0].battleZone = source;
+    G.players[0].powerCharger = [];
+    const timingEffects = new Map([
+      [
+        source.defId,
+        [
+          {
+            trigger: 'onTurnEnd' as const,
+            conditions: [],
+            action: { type: 'heal' as const, params: { value: 10 } },
+            rawText: 'Heal at turn end',
+          },
+        ],
+      ],
+    ]);
+
+    resolveTimingEvent(G, timingEffects, { type: 'turnEnd' });
+
+    expect(G.recentGameNotices.at(-1)).toMatchObject({
+      kind: 'effectFailure',
+      sourceCardInstanceId: source.instanceId,
+      failureReason: 'powerCost',
+    });
+  });
+
+  it('does not warn when an automatic conditional trigger simply does not match', () => {
+    const G = setupGame();
+    const source = createInstance('test-character-1', true);
+    G.players[0].battleZone = source;
+    const timingEffects = new Map([
+      [
+        source.defId,
+        [
+          {
+            trigger: 'onTurnEnd' as const,
+            conditions: [{ type: 'hpLessOrEqual' as const, value: 10 }],
+            action: { type: 'heal' as const, params: { value: 10 } },
+            rawText: 'Heal while HP is 10 or less',
+          },
+        ],
+      ],
+    ]);
+
+    resolveTimingEvent(G, timingEffects, { type: 'turnEnd' });
+
+    expect(G.recentGameNotices.some((notice) => notice.kind === 'effectFailure')).toBe(false);
+  });
+
+  it('reports a delayed effect that becomes disabled before turn end', () => {
+    const G = setupGame();
+    const source = createInstance('test-character-1', true);
+    G.modifiers.effectsDisabled![0] = true;
+    G.delayedEffects = [
+      {
+        id: 'delayed-disabled',
+        player: 0,
+        cardInstanceId: source.instanceId,
+        cardDefId: source.defId,
+        rawText: 'Deal damage at turn end',
+        source: 'played',
+        effect: {
+          trigger: 'onTurnEnd',
+          conditions: [],
+          action: { type: 'directDamage', params: { value: 10 } },
+          rawText: 'Deal damage at turn end',
+        },
+      },
+    ];
+
+    resolveTimingEvent(G, new Map(), { type: 'turnEnd' });
+
+    expect(G.recentGameNotices.at(-1)).toMatchObject({
+      kind: 'effectFailure',
+      sourceCardInstanceId: source.instanceId,
+      failureReason: 'disabled',
+    });
+  });
+
+  it('reports a queued effect disabled by an earlier opponent effect', () => {
+    const G = setupGame();
+    const disabler = createInstance('test-enchant-1', true);
+    const blocked = createInstance('test-enchant-2', true);
+    G.step = 'effectOrder';
+    G.pendingEffectPlayer = 0;
+    G.pendingEffects = [
+      [
+        {
+          id: 'disable-opponent',
+          player: 0,
+          cardInstanceId: disabler.instanceId,
+          cardDefId: disabler.defId,
+          rawText: 'Disable opponent effects',
+          effect: {
+            trigger: 'onUse',
+            conditions: [],
+            action: { type: 'noEffect', params: {} },
+            rawText: 'Disable opponent effects',
+          },
+          source: 'played',
+        },
+      ],
+      [
+        {
+          id: 'blocked-effect',
+          player: 1,
+          cardInstanceId: blocked.instanceId,
+          cardDefId: blocked.defId,
+          rawText: 'Heal 10',
+          effect: {
+            trigger: 'onUse',
+            conditions: [],
+            action: { type: 'heal', params: { value: 10 } },
+            rawText: 'Heal 10',
+          },
+          source: 'played',
+        },
+      ],
+    ];
+
+    expect(resolvePendingEffect(G, 0, 0)).toBe(true);
+
+    expect(
+      G.recentGameNotices.find(
+        (notice) => notice.kind === 'effectFailure' && notice.sourceCardInstanceId === blocked.instanceId,
+      ),
+    ).toMatchObject({ player: 1, failureReason: 'disabled' });
+  });
+
+  it('attributes a pruned copied effect to the actual activating card', () => {
+    const G = setupGame();
+    const first = createInstance('test-enchant-1', true);
+    const copied = createInstance('test-enchant-2', true);
+    const rulesSource = createInstance('test-character-power-hungry', true);
+    G.players[0].powerCharger = [];
+    G.step = 'effectOrder';
+    G.pendingEffectPlayer = 1;
+    G.pendingEffects = [
+      [
+        {
+          id: 'copied-effect',
+          player: 0,
+          cardInstanceId: copied.instanceId,
+          cardDefId: copied.defId,
+          rulesSourceCardInstanceId: rulesSource.instanceId,
+          rulesSourceCardDefId: rulesSource.defId,
+          rawText: 'Copied heal',
+          effect: {
+            trigger: 'onUse',
+            conditions: [],
+            action: { type: 'heal', params: { value: 10 } },
+            rawText: 'Copied heal',
+          },
+          source: 'played',
+        },
+      ],
+      [
+        {
+          id: 'first-effect',
+          player: 1,
+          cardInstanceId: first.instanceId,
+          cardDefId: first.defId,
+          rawText: 'Heal 1',
+          effect: {
+            trigger: 'onUse',
+            conditions: [],
+            action: { type: 'heal', params: { value: 1 } },
+            rawText: 'Heal 1',
+          },
+          source: 'played',
+        },
+      ],
+    ];
+
+    expect(resolvePendingEffect(G, 1, 0)).toBe(true);
+
+    expect(
+      G.recentGameNotices.find(
+        (notice) => notice.kind === 'effectFailure' && notice.sourceCardInstanceId === rulesSource.instanceId,
+      ),
+    ).toMatchObject({
+      player: 0,
+      sourceCardDefId: rulesSource.defId,
+      failureReason: 'powerCost',
+    });
+  });
+
+  it('keeps the source card and failure message when a queued effect cannot resolve', () => {
+    const G = setupGame();
+    const source = createInstance('test-character-1', true);
+    G.players[0].battleZone = source;
+    G.step = 'effectOrder';
+    G.pendingEffectPlayer = 0;
+    G.pendingEffects = [
+      [
+        {
+          id: 'unsupported-element',
+          player: 0,
+          cardInstanceId: source.instanceId,
+          cardDefId: source.defId,
+          rawText: 'Set an unsupported element',
+          effect: {
+            trigger: 'onUse',
+            conditions: [],
+            action: { type: 'setOpponentElement', params: { value: '光' } },
+            rawText: 'Set an unsupported element',
+          },
+          source: 'battleZone',
+        },
+      ],
+      [],
+    ];
+
+    expect(resolvePendingEffect(G, 0, 0)).toBe(true);
+    const failureNotice = G.recentGameNotices.find(
+      (notice) => notice.kind === 'effectFailure' && notice.sourceCardInstanceId === source.instanceId,
+    );
+    expect(failureNotice).toMatchObject({
+      kind: 'effectFailure',
+      player: 0,
+      sourceCardDefId: source.defId,
+      sourceCardInstanceId: source.instanceId,
+      failureReason: 'condition',
+      failureMessage: expect.any(String),
+    });
   });
 });
 
@@ -1324,6 +1697,110 @@ describe('ZutomayoCard.endIf', () => {
 });
 
 describe('playerView', () => {
+  it('resolves card-name guesses as declaration, hidden position selection, then acknowledgement', () => {
+    const G = setupGame();
+    G.step = 'effectOrder';
+    const target = G.players[1].hand[0];
+    G.pendingChoice = {
+      id: 'guess-card',
+      type: 'declareOpponentHandCardName',
+      player: 0,
+      min: 1,
+      max: 1,
+      payload: { opponentPlayer: 1, attackBoost: 20 },
+      options: [
+        {
+          id: `declare:${target.defId}`,
+          label: target.defId,
+          value: target.defId,
+          cardDefId: target.defId,
+        },
+      ],
+      sourceCardDefId: 'test-enchant-1',
+      sourceCardInstanceId: 'guess-source',
+    };
+
+    expect(submitPendingChoice(G, 0, [`declare:${target.defId}`])).toBe(true);
+    expect(G.pendingChoice?.type).toBe('selectOpponentHandCard');
+    expect(G.pendingChoice?.options).toHaveLength(G.players[1].hand.length);
+    expect(G.pendingChoice?.options.every((option) => !option.cardDefId && !option.cardInstanceId)).toBe(true);
+
+    expect(submitPendingChoice(G, 0, ['hand-position:0'])).toBe(true);
+    expect(G.pendingChoice).toMatchObject({
+      type: 'acknowledgeRevealedHand',
+      player: 0,
+      payload: {
+        revealedPlayer: 1,
+        revealedCardInstanceIds: [target.instanceId],
+        guessedCardDefId: target.defId,
+        matched: true,
+        attackBoost: 20,
+      },
+    });
+    expect(G.modifiers.attack[0]).toBe(20);
+    expect(G.modifiers.attackSources?.[0]).toEqual([
+      expect.objectContaining({ cardDefId: 'test-enchant-1', amount: 20, kind: 'boost' }),
+    ]);
+    const spectator = ZutomayoCard.playerView?.({ G, playerID: null } as never) as GameState;
+    const spectatorGuessChoice = spectator.actionLog.find(
+      (entry) => entry.action === 'submitPendingChoice' && entry.payload?.choiceType === 'selectOpponentHandCard',
+    );
+    const spectatorReveal = spectator.actionLog.find(
+      (entry) => entry.action === 'revealCards' && entry.payload?.sourceZone === 'hand',
+    );
+    expect(spectatorGuessChoice?.payload).not.toHaveProperty('guessedCardDefId');
+    expect(spectatorReveal?.payload).toMatchObject({ sourceZone: 'hand', cardCount: 1 });
+    expect(spectatorReveal?.payload).not.toHaveProperty('cardDefIds');
+    expect(spectatorReveal?.payload).not.toHaveProperty('guessedCardDefId');
+    expect(spectatorReveal?.payload).not.toHaveProperty('matched');
+  });
+
+  it('shows a partial own-hand reveal to both players but strips private ids from spectators', () => {
+    const G = setupGame();
+    G.step = 'effectOrder';
+    const revealed = G.players[0].hand[0];
+    G.pendingChoice = {
+      id: 'partial-reveal',
+      type: 'revealHandAttackBoost',
+      player: 0,
+      min: 0,
+      max: 1,
+      payload: { sourcePlayer: 0, boostPerCard: 10, filter: {} },
+      options: [
+        {
+          id: revealed.instanceId,
+          label: revealed.defId,
+          cardDefId: revealed.defId,
+          cardInstanceId: revealed.instanceId,
+        },
+      ],
+      sourceCardDefId: 'test-enchant-1',
+      sourceCardInstanceId: 'reveal-source',
+    };
+
+    expect(submitPendingChoice(G, 0, [revealed.instanceId])).toBe(true);
+    expect(G.pendingChoice).toMatchObject({
+      type: 'acknowledgeRevealedHand',
+      player: 1,
+      payload: { revealedPlayer: 0, revealedCardInstanceIds: [revealed.instanceId], attackBoost: 10 },
+    });
+    const reviewer = ZutomayoCard.playerView?.({ G, playerID: '1' } as never) as GameState;
+    const owner = ZutomayoCard.playerView?.({ G, playerID: '0' } as never) as GameState;
+    const spectator = ZutomayoCard.playerView?.({ G, playerID: null } as never) as GameState;
+    expect(reviewer.players[0].hand.find((card) => card.instanceId === revealed.instanceId)?.defId).toBe(
+      revealed.defId,
+    );
+    expect(owner.players[0].hand.find((card) => card.instanceId === revealed.instanceId)?.defId).toBe(revealed.defId);
+    expect(spectator.players[0].hand.every((card) => card.defId === '__hidden__')).toBe(true);
+    expect(spectator.pendingChoice?.type).toBe('acknowledgeRevealedHand');
+    expect(spectator.pendingChoice?.payload).toEqual({ revealedPlayer: 0, sourceZone: 'hand' });
+    const spectatorReveal = spectator.actionLog.find(
+      (entry) => entry.action === 'revealCards' && entry.payload?.sourceZone === 'hand',
+    );
+    expect(spectatorReveal?.payload).toMatchObject({ sourceZone: 'hand', cardCount: 1 });
+    expect(spectatorReveal?.payload).not.toHaveProperty('cardDefIds');
+  });
+
   it('hides deck contents from all players', () => {
     const G = setupGame();
     const view = ZutomayoCard.playerView?.({ G, playerID: '0' } as never) as GameState;
@@ -1336,6 +1813,49 @@ describe('playerView', () => {
     const view = ZutomayoCard.playerView?.({ G, playerID: '0' } as never) as GameState;
     expect(view.players[0].hand[0].defId).toBe(G.players[0].hand[0].defId);
     expect(view.players[1].hand.every((c) => c.defId === '__hidden__')).toBe(true);
+  });
+
+  it('temporarily reveals a hand only to the reviewing player', () => {
+    const G = setupGame();
+    G.revealedHandCardIds[1] = G.players[1].hand.map((card) => card.instanceId);
+    G.pendingChoice = {
+      id: 'reveal-review',
+      type: 'acknowledgeRevealedHand',
+      player: 0,
+      options: [],
+      min: 0,
+      max: 0,
+      payload: { revealedPlayer: 1 },
+    };
+
+    const reviewer = ZutomayoCard.playerView?.({ G, playerID: '0' } as never) as GameState;
+    const owner = ZutomayoCard.playerView?.({ G, playerID: '1' } as never) as GameState;
+    const spectator = ZutomayoCard.playerView?.({ G, playerID: null } as never) as GameState;
+    expect(reviewer.players[1].hand.map((card) => card.defId)).toEqual(G.players[1].hand.map((card) => card.defId));
+    expect(owner.pendingChoice?.options).toEqual([]);
+    expect(spectator.players[1].hand.every((card) => card.defId === '__hidden__')).toBe(true);
+    expect(spectator.revealedHandCardIds).toEqual([[], []]);
+  });
+
+  it('hides the temporarily revealed hand immediately after acknowledgement', () => {
+    const G = setupGame();
+    G.step = 'effectOrder';
+    G.revealedHandCardIds[1] = G.players[1].hand.map((card) => card.instanceId);
+    G.pendingChoice = {
+      id: 'reveal-review',
+      type: 'acknowledgeRevealedHand',
+      player: 0,
+      options: [],
+      min: 0,
+      max: 0,
+      payload: { revealedPlayer: 1 },
+    };
+
+    expect(submitPendingChoice(G, 0, [])).toBe(true);
+    expect(G.pendingChoice).toBeNull();
+    expect(G.revealedHandCardIds[1]).toEqual([]);
+    const view = ZutomayoCard.playerView?.({ G, playerID: '0' } as never) as GameState;
+    expect(view.players[1].hand.every((card) => card.defId === '__hidden__')).toBe(true);
   });
 
   it('hides opponent set cards until revealed', () => {

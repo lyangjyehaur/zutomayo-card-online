@@ -1984,6 +1984,26 @@ html[data-chronos-resolving='true'] .chronosdial-medal {
   color: var(--color-text-muted);
 }
 
+.battle-resolution-attack-sources {
+  display: flex;
+  max-width: 100%;
+  justify-content: center;
+  gap: 0.2rem;
+  overflow: hidden;
+}
+
+.battle-resolution-attack-sources > span {
+  overflow: hidden;
+  border-radius: var(--radius-xs);
+  padding: 0.08rem 0.24rem;
+  background: color-mix(in oklch, currentcolor 10%, transparent);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-2xs);
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .battle-resolution-equation {
   position: fixed;
   display: grid;
@@ -2396,6 +2416,241 @@ html[data-chronos-resolving='true'] .chronosdial-medal {
     inset 0 0 1rem oklch(from var(--color-danger) l c h / 0.28),
     0 0 1.15rem oklch(from var(--color-danger) l c h / 0.42);
   animation: bf-battle-status-hit 620ms var(--ease-emphasized) both;
+}
+
+/* -------------------------------------------------------- 卡牌效果 HP 變化 */
+.effect-hp-resolution-layer {
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--z-overlay) + 1);
+  pointer-events: none;
+  color: var(--color-danger);
+}
+
+.effect-hp-resolution-layer[data-healing='true'] {
+  color: var(--color-success);
+}
+
+.effect-hp-resolution-source {
+  position: fixed;
+  z-index: 5;
+  border: 2px solid currentcolor;
+  border-radius: var(--radius-sm);
+  box-shadow:
+    inset 0 0 1rem oklch(from currentcolor l c h / 0.28),
+    0 0 1.2rem oklch(from currentcolor l c h / 0.64);
+  animation: bf-effect-hp-source 800ms var(--ease-emphasized) both;
+}
+
+.effect-hp-resolution-source svg {
+  position: absolute;
+  top: -0.7rem;
+  right: -0.7rem;
+  width: 1.45rem;
+  height: 1.45rem;
+  padding: 0.22rem;
+  border-radius: 50%;
+  background: currentcolor;
+  box-shadow: 0 0 0.85rem oklch(from currentcolor l c h / 0.68);
+  color: var(--color-bg-base);
+}
+
+.effect-hp-resolution-link {
+  position: fixed;
+  z-index: 3;
+  height: 3px;
+  transform-origin: left center;
+}
+
+.effect-hp-resolution-link > span {
+  position: absolute;
+  top: -0.22rem;
+  left: 0;
+  width: 1.75rem;
+  height: 0.44rem;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(90deg, transparent, currentcolor 58%, white);
+  box-shadow: 0 0 0.8rem oklch(from currentcolor l c h / 0.58);
+  animation: bf-effect-hp-link 800ms var(--ease-emphasized) both;
+}
+
+.effect-hp-resolution-summary {
+  position: fixed;
+  z-index: 6;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 0.55rem;
+  min-width: min(17rem, calc(100vw - 2rem));
+  max-width: min(23rem, calc(100vw - 2rem));
+  padding: 0.55rem 0.75rem;
+  border: 1px solid oklch(from currentcolor l c h / 0.7);
+  border-radius: var(--radius-sm);
+  background: oklch(from var(--color-bg-base) l c h / 0.96);
+  box-shadow:
+    0 0.55rem 1.6rem oklch(from var(--color-bg-base) l c h / 0.52),
+    0 0 1.15rem oklch(from currentcolor l c h / 0.44);
+  animation: bf-effect-hp-summary 420ms var(--ease-emphasized) both;
+}
+
+.effect-hp-resolution-summary[data-placement='above'] {
+  --effect-hp-translate-y: -100%;
+
+  transform: translate(-50%, -100%);
+}
+
+.effect-hp-resolution-summary[data-placement='below'] {
+  --effect-hp-translate-y: 0;
+
+  transform: translate(-50%, 0);
+}
+
+.effect-hp-resolution-summary > svg {
+  grid-row: 1 / span 3;
+  width: 1.55rem;
+  height: 1.55rem;
+  filter: drop-shadow(0 0 0.45rem oklch(from currentcolor l c h / 0.56));
+}
+
+.effect-hp-resolution-summary > span,
+.effect-hp-resolution-summary > em {
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-2xs);
+  font-style: normal;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text-muted);
+}
+
+.effect-hp-resolution-summary > strong {
+  font-family: var(--font-display);
+  font-size: var(--font-size-xl);
+  line-height: 1.05;
+  color: currentcolor;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-shadow: 0 0 0.7rem oklch(from currentcolor l c h / 0.34);
+}
+
+.effect-hp-resolution-hp-readout {
+  position: fixed;
+  z-index: 7;
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 0.2rem;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.effect-hp-resolution-hp-readout > span:not(.effect-hp-resolution-delta) {
+  opacity: 0.62;
+}
+
+.effect-hp-resolution-hp-readout strong {
+  min-width: 2.25ch;
+  font-family: var(--font-display);
+  font-size: var(--font-size-lg);
+  line-height: 1;
+  text-align: right;
+  color: currentcolor;
+}
+
+.effect-hp-resolution-hp-readout[data-hp='warning'] strong {
+  color: #d89d22;
+}
+
+.effect-hp-resolution-hp-readout[data-hp='danger'] strong {
+  color: var(--color-danger);
+}
+
+.effect-hp-resolution-hp-readout[data-healing='true'][data-applying='true'] strong {
+  color: var(--color-success);
+  text-shadow: 0 0 0.7rem oklch(from var(--color-success) l c h / 0.48);
+}
+
+.effect-hp-resolution-delta {
+  position: absolute;
+  right: calc(100% + 0.55rem);
+  top: 50%;
+  font-family: var(--font-display);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-bold);
+  color: currentcolor;
+  text-shadow: 0 0 0.8rem oklch(from currentcolor l c h / 0.58);
+  transform: translateY(-50%);
+  animation: bf-effect-hp-delta 980ms var(--ease-emphasized) both;
+}
+
+.effect-hp-resolution-hp-bar {
+  position: fixed;
+  z-index: 6;
+  overflow: hidden;
+  box-sizing: border-box;
+  border: 1px solid oklch(from currentcolor l c h / 0.52);
+  border-radius: var(--radius-pill);
+  background: oklch(from var(--color-bg-base) l c h / 0.94);
+  box-shadow:
+    inset 0 0 0.22rem oklch(from var(--color-bg-base) l c h / 0.45),
+    0 0 0.65rem oklch(from currentcolor l c h / 0.38);
+}
+
+.effect-hp-resolution-hp-fill,
+.effect-hp-resolution-hp-delta {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  border-radius: inherit;
+}
+
+.effect-hp-resolution-hp-fill {
+  background: linear-gradient(90deg, var(--color-success), var(--color-info));
+}
+
+.effect-hp-resolution-hp-bar[data-hp='warning'] .effect-hp-resolution-hp-fill {
+  background: #d89d22;
+}
+
+.effect-hp-resolution-hp-bar[data-hp='danger'] .effect-hp-resolution-hp-fill {
+  background: var(--color-danger);
+}
+
+.effect-hp-resolution-hp-delta {
+  background: var(--color-danger);
+  box-shadow: 0 0 0.72rem oklch(from var(--color-danger) l c h / 0.66);
+  animation: bf-effect-hp-bar-delta 980ms var(--ease-emphasized) both;
+}
+
+.effect-hp-resolution-hp-bar[data-healing='true'] .effect-hp-resolution-hp-delta {
+  background: var(--color-success);
+  box-shadow: 0 0 0.72rem oklch(from var(--color-success) l c h / 0.72);
+}
+
+.effect-hp-resolution-hp-ticks {
+  position: absolute;
+  inset: 1px;
+  border-radius: inherit;
+  background: repeating-linear-gradient(
+    90deg,
+    transparent 0 calc(10% - 1px),
+    rgb(255 255 255 / 0.32) calc(10% - 1px) 10%
+  );
+}
+
+.effect-hp-resolution-status {
+  position: fixed;
+  z-index: 4;
+  border: 1px solid oklch(from currentcolor l c h / 0.7);
+  border-radius: var(--radius-sm);
+  background: linear-gradient(90deg, oklch(from currentcolor l c h / 0.2), transparent 72%);
+  box-shadow:
+    inset 0 0 1rem oklch(from currentcolor l c h / 0.24),
+    0 0 1.15rem oklch(from currentcolor l c h / 0.42);
+  animation: bf-effect-hp-status 760ms var(--ease-emphasized) both;
 }
 
 .battle-animation-card,
@@ -2832,6 +3087,43 @@ button.cardstack:focus-visible {
   color: var(--color-text-muted);
 }
 
+.playerstatus-effects {
+  display: flex;
+  min-width: 0;
+  gap: 0.25rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.playerstatus-effects::-webkit-scrollbar {
+  display: none;
+}
+
+.playerstatus-effects > span {
+  display: inline-flex;
+  min-height: 1.15rem;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.25rem;
+  border-left: 2px solid var(--color-accent-primary);
+  padding: 0.08rem 0.3rem;
+  background: color-mix(in oklch, var(--surface-raised) 76%, transparent);
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-2xs);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.playerstatus-effects > span[data-tone='warning'] {
+  border-left-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
+.playerstatus-effects strong {
+  color: var(--color-text-primary);
+}
+
 .playerstatus-hp-readout {
   display: inline-flex;
   align-items: baseline;
@@ -2869,7 +3161,8 @@ button.cardstack:focus-visible {
   text-shadow: 0 0 0.65rem oklch(from var(--color-danger) l c h / 0.38);
 }
 
-.playerstatus[data-battle-hp-overlay='true'] .playerstatus-hp-readout {
+.playerstatus[data-battle-hp-overlay='true'] .playerstatus-hp-readout,
+.playerstatus[data-effect-hp-overlay='true'] .playerstatus-hp-readout {
   visibility: hidden;
 }
 
@@ -3359,6 +3652,98 @@ button.cardstack:focus-visible {
   }
 }
 
+@keyframes bf-effect-hp-source {
+  0% {
+    opacity: 0;
+    filter: brightness(1.5);
+    transform: scale(0.9);
+  }
+  55% {
+    opacity: 1;
+    filter: brightness(1.2);
+    transform: scale(1.05);
+  }
+  100% {
+    opacity: 1;
+    filter: brightness(1);
+    transform: scale(1);
+  }
+}
+
+@keyframes bf-effect-hp-link {
+  0% {
+    opacity: 0;
+    left: 0;
+    transform: scale(0.7);
+  }
+  22% {
+    opacity: 1;
+  }
+  100% {
+    left: calc(100% - 1.75rem);
+    opacity: 0;
+    transform: scale(1.08);
+  }
+}
+
+@keyframes bf-effect-hp-summary {
+  0% {
+    opacity: 0;
+    filter: brightness(1.45);
+    transform: translate(-50%, var(--effect-hp-translate-y)) scale(0.82);
+  }
+  100% {
+    opacity: 1;
+    filter: brightness(1);
+    transform: translate(-50%, var(--effect-hp-translate-y)) scale(1);
+  }
+}
+
+@keyframes bf-effect-hp-delta {
+  0% {
+    opacity: 0;
+    transform: translateY(15%);
+  }
+  35% {
+    opacity: 1;
+    transform: translateY(-50%);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-115%);
+  }
+}
+
+@keyframes bf-effect-hp-bar-delta {
+  0% {
+    opacity: 0;
+    filter: brightness(1.6);
+  }
+  40% {
+    opacity: 1;
+    filter: brightness(1.25);
+  }
+  100% {
+    opacity: 0.55;
+    filter: brightness(1);
+  }
+}
+
+@keyframes bf-effect-hp-status {
+  0% {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  45% {
+    opacity: 1;
+    transform: scale(1.015);
+  }
+  100% {
+    opacity: 0.5;
+    transform: scale(1);
+  }
+}
+
 @keyframes bf-battle-damage-in {
   0% {
     opacity: 0;
@@ -3460,6 +3845,12 @@ button.cardstack:focus-visible {
   .battle-resolution-hp-readout strong,
   .battle-resolution-hp-loss,
   .battle-resolution-status-hit,
+  .effect-hp-resolution-source,
+  .effect-hp-resolution-link > span,
+  .effect-hp-resolution-summary,
+  .effect-hp-resolution-delta,
+  .effect-hp-resolution-hp-delta,
+  .effect-hp-resolution-status,
   .playerstatus[data-hit='true'] {
     animation: none;
   }
@@ -3506,7 +3897,8 @@ button.cardstack:focus-visible {
   }
 
   .battle-resolution-equation,
-  .battle-resolution-damage {
+  .battle-resolution-damage,
+  .effect-hp-resolution-summary {
     min-width: min(15rem, calc(100vw - 1rem));
     padding: 0.42rem 0.62rem;
   }
@@ -3716,7 +4108,8 @@ button.cardstack:focus-visible {
     display: grid;
     grid-template-areas:
       'head head'
-      'bar meta';
+      'bar meta'
+      'effects effects';
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     gap: calc(var(--space-1) / 2) var(--space-2);
@@ -3736,6 +4129,10 @@ button.cardstack:focus-visible {
     align-self: center;
     line-height: 1;
     white-space: nowrap;
+  }
+
+  .mobile-status-row .playerstatus-effects {
+    grid-area: effects;
   }
 
   .setzone-hint-full {

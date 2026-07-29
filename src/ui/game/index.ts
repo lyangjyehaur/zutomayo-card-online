@@ -10,6 +10,7 @@ export { BattleZone } from './BattleZone';
 export type { BattleZoneAttack, BattleZoneProps } from './BattleZone';
 export { BattleAnimationLayer } from './BattleAnimationLayer';
 export { BattleResolutionLayer } from './BattleResolutionLayer';
+export { EffectHpResolutionLayer } from './EffectHpResolutionLayer';
 export { ChronosResolutionLayer } from './ChronosResolutionLayer';
 export {
   initialResolutionNotices,

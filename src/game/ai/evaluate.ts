@@ -191,7 +191,7 @@ function optionCardValue(choice: PendingChoice, optionDefId: string | undefined,
 }
 
 function opponentHandGuessValue(
-  choice: Extract<PendingChoice, { type: 'nameGuessOpponentHandReveal' }>,
+  choice: Extract<PendingChoice, { type: 'declareOpponentHandCardName' }>,
   optionIds: readonly string[],
   G: GameState,
 ): number {
@@ -254,7 +254,12 @@ export function choiceOptionHeuristic(choice: PendingChoice, optionIds: string[]
       // The first selected card remains on top and is drawn first. Feed the
       // opponent lower-value cards before stronger cards.
       return -values.reduce((sum, value, index) => sum + value * (values.length - index), 0);
-    case 'nameGuessOpponentHandReveal':
+    case 'declareOpponentHandCardName':
       return opponentHandGuessValue(choice, optionIds, G);
+    case 'selectOpponentHandCard':
+      // All positions are hidden and therefore strategically equivalent.
+      return 0;
+    case 'acknowledgeRevealedHand':
+      return 0;
   }
 }

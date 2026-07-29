@@ -1,12 +1,13 @@
 import type { GameNotice } from '../../game/types';
 
-export type ResolutionNoticeChannel = 'chronos' | 'battle' | 'general';
+export type ResolutionNoticeChannel = 'chronos' | 'battle' | 'hp' | 'general';
 
 export const RESOLUTION_REPLAY_WINDOW_MS = 5000;
 
 export function resolutionNoticeChannel(notice: GameNotice): ResolutionNoticeChannel {
   if (notice.kind === 'chronosChange') return 'chronos';
   if (notice.kind === 'battleResult' || (notice.kind === 'hpChange' && notice.reason === 'battle')) return 'battle';
+  if (notice.kind === 'hpChange') return 'hp';
   return 'general';
 }
 

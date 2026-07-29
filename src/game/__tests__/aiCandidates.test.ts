@@ -98,11 +98,18 @@ const choices: PendingChoice[] = [
   {
     id: 'guess',
     player: 0,
-    type: 'nameGuessOpponentHandReveal',
+    type: 'declareOpponentHandCardName',
     min: 1,
     max: 1,
     payload: { opponentPlayer: 1, attackBoost: 20 },
-    options: [{ id: 'hand:0:guess:test-character-1', label: 'guess' }],
+    options: [
+      {
+        id: 'declare:test-character-1',
+        label: 'guess',
+        value: 'test-character-1',
+        cardDefId: 'test-character-1',
+      },
+    ],
   },
   {
     id: 'swap',

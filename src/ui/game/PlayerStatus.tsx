@@ -15,6 +15,7 @@ export interface PlayerStatusProps {
   className?: string;
   /** 前端結算動畫定位用，不承載規則狀態。 */
   animationZone?: string;
+  statuses?: Array<{ label: string; value?: string; tone?: 'neutral' | 'warning' }>;
 }
 
 function hpLevel(hp: number): 'healthy' | 'warning' | 'danger' {
@@ -32,6 +33,7 @@ export function PlayerStatus({
   tutId,
   className,
   animationZone,
+  statuses = [],
 }: PlayerStatusProps) {
   const percent = Math.max(0, Math.min(100, hp));
   return (
@@ -65,6 +67,16 @@ export function PlayerStatus({
       {meta && (
         <div className="playerstatus-meta" aria-hidden="true">
           <span>{meta}</span>
+        </div>
+      )}
+      {statuses.length > 0 && (
+        <div className="playerstatus-effects" aria-label={t('board.status.active' as never)}>
+          {statuses.map((status, index) => (
+            <span data-tone={status.tone} key={`${status.label}-${status.value ?? ''}-${index}`}>
+              {status.label}
+              {status.value && <strong>{status.value}</strong>}
+            </span>
+          ))}
         </div>
       )}
     </div>

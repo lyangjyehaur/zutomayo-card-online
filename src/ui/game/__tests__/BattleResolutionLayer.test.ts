@@ -90,4 +90,25 @@ describe('battleResultView', () => {
       reduction: 0,
     });
   });
+
+  it('uses the pre-set attack as the start of a direct-assignment formula', () => {
+    const notice: GameNotice = {
+      id: 11,
+      kind: 'battleResult',
+      tone: 'neutral',
+      titleKey: 'board.notice.battleDraw',
+      winner: null,
+      winnerAttack: 50,
+      loserAttack: 50,
+      damage: 0,
+      attackModifierSources: [[], [{ kind: 'set', player: 0, targetPlayer: 1, amount: 0, from: 20, setTo: 50 }]],
+      timestamp: Date.now(),
+    };
+
+    expect(battleResultView(notice)).toMatchObject({
+      attacks: { 0: 50, 1: 50 },
+      baseAttacks: { 0: 50, 1: 20 },
+      attackSources: { 1: [expect.objectContaining({ from: 20, setTo: 50 })] },
+    });
+  });
 });

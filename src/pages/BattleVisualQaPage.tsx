@@ -1,7 +1,8 @@
-import { useEffect, useMemo, type ComponentProps } from 'react';
+import { useEffect, useMemo, useState, type ComponentProps } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Board } from '../components/Board';
 import { TUTORIAL_DECK0_IDS, TUTORIAL_DECK1_IDS } from '../data/tutorialScenario';
+import { ZutomayoCard } from '../game/Game';
 import {
   advanceChronos,
   confirmReady,
@@ -12,6 +13,7 @@ import {
   setInitialCard,
   setTurnCard,
   setupGame,
+  submitPendingChoice,
 } from '../game/GameLogic';
 import { parseAllEffects, type ParsedEffect } from '../game/effects';
 import { pushGameNotice } from '../game/gameNotices';
@@ -51,6 +53,13 @@ const BATTLE_QA_STATES = [
   { id: 'chronos-effect-cycle', label: 'Chronos Effect Full Cycle' },
   { id: 'chronos-effect-queue', label: 'Chronos Effect Queue' },
   { id: 'chronos-position-choice', label: 'Chronos Position Choice' },
+  { id: 'revealed-hand', label: 'Revealed Hand' },
+  { id: 'guess-declaration', label: 'Guess Declaration' },
+  { id: 'guess-position', label: 'Guess Hidden Card' },
+  { id: 'partial-reveal', label: 'Partial Hand Reveal' },
+  { id: 'deck-top-reveal', label: 'Deck-top Reveal' },
+  { id: 'deck-reorder', label: 'Deck Reorder' },
+  { id: 'status-effects', label: 'Persistent Status Effects' },
   { id: 'battle-resolution', label: 'Battle Resolution' },
   { id: 'battle-modifiers', label: 'Battle Modifiers' },
   { id: 'battle-insufficient', label: 'Battle Power 0' },
@@ -58,6 +67,7 @@ const BATTLE_QA_STATES = [
   { id: 'battle-zero-damage', label: 'Battle Guard' },
   { id: 'battle-double-zero', label: 'Battle 0 = 0' },
   { id: 'battle-negative', label: 'Battle Negative' },
+  { id: 'effect-hp-resolution', label: 'Effect HP' },
   { id: 'resolution-timeline', label: 'Resolution Timeline' },
   { id: 'game-over-resolution', label: 'Game Over Resolution' },
   { id: 'cross-turn-resolution', label: 'Cross-turn Resolution' },
@@ -80,6 +90,7 @@ const BATTLE_QA_TIMES = [
 type BattleQaStateId = (typeof BATTLE_QA_STATES)[number]['id'];
 type BattleQaSideId = (typeof BATTLE_QA_SIDES)[number]['id'];
 type BattleQaTimeId = (typeof BATTLE_QA_TIMES)[number]['id'];
+type BattleQaViewerId = '0' | '1' | 'spectator';
 
 const REQUIRED_QA_CARD_IDS = [...new Set([...TUTORIAL_DECK0_IDS, ...TUTORIAL_DECK1_IDS])];
 
@@ -553,6 +564,7 @@ function createResolutionTimelineState(
     hpAfter: hpAfterHeal,
     reason: 'healBoth',
     sourceCardDefId: G.players[0].battleZone?.defId,
+    sourceCardInstanceId: G.players[0].battleZone?.instanceId,
   });
   const chronosFrom = G.chronos.position;
   const chronosTo = (chronosFrom + 2) % CHRONOS_MAPPING.positions;
@@ -576,6 +588,28 @@ function createResolutionTimelineState(
     tone: 'phase',
     titleKey: 'board.notice.turnStart',
     turn: G.turnNumber + 1,
+  });
+  return G;
+}
+
+function createEffectHpResolutionState(parsedEffects: Map<string, ParsedEffect[]>, side: BattleQaSideId): GameState {
+  const G = createTurnSetState(parsedEffects, side);
+  clearTransientQaOverlays(G);
+  const sourceCard = G.players[0].battleZone;
+  if (!sourceCard) throw new Error('Unable to prepare effect HP source card');
+  sourceCard.faceUp = true;
+  G.players[0].hp = 65;
+  pushGameNotice(G, {
+    kind: 'hpChange',
+    tone: 'success',
+    titleKey: 'board.hpChange.heal',
+    player: 0,
+    delta: 20,
+    hpBefore: 45,
+    hpAfter: 65,
+    reason: 'heal',
+    sourceCardDefId: sourceCard.defId,
+    sourceCardInstanceId: sourceCard.instanceId,
   });
   return G;
 }
@@ -723,6 +757,164 @@ function createChronosPositionChoiceState(parsedEffects: Map<string, ParsedEffec
   return G;
 }
 
+function createRevealedHandState(parsedEffects: Map<string, ParsedEffect[]>, side: BattleQaSideId): GameState {
+  const G = createTurnSetState(parsedEffects, side);
+  clearTransientQaOverlays(G);
+  const sourceCard = G.players[0].battleZone;
+  if (!sourceCard) throw new Error('Unable to prepare revealed-hand source card');
+  sourceCard.faceUp = true;
+  G.step = 'effectOrder';
+  G.ready = [true, true];
+  G.pendingEffects = [[], []];
+  G.pendingEffectPlayer = null;
+  G.revealedHandCardIds[1] = G.players[1].hand.map((card) => card.instanceId);
+  G.pendingChoice = {
+    id: 'qa-choice-revealed-hand',
+    type: 'acknowledgeRevealedHand',
+    player: 0,
+    options: [],
+    min: 0,
+    max: 0,
+    prompt: 'QA fixture: review the temporarily revealed opposing hand.',
+    sourceCardDefId: sourceCard.defId,
+    sourceCardInstanceId: sourceCard.instanceId,
+    payload: { revealedPlayer: 1 },
+  };
+  return G;
+}
+
+function createGuessDeclarationState(parsedEffects: Map<string, ParsedEffect[]>, side: BattleQaSideId): GameState {
+  const G = createEffectOrderState(parsedEffects, side);
+  const sourceCard = G.players[0].battleZone;
+  G.pendingChoice = {
+    id: 'qa-choice-guess-declaration',
+    type: 'declareOpponentHandCardName',
+    player: 0,
+    min: 1,
+    max: 1,
+    prompt: 'QA fixture: declare a card name.',
+    payload: { opponentPlayer: 1, attackBoost: 20 },
+    options: getAllCardDefs().map((card) => ({
+      id: `declare:${card.id}`,
+      label: card.name,
+      value: card.id,
+      cardDefId: card.id,
+    })),
+    ...(sourceCard ? { sourceCardDefId: sourceCard.defId, sourceCardInstanceId: sourceCard.instanceId } : {}),
+  };
+  return G;
+}
+
+function createGuessPositionState(parsedEffects: Map<string, ParsedEffect[]>, side: BattleQaSideId): GameState {
+  const G = createEffectOrderState(parsedEffects, side);
+  const target = G.players[1].hand[0];
+  G.pendingChoice = {
+    id: 'qa-choice-guess-position',
+    type: 'selectOpponentHandCard',
+    player: 0,
+    min: 1,
+    max: 1,
+    prompt: 'QA fixture: choose one hidden opposing hand card.',
+    payload: { opponentPlayer: 1, attackBoost: 20, guessedCardDefId: target?.defId ?? '1st_1' },
+    options: G.players[1].hand.map((_card, index) => ({
+      id: `hand-position:${index}`,
+      label: `Opponent hand ${index + 1}`,
+      value: index,
+    })),
+  };
+  return G;
+}
+
+function createPartialRevealState(parsedEffects: Map<string, ParsedEffect[]>, side: BattleQaSideId): GameState {
+  const G = createEffectOrderState(parsedEffects, side);
+  const revealed = G.players[0].hand.slice(0, 2);
+  G.revealedHandCardIds[0] = revealed.map((card) => card.instanceId);
+  G.pendingChoice = {
+    id: 'qa-choice-partial-reveal',
+    type: 'acknowledgeRevealedHand',
+    player: 1,
+    min: 0,
+    max: 0,
+    prompt: 'QA fixture: selected cards revealed for attack boost.',
+    payload: {
+      revealedPlayer: 0,
+      sourceZone: 'hand',
+      revealedCardInstanceIds: revealed.map((card) => card.instanceId),
+      boostPerCard: 10,
+      attackBoost: revealed.length * 10,
+    },
+    options: [],
+  };
+  return G;
+}
+
+function createDeckTopRevealState(parsedEffects: Map<string, ParsedEffect[]>, side: BattleQaSideId): GameState {
+  const G = createEffectOrderState(parsedEffects, side);
+  const revealed = G.players[1].deck[0];
+  const revealedPowerCost = getCardDef(revealed?.defId ?? '')?.powerCost ?? 0;
+  if (revealed) revealed.faceUp = true;
+  G.pendingChoice = {
+    id: 'qa-choice-deck-top-reveal',
+    type: 'acknowledgeRevealedHand',
+    player: 0,
+    min: 0,
+    max: 0,
+    prompt: 'QA fixture: review a revealed deck-top card.',
+    payload: {
+      revealedPlayer: 1,
+      sourceZone: 'deck',
+      revealedCardInstanceIds: revealed ? [revealed.instanceId] : [],
+      deckComparison: {
+        stat: 'powerCost',
+        value: revealedPowerCost,
+        threshold: 3,
+        matched: revealedPowerCost >= 3,
+      },
+    },
+    options: [],
+  };
+  return G;
+}
+
+function createDeckReorderState(parsedEffects: Map<string, ParsedEffect[]>, side: BattleQaSideId): GameState {
+  const G = createEffectOrderState(parsedEffects, side);
+  const cards = G.players[1].deck.slice(0, 3);
+  G.pendingChoice = {
+    id: 'qa-choice-deck-reorder',
+    type: 'reorderOpponentDeckTop',
+    player: 0,
+    min: cards.length,
+    max: cards.length,
+    prompt: 'QA fixture: reorder the opposing deck top.',
+    payload: { targetPlayer: 1, count: cards.length },
+    options: cards.map((card) => ({
+      id: card.instanceId,
+      label: getCardDef(card.defId)?.name ?? card.defId,
+      cardInstanceId: card.instanceId,
+      cardDefId: card.defId,
+    })),
+  };
+  return G;
+}
+
+function createStatusEffectsState(parsedEffects: Map<string, ParsedEffect[]>, side: BattleQaSideId): GameState {
+  const G = createTurnSetState(parsedEffects, side);
+  clearTransientQaOverlays(G);
+  G.midnightRange = 2;
+  G.modifiers.elementOverride = ['炎', '風'];
+  G.modifiers.powerCostReduction = [2, 1];
+  G.modifiers.cardClockSetTo = 3;
+  G.modifiers.enchantEffectsDisabled = [true, false];
+  G.modifiers.effectsDisabled = [false, true];
+  G.modifiers.handSize = [1, -1];
+  G.modifiers.extraSettableCards = [1, 2];
+  G.modifiers.clockContributionDisabled = [false, true];
+  G.modifiers.attackTimeOverride = ['night', 'day'];
+  G.modifiers.swapAttack = [true, false];
+  G.modifiers.sendToPower = [2, 3];
+  return G;
+}
+
 function createGameOverState(parsedEffects: Map<string, ParsedEffect[]>, side: BattleQaSideId): GameState {
   const G = prepareEffectField(createTurnSetState(parsedEffects, side));
   G.step = 'gameOver';
@@ -780,6 +972,10 @@ function normalizeTimeId(value: string | null): BattleQaTimeId {
   return BATTLE_QA_TIMES.some((time) => time.id === value) ? (value as BattleQaTimeId) : 'auto';
 }
 
+function normalizeViewerId(value: string | null): BattleQaViewerId {
+  return value === '1' || value === 'spectator' ? value : '0';
+}
+
 function applyQaChronosTime(G: GameState, time: BattleQaTimeId): void {
   if (time === 'auto') return;
   const positionByTime: Record<ChronosTime, number> = {
@@ -816,31 +1012,66 @@ function createBattleQaState(id: BattleQaStateId, side: BattleQaSideId, time: Ba
                           ? createChronosEffectQueueState(parsedEffects, side)
                           : id === 'chronos-position-choice'
                             ? createChronosPositionChoiceState(parsedEffects, side)
-                            : id === 'battle-resolution'
-                              ? createBattleResolutionState(parsedEffects, side, time)
-                              : id === 'battle-modifiers'
-                                ? createBattleResolutionState(parsedEffects, side, time, 'modifiers')
-                                : id === 'battle-insufficient'
-                                  ? createBattleResolutionState(parsedEffects, side, time, 'insufficient')
-                                  : id === 'battle-draw'
-                                    ? createBattleResolutionState(parsedEffects, side, time, 'draw')
-                                    : id === 'battle-zero-damage'
-                                      ? createBattleResolutionState(parsedEffects, side, time, 'zero-damage')
-                                      : id === 'battle-double-zero'
-                                        ? createBattleResolutionState(parsedEffects, side, time, 'double-zero')
-                                        : id === 'battle-negative'
-                                          ? createBattleResolutionState(parsedEffects, side, time, 'negative')
-                                          : id === 'resolution-timeline'
-                                            ? createResolutionTimelineState(parsedEffects, side, time)
-                                            : id === 'game-over-resolution'
-                                              ? createGameOverResolutionState(parsedEffects, side, time)
-                                              : id === 'cross-turn-resolution'
-                                                ? createCrossTurnResolutionState(parsedEffects, side, time)
-                                                : id === 'effect-order'
-                                                  ? createEffectOrderState(parsedEffects, side)
-                                                  : id === 'pending-choice'
-                                                    ? createPendingChoiceState(parsedEffects, side)
-                                                    : createGameOverState(parsedEffects, side);
+                            : id === 'revealed-hand'
+                              ? createRevealedHandState(parsedEffects, side)
+                              : id === 'guess-declaration'
+                                ? createGuessDeclarationState(parsedEffects, side)
+                                : id === 'guess-position'
+                                  ? createGuessPositionState(parsedEffects, side)
+                                  : id === 'partial-reveal'
+                                    ? createPartialRevealState(parsedEffects, side)
+                                    : id === 'deck-top-reveal'
+                                      ? createDeckTopRevealState(parsedEffects, side)
+                                      : id === 'deck-reorder'
+                                        ? createDeckReorderState(parsedEffects, side)
+                                        : id === 'status-effects'
+                                          ? createStatusEffectsState(parsedEffects, side)
+                                          : id === 'battle-resolution'
+                                            ? createBattleResolutionState(parsedEffects, side, time)
+                                            : id === 'battle-modifiers'
+                                              ? createBattleResolutionState(parsedEffects, side, time, 'modifiers')
+                                              : id === 'battle-insufficient'
+                                                ? createBattleResolutionState(parsedEffects, side, time, 'insufficient')
+                                                : id === 'battle-draw'
+                                                  ? createBattleResolutionState(parsedEffects, side, time, 'draw')
+                                                  : id === 'battle-zero-damage'
+                                                    ? createBattleResolutionState(
+                                                        parsedEffects,
+                                                        side,
+                                                        time,
+                                                        'zero-damage',
+                                                      )
+                                                    : id === 'battle-double-zero'
+                                                      ? createBattleResolutionState(
+                                                          parsedEffects,
+                                                          side,
+                                                          time,
+                                                          'double-zero',
+                                                        )
+                                                      : id === 'battle-negative'
+                                                        ? createBattleResolutionState(
+                                                            parsedEffects,
+                                                            side,
+                                                            time,
+                                                            'negative',
+                                                          )
+                                                        : id === 'effect-hp-resolution'
+                                                          ? createEffectHpResolutionState(parsedEffects, side)
+                                                          : id === 'resolution-timeline'
+                                                            ? createResolutionTimelineState(parsedEffects, side, time)
+                                                            : id === 'game-over-resolution'
+                                                              ? createGameOverResolutionState(parsedEffects, side, time)
+                                                              : id === 'cross-turn-resolution'
+                                                                ? createCrossTurnResolutionState(
+                                                                    parsedEffects,
+                                                                    side,
+                                                                    time,
+                                                                  )
+                                                                : id === 'effect-order'
+                                                                  ? createEffectOrderState(parsedEffects, side)
+                                                                  : id === 'pending-choice'
+                                                                    ? createPendingChoiceState(parsedEffects, side)
+                                                                    : createGameOverState(parsedEffects, side);
   applyQaChronosTime(G, time);
   return G;
 }
@@ -938,7 +1169,9 @@ export function BattleVisualQaPage() {
   const selectedState = normalizeStateId(searchParams.get('state'));
   const selectedSide = normalizeSideId(searchParams.get('side'));
   const selectedTime = normalizeTimeId(searchParams.get('time'));
+  const selectedViewer = normalizeViewerId(searchParams.get('viewer'));
   const showControls = searchParams.get('controls') !== '0';
+  const [qaRevision, setQaRevision] = useState(0);
 
   const fixture = useMemo(() => {
     try {
@@ -948,6 +1181,23 @@ export function BattleVisualQaPage() {
       return { G: null, error: error instanceof Error ? error.message : String(error) };
     }
   }, [selectedState, selectedSide, selectedTime]);
+
+  const playerID = selectedViewer === 'spectator' ? null : selectedViewer;
+  const boardG = fixture.G
+    ? ((ZutomayoCard.playerView?.({ G: fixture.G, playerID } as never) as GameState | undefined) ?? fixture.G)
+    : null;
+  const qaMoves = useMemo<BoardComponentProps['moves']>(
+    () => ({
+      ...noopMoves,
+      submitPendingChoice: (optionIds: string[]) => {
+        if (!fixture.G || playerID === null) return;
+        if (submitPendingChoice(fixture.G, Number(playerID) as PlayerIndex, optionIds, createParsedEffects())) {
+          setQaRevision((revision) => revision + 1);
+        }
+      },
+    }),
+    [fixture.G, playerID],
+  );
 
   useEffect(() => {
     document.documentElement.dataset.battleQaState = fixture.G ? selectedState : '';
@@ -974,7 +1224,7 @@ export function BattleVisualQaPage() {
     );
   }
 
-  if (!fixture.G) return null;
+  if (!fixture.G || !boardG) return null;
 
   return (
     <main
@@ -984,10 +1234,10 @@ export function BattleVisualQaPage() {
       data-battle-qa-time={selectedTime}
     >
       <Board
-        key={`${selectedState}-${selectedSide}-${selectedTime}`}
-        G={fixture.G}
-        ctx={createQaCtx(fixture.G)}
-        moves={noopMoves}
+        key={`${selectedState}-${selectedSide}-${selectedTime}-${selectedViewer}-${qaRevision}`}
+        G={boardG}
+        ctx={createQaCtx(boardG)}
+        moves={qaMoves}
         events={{} as BoardComponentProps['events']}
         plugins={{}}
         _undo={[]}
@@ -1000,11 +1250,12 @@ export function BattleVisualQaPage() {
         matchData={undefined}
         sendChatMessage={() => undefined}
         chatMessages={[]}
-        playerID="0"
+        playerID={playerID}
         matchID={`qa-${selectedState}-${selectedSide}-${selectedTime}`}
-        isActive
+        isActive={playerID !== null}
         isConnected
         isMultiplayer={false}
+        spectator={playerID === null}
         useServerTimer
         gameOverActions={
           selectedState === 'game-over' || selectedState === 'game-over-resolution'
