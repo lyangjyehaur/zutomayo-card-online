@@ -619,7 +619,7 @@
               <section class="section">
                 <div class="section-heading"><h3>卡號與基本資料</h3></div>
                 <div class="grid three">
-                  <label><span>正式資料 ID<em class="required-mark">*</em></span><input id="cardId" aria-required="true" value="${escapeHtml(review.cardId)}" placeholder="例如 promo_001" /></label>
+                  <label><span>正式資料 ID<em class="required-mark">*</em></span><input id="cardId" aria-required="true" value="${escapeHtml(review.cardId)}" placeholder="例如 bonus_001" /></label>
                   <label><span>卡面印刷編號<em class="required-mark">*</em></span><input id="printedNumber" aria-required="true" value="${escapeHtml(review.printedNumber)}" placeholder="照卡面輸入" /></label>
                   <label><span>稀有度<em class="required-mark">*</em></span><select id="rarity" aria-required="true">${['', 'N', 'R', 'SR', 'UR', 'SE'].map((v) => option(v, v || '未確認', review.rarity)).join('')}</select></label>
                   <label><span>卡牌種類<em class="required-mark">*</em></span><select id="type" aria-required="true">${['', 'Character', 'Enchant', 'Area Enchant'].map((v) => option(v, v || '未確認', review.type)).join('')}</select></label>

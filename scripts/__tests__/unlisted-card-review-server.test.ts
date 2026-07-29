@@ -65,12 +65,12 @@ describe('unlisted-card review service', () => {
     const review = applyUnlistedCardReview(
       sourceCard,
       undefined,
-      { cardId: 'promo_001', nameEnOfficial: 'Test Card' },
+      { cardId: 'bonus_001', nameEnOfficial: 'Test Card' },
       '2026-07-23T12:00:00.000Z',
     );
 
     expect(review).toMatchObject({
-      cardId: 'promo_001',
+      cardId: 'bonus_001',
       nameJa: 'テストカード',
       nameEnOfficial: 'Test Card',
       imageReviewStatus: 'needs_review',
@@ -79,9 +79,15 @@ describe('unlisted-card review service', () => {
     });
   });
 
+  it('removes the legacy promo prefix from submitted card IDs', () => {
+    const review = applyUnlistedCardReview(sourceCard, undefined, { cardId: 'promo_bonus_001' });
+
+    expect(review.cardId).toBe('bonus_001');
+  });
+
   it('keeps text verification and image approval as independent decisions', () => {
     const review = applyUnlistedCardReview(sourceCard, undefined, {
-      cardId: 'promo_001',
+      cardId: 'bonus_001',
       printedNumber: 'PR-001',
       nameEnOfficial: 'Test Card',
       type: 'Enchant',
@@ -111,7 +117,7 @@ describe('unlisted-card review service', () => {
   it('requires both printed attack values for verified Character cards', () => {
     expect(() =>
       applyUnlistedCardReview(sourceCard, undefined, {
-        cardId: 'promo_001',
+        cardId: 'bonus_001',
         printedNumber: 'PR-001',
         nameEnOfficial: 'Test Card',
         type: 'Character',
@@ -130,7 +136,7 @@ describe('unlisted-card review service', () => {
   it('requires both languages when a printed effect is present', () => {
     expect(() =>
       applyUnlistedCardReview(sourceCard, undefined, {
-        cardId: 'promo_001',
+        cardId: 'bonus_001',
         printedNumber: 'PR-001',
         nameEnOfficial: 'Test Card',
         type: 'Enchant',
@@ -150,7 +156,7 @@ describe('unlisted-card review service', () => {
   it('rejects effect text when the reviewer marks the card as having no printed effect', () => {
     expect(() =>
       applyUnlistedCardReview(sourceCard, undefined, {
-        cardId: 'promo_001',
+        cardId: 'bonus_001',
         printedNumber: 'PR-001',
         nameEnOfficial: 'Test Card',
         type: 'Enchant',
@@ -170,7 +176,7 @@ describe('unlisted-card review service', () => {
   it('requires a reason before verifying a display-only card', () => {
     expect(() =>
       applyUnlistedCardReview(sourceCard, undefined, {
-        cardId: 'promo_001',
+        cardId: 'bonus_001',
         printedNumber: 'PR-001',
         nameEnOfficial: 'Test Card',
         type: 'Enchant',

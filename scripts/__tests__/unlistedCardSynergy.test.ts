@@ -5,9 +5,9 @@ describe('unlisted card synergy input', () => {
   it('excludes a draft even when OCR supplied effect and metadata', () => {
     expect(
       toVerifiedUnlistedSynergyCard(
-        'promo-001',
+        'limited-001',
         {
-          cardId: 'PROMO_001',
+          cardId: 'BONUS_001',
           nameJa: 'OCR カード名',
           effectJa: 'デッキの上からカードを３枚アビスに置く',
           element: '炎',
@@ -24,9 +24,9 @@ describe('unlisted card synergy input', () => {
   it('includes a human-verified review as disabled by default', () => {
     expect(
       toVerifiedUnlistedSynergyCard(
-        'promo-001',
+        'limited-001',
         {
-          cardId: 'PROMO_001',
+          cardId: 'BONUS_001',
           nameJa: 'OCR カード名',
           effectJa: 'HPを10回復する',
           element: '風',
@@ -38,7 +38,7 @@ describe('unlisted card synergy input', () => {
         },
       ),
     ).toEqual({
-      id: 'PROMO_001',
+      id: 'BONUS_001',
       name: '校對済みカード',
       effect: 'HPを10回復する',
       element: '風',
@@ -49,9 +49,9 @@ describe('unlisted card synergy input', () => {
   });
 
   it('never accepts a machine-suggestion verification flag without a verified human review', () => {
-    expect(toVerifiedUnlistedSynergyCard('promo-001', { textReviewStatus: 'verified' }, undefined)).toBeNull();
+    expect(toVerifiedUnlistedSynergyCard('limited-001', { textReviewStatus: 'verified' }, undefined)).toBeNull();
     expect(
-      toVerifiedUnlistedSynergyCard('promo-001', { textReviewStatus: 'verified' }, { textReviewStatus: 'draft' }),
+      toVerifiedUnlistedSynergyCard('limited-001', { textReviewStatus: 'verified' }, { textReviewStatus: 'draft' }),
     ).toBeNull();
   });
 });
