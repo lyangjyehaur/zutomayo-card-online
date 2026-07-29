@@ -1295,6 +1295,40 @@ describe('server routes', () => {
       expect(mockQuery).toHaveBeenCalledWith('SELECT * FROM users WHERE id = $1', ['u_test']);
     });
 
+    it('reads and updates the authenticated user card collection', async () => {
+      mockQuery.mockImplementation(async (sql: string) => {
+        if (sql.startsWith('SELECT card_id FROM user_card_collection')) {
+          return { rows: [{ card_id: '1st_1' }], rowCount: 1 };
+        }
+        if (sql.includes('SELECT id FROM cards')) return { rows: [{ id: '1st_1' }], rowCount: 1 };
+        return { rows: [], rowCount: 1 };
+      });
+
+      const listResponse = await sendRequest('GET', '/api/profile/card-collection', null, {
+        authorization: `Bearer ${createUserJwt()}`,
+      });
+      expect(listResponse.statusCode).toBe(200);
+      expect(parseBody(listResponse)).toEqual({ cardIds: ['1st_1'] });
+
+      const updateResponse = await sendRequest(
+        'PUT',
+        '/api/profile/card-collection/1st_1',
+        { owned: true },
+        userUnsafeHeaders(),
+      );
+      expect(updateResponse.statusCode).toBe(200);
+      expect(parseBody(updateResponse)).toEqual({ cardId: '1st_1', owned: true });
+      expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO user_card_collection'), [
+        'u_test',
+        '1st_1',
+      ]);
+    });
+
+    it('rejects anonymous card collection access', async () => {
+      const response = await sendRequest('GET', '/api/profile/card-collection');
+      expect(response.statusCode).toBe(401);
+    });
+
     it('rejects access tokens when the blacklist lookup is unavailable', async () => {
       mockRedisGet.mockRejectedValueOnce(new Error('Redis unavailable'));
 

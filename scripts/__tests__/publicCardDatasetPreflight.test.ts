@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { cardTextsToRows, evaluatePublicCatalog, playableCardTextsToRows } from '../public-card-dataset-preflight';
+import {
+  cardTextsToRows,
+  evaluateCatalogTranslations,
+  evaluatePublicCatalog,
+  playableCardTextsToRows,
+} from '../public-card-dataset-preflight';
 
 describe('public card dataset preflight', () => {
   it('normalizes only the four derived release languages', () => {
@@ -21,7 +26,7 @@ describe('public card dataset preflight', () => {
     ]);
   });
 
-  it('excludes display-only card texts from the playable translation gate', () => {
+  it('keeps the battle translation gate scoped to playable cards', () => {
     expect(
       playableCardTextsToRows(
         {
@@ -35,6 +40,29 @@ describe('public card dataset preflight', () => {
         ['playable_1'],
       ).map((row) => row.cardId),
     ).toEqual(['playable_1', 'playable_1', 'playable_1', 'playable_1']);
+  });
+
+  it('requires complete verified translations for display-only catalog cards', () => {
+    const card = { id: 'display_1', effect: '効果' };
+    const completeTexts = {
+      display_1: Object.fromEntries(
+        ['zh-TW', 'zh-CN', 'zh-HK', 'ko'].map((lang) => [
+          lang,
+          { name: `${lang} name`, effect: `${lang} effect`, reviewStatus: 'verified' },
+        ]),
+      ),
+    };
+
+    expect(evaluateCatalogTranslations([card], completeTexts)).toMatchObject({
+      metrics: { verifiedCatalogTranslationRows: 4 },
+      checks: { catalogTranslationsComplete: true },
+      failures: [],
+    });
+
+    delete completeTexts.display_1.ko;
+    expect(evaluateCatalogTranslations([card], completeTexts).failures).toEqual([
+      'incomplete catalog translation: display_1/ko',
+    ]);
   });
 
   it('requires display-only cards to stay in the catalog and out of the battle pool', () => {

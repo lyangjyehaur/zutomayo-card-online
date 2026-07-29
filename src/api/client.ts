@@ -240,6 +240,7 @@ export interface AccountExport {
   account: Record<string, unknown>;
   identities: unknown[];
   decks: unknown[];
+  cardCollection: unknown[];
   deckShares: unknown[];
   deckShareLikes: unknown[];
   deckShareCopies: unknown[];
@@ -1163,6 +1164,26 @@ export function isLoggedIn(): boolean {
 // ===== Profile =====
 export async function getProfile(): Promise<ProfileResponse> {
   return request('/profile');
+}
+
+export async function getOwnedCardIds(): Promise<string[]> {
+  const result = await request<{ cardIds: string[] }>('/profile/card-collection');
+  return result.cardIds;
+}
+
+export async function setOwnedCard(cardId: string, owned: boolean): Promise<{ cardId: string; owned: boolean }> {
+  return request(`/profile/card-collection/${encodeURIComponent(cardId)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ owned }),
+  });
+}
+
+export async function mergeOwnedCards(cardIds: string[]): Promise<string[]> {
+  const result = await request<{ cardIds: string[] }>('/profile/card-collection/merge', {
+    method: 'POST',
+    body: JSON.stringify({ cardIds }),
+  });
+  return result.cardIds;
 }
 
 export async function updateProfile(nickname: string): Promise<ProfileResponse> {

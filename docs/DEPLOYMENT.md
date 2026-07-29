@@ -389,7 +389,7 @@ The command fetches the live official Japanese sources and validates every local
 
 同一部署階段也會將 `CARD_DERIVED_EFFECTS_DIR`（預設為本機 `data/`）中的卡牌效果、複核 manifest、官方日英來源及勘誤來源以 tar/stdin 串流至一次性 migration container，通過完整 audit 後以 transaction 更新 `card_texts_i18n`。檔案不會寫入 Server4 checkout 或容器映像；缺少任一來源、雜湊不符或術語違規時，部署會在啟動新服務前中止。
 
-未收錄卡使用 Git-ignored 的 `card-unlisted-sources.json`、`card-unlisted-human-reviews.json` 與 `card-unlisted-release.json`。v2 發布器要求三份資料包含完全相同的候選集合，逐張驗證候選 ID 到正式卡牌 ID 的唯一映射、人工文字與圖片狀態、R2 HTTPS JPEG、遊玩狀態及正式 parser/executor 支援。`playable` 必須有五屬性與完整遊戲數值；`display_only` 必須有不可遊玩原因，但沒有印刷的屬性或成本可留空。四個衍生語言必須全有或全無，未經複核的語言不得冒充 `verified`。發布 transaction 會 upsert `cards`、可用的 `card_texts_i18n` 與 `admin_audit_log`，並標記 `source_note=reviewed-unlisted-release:v2`。Server4 必須先執行此增量卡發布，再執行衍生效果匯入，最後才啟動新服務；正式牌池資料閘門仍要求每張 playable 卡具備完整四語複核資料。
+未收錄卡使用 Git-ignored 的 `card-unlisted-sources.json`、`card-unlisted-human-reviews.json` 與 `card-unlisted-release.json`。v2 發布器要求三份資料包含完全相同的候選集合，逐張驗證候選 ID 到正式卡牌 ID 的唯一映射、人工文字與圖片狀態、R2 HTTPS JPEG、遊玩狀態及正式 parser/executor 支援。`playable` 必須有五屬性與完整遊戲數值；`display_only` 必須有不可遊玩原因，但沒有印刷的屬性或成本可留空。每張已發布卡牌都必須有完整四個衍生語言，且效果通過共用標準術語字典；未經複核的語言不得冒充 `verified`。發布 transaction 會 upsert `cards`、完整的 `card_texts_i18n` 與 `admin_audit_log`，並標記 `source_note=reviewed-unlisted-release:v2`。Server4 必須先執行此增量卡發布，再執行衍生效果匯入，最後才啟動新服務；公開資料 preflight 會對 playable 與 `display_only` 的全部圖鑑卡檢查完整四語複核資料。
 
 ### Runtime DDL policy
 

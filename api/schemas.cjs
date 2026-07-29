@@ -69,6 +69,9 @@ const deckReservationSchema = z.object({
   rulesVersion: z.string().min(1).max(120).optional(),
 });
 
+const cardOwnershipUpdateSchema = z.object({ owned: z.boolean() }).strict();
+const cardOwnershipMergeSchema = z.object({ cardIds: z.array(z.string().min(1).max(80)).max(1000) }).strict();
+
 const deckShareIdSchema = z.string().regex(/^ds_[A-Za-z0-9_-]{8,128}$/);
 
 const deckShareCreateSchema = z
@@ -443,6 +446,8 @@ module.exports = {
   accountCenterPasswordSchema,
   deckCreateSchema,
   deckReservationSchema,
+  cardOwnershipUpdateSchema,
+  cardOwnershipMergeSchema,
   deckShareIdSchema,
   deckShareCreateSchema,
   deckShareUpdateSchema,

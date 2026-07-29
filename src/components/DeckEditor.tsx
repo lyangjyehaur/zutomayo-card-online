@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
-import { compareCardsById } from '../../api/cardOrder.cjs';
+import { compareCardsById } from '../lib/cardOrder';
 import type { CardDef, CardType, Element } from '../game/types';
 import { getAllCardDefs, isCardsInitialized, refreshCards } from '../game/cards/loader';
 import {

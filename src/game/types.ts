@@ -5,7 +5,8 @@ export type CardType = 'Character' | 'Enchant' | 'Area Enchant';
 export type Rarity = 'N' | 'R' | 'SR' | 'UR' | 'SE';
 export type ChronosTime = 'night' | 'day';
 export type CardCatalogStatus = 'listed' | 'pending_listing' | 'unlisted';
-export type CardDistributionType = 'standard' | 'bonus' | 'collaboration' | 'live' | 'event' | 'regional';
+export const CARD_DISTRIBUTION_TYPES = ['standard', 'bonus', 'collaboration', 'live', 'event', 'regional'] as const;
+export type CardDistributionType = (typeof CARD_DISTRIBUTION_TYPES)[number];
 export type CardPublicationStatus = 'draft' | 'reviewed' | 'published' | 'retired';
 export type CardPlayStatus = 'playable' | 'display_only' | 'disabled';
 

@@ -160,6 +160,7 @@ describe('account lifecycle service', () => {
       if (sql.includes('FROM deck_share_likes')) return { rows: [{ share_id: 'ds_1' }] };
       if (sql.includes('FROM deck_share_copy_events')) return { rows: [{ share_id: 'ds_1' }] };
       if (sql.includes('FROM deck_share_reports')) return { rows: [{ id: 'dsr_1' }] };
+      if (sql.includes('FROM user_card_collection')) return { rows: [{ card_id: '1st_1' }] };
       if (sql.includes('FROM feedback_posts')) return { rows: [{ id: 'post_1' }] };
       if (sql.includes('FROM feedback_comments')) return { rows: [{ id: 'comment_1' }] };
       return { rows: [] };
@@ -174,6 +175,7 @@ describe('account lifecycle service', () => {
     expect(result.body.deckShareLikes).toEqual([{ share_id: 'ds_1' }]);
     expect(result.body.deckShareCopies).toEqual([{ share_id: 'ds_1' }]);
     expect(result.body.deckShareReports).toEqual([{ id: 'dsr_1' }]);
+    expect(result.body.cardCollection).toEqual([{ card_id: '1st_1' }]);
     expect(result.body.feedbackPosts).toEqual([{ id: 'post_1' }]);
     expect(result.body.feedbackComments).toEqual([{ id: 'comment_1' }]);
     expect(result.body).toHaveProperty('friendRequests');

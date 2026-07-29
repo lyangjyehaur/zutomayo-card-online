@@ -45,6 +45,7 @@ const {
 } = require('./accountDeletionService.cjs');
 const { upsertCard, upsertCardI18n, upsertGameConfig } = require('./adminCardService.cjs');
 const { listCardSynergies, upsertCardSynergy } = require('./cardSynergyService.cjs');
+const { listOwnedCardIds, mergeCardOwnership, setCardOwnership } = require('./cardCollectionService.cjs');
 const { listAdminUsers, resetUserElo, updateLinkedAdminRole } = require('./adminService.cjs');
 const {
   authenticateAdmin,
@@ -662,6 +663,16 @@ async function initSchema() {
     `CREATE INDEX IF NOT EXISTS idx_cards_has_official_errata ON cards(has_official_errata)`,
     `CREATE INDEX IF NOT EXISTS idx_cards_public_game_pool ON cards(publication_status, play_status)`,
     `CREATE INDEX IF NOT EXISTS idx_cards_catalog_source ON cards(catalog_status, distribution_type)`,
+
+    `CREATE TABLE IF NOT EXISTS user_card_collection (
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+      acquired_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (user_id, card_id)
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_user_card_collection_user_updated
+      ON user_card_collection(user_id, updated_at DESC)`,
 
     `CREATE TABLE IF NOT EXISTS card_synergy_groups (
       id TEXT PRIMARY KEY,
@@ -4440,6 +4451,38 @@ function handleRequest(req, res) {
       const capabilities = await getAccountSecurityCapabilities(pool, userId);
       if (!capabilities.ok) return json({ error: capabilities.error }, capabilities.status);
       json({ ...result.body, ...capabilities.body });
+      return;
+    }
+
+    if (pathname === '/api/profile/card-collection' && method === 'GET') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      json(await listOwnedCardIds(pool, userId));
+      return;
+    }
+
+    if (pathname === '/api/profile/card-collection/merge' && method === 'POST') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const body = await readBody(96 * 1024);
+      const parsed = validateBody(S.cardOwnershipMergeSchema, body);
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      const result = await mergeCardOwnership(pool, userId, parsed.data.cardIds);
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
+      return;
+    }
+
+    const cardOwnershipRoute = pathname.match(/^\/api\/profile\/card-collection\/([^/]+)$/);
+    if (cardOwnershipRoute && method === 'PUT') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const body = await readBody(8 * 1024);
+      const parsed = validateBody(S.cardOwnershipUpdateSchema, body);
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      const result = await setCardOwnership(pool, userId, decodeURIComponent(cardOwnershipRoute[1]), parsed.data.owned);
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
       return;
     }
 

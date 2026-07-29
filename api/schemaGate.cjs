@@ -11,6 +11,7 @@ const REQUIRED_RUNTIME_TABLES = Object.freeze([
   'deck_reservations',
   'matches',
   'cards',
+  'user_card_collection',
   'card_synergy_groups',
   'card_synergy_relations',
   'card_texts_i18n',
@@ -115,6 +116,7 @@ const REQUIRED_RUNTIME_COLUMNS = Object.freeze({
     'source_sha256',
     'updated_at',
   ],
+  user_card_collection: ['user_id', 'card_id', 'acquired_at', 'updated_at'],
   card_synergy_groups: [
     'id',
     'primary_category',

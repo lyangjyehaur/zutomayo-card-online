@@ -441,6 +441,7 @@ const NON_CANONICAL_PATTERNS: Partial<
     { pattern: /充能值/gu, expected: 'SEND TO POWER' },
     { pattern: /牌庫/gu, expected: '牌組' },
     { pattern: /暗屬性|火屬性/gu, expected: '闇屬性／炎屬性' },
+    { pattern: /克洛諾斯|克洛诺斯/gu, expected: 'Chronos' },
   ],
   'zh-CN': [
     { pattern: /\bCharacter\b/giu, expected: '角色卡' },
@@ -456,6 +457,7 @@ const NON_CANONICAL_PATTERNS: Partial<
     { pattern: /充能值/gu, expected: 'SEND TO POWER' },
     { pattern: /牌库/gu, expected: '牌组' },
     { pattern: /闇属性|火属性/gu, expected: '暗属性／炎属性' },
+    { pattern: /克洛诺斯|克洛諾斯/gu, expected: 'Chronos' },
   ],
   'zh-HK': [
     { pattern: /\bCharacter\b/giu, expected: '角色卡' },
@@ -471,6 +473,7 @@ const NON_CANONICAL_PATTERNS: Partial<
     { pattern: /充能值/gu, expected: 'SEND TO POWER' },
     { pattern: /牌庫/gu, expected: '牌組' },
     { pattern: /暗屬性|火屬性/gu, expected: '闇屬性／炎屬性' },
+    { pattern: /克洛諾斯|克洛诺斯/gu, expected: 'Chronos' },
   ],
   en: [
     { pattern: /\bEnergy\b/gu, expected: 'Power Cost' },
