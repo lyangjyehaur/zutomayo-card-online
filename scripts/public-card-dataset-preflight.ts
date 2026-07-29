@@ -5,6 +5,8 @@ import { evaluateCardDataset, type CardTranslationSnapshot } from './cardDataset
 import type { CardDef } from '../src/game/types';
 
 const DERIVED_LANGUAGES = ['zh-TW', 'zh-CN', 'zh-HK', 'ko'] as const;
+const EXPECTED_PLAYABLE_CARD_COUNT = 479;
+const EXPECTED_DISPLAY_ONLY_CARD_COUNT = 7;
 
 type PublicCardText = {
   name?: unknown;
@@ -29,6 +31,60 @@ export function cardTextsToRows(texts: PublicCardTexts): CardTranslationSnapshot
         };
       }),
     );
+}
+
+export function playableCardTextsToRows(
+  texts: PublicCardTexts,
+  playableCardIds: readonly string[],
+): CardTranslationSnapshot[] {
+  const playableIds = new Set(playableCardIds);
+  return cardTextsToRows(texts).filter((row) => playableIds.has(row.cardId));
+}
+
+export function evaluatePublicCatalog(
+  playableCards: ReadonlyArray<Pick<CardDef, 'id' | 'playStatus'>>,
+  catalogCards: ReadonlyArray<Pick<CardDef, 'id' | 'playStatus'>>,
+) {
+  const failures: string[] = [];
+  const playableIds = [...playableCards.map((card) => card.id)].sort();
+  const catalogPlayableIds = catalogCards
+    .filter((card) => card.playStatus === 'playable')
+    .map((card) => card.id)
+    .sort();
+  const displayOnlyCards = catalogCards.filter((card) => card.playStatus === 'display_only');
+  const uniqueCatalogIds = new Set(catalogCards.map((card) => card.id)).size === catalogCards.length;
+  const playableCardsExcludedFromCatalogOnly = playableCards.every((card) => card.playStatus === 'playable');
+  const playableCatalogMatches = JSON.stringify(catalogPlayableIds) === JSON.stringify(playableIds);
+  const expectedDisplayOnlyCardCount = displayOnlyCards.length === EXPECTED_DISPLAY_ONLY_CARD_COUNT;
+  const expectedCatalogCardCount =
+    catalogCards.length === EXPECTED_PLAYABLE_CARD_COUNT + EXPECTED_DISPLAY_ONLY_CARD_COUNT;
+
+  if (!uniqueCatalogIds) failures.push('catalog card IDs are not unique');
+  if (!playableCardsExcludedFromCatalogOnly) failures.push('public battle cards contain non-playable entries');
+  if (!playableCatalogMatches) failures.push('catalog playable cards do not match the public battle card pool');
+  if (!expectedDisplayOnlyCardCount) {
+    failures.push(`expected ${EXPECTED_DISPLAY_ONLY_CARD_COUNT} display-only cards, found ${displayOnlyCards.length}`);
+  }
+  if (!expectedCatalogCardCount) {
+    failures.push(
+      `expected ${EXPECTED_PLAYABLE_CARD_COUNT + EXPECTED_DISPLAY_ONLY_CARD_COUNT} catalog cards, found ${catalogCards.length}`,
+    );
+  }
+
+  return {
+    metrics: {
+      catalogCards: catalogCards.length,
+      displayOnlyCards: displayOnlyCards.length,
+    },
+    checks: {
+      uniqueCatalogIds,
+      playableCardsExcludedFromCatalogOnly,
+      playableCatalogMatches,
+      expectedDisplayOnlyCardCount,
+      expectedCatalogCardCount,
+    },
+    failures,
+  };
 }
 
 function apiBaseUrl(argv: string[]): URL {
@@ -62,21 +118,33 @@ function gameSmoke(base: URL): { passed: boolean; output: string } {
 
 async function main(): Promise<void> {
   const base = apiBaseUrl(process.argv.slice(2));
-  const [cards, texts, presetDecks, gameConfig] = await Promise.all([
+  const [cards, catalogCards, texts, presetDecks, gameConfig] = await Promise.all([
     fetchJson<CardDef[]>(base, 'cards'),
+    fetchJson<CardDef[]>(base, 'catalog/cards'),
     fetchJson<PublicCardTexts>(base, 'cards/texts'),
     fetchJson<Array<{ id: string; name: string; cardIds: string[] }>>(base, 'preset-decks'),
     fetchJson<Record<string, unknown>>(base, 'config'),
   ]);
   if (!Array.isArray(cards)) throw new Error('public cards response must be an array');
+  if (!Array.isArray(catalogCards)) throw new Error('public catalog cards response must be an array');
   if (!texts || typeof texts !== 'object' || Array.isArray(texts)) {
     throw new Error('public card texts response must be an object');
   }
   const smoke = gameSmoke(base);
+  const catalogReport = evaluatePublicCatalog(cards, catalogCards);
   const report = evaluateCardDataset(
-    { cards, translations: cardTextsToRows(texts), presetDecks, gameConfig },
-    { expectedCardCount: 479, gameSmokePassed: smoke.passed },
+    {
+      cards,
+      translations: playableCardTextsToRows(
+        texts,
+        cards.map((card) => card.id),
+      ),
+      presetDecks,
+      gameConfig,
+    },
+    { expectedCardCount: EXPECTED_PLAYABLE_CARD_COUNT, gameSmokePassed: smoke.passed },
   );
+  const failures = [...report.failures, ...catalogReport.failures];
   console.log(
     JSON.stringify(
       {
@@ -84,18 +152,18 @@ async function main(): Promise<void> {
         evidenceType: 'card-dataset-preflight',
         releaseEvidence: false,
         source: base.toString(),
-        status: report.failures.length === 0 ? 'passed' : 'failed',
+        status: failures.length === 0 ? 'passed' : 'failed',
         datasetSha256: report.datasetSha256,
-        metrics: report.metrics,
-        checks: report.checks,
-        failures: report.failures,
+        metrics: { ...report.metrics, ...catalogReport.metrics },
+        checks: { ...report.checks, ...catalogReport.checks },
+        failures,
         gameSmokeOutput: smoke.output,
       },
       null,
       2,
     ),
   );
-  if (report.failures.length > 0) process.exitCode = 1;
+  if (failures.length > 0) process.exitCode = 1;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
