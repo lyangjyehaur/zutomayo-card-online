@@ -341,6 +341,49 @@
   display: none;
 }
 
+.phaseindicator-with-action .phaseindicator-panel {
+  max-width: min(58rem, calc(100vw - var(--space-6)));
+}
+
+.phaseindicator-action {
+  pointer-events: auto;
+}
+
+.desktop-revealed-hand-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.desktop-revealed-hand-controls .revealed-hand-result {
+  min-width: 15rem;
+  margin: 0;
+  padding: var(--space-1) var(--space-2);
+}
+
+.desktop-revealed-hand-controls .revealed-hand-result > span {
+  flex-basis: auto;
+  font-size: var(--font-size-xs);
+}
+
+.desktop-revealed-hand-controls .revealed-hand-result > code {
+  font-size: var(--font-size-sm);
+}
+
+.desktop-revealed-hand-count {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--color-content-secondary);
+  font-family: var(--font-mono);
+}
+
+.desktop-revealed-hand-count > svg {
+  width: 1rem;
+  height: 1rem;
+  color: var(--color-accent-primary);
+}
+
 /* ---------------------------------------------------------------- 主格線 */
 .bf-main {
   --bf-main-night-ambient: rgb(62 49 121 / 0.22);
@@ -568,19 +611,37 @@
   z-index: 1;
 }
 
+.bf-opponent-hand-area {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+}
+
+.bf-opponent-hand-area[data-reveal-active='true'] {
+  filter: drop-shadow(0 0 0.45rem color-mix(in srgb, var(--bf-opponent-accent) 32%, transparent));
+}
+
 .bf-opponent-handbacks {
   display: flex;
   align-items: flex-start;
   gap: var(--space-1);
 }
 
-.bf-opponent-handbacks img {
-  width: var(--card-width-mini);
-  height: var(--card-height-mini);
-  object-fit: cover;
-  border-radius: var(--radius-xs);
-  outline: 1px solid var(--color-border-subtle);
+.bf-opponent-hand-card {
   transform: rotate(180deg);
+  transition:
+    transform var(--motion-slow) var(--ease-emphasized),
+    outline-color var(--motion-normal) var(--ease-standard),
+    box-shadow var(--motion-normal) var(--ease-standard);
+}
+
+.bf-opponent-hand-card[data-face-up='true'] {
+  outline-color: color-mix(in srgb, var(--bf-opponent-accent) 64%, transparent);
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--bf-opponent-accent) 18%, transparent),
+    var(--shadow-card);
+  transform: none;
 }
 
 /* ---------------------------------------------------------------- 區域列 */

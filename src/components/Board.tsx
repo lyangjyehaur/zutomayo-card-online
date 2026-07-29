@@ -1,5 +1,5 @@
 import type { BoardProps } from 'boardgame.io/react';
-import { Activity, ArrowDown, ArrowUp, BookOpen, Info, Pause, Search, X } from 'lucide-react';
+import { Activity, ArrowDown, ArrowUp, BookOpen, Eye, Info, Pause, Search, X } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -13,6 +13,7 @@ import type {
   GameNotice,
   HpChangeBreakdown,
   JankenChoice,
+  PendingChoice,
   PendingChoiceOption,
   PlayerIndex,
 } from '../game/types';
@@ -69,6 +70,7 @@ import {
   useOnlineMatchSubmission,
 } from './board/useOnlineMatchSubmission';
 import { getChoiceInstruction, getPhaseInstruction } from './board/phaseInstruction';
+import { shouldRevealCardsInOpponentHand } from './board/revealedHandPresentation';
 
 export type PopoverPlacement = 'right' | 'left' | 'top' | 'bottom';
 
@@ -1613,6 +1615,50 @@ function PendingChoicePanel({
   );
 }
 
+type RevealedHandChoice = Extract<PendingChoice, { type: 'acknowledgeRevealedHand' }>;
+
+function RevealedHandResultSummary({ choice, cardCount }: { choice: RevealedHandChoice; cardCount: number }) {
+  const locale = useLocale();
+  const guessedDef = choice.payload.guessedCardDefId ? getCardDef(choice.payload.guessedCardDefId) : undefined;
+  const guessedName = guessedDef ? getLocalizedCardName(guessedDef, locale) : choice.payload.guessedCardDefId;
+
+  return (
+    <>
+      {choice.payload.guessedCardDefId && (
+        <div className="revealed-hand-result" data-matched={choice.payload.matched || undefined}>
+          <span>
+            {t('board.revealedHand.declared' as never)} <strong>{guessedName}</strong>
+          </span>
+          <b>{choice.payload.matched ? t('board.revealedHand.hit' as never) : t('board.revealedHand.miss' as never)}</b>
+          <code>
+            {t('board.attackLabel')} +{choice.payload.attackBoost ?? 0}
+          </code>
+        </div>
+      )}
+      {choice.payload.boostPerCard !== undefined && (
+        <div className="revealed-hand-result" data-matched="true">
+          <span>{t('board.revealedHand.attackFormula' as never)}</span>
+          <code>
+            {cardCount} × {choice.payload.boostPerCard} = +{choice.payload.attackBoost ?? 0}
+          </code>
+        </div>
+      )}
+      {choice.payload.deckComparison && (
+        <div className="revealed-hand-result" data-matched={choice.payload.deckComparison.matched || undefined}>
+          <span>{choice.payload.deckComparison.stat === 'powerCost' ? t('board.energy') : t('card.charge')}</span>
+          <code>
+            {choice.payload.deckComparison.value} {choice.payload.deckComparison.matched ? '≥' : '<'}{' '}
+            {choice.payload.deckComparison.threshold}
+            {choice.payload.deckComparison.attackBoost !== undefined
+              ? ` · ${t('board.attackLabel')} +${choice.payload.deckComparison.attackBoost}`
+              : ''}
+          </code>
+        </div>
+      )}
+    </>
+  );
+}
+
 function RevealedHandChoicePanel({
   G,
   moves,
@@ -1679,8 +1725,6 @@ function RevealedHandChoicePanel({
   const canView = canReview || revealedPlayer === meIndex || sourceZone === 'deck';
   const sourceDef = choice.sourceCardDefId ? getCardDef(choice.sourceCardDefId) : undefined;
   const sourceName = sourceDef ? getLocalizedCardName(sourceDef, locale) : null;
-  const guessedDef = choice.payload.guessedCardDefId ? getCardDef(choice.payload.guessedCardDefId) : undefined;
-  const guessedName = guessedDef ? getLocalizedCardName(guessedDef, locale) : choice.payload.guessedCardDefId;
   const title =
     sourceZone === 'deck'
       ? t('board.revealedHand.deckTitle' as never)
@@ -1719,43 +1763,7 @@ function RevealedHandChoicePanel({
                     ? t('board.revealedHand.ownDescription' as never)
                     : t('board.revealedHand.description')}
               </p>
-              {choice.payload.guessedCardDefId && (
-                <div className="revealed-hand-result" data-matched={choice.payload.matched || undefined}>
-                  <span>
-                    {t('board.revealedHand.declared' as never)} <strong>{guessedName}</strong>
-                  </span>
-                  <b>
-                    {choice.payload.matched
-                      ? t('board.revealedHand.hit' as never)
-                      : t('board.revealedHand.miss' as never)}
-                  </b>
-                  <code>
-                    {t('board.attackLabel')} +{choice.payload.attackBoost ?? 0}
-                  </code>
-                </div>
-              )}
-              {choice.payload.boostPerCard !== undefined && (
-                <div className="revealed-hand-result" data-matched="true">
-                  <span>{t('board.revealedHand.attackFormula' as never)}</span>
-                  <code>
-                    {cards.length} × {choice.payload.boostPerCard} = +{choice.payload.attackBoost ?? 0}
-                  </code>
-                </div>
-              )}
-              {choice.payload.deckComparison && (
-                <div className="revealed-hand-result" data-matched={choice.payload.deckComparison.matched || undefined}>
-                  <span>
-                    {choice.payload.deckComparison.stat === 'powerCost' ? t('board.energy') : t('card.charge')}
-                  </span>
-                  <code>
-                    {choice.payload.deckComparison.value} {choice.payload.deckComparison.matched ? '≥' : '<'}{' '}
-                    {choice.payload.deckComparison.threshold}
-                    {choice.payload.deckComparison.attackBoost !== undefined
-                      ? ` · ${t('board.attackLabel')} +${choice.payload.deckComparison.attackBoost}`
-                      : ''}
-                  </code>
-                </div>
-              )}
+              <RevealedHandResultSummary choice={choice} cardCount={cards.length} />
               {cards.length > 0 ? (
                 <div
                   className="revealed-hand-cards"
@@ -2191,6 +2199,18 @@ function BattleBoard({
   const [selectedPendingChoiceOptions, setSelectedPendingChoiceOptions] = useState<string[]>([]);
   const [detailSheetOpen, setDetailSheetOpen] = useState(false);
   const [zoneSheet, setZoneSheet] = useState<{ kind: 'abyss' | 'power'; owner: PlayerIndex } | null>(null);
+  const revealedHandChoice = G.pendingChoice?.type === 'acknowledgeRevealedHand' ? G.pendingChoice : undefined;
+  const revealedCardSourceZone = revealedHandChoice?.payload.sourceZone ?? 'hand';
+  const revealCardsInOpponentHand = Boolean(
+    revealedHandChoice && shouldRevealCardsInOpponentHand(viewport.mode, revealedCardSourceZone),
+  );
+  const reviewingRevealedOpponentHand = Boolean(
+    revealCardsInOpponentHand &&
+    !spectator &&
+    revealedHandChoice?.player === meIndex &&
+    revealedHandChoice.payload.revealedPlayer === opponentIndex,
+  );
+  const [desktopHandRevealReady, setDesktopHandRevealReady] = useState(false);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   const autoEffectAttemptRef = useRef<string | null>(null);
   const legalPendingEffectIndexes = getResolvablePendingEffectIndexes(G, meIndex);
@@ -2203,6 +2223,16 @@ function BattleBoard({
   const hasRequiredTutorialCards =
     !tutorialRequiredSetCardDefIds ||
     tutorialRequiredSetCardDefIds.every((defId) => G.setCardsThisTurn[meIndex].some((card) => card.defId === defId));
+
+  useEffect(() => {
+    if (!reviewingRevealedOpponentHand) {
+      setDesktopHandRevealReady(false);
+      return;
+    }
+    const delay = revealedHandChoice?.sourceCardInstanceId ? (prefersReducedMotion() ? 180 : 650) : 0;
+    const timeout = window.setTimeout(() => setDesktopHandRevealReady(true), delay);
+    return () => window.clearTimeout(timeout);
+  }, [revealedHandChoice?.id, revealedHandChoice?.sourceCardInstanceId, reviewingRevealedOpponentHand]);
 
   useEffect(() => {
     setSelectedPendingChoiceOptions([]);
@@ -2524,6 +2554,21 @@ function BattleBoard({
     ? `${t('board.hand')} · ${opponent.hand.length} / ${t('board.deck')} · ${opponent.deck.length}`
     : undefined;
   const meMeta = touchLike ? `${t('board.deck')} · ${me.deck.length}` : undefined;
+  const revealedOpponentCardIds = new Set(
+    revealedHandChoice?.payload.revealedCardInstanceIds ?? G.revealedHandCardIds?.[opponentIndex] ?? [],
+  );
+  const desktopOpponentHandCards = opponent.hand.map((card) => {
+    const revealed =
+      reviewingRevealedOpponentHand &&
+      desktopHandRevealReady &&
+      revealedOpponentCardIds.has(card.instanceId) &&
+      card.defId !== '__hidden__';
+    return {
+      card: revealed ? { ...card, faceUp: true } : { ...card, defId: '__hidden__', faceUp: false },
+      revealed,
+    };
+  });
+  const revealedOpponentCardCount = desktopOpponentHandCards.filter(({ revealed }) => revealed).length;
   const mobileAbyssButton = (owner: PlayerIndex, count: number) =>
     touchLike ? (
       <button
@@ -2553,9 +2598,35 @@ function BattleBoard({
         onPanelChange={setActiveSidePanel}
       />
 
-      <PhaseIndicator instruction={currentInstruction} compact={viewport.mode !== 'desktop'} />
+      <PhaseIndicator
+        instruction={currentInstruction}
+        compact={viewport.mode !== 'desktop'}
+        action={
+          reviewingRevealedOpponentHand && desktopHandRevealReady && revealedHandChoice ? (
+            <div className="desktop-revealed-hand-controls">
+              <RevealedHandResultSummary choice={revealedHandChoice} cardCount={revealedOpponentCardCount} />
+              <span
+                className="desktop-revealed-hand-count"
+                aria-label={`${t('board.hand')} ${revealedOpponentCardCount}`}
+              >
+                <Eye aria-hidden="true" />
+                <strong>{revealedOpponentCardCount}</strong>
+              </span>
+              <Button variant="primary" type="button" onClick={() => moves.submitPendingChoice([])}>
+                {t('board.revealedHand.done')}
+              </Button>
+            </div>
+          ) : undefined
+        }
+      />
 
-      <div className="bf-main" data-night-side={fieldNightSide}>
+      <div
+        className="bf-main"
+        data-night-side={fieldNightSide}
+        data-revealed-hand-presentation={
+          revealedHandChoice ? (revealCardsInOpponentHand ? 'opponent-hand' : 'overlay') : undefined
+        }
+      >
         {/* ===== 戰場 ===== */}
         <div className="bf-field" data-time={time} data-night-side={fieldNightSide}>
           {/* 對手區 */}
@@ -2573,13 +2644,31 @@ function BattleBoard({
               {mobileAbyssButton(opponentIndex, opponent.abyss.length)}
             </div>
             <div
-              className="bf-opponent-handbacks"
-              role="group"
-              aria-label={`${t('board.hand')} ${opponent.hand.length}`}
+              className="bf-opponent-hand-area"
+              data-reveal-active={reviewingRevealedOpponentHand && desktopHandRevealReady ? 'true' : undefined}
             >
-              {opponent.hand.map((card) => (
-                <img key={card.instanceId} src="/card-back.jpg" alt="" loading="lazy" decoding="async" />
-              ))}
+              <div
+                className="bf-opponent-handbacks"
+                role="group"
+                aria-label={`${t('board.hand')} ${opponent.hand.length}`}
+              >
+                {desktopOpponentHandCards.map(({ card, revealed }) => {
+                  const def = revealed ? getCardDef(card.defId) : undefined;
+                  const name = def ? getLocalizedCardName(def, getLocale()) : t('card.back');
+                  return (
+                    <CardView
+                      key={card.instanceId}
+                      card={card}
+                      size="mini"
+                      imageContext="thumbnail"
+                      className="bf-opponent-hand-card"
+                      ariaLabel={name}
+                      onActivate={revealed ? () => openDetail(card, opponentIndex, t('board.opponentHand')) : undefined}
+                      onInspect={revealed ? () => inspect(card, opponentIndex, t('board.opponentHand')) : undefined}
+                    />
+                  );
+                })}
+              </div>
             </div>
             <div className="bf-strip">
               <ChargeZone
@@ -2815,16 +2904,18 @@ function BattleBoard({
         (G.pendingChoice || tutorialMode || legalPendingEffectIndexes.length > 1) &&
         (!tutorialMode || tutorialEffectOverlayVisible !== false) &&
         (G.pendingChoice?.type === 'acknowledgeRevealedHand' ? (
-          <RevealedHandChoicePanel
-            G={G}
-            moves={moves}
-            playerID={playerID}
-            spectator={spectator}
-            onInspectCard={(card, owner) => {
-              inspect(card, owner, t('board.opponentHand'));
-              setDetailSheetOpen(true);
-            }}
-          />
+          revealCardsInOpponentHand ? null : (
+            <RevealedHandChoicePanel
+              G={G}
+              moves={moves}
+              playerID={playerID}
+              spectator={spectator}
+              onInspectCard={(card, owner) => {
+                inspect(card, owner, t('board.opponentHand'));
+                if (touchLike) setDetailSheetOpen(true);
+              }}
+            />
+          )
         ) : (
           <BattleOverlayLayer
             wide={Boolean(
