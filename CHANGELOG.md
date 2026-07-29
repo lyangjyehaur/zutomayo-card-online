@@ -4,18 +4,24 @@
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-07-30
+
 ### Added
 
 - **內容修訂歷史**：新增不可變的 Q&A candidate、官方勘誤與 canonical 卡牌完整資料列歷史；既有 release snapshots 與目前資料會在 migration 時回填，後續新增、修改、停用及刪除均由 PostgreSQL trigger 自動留存。
+- **限定卡牌批次**：完成 64 張未收錄卡的圖片與官方日英文字複核；扣除已上線的第四彈 SE 後，新增 54 張可遊玩卡與 7 張僅展示卡，正式牌池更新為 479 張、322 行效果。
 
 ### Changed
 
 - **勘誤匯入安全性**：卡牌 seed／官方文本匯入不再刪除並重建勘誤表；來源欄位不一致時改為中止並要求使用正式官方裁定同步流程。
+- **增量卡發布流程**：reviewed-unlisted manifest v2 支援候選 ID 到正式卡牌 ID 映射、可遊玩／僅展示雙軌驗證與可選的完整衍生語言；沒有印刷屬性或成本的展示卡不再被迫填入虛構資料。
+- **限定卡圖處理**：PNG 審核原檔另產生等比例 JPEG 發布檔，非標準寬高比不裁切或拉伸；圖鑑卡位改以完整顯示卡面為優先。
 
 ### Fixed
 
 - **官方勘誤來源檢查**：公開裁定 API 回傳 active snapshot 的內容 hash，排程比較時不再以 canonical 卡牌日文重建官方日英訂正文，避免勘誤 `006`、`009`、`011` 被持續誤報。
-- **AI 正式卡表效能**：效果解析與未知牌可玩卡池改依卡表 revision 失效，不再於每個候選模擬反覆為 425 張卡重建簽名；瀏覽器基準仍保留三個共用未知世界與完整策略搜尋。
+- **AI 正式卡表效能**：效果解析與未知牌可玩卡池改依卡表 revision 失效，不再於每個候選模擬反覆為 479 張卡重建簽名；瀏覽器基準仍保留三個共用未知世界與完整策略搜尋。
+- **限定卡效果解析**：支援促銷卡 `HP10を回復` 的省略助詞句型，57 張已核准 playable 卡的效果均可由正式 parser/executor 處理。
 
 ## [0.2.4] - 2026-07-28
 
@@ -236,6 +242,7 @@ Logto OAuth 整合與生產強化（phase 1/2）：導入帳號體系、錯誤�
 - **PWA**：可安裝至桌面/手機，支援離線可用與手動檢查更新。
 - **i18n**：支援 6 種語言（含 250 張效果卡翻譯）。
 
+[0.2.5]: https://github.com/lyangjyehaur/zutomayo-card-online/releases/tag/v0.2.5
 [0.2.4]: https://github.com/lyangjyehaur/zutomayo-card-online/releases/tag/v0.2.4
 [0.2.3]: https://github.com/lyangjyehaur/zutomayo-card-online/releases/tag/v0.2.3
 [0.2.2]: https://github.com/lyangjyehaur/zutomayo-card-online/releases/tag/v0.2.2

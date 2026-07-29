@@ -268,11 +268,12 @@ export function applyUnlistedCardReview(
   };
 
   const isCharacter = next.type === 'Character';
-  validateInteger(next.clock, 'clock', next.textReviewStatus === 'verified');
-  validateInteger(next.powerCost, 'Power Cost', next.textReviewStatus === 'verified');
-  validateInteger(next.sendToPower, 'SEND TO POWER', next.textReviewStatus === 'verified');
-  validateInteger(next.attackNight, 'night attack', next.textReviewStatus === 'verified' && isCharacter);
-  validateInteger(next.attackDay, 'day attack', next.textReviewStatus === 'verified' && isCharacter);
+  const requiresGameplayMetadata = next.textReviewStatus === 'verified' && next.playStatus === 'playable';
+  validateInteger(next.clock, 'clock', requiresGameplayMetadata);
+  validateInteger(next.powerCost, 'Power Cost', requiresGameplayMetadata);
+  validateInteger(next.sendToPower, 'SEND TO POWER', requiresGameplayMetadata);
+  validateInteger(next.attackNight, 'night attack', requiresGameplayMetadata && isCharacter);
+  validateInteger(next.attackDay, 'day attack', requiresGameplayMetadata && isCharacter);
 
   if (next.textReviewStatus === 'verified') {
     const required = [
@@ -282,10 +283,12 @@ export function applyUnlistedCardReview(
       ['official English name', next.nameEnOfficial],
       ['card type', next.type],
       ['rarity', next.rarity],
-      ['element', next.element],
       ['pack', next.pack],
     ].find(([, value]) => !value);
     if (required) throw new Error(`${required[0]} is required before verifying text`);
+    if (next.playStatus === 'playable' && !next.element) {
+      throw new Error('element is required before verifying playable card text');
+    }
     if (!['Character', 'Enchant', 'Area Enchant'].includes(next.type)) throw new Error('Invalid card type');
     if (next.printedEffectStatus === 'unknown') {
       throw new Error('printed effect status is required before verifying text');

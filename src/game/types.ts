@@ -234,11 +234,16 @@ export interface CardDef {
   illustrator: string;
   rarity: string;
   element: Element;
+  /** Catalog-only provenance flags for display-only cards without printed gameplay fields. */
+  hasElement?: boolean;
   type: CardType;
   clock: number;
+  hasClock?: boolean;
   attack: { night: number; day: number } | null;
   powerCost: number;
+  hasPowerCost?: boolean;
   sendToPower: number;
+  hasSendToPower?: boolean;
   effect: string;
   image: string;
   errata: string;

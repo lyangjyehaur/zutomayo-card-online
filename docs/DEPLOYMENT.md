@@ -377,7 +377,7 @@ Migrations `000039_official_rulings`, `000040_official_rulings_releases`, and `0
 
 ```bash
 cat data/official-rulings-translations.json | npm run release:official-rulings -- \
-  --translations=- --app-version=0.2.4 --build-id="$(git rev-parse HEAD)"
+  --translations=- --app-version=0.2.5 --build-id="$(git rev-parse HEAD)"
 
 OFFICIAL_RULE_DOCUMENTS_FILE=data/official-rule-documents-20260721.json \
   npm run release:official-rule-documents
@@ -389,7 +389,7 @@ The command fetches the live official Japanese sources and validates every local
 
 同一部署階段也會將 `CARD_DERIVED_EFFECTS_DIR`（預設為本機 `data/`）中的卡牌效果、複核 manifest、官方日英來源及勘誤來源以 tar/stdin 串流至一次性 migration container，通過完整 audit 後以 transaction 更新 `card_texts_i18n`。檔案不會寫入 Server4 checkout 或容器映像；缺少任一來源、雜湊不符或術語違規時，部署會在啟動新服務前中止。
 
-0.2.4 的第四彈 105～107 另使用 Git-ignored 的 `card-unlisted-sources.json`、`card-unlisted-human-reviews.json` 與 `card-unlisted-release.json`。發布器固定只接受這三個 ID，要求文字已驗證、卡圖已核准、R2 HTTPS 圖片、四個衍生語言完整、效果可由正式 parser/executor 處理，並在同一 transaction upsert `cards`、`card_texts_i18n` 與 `admin_audit_log`。卡牌會標記 `source_note=reviewed-unlisted-release:v1`；核心 422 張日英來源仍保持精確稽核，其他任何額外卡牌都會令匯入失敗。Server4 必須先執行此增量卡發布，再執行衍生效果匯入，最後才啟動新服務。
+未收錄卡使用 Git-ignored 的 `card-unlisted-sources.json`、`card-unlisted-human-reviews.json` 與 `card-unlisted-release.json`。v2 發布器要求三份資料包含完全相同的候選集合，逐張驗證候選 ID 到正式卡牌 ID 的唯一映射、人工文字與圖片狀態、R2 HTTPS JPEG、遊玩狀態及正式 parser/executor 支援。`playable` 必須有五屬性與完整遊戲數值；`display_only` 必須有不可遊玩原因，但沒有印刷的屬性或成本可留空。四個衍生語言必須全有或全無，未經複核的語言不得冒充 `verified`。發布 transaction 會 upsert `cards`、可用的 `card_texts_i18n` 與 `admin_audit_log`，並標記 `source_note=reviewed-unlisted-release:v2`。Server4 必須先執行此增量卡發布，再執行衍生效果匯入，最後才啟動新服務；正式牌池資料閘門仍要求每張 playable 卡具備完整四語複核資料。
 
 ### Runtime DDL policy
 
@@ -672,7 +672,7 @@ npm run preflight:card-dataset -- --base-url https://battle.zutomayocard.online/
 ```bash
 export RELEASE_SHA="$(git rev-parse HEAD)"
 export RELEASE_ENVIRONMENT=staging
-export EXPECTED_CARD_COUNT=425
+export EXPECTED_CARD_COUNT=479
 export EXPECTED_SCHEMA_MIGRATION="$(find migrations -maxdepth 1 -type f -name '*.js' | sort | tail -n 1 | xargs basename | sed 's/\.js$//')"
 export EXPECTED_SCHEMA_CHECKSUM="$(shasum -a 256 "migrations/${EXPECTED_SCHEMA_MIGRATION}.js" | awk '{print $1}')"
 # Set PG_*, the five immutable *_IMAGE references, and GitHub provenance variables for the target release.

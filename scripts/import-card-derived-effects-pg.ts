@@ -5,7 +5,7 @@ import {
   DERIVED_EFFECT_LANGS,
   loadDerivedEffectsAuditInput,
 } from './cardDerivedEffects';
-import { REVIEWED_UNLISTED_CARD_IDS, REVIEWED_UNLISTED_SOURCE_NOTE } from './reviewedUnlistedCardRelease';
+import { REVIEWED_UNLISTED_SOURCE_NOTE } from './reviewedUnlistedCardRelease';
 
 const require = createRequire(import.meta.url);
 const { Pool } = require('pg') as typeof import('pg');
@@ -86,10 +86,9 @@ async function main(): Promise<void> {
       }
     }
     const coreEffectCardIds = new Set(effectCardIds);
-    const allowedReviewedIds = new Set<string>(REVIEWED_UNLISTED_CARD_IDS);
     for (const [cardId, dbCard] of existingById) {
       if (coreEffectCardIds.has(cardId)) continue;
-      if (dbCard.sourceNote !== REVIEWED_UNLISTED_SOURCE_NOTE || !allowedReviewedIds.has(cardId)) {
+      if (dbCard.sourceNote !== REVIEWED_UNLISTED_SOURCE_NOTE) {
         mismatches.push(`${cardId}: extra effect card lacks approved reviewed-release provenance`);
       }
     }

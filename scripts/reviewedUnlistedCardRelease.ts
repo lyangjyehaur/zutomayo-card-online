@@ -3,8 +3,7 @@ import { readFileSync } from 'node:fs';
 import { parseEffect } from '../src/game/effects/parser';
 import type { CardDef } from '../src/game/types';
 
-export const REVIEWED_UNLISTED_SOURCE_NOTE = 'reviewed-unlisted-release:v1';
-export const REVIEWED_UNLISTED_CARD_IDS = ['4th_105', '4th_106', '4th_107'] as const;
+export const REVIEWED_UNLISTED_SOURCE_NOTE = 'reviewed-unlisted-release:v2';
 export const REVIEWED_UNLISTED_LANGS = ['zh-TW', 'zh-CN', 'zh-HK', 'ko'] as const;
 
 type ReviewedLang = (typeof REVIEWED_UNLISTED_LANGS)[number];
@@ -26,6 +25,7 @@ type HumanReview = {
   nameEnOfficial: string;
   effectJa: string;
   effectEnOfficial: string;
+  printedEffectStatus: string;
   playStatus: string;
   playStatusReason: string;
   type: string;
@@ -49,13 +49,14 @@ type HumanReviewsFile = { reviews: Record<string, HumanReview> };
 export type ReleaseTranslation = { name: string; effect: string };
 
 type ReleaseCard = {
+  candidateId: string;
   cardId: string;
   imageUrl: string;
   catalogStatus: string;
   distributionType: string;
   publicationStatus: string;
   playStatus: string;
-  translations: Record<ReviewedLang, ReleaseTranslation>;
+  translations?: Partial<Record<ReviewedLang, ReleaseTranslation>>;
 };
 
 export type ReviewedUnlistedReleaseManifest = {
@@ -65,11 +66,16 @@ export type ReviewedUnlistedReleaseManifest = {
   cards: ReleaseCard[];
 };
 
-export type ReviewedUnlistedCard = CardDef & {
+export type ReviewedUnlistedCard = Omit<CardDef, 'element' | 'clock' | 'powerCost' | 'sendToPower' | 'attack'> & {
+  element: CardDef['element'] | '';
+  clock: number | null;
+  powerCost: number | null;
+  sendToPower: number | null;
+  attack: { night: number; day: number } | null;
   sourceUrl: string;
   sourceNote: typeof REVIEWED_UNLISTED_SOURCE_NOTE;
   sourceSha256: string;
-  translations: Record<ReviewedLang, ReleaseTranslation>;
+  translations: Partial<Record<ReviewedLang, ReleaseTranslation>>;
   reviewedAt: string;
 };
 
@@ -81,7 +87,14 @@ export type ReviewedUnlistedRelease = {
 
 const SHA256 = /^[a-f0-9]{64}$/;
 const HTTPS_R2 = /^https:\/\/r2\.dan\.tw\/cards\/[A-Za-z0-9._~!$&'()*+,;=:@%/-]+\.jpg$/;
-const SUPPORTED_RELEASE_ACTIONS = new Set(['requestChoice', 'clockAdvance', 'moveOpponentAreaEnchant']);
+const SUPPORTED_RELEASE_ACTIONS = new Set([
+  'requestChoice',
+  'clockAdvance',
+  'moveOpponentAreaEnchant',
+  'setOpponentElement',
+  'boostAttack',
+  'heal',
+]);
 const ELEMENTS = new Set(['闇', '炎', '電気', '風', 'カオス']);
 const CARD_TYPES = new Set(['Character', 'Enchant', 'Area Enchant']);
 
@@ -95,13 +108,13 @@ function integer(value: string, field: string, minimum = 0): number {
   return parsed;
 }
 
-function optionalAttack(value: string, field: string): number | null {
+function optionalInteger(value: string, field: string): number | null {
   if (value === '') return null;
   return integer(value, field);
 }
 
-function assertExactIds(label: string, ids: string[]): void {
-  const expected = [...REVIEWED_UNLISTED_CARD_IDS].sort();
+function assertExactIds(label: string, ids: string[], expectedIds: string[]): void {
+  const expected = [...expectedIds].sort();
   const actual = [...ids].sort();
   if (JSON.stringify(actual) !== JSON.stringify(expected)) {
     throw new Error(`${label} must contain exactly ${expected.join(', ')}`);
@@ -117,71 +130,102 @@ export function buildReviewedUnlistedRelease(
   reviews: HumanReviewsFile,
   manifest: ReviewedUnlistedReleaseManifest,
 ): ReviewedUnlistedRelease {
-  if (manifest.schemaVersion !== 1) throw new Error('release manifest schemaVersion must be 1');
+  if (manifest.schemaVersion !== 2) throw new Error('release manifest schemaVersion must be 2');
   if (manifest.reviewStatus !== 'verified') throw new Error('release manifest reviewStatus must be verified');
   if (!Number.isFinite(Date.parse(manifest.reviewedAt)))
     throw new Error('release manifest reviewedAt must be an ISO date');
 
-  const relevantSources = sources.cards.filter((card) =>
-    (REVIEWED_UNLISTED_CARD_IDS as readonly string[]).includes(card.candidateId),
-  );
-  assertExactIds(
-    'source file',
-    relevantSources.map((card) => card.candidateId),
-  );
-  assertExactIds(
-    'human review file',
-    Object.keys(reviews.reviews).filter((cardId) => (REVIEWED_UNLISTED_CARD_IDS as readonly string[]).includes(cardId)),
-  );
+  const relevantSources = sources.cards;
+  const candidateIds = relevantSources.map((card) => card.candidateId);
+  if (new Set(candidateIds).size !== candidateIds.length)
+    throw new Error('source file contains duplicate candidate IDs');
+  assertExactIds('human review file', Object.keys(reviews.reviews), candidateIds);
   assertExactIds(
     'release manifest',
-    manifest.cards.map((card) => card.cardId),
+    manifest.cards.map((card) => card.candidateId),
+    candidateIds,
   );
 
   const sourceById = new Map(relevantSources.map((card) => [card.candidateId, card]));
-  const releaseById = new Map(manifest.cards.map((card) => [card.cardId, card]));
-  const cards = REVIEWED_UNLISTED_CARD_IDS.map((cardId): ReviewedUnlistedCard => {
-    const source = sourceById.get(cardId);
-    const review = reviews.reviews[cardId];
-    const release = releaseById.get(cardId);
-    if (!source || !review || !release) throw new Error(`${cardId}: incomplete reviewed release input`);
-    if (source.expectedCardId !== cardId || review.cardId !== cardId) throw new Error(`${cardId}: card IDs disagree`);
-    if (!SHA256.test(source.sourceSha256)) throw new Error(`${cardId}: invalid source SHA-256`);
-    if (!source.sourcePageUrl.startsWith('https://')) throw new Error(`${cardId}: source page must use HTTPS`);
-    if (!HTTPS_R2.test(release.imageUrl)) throw new Error(`${cardId}: image must be a canonical R2 JPEG URL`);
-    if (review.textReviewStatus !== 'verified' || review.imageReviewStatus !== 'approved') {
-      throw new Error(`${cardId}: text and image reviews must be approved`);
+  const releaseById = new Map(manifest.cards.map((card) => [card.candidateId, card]));
+  const canonicalIds = manifest.cards.map((card) => card.cardId);
+  if (new Set(canonicalIds).size !== canonicalIds.length)
+    throw new Error('release manifest contains duplicate card IDs');
+
+  const cards = candidateIds.map((candidateId): ReviewedUnlistedCard => {
+    const source = sourceById.get(candidateId);
+    const review = reviews.reviews[candidateId];
+    const release = releaseById.get(candidateId);
+    if (!source || !review || !release) throw new Error(`${candidateId}: incomplete reviewed release input`);
+    const cardId = release.cardId;
+    if (!cardId || review.cardId !== cardId || (source.expectedCardId && source.expectedCardId !== cardId)) {
+      throw new Error(`${candidateId}: card IDs disagree`);
     }
-    if (review.playStatus !== 'playable' || release.playStatus !== 'playable') {
-      throw new Error(`${cardId}: release card must be playable`);
+    if (!SHA256.test(source.sourceSha256)) throw new Error(`${candidateId}: invalid source SHA-256`);
+    if (!source.sourcePageUrl.startsWith('https://')) throw new Error(`${candidateId}: source page must use HTTPS`);
+    if (!HTTPS_R2.test(release.imageUrl)) throw new Error(`${candidateId}: image must be a canonical R2 JPEG URL`);
+    if (review.textReviewStatus !== 'verified' || review.imageReviewStatus !== 'approved') {
+      throw new Error(`${candidateId}: text and image reviews must be approved`);
+    }
+    if (!['playable', 'display_only'].includes(review.playStatus) || release.playStatus !== review.playStatus) {
+      throw new Error(`${candidateId}: release play status differs from the approved review`);
     }
     if (release.publicationStatus !== 'published') throw new Error(`${cardId}: release card must be published`);
     if (release.catalogStatus !== source.catalogStatus || release.distributionType !== source.distributionType) {
       throw new Error(`${cardId}: release catalog metadata differs from reviewed source`);
     }
     if (!CARD_TYPES.has(review.type)) throw new Error(`${cardId}: unsupported card type ${review.type}`);
-    if (!ELEMENTS.has(review.element)) throw new Error(`${cardId}: unsupported element ${review.element}`);
-    for (const field of ['nameJa', 'nameEnOfficial', 'effectJa', 'effectEnOfficial', 'pack', 'illustrator'] as const) {
+    if (review.playStatus === 'playable' && !ELEMENTS.has(review.element)) {
+      throw new Error(`${cardId}: playable card has unsupported element ${review.element}`);
+    }
+    if (review.element && !ELEMENTS.has(review.element))
+      throw new Error(`${cardId}: unsupported element ${review.element}`);
+    for (const field of ['nameJa', 'nameEnOfficial', 'rarity', 'pack'] as const) {
       assertNonempty(review[field], `${cardId}.${field}`);
     }
+    if (review.printedEffectStatus === 'present') {
+      assertNonempty(review.effectJa, `${cardId}.effectJa`);
+      assertNonempty(review.effectEnOfficial, `${cardId}.effectEnOfficial`);
+    } else if (review.printedEffectStatus !== 'none' || review.effectJa || review.effectEnOfficial) {
+      throw new Error(`${cardId}: printed effect status and text disagree`);
+    }
+    if (review.playStatus === 'display_only') assertNonempty(review.playStatusReason, `${cardId}.playStatusReason`);
     if (!Number.isFinite(Date.parse(review.reviewedAt))) throw new Error(`${cardId}: invalid human review date`);
 
-    const parsed = parseEffect(review.effectJa);
-    if (!parsed) throw new Error(`${cardId}: reviewed effect does not parse`);
-    if (!SUPPORTED_RELEASE_ACTIONS.has(parsed.action.type)) {
-      throw new Error(`${cardId}: parsed action ${parsed.action.type} has no approved release executor`);
+    if (review.playStatus === 'playable' && review.effectJa) {
+      const parsed = parseEffect(review.effectJa);
+      if (!parsed) throw new Error(`${cardId}: reviewed effect does not parse`);
+      if (!SUPPORTED_RELEASE_ACTIONS.has(parsed.action.type)) {
+        throw new Error(`${cardId}: parsed action ${parsed.action.type} has no approved release executor`);
+      }
     }
-    for (const lang of REVIEWED_UNLISTED_LANGS) {
+    const translatedLangs = Object.keys(release.translations ?? {});
+    if (translatedLangs.length > 0 && translatedLangs.length !== REVIEWED_UNLISTED_LANGS.length) {
+      throw new Error(`${cardId}: reviewed translations must be empty or complete for every derived language`);
+    }
+    for (const lang of translatedLangs as ReviewedLang[]) {
       const translation = release.translations?.[lang];
-      if (!translation) throw new Error(`${cardId}/${lang}: missing reviewed translation`);
+      if (!translation || !REVIEWED_UNLISTED_LANGS.includes(lang)) {
+        throw new Error(`${cardId}/${lang}: unsupported reviewed translation`);
+      }
       assertNonempty(translation.name, `${cardId}/${lang}.name`);
-      assertNonempty(translation.effect, `${cardId}/${lang}.effect`);
+      if (review.effectJa) assertNonempty(translation.effect, `${cardId}/${lang}.effect`);
     }
 
-    const attackNight = optionalAttack(review.attackNight, `${cardId}.attackNight`);
-    const attackDay = optionalAttack(review.attackDay, `${cardId}.attackDay`);
+    const attackNight = optionalInteger(review.attackNight, `${cardId}.attackNight`);
+    const attackDay = optionalInteger(review.attackDay, `${cardId}.attackDay`);
     if ((attackNight === null) !== (attackDay === null))
       throw new Error(`${cardId}: attack values must both be set or empty`);
+    if (review.playStatus === 'playable' && review.type === 'Character' && attackNight === null) {
+      throw new Error(`${cardId}: playable Character attack values are required`);
+    }
+
+    const clock = optionalInteger(review.clock, `${cardId}.clock`);
+    const powerCost = optionalInteger(review.powerCost, `${cardId}.powerCost`);
+    const sendToPower = optionalInteger(review.sendToPower, `${cardId}.sendToPower`);
+    if (review.playStatus === 'playable' && [clock, powerCost, sendToPower].some((value) => value === null)) {
+      throw new Error(`${cardId}: playable card gameplay values are required`);
+    }
 
     return {
       id: cardId,
@@ -192,12 +236,12 @@ export function buildReviewedUnlistedRelease(
       song: review.song,
       illustrator: review.illustrator,
       rarity: review.rarity,
-      element: review.element as CardDef['element'],
+      element: review.element as CardDef['element'] | '',
       type: review.type as CardDef['type'],
-      clock: integer(review.clock, `${cardId}.clock`),
+      clock,
       attack: attackNight === null || attackDay === null ? null : { night: attackNight, day: attackDay },
-      powerCost: integer(review.powerCost, `${cardId}.powerCost`),
-      sendToPower: integer(review.sendToPower, `${cardId}.sendToPower`),
+      powerCost,
+      sendToPower,
       effect: review.effectJa,
       image: release.imageUrl,
       errata: '',
@@ -205,12 +249,12 @@ export function buildReviewedUnlistedRelease(
       catalogStatus: release.catalogStatus as CardDef['catalogStatus'],
       distributionType: release.distributionType as CardDef['distributionType'],
       publicationStatus: 'published',
-      playStatus: 'playable',
+      playStatus: review.playStatus as CardDef['playStatus'],
       playStatusReason: review.playStatusReason,
       sourceUrl: source.sourcePageUrl,
       sourceNote: REVIEWED_UNLISTED_SOURCE_NOTE,
       sourceSha256: source.sourceSha256,
-      translations: release.translations,
+      translations: release.translations ?? {},
       reviewedAt: review.reviewedAt,
     };
   });

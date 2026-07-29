@@ -373,7 +373,7 @@ export const ja: Record<TranslationKey, string> = {
   'difficulty.hardDesc': '効果を模擬し先を読む',
 
   'deck.random': 'ランダムデッキ',
-  'deck.randomDesc': '全425枚のカードプールからランダムに20枚抽出',
+  'deck.randomDesc': '全479枚のカードプールからランダムに20枚抽出',
   'deck.dark': '闇のデッキ',
   'deck.flame': '炎のデッキ',
   'deck.electric': '電気のデッキ',

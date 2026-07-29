@@ -5,7 +5,7 @@ import {
   DERIVED_NAME_LANGS,
   loadCardNamesAuditInput,
 } from './cardNameTranslations';
-import { REVIEWED_UNLISTED_CARD_IDS, REVIEWED_UNLISTED_SOURCE_NOTE } from './reviewedUnlistedCardRelease';
+import { REVIEWED_UNLISTED_SOURCE_NOTE } from './reviewedUnlistedCardRelease';
 
 const require = createRequire(import.meta.url);
 const { Pool } = require('pg') as typeof import('pg');
@@ -90,11 +90,10 @@ async function main(): Promise<void> {
       }
     }
     const coreCardIds = new Set(input.extraction.cards.map((card) => card.id));
-    const allowedReviewedIds = new Set<string>(REVIEWED_UNLISTED_CARD_IDS);
     const reviewedExtraIds: string[] = [];
     for (const [cardId, dbCard] of existingById) {
       if (coreCardIds.has(cardId)) continue;
-      if (String(dbCard.source_note || '') !== REVIEWED_UNLISTED_SOURCE_NOTE || !allowedReviewedIds.has(cardId)) {
+      if (String(dbCard.source_note || '') !== REVIEWED_UNLISTED_SOURCE_NOTE) {
         mismatches.push(`${cardId}: extra card lacks approved reviewed-release provenance`);
       } else {
         reviewedExtraIds.push(cardId);

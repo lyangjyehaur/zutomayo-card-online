@@ -61,8 +61,10 @@ function cardRowToDef(row) {
     illustrator: row.illustrator || '',
     rarity: row.rarity || '',
     element: row.element,
+    hasElement: typeof row.element === 'string' && row.element.trim() !== '',
     type: row.type,
     clock: row.clock ?? 0,
+    hasClock: row.clock !== null && row.clock !== undefined,
     attack:
       row.attack_night === null ||
       row.attack_night === undefined ||
@@ -71,7 +73,9 @@ function cardRowToDef(row) {
         ? null
         : { night: row.attack_night, day: row.attack_day },
     powerCost: row.power_cost ?? 0,
+    hasPowerCost: row.power_cost !== null && row.power_cost !== undefined,
     sendToPower: row.send_to_power ?? 0,
+    hasSendToPower: row.send_to_power !== null && row.send_to_power !== undefined,
     effect: row.effect || '',
     image: row.image || '',
     errata: row.errata || '',

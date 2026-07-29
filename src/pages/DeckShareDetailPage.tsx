@@ -496,7 +496,7 @@ export function DeckShareDetailPage({ onServerDeckCopied }: { onServerDeckCopied
                           cardId={cardId}
                           context="thumbnail"
                           alt={name}
-                          className="aspect-[5/7] h-full w-full object-cover"
+                          className="aspect-[5/7] h-full w-full object-contain"
                         />
                         {count > 1 && (
                           <Badge className="absolute right-2 top-2 shadow-floating" tone="gold">

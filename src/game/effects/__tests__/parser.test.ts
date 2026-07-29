@@ -28,6 +28,13 @@ describe('Effect Parser', () => {
       expect(result?.action.params.value).toBe(10);
     });
 
+    it('應該解析促銷卡省略助詞的自己回復', () => {
+      const result = parseEffect('横浜中華街の肉まんによりHP10を回復');
+      expect(result).not.toBeNull();
+      expect(result?.action.type).toBe('heal');
+      expect(result?.action.params.value).toBe(10);
+    });
+
     it('應該解析相手回復', () => {
       const result = parseEffect('相手のHPを5回復させる。');
       expect(result).not.toBeNull();

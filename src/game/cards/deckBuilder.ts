@@ -12,7 +12,7 @@ export {
 } from './customDeck';
 
 /**
- * 隨機牌組識別碼。lobby 預設選此選項，每次開局從完整 425 張卡池隨機抽取 20 張。
+ * 隨機牌組識別碼。lobby 預設選此選項，每次開局從完整 479 張卡池隨機抽取 20 張。
  * 與 preset/custom 不同，不預先固定任何卡牌，確保每次對戰牌組都不同。
  */
 export const RANDOM_DECK_NAME = '__random__';
@@ -135,7 +135,7 @@ export function getPresetDeckNames(): string[] {
  * - 同卡最多 2 張（從 unique 卡定義抽，必然符合）
  * - Character >= 50% 為推薦（非強制），這裡軟性確保 10-15 張角色卡
  *
- * 卡池涵蓋全部 425 張卡（Character 243 + Enchant 155 + Area Enchant 27），
+ * 卡池涵蓋全部 479 張卡（Character 245 + Enchant 207 + Area Enchant 27），
  * 每次呼叫都重新隨機，確保每次對戰牌組都不同。
  */
 export function randomDeck(): CardInstance[] {
