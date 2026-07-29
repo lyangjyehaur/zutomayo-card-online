@@ -53,10 +53,10 @@ const BATTLE_QA_STATES = [
   { id: 'chronos-effect-cycle', label: 'Chronos Effect Full Cycle' },
   { id: 'chronos-effect-queue', label: 'Chronos Effect Queue' },
   { id: 'chronos-position-choice', label: 'Chronos Position Choice' },
-  { id: 'revealed-hand', label: 'Revealed Hand' },
+  { id: 'revealed-hand', label: 'Revealed Hand · Responsive' },
   { id: 'guess-declaration', label: 'Guess Declaration' },
   { id: 'guess-position', label: 'Guess Hidden Card' },
-  { id: 'partial-reveal', label: 'Partial Hand Reveal' },
+  { id: 'partial-reveal', label: 'Partial Hand Reveal · Responsive' },
   { id: 'deck-top-reveal', label: 'Deck-top Reveal' },
   { id: 'deck-reorder', label: 'Deck Reorder' },
   { id: 'status-effects', label: 'Persistent Status Effects' },
@@ -91,6 +91,12 @@ type BattleQaStateId = (typeof BATTLE_QA_STATES)[number]['id'];
 type BattleQaSideId = (typeof BATTLE_QA_SIDES)[number]['id'];
 type BattleQaTimeId = (typeof BATTLE_QA_TIMES)[number]['id'];
 type BattleQaViewerId = '0' | '1' | 'spectator';
+
+const BATTLE_QA_VIEWERS: ReadonlyArray<{ id: BattleQaViewerId; label: string }> = [
+  { id: '0', label: 'Player 0' },
+  { id: '1', label: 'Player 1' },
+  { id: 'spectator', label: 'Spectator' },
+];
 
 const REQUIRED_QA_CARD_IDS = [...new Set([...TUTORIAL_DECK0_IDS, ...TUTORIAL_DECK1_IDS])];
 
@@ -763,9 +769,13 @@ function createRevealedHandState(parsedEffects: Map<string, ParsedEffect[]>, sid
   const sourceCard = G.players[0].battleZone;
   if (!sourceCard) throw new Error('Unable to prepare revealed-hand source card');
   sourceCard.faceUp = true;
+  const followUpEffect = createQaEffect(0, sourceCard, 10, 'このターン中、自分の攻撃力+10', 'battleZone');
+  followUpEffect.id = 'qa-effect-after-revealed-hand';
+  followUpEffect.cardInstanceId = 'qa-effect-after-revealed-hand-instance';
+  followUpEffect.cardDefId = '__qa_effect__';
   G.step = 'effectOrder';
   G.ready = [true, true];
-  G.pendingEffects = [[], []];
+  G.pendingEffects = [[followUpEffect], []];
   G.pendingEffectPlayer = null;
   G.revealedHandCardIds[1] = G.players[1].hand.map((card) => card.instanceId);
   G.pendingChoice = {
@@ -1107,10 +1117,12 @@ function QaControls({
   selectedState,
   selectedSide,
   selectedTime,
+  selectedViewer,
 }: {
   selectedState: BattleQaStateId;
   selectedSide: BattleQaSideId;
   selectedTime: BattleQaTimeId;
+  selectedViewer: BattleQaViewerId;
 }) {
   return (
     <aside className="fixed bottom-3 left-3 z-[var(--z-modal)] max-w-[calc(100vw-1.5rem)] rounded-sm border border-content-primary/10 bg-surface-canvas/90 p-2 font-mono text-caption uppercase tracking-[var(--tracking-control)] text-content-primary/55 shadow-raised backdrop-blur">
@@ -1124,7 +1136,7 @@ function QaControls({
                 ? 'bg-accent-primary text-surface-base'
                 : 'bg-content-primary/5 text-content-primary/55 hover:text-content-primary'
             }`}
-            to={`/qa/battle?state=${state.id}&side=${selectedSide}&time=${selectedTime}`}
+            to={`/qa/battle?state=${state.id}&side=${selectedSide}&time=${selectedTime}&viewer=${selectedViewer}`}
           >
             {state.label}
           </Link>
@@ -1139,7 +1151,7 @@ function QaControls({
                 ? 'bg-accent-action text-surface-base'
                 : 'bg-content-primary/5 text-content-primary/55 hover:text-content-primary'
             }`}
-            to={`/qa/battle?state=${selectedState}&side=${side.id}&time=${selectedTime}`}
+            to={`/qa/battle?state=${selectedState}&side=${side.id}&time=${selectedTime}&viewer=${selectedViewer}`}
           >
             {side.label}
           </Link>
@@ -1154,9 +1166,24 @@ function QaControls({
                 ? 'bg-content-primary text-surface-base'
                 : 'bg-content-primary/5 text-content-primary/55 hover:text-content-primary'
             }`}
-            to={`/qa/battle?state=${selectedState}&side=${selectedSide}&time=${time.id}`}
+            to={`/qa/battle?state=${selectedState}&side=${selectedSide}&time=${time.id}&viewer=${selectedViewer}`}
           >
             {time.label}
+          </Link>
+        ))}
+      </div>
+      <div className="mt-2 flex flex-wrap gap-1">
+        {BATTLE_QA_VIEWERS.map((viewer) => (
+          <Link
+            key={viewer.id}
+            className={`rounded-xs px-2 py-1 transition ${
+              selectedViewer === viewer.id
+                ? 'bg-accent-primary text-surface-base'
+                : 'bg-content-primary/5 text-content-primary/55 hover:text-content-primary'
+            }`}
+            to={`/qa/battle?state=${selectedState}&side=${selectedSide}&time=${selectedTime}&viewer=${viewer.id}`}
+          >
+            {viewer.label}
           </Link>
         ))}
       </div>
@@ -1232,6 +1259,7 @@ export function BattleVisualQaPage() {
       data-battle-qa-state={selectedState}
       data-battle-qa-side={selectedSide}
       data-battle-qa-time={selectedTime}
+      data-battle-qa-viewer={selectedViewer}
     >
       <Board
         key={`${selectedState}-${selectedSide}-${selectedTime}-${selectedViewer}-${qaRevision}`}
@@ -1272,7 +1300,12 @@ export function BattleVisualQaPage() {
         }
       />
       {showControls && (
-        <QaControls selectedState={selectedState} selectedSide={selectedSide} selectedTime={selectedTime} />
+        <QaControls
+          selectedState={selectedState}
+          selectedSide={selectedSide}
+          selectedTime={selectedTime}
+          selectedViewer={selectedViewer}
+        />
       )}
     </main>
   );
