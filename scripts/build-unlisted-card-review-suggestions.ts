@@ -160,7 +160,7 @@ function generatedCardId(card: SourceCard): string {
   ];
   const group = groups.find(([start, end]) => sourceIndex >= start && sourceIndex <= end);
   if (!group) return card.candidateId;
-  return `promo_${group[2]}_${String(sourceIndex - group[0] + 1).padStart(3, '0')}`;
+  return `${group[2]}_${String(sourceIndex - group[0] + 1).padStart(3, '0')}`;
 }
 
 function illustrator(lines: OCRLine[]): string {

@@ -43,8 +43,8 @@ describe('card synergy review service', () => {
   });
 
   it('does not silently mix an unreviewed Japanese name into the primary label', () => {
-    expect(reviewDisplayProfile({ cardId: 'promo_1', cardName: '限定カード' })).toMatchObject({
-      cardName: 'promo_1（尚無校對中文名）',
+    expect(reviewDisplayProfile({ cardId: 'bonus_1', cardName: '限定カード' })).toMatchObject({
+      cardName: 'bonus_1（尚無校對中文名）',
       cardNameJa: '限定カード',
       cardNameLocale: 'missing',
     });

@@ -178,10 +178,11 @@ function effectiveReview(
   ledger: UnlistedCardReviewLedger,
   suggestions: MachineSuggestionFile,
 ): UnlistedCardReview {
-  return {
+  const review = {
     ...defaultReview(card, suggestions.cards[card.candidateId]),
     ...ledger.reviews[card.candidateId],
   };
+  return { ...review, cardId: withoutPromoPrefix(review.cardId) };
 }
 
 function textValue(value: unknown, label: string, maxLength: number): string {
@@ -189,6 +190,10 @@ function textValue(value: unknown, label: string, maxLength: number): string {
   const result = value.trim();
   if (result.length > maxLength) throw new Error(`${label} is too long`);
   return result;
+}
+
+function withoutPromoPrefix(value: string): string {
+  return value.replace(/^promo_/iu, '');
 }
 
 function enumValue<T extends string>(value: unknown, label: string, values: readonly T[]): T {
@@ -209,7 +214,7 @@ export function applyUnlistedCardReview(
 ): UnlistedCardReview {
   const base = previous || defaultReview(card);
   const next: UnlistedCardReview = {
-    cardId: textValue(request.cardId ?? base.cardId, 'card ID', 100),
+    cardId: withoutPromoPrefix(textValue(request.cardId ?? base.cardId, 'card ID', 100)),
     printedNumber: textValue(request.printedNumber ?? base.printedNumber, 'printed number', 100),
     nameJa: textValue(request.nameJa ?? base.nameJa, 'Japanese name', 500),
     nameEnOfficial: textValue(request.nameEnOfficial ?? base.nameEnOfficial, 'official English name', 500),
