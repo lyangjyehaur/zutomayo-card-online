@@ -460,7 +460,7 @@ export function CardCatalogPage() {
 
                   {selectedCard.playStatus === 'display_only' && (
                     <Alert className="mt-6" tone="warning">
-                      {selectedCard.playStatusReason || t('cardCatalog.notPlayable')}
+                      {t('cardCatalog.notPlayable')}
                     </Alert>
                   )}
 
