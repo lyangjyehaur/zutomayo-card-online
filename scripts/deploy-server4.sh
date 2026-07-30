@@ -31,6 +31,7 @@ PLATFORM_PORT="${PLATFORM_PORT:-3002}"
 SMOKE_LOCAL_GAME_PORT="${SMOKE_LOCAL_GAME_PORT:-13000}"
 SMOKE_LOCAL_API_PORT="${SMOKE_LOCAL_API_PORT:-13001}"
 SMOKE_LOCAL_PLATFORM_PORT="${SMOKE_LOCAL_PLATFORM_PORT:-13002}"
+PUBLIC_SMOKE_BASE_URL="${PUBLIC_SMOKE_BASE_URL:-https://battle.zutomayocard.online}"
 OFFICIAL_TRANSLATIONS_SOURCE="${OFFICIAL_TRANSLATIONS_SOURCE:-$PROJECT_DIR/data/official-rulings-translations.json}"
 OFFICIAL_RULE_DOCUMENTS_SOURCE="${OFFICIAL_RULE_DOCUMENTS_SOURCE:-$PROJECT_DIR/data/official-rule-documents-20260721.json}"
 CARD_DERIVED_EFFECTS_DIR="${CARD_DERIVED_EFFECTS_DIR:-$PROJECT_DIR/data}"
@@ -86,6 +87,8 @@ ssh_run() { ssh -p "$SERVER_PORT" "$SERVER_USER@$SERVER_HOST" "$@"; }
 [[ "$MEILI_EXPECTED_IMAGE" =~ ^[A-Za-z0-9._/:@-]+$ ]] || die 'MEILI_EXPECTED_IMAGE is invalid'
 [[ "$MEILI_APP_DIR" =~ ^/[A-Za-z0-9._/-]+$ ]] || die 'MEILI_APP_DIR contains unsupported characters'
 [[ "$DEPLOY_WAIT_SECONDS" =~ ^[0-9]+$ ]] || die 'DEPLOY_WAIT_SECONDS must be an integer'
+[[ -z "$PUBLIC_SMOKE_BASE_URL" || "$PUBLIC_SMOKE_BASE_URL" =~ ^https?://[A-Za-z0-9._:-]+/?$ ]] || \
+  die 'PUBLIC_SMOKE_BASE_URL must be an HTTP(S) origin URL'
 
 sha256_file() {
   if command -v sha256sum >/dev/null 2>&1; then
@@ -470,6 +473,17 @@ remote_start() {
 
 run_smoke() {
   local expected_build_id="$1" tunnel_pid status
+  local smoke_args=(
+    --host 127.0.0.1
+    --game-port "$SMOKE_LOCAL_GAME_PORT"
+    --api-port "$SMOKE_LOCAL_API_PORT"
+    --platform-port "$SMOKE_LOCAL_PLATFORM_PORT"
+    --expected-build-id "$expected_build_id"
+    --check-battle-assets true
+  )
+  if [[ -n "$PUBLIC_SMOKE_BASE_URL" ]]; then
+    smoke_args+=(--public-base-url "$PUBLIC_SMOKE_BASE_URL")
+  fi
   ssh -p "$SERVER_PORT" -o ExitOnForwardFailure=yes -N -T \
     -L "${SMOKE_LOCAL_GAME_PORT}:127.0.0.1:${GAME_PORT}" \
     -L "${SMOKE_LOCAL_API_PORT}:127.0.0.1:${API_PORT}" \
@@ -482,13 +496,7 @@ run_smoke() {
     return 1
   fi
   set +e
-  node "$SCRIPT_DIR/deploy-smoke.mjs" \
-    --host 127.0.0.1 \
-    --game-port "$SMOKE_LOCAL_GAME_PORT" \
-    --api-port "$SMOKE_LOCAL_API_PORT" \
-    --platform-port "$SMOKE_LOCAL_PLATFORM_PORT" \
-    --expected-build-id "$expected_build_id" \
-    --check-battle-assets true
+  node "$SCRIPT_DIR/deploy-smoke.mjs" "${smoke_args[@]}"
   status=$?
   set -e
   kill "$tunnel_pid" >/dev/null 2>&1 || true
@@ -509,6 +517,7 @@ if [[ "$DRY_RUN" == true ]]; then
   log "[dry-run] would back up, configure, and verify the external 1Panel Meilisearch service"
   log "[dry-run] would atomically rebuild and verify the Meilisearch knowledge index"
   log "[dry-run] would synchronize and verify $BATTLE_ASSET_COUNT private battle assets"
+  log "[dry-run] would verify every battle asset through origin and $PUBLIC_SMOKE_BASE_URL"
   exit 0
 fi
 

@@ -4,6 +4,7 @@ import { getCardDef } from '../../game/cards/loader';
 import { getLocalizedCardName } from '../../game/cards/i18n';
 import type { ChronosContribution, GameNotice, GameState } from '../../game/types';
 import { getLocale, t } from '../../i18n';
+import { battleAssetUrl } from './battleAssets';
 
 interface Rect {
   left: number;
@@ -63,6 +64,7 @@ const EFFECT_FLIGHT_MS = 560;
 const EFFECT_MEDAL_STEP_MS = 175;
 const EFFECT_SET_MOVE_MS = 500;
 const EFFECT_FINAL_HOLD_MS = 1250;
+const CHRONOS_MEDAL_ASSET = battleAssetUrl('/battle/medal.png');
 
 function contributionLabel(contribution: ChronosContribution): string {
   const def = getCardDef(contribution.cardDefId);
@@ -539,7 +541,7 @@ export function ChronosResolutionLayer({
           aria-hidden="true"
         >
           <span className="chronos-sequence-medal-pulse" key={effectSequence.medalPosition} />
-          <img src="/battle/medal.png" alt="" draggable={false} />
+          <img src={CHRONOS_MEDAL_ASSET} alt="" draggable={false} />
         </span>
 
         {(effectSequence.phase === 'move' || effectSequence.phase === 'complete') && (
@@ -654,7 +656,7 @@ export function ChronosResolutionLayer({
         aria-hidden="true"
       >
         <span className="chronos-sequence-medal-pulse" key={sequence.medalPosition} />
-        <img src="/battle/medal.png" alt="" draggable={false} />
+        <img src={CHRONOS_MEDAL_ASSET} alt="" draggable={false} />
       </span>
 
       {(sequence.phase === 'complete' || sequence.completedCount > 0) && (

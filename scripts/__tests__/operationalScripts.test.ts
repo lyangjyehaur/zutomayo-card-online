@@ -128,13 +128,16 @@ describe('operational shell scripts', () => {
     expect(deploy).toContain("-name '._*' -delete");
     expect(deploy).toContain('sha256sum --check');
     expect(deploy).toContain('--check-battle-assets true');
+    expect(deploy).toContain('--public-base-url');
+    expect(deploy).toContain('PUBLIC_SMOKE_BASE_URL');
     expect(deploy).not.toContain('--rollback');
     expect(deploy).not.toContain('rollback_and_smoke');
     expect(deploy).not.toContain('.env.previous');
     expect(deploy).not.toContain('$COMPOSE_FILE.previous');
     expect(compose).toContain('${BATTLE_ASSET_DIR:-./public/battle}:/app/dist/battle:ro');
-    expect(smoke).toContain('/battle/chronos.svg');
-    expect(smoke).toContain('/battle/medal.png');
+    expect(smoke).toContain("new URL('./battle-assets.sha256', import.meta.url)");
+    expect(smoke).toContain('assertBattleAssetPayload');
+    expect(smoke).toContain('publicBaseUrl');
     expect(smoke).toContain('if (checkBattleAssets)');
     expect(smoke).toContain('/api/official/status');
     expect(assetChecksums).toHaveLength(22);
