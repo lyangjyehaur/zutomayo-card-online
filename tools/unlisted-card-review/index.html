@@ -465,6 +465,7 @@
         <div class="filters">
           <input id="search" type="search" placeholder="搜尋候選編號、卡號或名稱" />
           <select id="statusFilter">
+            <option value="taxonomy">卡包／稀有度待更新</option>
             <option value="pending">待確認文本</option>
             <option value="all">全部 64 張</option>
             <option value="verified">文本已確認</option>
@@ -477,7 +478,15 @@
       <main id="main"><div class="empty">正在載入本機卡牌資料…</div></main>
     </div>
     <script>
-      const state = { cards: [], filtered: [], activeId: '', summary: {}, dirty: false, zoomed: false };
+      const state = {
+        cards: [],
+        filtered: [],
+        activeId: '',
+        summary: {},
+        taxonomy: { packs: [], packlessCardIds: [], rarities: [] },
+        dirty: false,
+        zoomed: false,
+      };
       const $ = (id) => document.getElementById(id);
       const fields = [
         'cardId',
@@ -539,6 +548,7 @@
             );
           const matchesStatus =
             filter === 'all' ||
+            (filter === 'taxonomy' && !hasValidTaxonomy(review)) ||
             (filter === 'pending' && review.textReviewStatus !== 'verified') ||
             (filter === 'verified' && review.textReviewStatus === 'verified') ||
             (filter === 'better' && review.imageReviewStatus === 'needs_better_image') ||
@@ -589,12 +599,13 @@
         return `<option value="${escapeHtml(value)}" ${value === current ? 'selected' : ''}>${escapeHtml(label)}</option>`;
       }
 
-      function packOptions(current) {
-        return [
-          ...new Set([...state.cards.map((card) => String(card.pack || '').trim()), String(current || '').trim()]),
-        ]
-          .filter(Boolean)
-          .sort((left, right) => left.localeCompare(right, 'ja', { numeric: true }));
+      function isPacklessReview(review) {
+        return state.taxonomy.packlessCardIds.includes(review.cardId);
+      }
+
+      function hasValidTaxonomy(review) {
+        const validPack = isPacklessReview(review) ? !review.pack : state.taxonomy.packs.includes(review.pack);
+        return validPack && state.taxonomy.rarities.includes(review.rarity);
       }
 
       function renderCard() {
@@ -604,6 +615,10 @@
           return;
         }
         const review = card.review;
+        const packless = isPacklessReview(review);
+        const packOptions = packless
+          ? [['', '不屬於任何卡包']]
+          : [['', '未確認'], ...state.taxonomy.packs.map((v) => [v, v])];
         const ocrLines = card.machineSuggestion?.evidence?.ocrLines || [];
         const index = state.filtered.findIndex((entry) => entry.candidateId === card.candidateId);
         const statusClass = review.textReviewStatus === 'verified' ? 'verified' : '';
@@ -621,10 +636,10 @@
                 <div class="grid three">
                   <label><span>正式資料 ID<em class="required-mark">*</em></span><input id="cardId" aria-required="true" value="${escapeHtml(review.cardId)}" placeholder="例如 bonus_001" /></label>
                   <label><span>卡面印刷編號<em class="required-mark">*</em></span><input id="printedNumber" aria-required="true" value="${escapeHtml(review.printedNumber)}" placeholder="照卡面輸入" /></label>
-                  <label><span>稀有度<em class="required-mark">*</em></span><select id="rarity" aria-required="true">${['', 'N', 'R', 'SR', 'UR', 'SE'].map((v) => option(v, v || '未確認', review.rarity)).join('')}</select></label>
+                  <label><span>稀有度<em class="required-mark">*</em></span><select id="rarity" aria-required="true">${['', ...state.taxonomy.rarities].map((v) => option(v, v || '未確認', review.rarity)).join('')}</select></label>
                   <label><span>卡牌種類<em class="required-mark">*</em></span><select id="type" aria-required="true">${['', 'Character', 'Enchant', 'Area Enchant'].map((v) => option(v, v || '未確認', review.type)).join('')}</select></label>
                   <label><span>屬性<em class="required-mark">*</em></span><select id="element" aria-required="true">${['', '闇', '炎', '電気', '風', 'カオス'].map((v) => option(v, v || '未確認', review.element)).join('')}</select></label>
-                  <label><span>卡包／分類<em class="required-mark">*</em></span><select id="pack" aria-required="true">${['', ...packOptions(review.pack)].map((v) => option(v, v || '未確認', review.pack)).join('')}</select></label>
+                  <label><span>卡包${packless ? '' : '<em class="required-mark">*</em>'}</span><select id="pack" aria-required="${packless ? 'false' : 'true'}">${packOptions.map(([v, l]) => option(v, l, review.pack)).join('')}</select></label>
                 </div>
               </section>
               <section class="section">
@@ -835,6 +850,7 @@
           if (!response.ok) throw new Error(data.error || '無法載入資料');
           state.cards = data.cards;
           state.summary = data.summary;
+          state.taxonomy = data.taxonomy;
           const hash = decodeURIComponent(location.hash.slice(1));
           state.activeId = state.cards.some((card) => card.candidateId === hash) ? hash : '';
           renderSummary();

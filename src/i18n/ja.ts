@@ -1654,10 +1654,18 @@ export const ja: Record<TranslationKey, string> = {
   'cardCatalog.cardDetails': 'カード情報',
   'cardCatalog.effect': 'カード効果',
   'cardCatalog.pack': '収録パック',
+  'cardCatalog.noPack': 'いずれのパックにも未収録',
   'cardCatalog.illustrator': 'イラストレーター',
   'cardCatalog.distribution': '配布区分',
   'cardCatalog.playStatus': '使用区分',
   'cardCatalog.playable': 'デッキに追加可能',
+  'cardCatalog.tournamentNoticeTitle': '公式大会でのカード使用制限',
+  'cardCatalog.tournamentNotice':
+    '公式フロアルールでは、UR+・SR+・R+・N+表記の限定カードは、原則として公式・公認大会で使用できません。大会やイベントごとのルールで制限されていない場合は使用できます。',
+  'cardCatalog.tournamentRestricted': '大会では原則使用不可',
+  'cardCatalog.tournamentRestrictionDetail':
+    'このカードは「+」レアリティの限定カードのため、公式・公認大会では原則使用できません。大会やイベントごとのルールで制限されていない場合は、そのルールに従って使用できます。',
+  'cardCatalog.tournamentRulesLink': '公式フロアルールを見る',
   'cardCatalog.openSource': '情報源を見る',
   'cardCatalog.cardNavigation': '前後のカード',
   'cardCatalog.previousCard': '前のカード',

@@ -6,7 +6,7 @@ import { Controller, useForm } from 'react-hook-form';
 import { useParams } from 'react-router-dom';
 import { z } from 'zod';
 import { adminUpdateCardI18n, fetchCardTextsI18n, type AdminCardTextUpdate } from '../api/client';
-import { CARD_DISTRIBUTION_TYPES, type CardDef } from '../game/types';
+import { CARD_DISTRIBUTION_TYPES, CARD_PACKS, CARD_RARITIES, isPacklessCard, type CardDef } from '../game/types';
 import { CardImage } from '../components/CardImage';
 import { useDebouncedSearchQuery } from '../hooks/useDebouncedSearchQuery';
 import { useKnowledgeSearchIds } from '../hooks/useKnowledgeSearch';
@@ -24,42 +24,55 @@ const optionalUrl = z
   .string()
   .trim()
   .refine((value) => !value || URL.canParse(value), '請輸入完整 URL');
-const cardSchema = z.object({
-  id: z
-    .string()
-    .trim()
-    .min(1, '卡牌 ID 為必填')
-    .max(80)
-    .regex(/^[A-Za-z0-9_-]+$/, '只能使用英數、連字號與底線'),
-  name: z.string().trim().min(1, '日文卡名為必填'),
-  enNameOfficial: z.string(),
-  element: z.enum(elements),
-  type: z.enum(cardTypes),
-  rarity: z.string().trim().min(1, '稀有度為必填'),
-  clock: z.number().int().min(0),
-  attackNight: z.number().int().min(0),
-  attackDay: z.number().int().min(0),
-  powerCost: z.number().int().min(0),
-  sendToPower: z.number().int().min(0),
-  effect: z.string(),
-  enEffectOfficial: z.string(),
-  image: optionalUrl,
-  errata: z.string(),
-  pack: z.string().trim().min(1, '所屬系列為必填'),
-  song: z.string(),
-  illustrator: z.string(),
-  catalogStatus: z.enum(catalogStatuses),
-  distributionType: z.enum(distributionTypes),
-  publicationStatus: z.enum(publicationStatuses),
-  playStatus: z.enum(playStatuses),
-  playStatusReason: z.string(),
-  sourceUrl: optionalUrl,
-  sourceNote: z.string(),
-  sourceSha256: z
-    .string()
-    .trim()
-    .refine((value) => !value || /^[a-fA-F0-9]{64}$/.test(value), 'SHA-256 必須是 64 位十六進位字串'),
-});
+const cardSchema = z
+  .object({
+    id: z
+      .string()
+      .trim()
+      .min(1, '卡牌 ID 為必填')
+      .max(80)
+      .regex(/^[A-Za-z0-9_-]+$/, '只能使用英數、連字號與底線'),
+    name: z.string().trim().min(1, '日文卡名為必填'),
+    enNameOfficial: z.string(),
+    element: z.enum(elements),
+    type: z.enum(cardTypes),
+    rarity: z
+      .string()
+      .refine((value) => CARD_RARITIES.includes(value as (typeof CARD_RARITIES)[number]), '請選擇官方稀有度'),
+    clock: z.number().int().min(0),
+    attackNight: z.number().int().min(0),
+    attackDay: z.number().int().min(0),
+    powerCost: z.number().int().min(0),
+    sendToPower: z.number().int().min(0),
+    effect: z.string(),
+    enEffectOfficial: z.string(),
+    image: optionalUrl,
+    errata: z.string(),
+    pack: z.string(),
+    song: z.string(),
+    illustrator: z.string(),
+    catalogStatus: z.enum(catalogStatuses),
+    distributionType: z.enum(distributionTypes),
+    publicationStatus: z.enum(publicationStatuses),
+    playStatus: z.enum(playStatuses),
+    playStatusReason: z.string(),
+    sourceUrl: optionalUrl,
+    sourceNote: z.string(),
+    sourceSha256: z
+      .string()
+      .trim()
+      .refine((value) => !value || /^[a-fA-F0-9]{64}$/.test(value), 'SHA-256 必須是 64 位十六進位字串'),
+  })
+  .superRefine((value, context) => {
+    const packless = isPacklessCard(value.id);
+    if (packless ? value.pack !== '' : !CARD_PACKS.includes(value.pack as (typeof CARD_PACKS)[number])) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['pack'],
+        message: packless ? '此卡不屬於任何卡包，卡包必須留空' : '請選擇官方卡包',
+      });
+    }
+  });
 
 type CardFormValues = z.infer<typeof cardSchema>;
 
@@ -79,7 +92,7 @@ const EMPTY_CARD: CardFormValues = {
   enEffectOfficial: '',
   image: '',
   errata: '',
-  pack: '',
+  pack: CARD_PACKS[0],
   song: '',
   illustrator: '',
   catalogStatus: 'unlisted',
@@ -301,6 +314,8 @@ function CardFormPage({ mode }: { mode: 'create' | 'edit' }) {
   const image = watch('image');
   const type = watch('type');
   const cardId = watch('id');
+  const pack = watch('pack');
+  const packless = isPacklessCard(cardId);
   const saving = createMutation.mutation.isPending || updateMutation.mutation.isPending;
 
   const submit = handleSubmit((values) => {
@@ -379,10 +394,7 @@ function CardFormPage({ mode }: { mode: 'create' | 'edit' }) {
                 <Input {...register('id')} readOnly={mode === 'edit'} />
                 <FieldError message={errors.id?.message} />
               </FormField>
-              <FormField label="稀有度 *">
-                <Input {...register('rarity')} />
-                <FieldError message={errors.rarity?.message} />
-              </FormField>
+              {selectField('rarity', '稀有度 *', CARD_RARITIES)}
               <FormField label="日文卡名 *">
                 <Input {...register('name')} />
                 <FieldError message={errors.name?.message} />
@@ -392,8 +404,38 @@ function CardFormPage({ mode }: { mode: 'create' | 'edit' }) {
               </FormField>
               {selectField('element', '屬性 *', elements)}
               {selectField('type', '卡牌種類 *', cardTypes)}
-              <FormField label="所屬系列 *">
-                <Input {...register('pack')} />
+              <FormField label={packless ? '卡包' : '卡包 *'}>
+                <Controller
+                  name="pack"
+                  control={control}
+                  render={({ field }) => (
+                    <Select {...field} value={String(field.value)}>
+                      {packless ? (
+                        <>
+                          {field.value !== '' && (
+                            <option value={String(field.value)} disabled>
+                              無效卡包：{String(field.value)}
+                            </option>
+                          )}
+                          <option value="">不屬於任何卡包</option>
+                        </>
+                      ) : (
+                        <>
+                          {!CARD_PACKS.includes(pack as (typeof CARD_PACKS)[number]) && (
+                            <option value={pack} disabled>
+                              {pack ? `無效卡包：${pack}` : '請選擇卡包'}
+                            </option>
+                          )}
+                          {CARD_PACKS.map((value) => (
+                            <option key={value} value={value}>
+                              {value}
+                            </option>
+                          ))}
+                        </>
+                      )}
+                    </Select>
+                  )}
+                />
                 <FieldError message={errors.pack?.message} />
               </FormField>
               <FormField label="歌曲">

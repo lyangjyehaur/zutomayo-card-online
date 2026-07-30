@@ -1646,10 +1646,18 @@ export const ko: Record<TranslationKey, string> = {
   'cardCatalog.cardDetails': '카드 정보',
   'cardCatalog.effect': '카드 효과',
   'cardCatalog.pack': '수록 팩',
+  'cardCatalog.noPack': '어떤 팩에도 수록되지 않음',
   'cardCatalog.illustrator': '일러스트레이터',
   'cardCatalog.distribution': '배포 유형',
   'cardCatalog.playStatus': '사용 상태',
   'cardCatalog.playable': '덱에 추가 가능',
+  'cardCatalog.tournamentNoticeTitle': '공식 대회 카드 사용 제한',
+  'cardCatalog.tournamentNotice':
+    '공식 플로어 룰에 따라 UR+, SR+, R+, N+ 표기의 한정 카드는 원칙적으로 공식 및 공인 대회에서 사용할 수 없습니다. 개별 대회나 이벤트 규칙에서 제한하지 않는 경우에는 사용할 수 있습니다.',
+  'cardCatalog.tournamentRestricted': '대회 원칙상 사용 불가',
+  'cardCatalog.tournamentRestrictionDetail':
+    '이 카드는 “+” 레어리티의 한정 카드이므로 공식 및 공인 대회에서 원칙적으로 사용할 수 없습니다. 개별 대회나 이벤트 규칙에서 제한하지 않는 경우 해당 규칙에 따라 사용할 수 있습니다.',
+  'cardCatalog.tournamentRulesLink': '공식 플로어 룰 보기',
   'cardCatalog.openSource': '정보 출처 보기',
   'cardCatalog.cardNavigation': '이전 및 다음 카드',
   'cardCatalog.previousCard': '이전 카드',

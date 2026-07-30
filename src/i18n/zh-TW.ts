@@ -1607,10 +1607,18 @@ export const zhTW = {
   'cardCatalog.cardDetails': '卡牌資料',
   'cardCatalog.effect': '卡牌效果',
   'cardCatalog.pack': '收錄卡包',
+  'cardCatalog.noPack': '不屬於任何卡包',
   'cardCatalog.illustrator': '繪師',
   'cardCatalog.distribution': '發行類型',
   'cardCatalog.playStatus': '使用狀態',
   'cardCatalog.playable': '可加入牌組',
+  'cardCatalog.tournamentNoticeTitle': '官方賽事用卡限制',
+  'cardCatalog.tournamentNotice':
+    '官方 Floor Rules 規定，標示 UR+、SR+、R+、N+ 的限定卡原則上不能用於官方或認證賽事；個別賽事規則明確允許時除外。',
+  'cardCatalog.tournamentRestricted': '賽事原則禁用',
+  'cardCatalog.tournamentRestrictionDetail':
+    '此卡屬於帶「+」稀有度的限定卡，原則上不能用於官方或認證賽事；若個別賽事規則未限制，則可依該賽事規定使用。',
+  'cardCatalog.tournamentRulesLink': '查看官方 Floor Rules',
   'cardCatalog.openSource': '查看資料來源',
   'cardCatalog.cardNavigation': '前後卡牌',
   'cardCatalog.previousCard': '上一張',
