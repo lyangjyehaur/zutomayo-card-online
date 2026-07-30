@@ -48,7 +48,6 @@ services:
       - MEILI_MASTER_KEY=e2e-meilisearch-master-key
 
   seed:
-    image: zutomayo-card-online-seed:e2e
     build:
       context: .
       dockerfile: Dockerfile
@@ -121,7 +120,6 @@ services:
       - ALLOWED_ORIGINS=http://game:3000
 
   e2e:
-    image: zutomayo-card-online-e2e:local
     build:
       context: .
       dockerfile: Dockerfile.e2e
