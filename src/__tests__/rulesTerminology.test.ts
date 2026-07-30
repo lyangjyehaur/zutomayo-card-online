@@ -93,6 +93,12 @@ describe('rules terminology glossary', () => {
     expect(rulesTerminologyViolations('ko', '배틀필드의 심연에서 태어난 혼돈')).toEqual(['배틀필드 -> 배틀 존']);
   });
 
+  it('rejects the legacy Traditional Chinese HP recovery term', () => {
+    expect(rulesTerminologyViolations('zh-TW', '恢復HP 20')).toEqual(['恢復 -> 回復']);
+    expect(rulesTerminologyViolations('zh-HK', '恢復HP 20')).toEqual(['恢復 -> 回復']);
+    expect(rulesTerminologyViolations('zh-CN', '恢复HP 20')).toEqual([]);
+  });
+
   it('requires canonical target terms only when the source uses the corresponding rules term', () => {
     expect(
       rulesTerminologySourceViolations(
