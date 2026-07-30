@@ -132,6 +132,7 @@ function onlineErrorMessage(error: unknown): string {
   const customRoomRelayKey = customRoomRelayErrorKey(error);
   if (customRoomRelayKey) return t(customRoomRelayKey);
   if (error instanceof Error && isOnlineRoomErrorKey(error.message)) return t(error.message);
+  if (error instanceof Error && error.message.trim()) return error.message;
   return t('online.connectionFailed');
 }
 

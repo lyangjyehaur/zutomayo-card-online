@@ -139,6 +139,22 @@ function onlineRoomError(key: OnlineRoomErrorKey): Error {
   return new Error(key);
 }
 
+async function onlineRequestError(response: Response, action: string): Promise<Error> {
+  const responseText = (await response.text()).trim();
+  let serverMessage = responseText;
+  if (responseText) {
+    try {
+      const parsed = JSON.parse(responseText) as { error?: unknown };
+      if (typeof parsed.error === 'string') serverMessage = parsed.error;
+    } catch {
+      // Koa lobby errors are plain text; keep the exact server message.
+    }
+  }
+  const requestId = response.headers.get('x-request-id')?.trim();
+  const detail = serverMessage.slice(0, 300) || `${action} failed`;
+  return new Error(`${detail} (HTTP ${response.status}${requestId ? `, request ${requestId}` : ''})`);
+}
+
 async function createMatch(setupData: ZutomayoSetupData): Promise<string> {
   await ensureCompatibleAppVersion();
   const response = await fetch('/games/zutomayo-card/create', {
@@ -148,10 +164,11 @@ async function createMatch(setupData: ZutomayoSetupData): Promise<string> {
   });
   if (response.status === 426) throw onlineRoomError('online.versionMismatch');
   if (!response.ok) {
-    Sentry.captureException(new Error(`createMatch failed: HTTP ${response.status}`), {
+    const error = await onlineRequestError(response, 'createMatch');
+    Sentry.captureException(error, {
       tags: { action: 'create-match', http_status: String(response.status) },
     });
-    throw onlineRoomError('online.connectionFailed');
+    throw error;
   }
   const data = await response.json();
   return data.matchID;
@@ -174,6 +191,8 @@ async function joinMatch(
   playerID: '0' | '1',
   requestedPlayerName?: string,
   deckReservationId?: string,
+  localDeckIds?: string[],
+  localDeckName?: string,
 ): Promise<{
   playerCredentials: string;
   platformSeatToken?: string;
@@ -196,16 +215,21 @@ async function joinMatch(
       data: { ...(account?.data ?? {}), clientVersion: APP_VERSION_INFO },
       clientVersion: APP_VERSION_INFO,
       ...(deckReservationId ? { deckReservationId } : {}),
+      ...(localDeckIds ? { localDeckIds } : {}),
+      ...(localDeckName ? { localDeckName } : {}),
     }),
   });
   if (!response.ok) {
+    const error = await onlineRequestError(response, 'joinMatch');
     if (response.status === 426) throw onlineRoomError('online.versionMismatch');
     if (response.status === 404) throw onlineRoomError('online.roomNotFound');
-    if (response.status === 409) throw onlineRoomError('online.roomFull');
-    Sentry.captureException(new Error(`joinMatch failed: HTTP ${response.status}`), {
+    if (response.status === 409 && /no available seats|player [01] is not available/i.test(error.message)) {
+      throw onlineRoomError('online.roomFull');
+    }
+    Sentry.captureException(error, {
       tags: { action: 'join-match', http_status: String(response.status), match_id: matchID },
     });
-    throw onlineRoomError('online.connectionFailed');
+    throw error;
   }
   const data = (await response.json()) as {
     playerCredentials: string;
@@ -465,6 +489,7 @@ function RouterShell() {
     } = {},
   ): Promise<OnlineSession> => {
     const selectedPlayerDeck = options.playerDeckName ?? deck0Name;
+    const selectedDeckSetup = onlineDeckName(existingID ? 1 : 0, selectedPlayerDeck, serverDecks);
     const selectedServerDeckId = serverDeckIdFromOption(selectedPlayerDeck);
     const playerDeckReservation = options.playerDeckReservationId
       ? undefined
@@ -473,7 +498,7 @@ function RouterShell() {
         : undefined;
     const effectiveDeckReservationId = options.playerDeckReservationId || playerDeckReservation?.reservationId;
     const setupData = {
-      ...onlineDeckName(0, options.playerDeckName ?? deck0Name, serverDecks),
+      ...selectedDeckSetup,
       ...(effectiveDeckReservationId
         ? {
             deck0Ids: undefined,
@@ -493,6 +518,8 @@ function RouterShell() {
       playerID === '1'
         ? options.playerDeckReservationId || playerDeckReservation?.reservationId
         : effectiveDeckReservationId,
+      playerID === '1' && !effectiveDeckReservationId ? selectedDeckSetup.deck1Ids : undefined,
+      playerID === '1' && !effectiveDeckReservationId ? selectedDeckSetup.deck1Name : undefined,
     );
     const session = { matchID, playerID, playerCredentials, platformSeatToken, platformUserId, platformDisplayName };
     setOnlineSession(session);

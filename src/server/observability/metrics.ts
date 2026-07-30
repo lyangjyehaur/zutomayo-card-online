@@ -104,12 +104,17 @@ function normalizePath(path: string): string {
 export function metricsMiddleware(): ObsMiddleware {
   return async (ctx, next) => {
     const start = Date.now();
+    let errorStatus: number | undefined;
     try {
       await next();
+    } catch (error) {
+      const status = (error as { status?: unknown })?.status;
+      if (typeof status === 'number') errorStatus = status;
+      throw error;
     } finally {
       const duration = (Date.now() - start) / 1000;
       const path = normalizePath(ctx.path);
-      const status = String(ctx.status);
+      const status = String(errorStatus ?? ctx.status);
       httpRequestDuration.labels(ctx.method, path, status).observe(duration);
       httpRequestsTotal.labels(ctx.method, path, status).inc();
     }

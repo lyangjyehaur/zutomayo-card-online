@@ -403,7 +403,9 @@ export function OnlineGamePage({ session, onClearSession, onCreateNewRoom, onRem
       setActionError(
         isVersionMismatchError(err)
           ? translate(locale, 'online.versionMismatchBody')
-          : translate(locale, 'online.createRoomFailed'),
+          : err instanceof Error && err.message.trim()
+            ? err.message
+            : translate(locale, 'online.createRoomFailed'),
       );
     } finally {
       if (!succeeded) {
