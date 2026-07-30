@@ -96,6 +96,9 @@ describe('rules terminology glossary', () => {
   it('rejects the legacy Traditional Chinese HP recovery term', () => {
     expect(rulesTerminologyViolations('zh-TW', '恢復HP 20')).toEqual(['恢復 -> 回復']);
     expect(rulesTerminologyViolations('zh-HK', '恢復HP 20')).toEqual(['恢復 -> 回復']);
+    expect(rulesTerminologyViolations('zh-TW', '雙方 HP 恢復 10')).toEqual(['恢復 -> 回復']);
+    expect(rulesTerminologyViolations('zh-HK', '恢復效果不會處理')).toEqual(['恢復 -> 回復']);
+    expect(rulesTerminologyViolations('zh-TW', '網路恢復連線')).toEqual([]);
     expect(rulesTerminologyViolations('zh-CN', '恢复HP 20')).toEqual([]);
   });
 
