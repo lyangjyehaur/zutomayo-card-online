@@ -41,15 +41,20 @@ export function requestLoggingMiddleware(): ObsMiddleware {
     ctx.set('X-Request-Id', id);
     const log = logger.child({ requestId: id });
     await requestContext.run({ requestId: id, log }, async () => {
+      let errorStatus: number | undefined;
       try {
         await next();
+      } catch (error) {
+        const status = (error as { status?: unknown })?.status;
+        if (typeof status === 'number') errorStatus = status;
+        throw error;
       } finally {
         const duration = Date.now() - start;
         log.info(
           {
             method: ctx.method,
             path: ctx.path,
-            status: ctx.status,
+            status: errorStatus ?? ctx.status,
             durationMs: duration,
           },
           'request completed',

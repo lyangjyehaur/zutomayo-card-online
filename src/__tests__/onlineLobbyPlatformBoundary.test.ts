@@ -68,6 +68,19 @@ describe('online lobby platform boundary', () => {
     expect(appSource).not.toContain('joinSharedOnlineRoom');
   });
 
+  it('keeps local decks available for both custom-room hosts and joining players', () => {
+    const appSource = readRepoFile('src/App.tsx');
+    const gameServerSource = readRepoFile('src/server.ts');
+
+    expect(appSource).toContain('onlineDeckName(existingID ? 1 : 0, selectedPlayerDeck, serverDecks)');
+    expect(appSource).toContain('selectedDeckSetup.deck1Ids');
+    expect(appSource).toContain('selectedDeckSetup.deck1Name');
+    expect(appSource).toContain('...(localDeckIds ? { localDeckIds } : {})');
+    expect(appSource).toContain('...(localDeckName ? { localDeckName } : {})');
+    expect(gameServerSource).toContain('validateConstructedDeckIds(localDeckIds)');
+    expect(gameServerSource).not.toContain('Custom online decks require a server reservation');
+  });
+
   it('does not expose game-page waiting room share links before Colyseus registration succeeds', () => {
     const onlineGamePageSource = readRepoFile('src/pages/OnlineGamePage.tsx');
 

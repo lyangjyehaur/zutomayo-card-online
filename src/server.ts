@@ -3,6 +3,7 @@ import './server/observability/tracing.js';
 import { ZutomayoOnlineCard, resetParsedEffects } from './game/Game';
 import { initCards } from './game/cards/loader';
 import { initCardTextsI18n, type CardTextI18nEntry } from './game/cards/i18n';
+import { getPresetDeck, validateConstructedDeckIds } from './game/cards/deckBuilder';
 import type { CardDef, ZutomayoSetupData } from './game/types';
 import { APP_VERSION_INFO, isCompatibleVersion, normalizeVersionInfo, type AppVersionInfo } from './version';
 import path from 'path';
@@ -520,9 +521,6 @@ server.app.use(async (ctx: KoaContext, next: Next) => {
   const setup = (isRecord(body.setupData) ? body.setupData : {}) as ZutomayoSetupData;
   const requestUserId = await authenticatedRequestUserId(ctx);
   const reservationId = typeof setup.deck0ReservationId === 'string' ? setup.deck0ReservationId : '';
-  if (Array.isArray(setup.deck0Ids) && !reservationId) {
-    ctx.throw(403, 'Custom online decks require a server reservation');
-  }
   let reservation: DeckReservationResult['body'] | undefined;
   if (reservationId) {
     if (!requestUserId) ctx.throw(401, 'Authenticated deck reservation required');
@@ -690,6 +688,8 @@ server.router.post('/games/zutomayo-card/:id/join', koaBody(), async (ctx: KoaCo
     data?: unknown;
     clientVersion?: unknown;
     deckReservationId?: unknown;
+    localDeckIds?: unknown;
+    localDeckName?: unknown;
   };
   const requestedPlayerID = body.playerID;
   const playerName = body.playerName;
@@ -704,6 +704,25 @@ server.router.post('/games/zutomayo-card/:id/join', koaBody(), async (ctx: KoaCo
       : isRecord(body.data) && typeof body.data.deckReservationId === 'string'
         ? body.data.deckReservationId
         : '';
+  const localDeckIds = body.localDeckIds;
+  const localDeckName = typeof body.localDeckName === 'string' ? body.localDeckName.trim() : '';
+  const suppliedDeckSources =
+    Number(Boolean(deckReservationId)) + Number(localDeckIds !== undefined) + Number(Boolean(localDeckName));
+  if (suppliedDeckSources > 1) {
+    ctx.throw(400, 'Choose one deck source');
+  }
+  let resolvedLocalDeckIds: string[] | undefined;
+  if (localDeckIds !== undefined) {
+    const validationError = validateConstructedDeckIds(localDeckIds);
+    if (validationError) ctx.throw(400, `Local deck invalid: ${validationError}`);
+    resolvedLocalDeckIds = localDeckIds as string[];
+  } else if (localDeckName) {
+    try {
+      resolvedLocalDeckIds = getPresetDeck(localDeckName).map((card) => card.defId);
+    } catch (error) {
+      ctx.throw(400, error instanceof Error ? error.message : 'Invalid preset deck');
+    }
+  }
   if (deckReservationId) {
     if (!requestUserId) ctx.throw(401, 'Authenticated deck reservation required');
     const result = await peekDeckReservation(cardPool, { reservationId: deckReservationId, userId: requestUserId });
@@ -765,6 +784,9 @@ server.router.post('/games/zutomayo-card/:id/join', koaBody(), async (ctx: KoaCo
       rankedEligible: Boolean(requestUserId),
       credentials: playerCredentials,
       ...(deckReservationId ? { deckReservationId, deckRulesVersion: APP_VERSION_INFO.rulesVersion } : {}),
+      ...(resolvedLocalDeckIds
+        ? { localDeckIds: resolvedLocalDeckIds, deckRulesVersion: APP_VERSION_INFO.rulesVersion }
+        : {}),
     });
   } catch (error) {
     throwSeatReservationError(ctx, error);

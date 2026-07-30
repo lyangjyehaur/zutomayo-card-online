@@ -117,6 +117,7 @@ export interface ReserveMatchSeatInput {
   rankedEligible: boolean;
   credentials: string;
   deckReservationId?: string;
+  localDeckIds?: string[];
   deckRulesVersion?: string;
 }
 
@@ -605,6 +606,18 @@ export class PostgresAdapter {
           reservationId: input.deckReservationId,
           rulesVersion: input.deckRulesVersion,
         });
+      } else if (input.localDeckIds) {
+        if (!input.deckRulesVersion) {
+          throw new MatchSeatReservationError('seat_taken', 'Deck rules version is required');
+        }
+        await this.bindDeckCardsWithClient(client, match, {
+          matchID: input.matchID,
+          playerID,
+          cardIds: input.localDeckIds,
+          deckVersion: crypto.createHash('sha256').update(JSON.stringify(input.localDeckIds)).digest('hex'),
+          rulesVersion: input.deckRulesVersion,
+          verifyKnownCards: true,
+        });
       } else {
         await client.query(
           `UPDATE bjg_matches
@@ -793,7 +806,40 @@ export class PostgresAdapter {
       throw new MatchSeatReservationError('seat_taken', 'Deck reservation already bound');
     }
 
-    const cardIds = reservation.card_ids;
+    await this.bindDeckCardsWithClient(client, row, {
+      matchID: input.matchID,
+      playerID: input.playerID,
+      cardIds: reservation.card_ids,
+      deckVersion: reservation.deck_version,
+      rulesVersion: reservation.rules_version,
+    });
+    const consumed = await client.query(
+      `UPDATE deck_reservations
+          SET match_id = $2, player_id = $3, consumed_at = NOW()
+        WHERE id = $1 AND user_id = $4 AND match_id IS NULL`,
+      [input.reservationId, input.matchID, input.playerID, input.userId],
+    );
+    if (consumed.rowCount !== 1) {
+      throw new MatchSeatReservationError('seat_taken', 'Deck reservation was bound concurrently');
+    }
+  }
+
+  private async bindDeckCardsWithClient(
+    client: PoolClient,
+    row: MatchRow,
+    input: {
+      matchID: string;
+      playerID: BoardgamePlayerID;
+      cardIds: unknown;
+      deckVersion: string;
+      rulesVersion: string;
+      verifyKnownCards?: boolean;
+    },
+  ): Promise<void> {
+    if (!row.state || !row.initial_state || !row.metadata) {
+      throw new MatchSeatReservationError('match_not_found', `Match ${input.matchID} not found`);
+    }
+    const cardIds = input.cardIds;
     const cardCounts = new Map<string, number>();
     if (Array.isArray(cardIds)) {
       for (const id of cardIds) {
@@ -807,6 +853,15 @@ export class PostgresAdapter {
       [...cardCounts.values()].some((count) => count > 2)
     ) {
       throw new MatchSeatReservationError('seat_taken', 'Deck reservation contains invalid cards');
+    }
+    if (input.verifyKnownCards) {
+      const uniqueCardIds = [...new Set(cardIds)];
+      const knownCards = await client.query<{ id: string }>('SELECT id FROM cards WHERE id = ANY($1::text[])', [
+        uniqueCardIds,
+      ]);
+      if (knownCards.rowCount !== uniqueCardIds.length) {
+        throw new MatchSeatReservationError('seat_taken', 'Deck contains unknown cards');
+      }
     }
     const state = JSON.parse(JSON.stringify(row.state)) as Record<string, unknown>;
     const initialState = JSON.parse(JSON.stringify(row.initial_state)) as Record<string, unknown>;
@@ -843,8 +898,8 @@ export class PostgresAdapter {
     const slot = Number(input.playerID) === 0 ? '0' : '1';
     metadata.setupData = {
       ...setupData,
-      [`deck${slot}Version`]: reservation.deck_version,
-      rulesVersion: reservation.rules_version,
+      [`deck${slot}Version`]: input.deckVersion,
+      rulesVersion: input.rulesVersion,
     };
     await client.query(
       `UPDATE bjg_matches
@@ -852,15 +907,6 @@ export class PostgresAdapter {
         WHERE match_id = $1`,
       [input.matchID, JSON.stringify(state), JSON.stringify(initialState), JSON.stringify(metadata)],
     );
-    const consumed = await client.query(
-      `UPDATE deck_reservations
-          SET match_id = $2, player_id = $3, consumed_at = NOW()
-        WHERE id = $1 AND user_id = $4 AND match_id IS NULL`,
-      [input.reservationId, input.matchID, input.playerID, input.userId],
-    );
-    if (consumed.rowCount !== 1) {
-      throw new MatchSeatReservationError('seat_taken', 'Deck reservation was bound concurrently');
-    }
   }
 
   async fetch<O extends FetchOpts>(

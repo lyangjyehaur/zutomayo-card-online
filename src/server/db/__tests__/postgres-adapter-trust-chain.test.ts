@@ -175,6 +175,53 @@ describe('PostgresAdapter trust-chain transactions', () => {
     expect(transactionClient.query).toHaveBeenLastCalledWith('COMMIT');
   });
 
+  it('validates and binds a local deck while reserving the joining seat', async () => {
+    const localDeckIds = Array.from({ length: 10 }, (_, index) => `card-${index}`).flatMap((id) => [id, id]);
+    const initialState = stateBeforeDeckBind();
+    const state = structuredClone(initialState);
+    const matchMetadata = metadata();
+    const schemaClient = mockClient();
+    const transactionClient = mockClient(async (sql) => {
+      if (sql.includes('FROM bjg_matches') && sql.includes('FOR UPDATE')) {
+        return {
+          rows: [{ match_id: 'match_1', state, initial_state: initialState, metadata: matchMetadata }],
+          rowCount: 1,
+        };
+      }
+      if (sql.includes('FROM bjg_match_seats')) return { rows: [], rowCount: 0 };
+      if (sql.startsWith('SELECT id FROM cards')) {
+        return { rows: [...new Set(localDeckIds)].map((id) => ({ id })), rowCount: 10 };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+    const pool = mockPool([schemaClient, transactionClient]);
+    const adapter = new PostgresAdapter({ pool: pool as never, createIndexes: false });
+
+    await expect(
+      adapter.reserveMatchSeat({
+        matchID: 'match_1',
+        playerID: '1',
+        playerName: 'Local Player',
+        playerData: { userId: 'guest:local', identitySource: 'server' },
+        userId: 'guest:local',
+        rankedEligible: false,
+        credentials: 'credential-local',
+        localDeckIds,
+        deckRulesVersion: 'rules-v1',
+      }),
+    ).resolves.toMatchObject({ playerID: '1', userId: 'guest:local' });
+
+    const update = transactionClient.query.mock.calls.find(([sql]) => String(sql).startsWith('UPDATE bjg_matches'));
+    expect(update).toBeDefined();
+    const persistedState = JSON.parse(String(update?.[1]?.[1])) as typeof state;
+    expect(persistedState.G.players[1].hand).toHaveLength(5);
+    expect(persistedState.G.players[1].deck).toHaveLength(15);
+    expect(transactionClient.query).toHaveBeenCalledWith('SELECT id FROM cards WHERE id = ANY($1::text[])', [
+      [...new Set(localDeckIds)],
+    ]);
+    expect(transactionClient.query).toHaveBeenLastCalledWith('COMMIT');
+  });
+
   it('rolls back the seat when reservation ownership fails in the same transaction', async () => {
     const initialState = stateBeforeDeckBind();
     const schemaClient = mockClient();
