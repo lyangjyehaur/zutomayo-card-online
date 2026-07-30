@@ -18,7 +18,9 @@ jobs:
     name: Classify Changes
     runs-on: ubuntu-latest
     outputs:
+      tier: ${{ steps.changes.outputs.tier }}
       docs_only: ${{ steps.changes.outputs.docs_only }}
+      e2e_required: ${{ steps.changes.outputs.e2e_required }}
 
     steps:
       - name: Checkout code
@@ -26,7 +28,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Detect documentation-only changes
+      - name: Detect CI risk tier
         id: changes
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
@@ -39,19 +41,7 @@ jobs:
           fi
 
           git diff --name-only "$base_sha" "$HEAD_SHA" | tee /tmp/changed-files.txt
-          docs_only=true
-          if [[ ! -s /tmp/changed-files.txt ]]; then
-            docs_only=false
-          else
-            while IFS= read -r path; do
-              case "$path" in
-                *.md | docs/* | LICENSE | LICENSE.*) ;;
-                *) docs_only=false ;;
-              esac
-            done < /tmp/changed-files.txt
-          fi
-
-          echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
+          node scripts/classify-ci-changes.mjs /tmp/changed-files.txt | tee -a "$GITHUB_OUTPUT"
 
   lint-and-test:
     name: Lint & Test
@@ -165,7 +155,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Build and start service stack
-        if: needs.classify.outputs.docs_only != 'true'
+        if: needs.classify.outputs.e2e_required == 'true'
         run: |
           set -o pipefail
           log_file="$(mktemp)"
@@ -196,12 +186,14 @@ jobs:
           exit 1
         timeout-minutes: 20
 
-      - name: Skip E2E for documentation-only changes
-        if: needs.classify.outputs.docs_only == 'true'
-        run: echo 'Core E2E is not required for documentation-only changes.'
+      - name: Skip E2E for non-runtime changes
+        if: needs.classify.outputs.e2e_required != 'true'
+        env:
+          CI_TIER: ${{ needs.classify.outputs.tier }}
+        run: echo "Core E2E is not required for the ${CI_TIER} verification tier."
 
       - name: Upload Playwright report
-        if: always() && needs.classify.outputs.docs_only != 'true'
+        if: always() && needs.classify.outputs.e2e_required == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: playwright-report
@@ -209,7 +201,7 @@ jobs:
           retention-days: 14
 
       - name: Upload test results
-        if: always() && needs.classify.outputs.docs_only != 'true'
+        if: always() && needs.classify.outputs.e2e_required == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: test-results
@@ -218,7 +210,7 @@ jobs:
           retention-days: 7
 
       - name: Cleanup
-        if: always() && needs.classify.outputs.docs_only != 'true'
+        if: always() && needs.classify.outputs.e2e_required == 'true'
         run: |
           docker compose \
             -f docker-compose.yml \
