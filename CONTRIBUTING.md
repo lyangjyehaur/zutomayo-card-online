@@ -163,11 +163,11 @@ npm run verify
    - 關聯 issue（若有）
    - 測試方式（如何驗證此變更有效）
    - 是否影響部署或環境變數
-5. PR 需通過 GitHub Actions CI（format、data/image/version policy、lint、typecheck、i18n、coverage、build、Playwright E2E）全數綠燈。
+5. PR 需通過 GitHub Actions 的 `PR Gate`。純 Markdown、`docs/` 或 license 變更只執行 tracked formatting 與版本同步檢查；其他變更仍執行 data/image/config policy、lint、typecheck、i18n、coverage、build 與 Playwright E2E。
 6. 經 review 通過後合併至 `master`。
 
 ## 部署流程
 
 生產部署使用 `docker-compose.yml`，包含 `postgres`、`redis`、一次性的 `migrate`、`game`、`api`、`platform` 六個單元。詳細的部署步驟、環境變數、連接埠與備份策略請參考 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)。
 
-CI 會在每次 push / PR 至 `master` 時執行完整驗證（見 `.github/workflows/ci.yml`）。`smoke:*` 系列腳本需要真實卡牌數據與運行中的伺服器，故未納入 CI，請在本機或部署後另行執行。
+CI 會在每次 push / PR 至 `master` 時執行風險分流驗證（見 `.github/workflows/ci.yml`）；純文件變更走 fast path，其他變更執行完整驗證。`smoke:*` 系列腳本需要真實卡牌數據與運行中的伺服器，故未納入 CI，請在本機或部署後另行執行。
