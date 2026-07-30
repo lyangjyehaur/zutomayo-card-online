@@ -70,6 +70,8 @@
     "release:official-rulings": "node --import tsx scripts/release-official-rulings.ts",
     "release:official-rule-documents": "node --import tsx scripts/release-official-rule-documents.ts",
     "sync:official-rulings": "node --import tsx scripts/sync-official-rulings.ts --check",
+    "search:reindex": "node scripts/reindex-knowledge-search.cjs",
+    "search:check": "node scripts/reindex-knowledge-search.cjs --check",
     "translate:official-rulings": "node --import tsx scripts/translate-official-rulings-pg.ts",
     "preview": "vite preview",
     "server": "node --import tsx src/server.ts",

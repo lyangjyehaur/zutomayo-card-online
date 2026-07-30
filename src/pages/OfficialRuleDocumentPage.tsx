@@ -15,6 +15,8 @@ import {
   TranslationStatusBadge,
 } from '../components/rules/OfficialRulesComponents';
 import { t, useLocale } from '../i18n';
+import { useDebouncedSearchQuery } from '../hooks/useDebouncedSearchQuery';
+import { useKnowledgeSearchIds } from '../hooks/useKnowledgeSearch';
 import { Alert, AppHeader, Badge, EmptyState, LoadingState, PageShell, cn } from '../ui';
 
 function normalizeSearch(value: string): string {
@@ -84,6 +86,35 @@ export function OfficialRuleDocumentPage({ documentId }: { documentId: OfficialR
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const {
+    draft: searchDraft,
+    setDraft: setSearchDraft,
+    inputBindings,
+  } = useDebouncedSearchQuery({
+    value: query,
+    onCommit: setQuery,
+  });
+  const {
+    ids: ruleSearchIds,
+    loading: ruleSearchLoading,
+    error: ruleSearchError,
+  } = useKnowledgeSearchIds({
+    query,
+    locale,
+    scope: 'rule',
+    limit: 500,
+    filters: { documentId },
+  });
+  const indexedRuleIds = useMemo(
+    () =>
+      new Set(
+        ruleSearchIds.map((sourceId) =>
+          sourceId.startsWith(`${documentId}:`) ? sourceId.slice(documentId.length + 1) : sourceId,
+        ),
+      ),
+    [documentId, ruleSearchIds],
+  );
+  const useIndexedRuleSearch = Boolean(query) && !ruleSearchLoading && !ruleSearchError;
 
   useEffect(() => {
     let active = true;
@@ -118,15 +149,17 @@ export function OfficialRuleDocumentPage({ documentId }: { documentId: OfficialR
     const visibleIds = new Set(
       document.sections
         .filter((section) =>
-          normalizeSearch(
-            [
-              section.number,
-              section.localized.title,
-              section.localized.body,
-              section.source.title,
-              section.source.body,
-            ].join('\n'),
-          ).includes(needle),
+          useIndexedRuleSearch
+            ? indexedRuleIds.has(section.id)
+            : normalizeSearch(
+                [
+                  section.number,
+                  section.localized.title,
+                  section.localized.body,
+                  section.source.title,
+                  section.source.body,
+                ].join('\n'),
+              ).includes(needle),
         )
         .map((section) => section.id),
     );
@@ -145,7 +178,7 @@ export function OfficialRuleDocumentPage({ documentId }: { documentId: OfficialR
       includeChildren(id);
     }
     return document.sections.filter((section) => visibleIds.has(section.id));
-  }, [document, query]);
+  }, [document, indexedRuleIds, query, useIndexedRuleSearch]);
 
   const visibleSectionGroups = useMemo(() => {
     if (!document) return [];
@@ -225,9 +258,14 @@ export function OfficialRuleDocumentPage({ documentId }: { documentId: OfficialR
             )}
 
             <RulesSearchField
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              onClear={() => setQuery('')}
+              value={searchDraft}
+              onChange={inputBindings.onChange}
+              onCompositionStart={inputBindings.onCompositionStart}
+              onCompositionEnd={inputBindings.onCompositionEnd}
+              onClear={() => {
+                setSearchDraft('');
+                setQuery('');
+              }}
               placeholder={t('officialRules.documentSearchPlaceholder')}
             />
 

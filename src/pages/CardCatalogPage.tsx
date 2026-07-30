@@ -39,6 +39,8 @@ import {
   type Element,
 } from '../game/types';
 import { availableLocales, t, useLocale } from '../i18n';
+import { useDebouncedSearchQuery } from '../hooks/useDebouncedSearchQuery';
+import { useKnowledgeSearchIds } from '../hooks/useKnowledgeSearch';
 import { compareCardIds, sortCardsById } from '../lib/cardOrder';
 import { Alert, AppHeader, Badge, Button, EmptyState, LoadingState, PageShell, SearchInput, Select } from '../ui';
 
@@ -189,6 +191,30 @@ export function CardCatalogPage() {
     : '';
   const requestedPage = Math.max(1, Number.parseInt(searchParams.get('page') || '1', 10) || 1);
   const catalogReturnTo = safeCatalogReturnPath(searchParams.get('from'));
+  const { inputBindings: searchInputBindings } = useDebouncedSearchQuery({
+    value: query,
+    onCommit: (value) => {
+      const cleanValue = value.trim();
+      const nextParams = new URLSearchParams(location.search);
+      if (cleanValue) nextParams.set('q', cleanValue);
+      else nextParams.delete('q');
+      nextParams.delete('page');
+      navigate(
+        { pathname: '/cards', search: nextParams.size > 0 ? `?${nextParams.toString()}` : '', hash: '' },
+        { replace: true },
+      );
+    },
+  });
+  const {
+    ids: cardSearchIds,
+    loading: cardSearchLoading,
+    error: cardSearchError,
+  } = useKnowledgeSearchIds({
+    query,
+    locale,
+    scope: 'card',
+    limit: 500,
+  });
 
   useEffect(() => {
     let active = true;
@@ -252,22 +278,45 @@ export function CardCatalogPage() {
       CARD_DISTRIBUTION_TYPES.filter((value) => cards.some((card) => (card.distributionType || 'standard') === value)),
     [cards],
   );
-  const visibleCards = useMemo(
-    () =>
-      cards.filter(
-        (card) =>
-          (!query || matchesLocalizedCardSearch(card, query, availableLocales)) &&
-          (!element || card.element === element) &&
-          (!type || card.type === type) &&
-          (!pack || card.pack === pack) &&
-          (!rarity || card.rarity === rarity) &&
-          (collectionLoading ||
-            !ownership ||
-            (ownership === 'owned' ? ownedCardIds.has(card.id) : !ownedCardIds.has(card.id))) &&
-          (!distribution || (card.distributionType || 'standard') === distribution),
-      ),
-    [cards, collectionLoading, distribution, element, ownedCardIds, ownership, pack, query, rarity, type],
-  );
+  const cardSearchOrder = useMemo(() => new Map(cardSearchIds.map((id, index) => [id, index])), [cardSearchIds]);
+  const useIndexedCardSearch = Boolean(query) && !cardSearchLoading && !cardSearchError;
+  const visibleCards = useMemo(() => {
+    const filtered = cards.filter(
+      (card) =>
+        (!query ||
+          (useIndexedCardSearch
+            ? cardSearchOrder.has(card.id)
+            : matchesLocalizedCardSearch(card, query, availableLocales))) &&
+        (!element || card.element === element) &&
+        (!type || card.type === type) &&
+        (!pack || card.pack === pack) &&
+        (!rarity || card.rarity === rarity) &&
+        (collectionLoading ||
+          !ownership ||
+          (ownership === 'owned' ? ownedCardIds.has(card.id) : !ownedCardIds.has(card.id))) &&
+        (!distribution || (card.distributionType || 'standard') === distribution),
+    );
+    return useIndexedCardSearch
+      ? filtered.sort(
+          (left, right) =>
+            (cardSearchOrder.get(left.id) ?? Number.MAX_SAFE_INTEGER) -
+            (cardSearchOrder.get(right.id) ?? Number.MAX_SAFE_INTEGER),
+        )
+      : filtered;
+  }, [
+    cardSearchOrder,
+    cards,
+    collectionLoading,
+    distribution,
+    element,
+    ownedCardIds,
+    ownership,
+    pack,
+    query,
+    rarity,
+    type,
+    useIndexedCardSearch,
+  ]);
   const totalPages = Math.max(1, Math.ceil(visibleCards.length / CATALOG_PAGE_SIZE));
   const currentPage = Math.min(requestedPage, totalPages);
   const pageCards = useMemo(
@@ -700,8 +749,7 @@ export function CardCatalogPage() {
             icon={<Search className="size-4 text-content-dim" aria-hidden="true" />}
             aria-label={t('cardCatalog.search')}
             placeholder={t('cardCatalog.search')}
-            value={query}
-            onChange={(event) => updateCatalogParam('q', event.target.value)}
+            {...searchInputBindings}
           />
         </header>
 

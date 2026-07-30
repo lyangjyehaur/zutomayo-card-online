@@ -762,6 +762,7 @@ server4 最終 checkout 三者完全一致；不支援 `--sha` 或 `--manifest`�
 - `REDIS_URL`、三個 runtime 共用的 `REDIS_DB`，以及外部 Redis 的
   `REDIS_PASSWORD`（若 Redis 啟用密碼）。
 - 現有 runtime 所需的 `JWT_SECRET`、`METRICS_TOKEN` 與其他功能設定。
+- `MEILI_MASTER_KEY`（至少 16 字元、建議 `openssl rand -hex 32`）；`MEILI_HOST` 由 Compose 固定為內網 service DNS，不得把 7700 port 發布到公網。
 
 `public/battle` 的 PNG/SVG 是不提交 GitHub 的私有部署素材。執行部署的本機必須保有
 完整素材；受版本控制的 `scripts/battle-assets.sha256` 固定其 22 個檔名與內容雜湊。
@@ -773,9 +774,16 @@ server4 最終 checkout 三者完全一致；不支援 `--sha` 或 `--manifest`�
 並寫入 SHA-256 → checkout `origin/master` → 同步 `APP_BUILD_ID`、`APP_VERSION`、
 `GAME_RULES_VERSION`、`EXPECTED_SCHEMA_MIGRATION=000046_user_card_collection`
 及 migration checksum → 實際檢查三服務 `REDIS_DB` 一致且 Redis
-`maxmemory-policy=noeviction` → 同步並校驗私有 battle 素材 → build →
-`docker compose up --wait` → 透過 SSH tunnel 驗證三服務
-`/health`、`/ready`、build ID，以及 `/battle/chronos.svg`、`/battle/medal.png` 的真實 MIME 與內容。
+`maxmemory-policy=noeviction` → 同步並校驗私有 battle 素材 → build／migration → 發布卡牌、Q&A、勘誤與規則文件 → 啟動內網 Meilisearch → `npm run search:reindex` 原子重建及 `search:check` → `docker compose up --wait` → 透過 SSH tunnel 驗證三服務 `/health`、`/ready`、build ID、卡牌／Q&A／規則搜尋，以及 `/battle/chronos.svg`、`/battle/medal.png` 的真實 MIME 與內容。
+
+本地完整重建與唯讀狀態檢查分別使用：
+
+```bash
+npm run search:reindex
+npm run search:check
+```
+
+Meilisearch volume 是可丟棄的衍生資料，不是備份來源。災難復原以 PostgreSQL 與官方發布資料完成後重新執行 `search:reindex`；不要把搜尋 volume 當作唯一可恢復副本。
 
 `POSTGRES_CONTAINER`（預設 `postgresql`）、`REDIS_CONTAINER`（預設 `redis`）與
 `REMOTE_BACKUP_DIR` 可依 server4 的實際容器名稱或路徑覆寫。部署或健康驗證失敗時腳本會停止並保留現場，修正後直接發布下一版；不會切回舊 `.env`、Compose 或 runtime image。

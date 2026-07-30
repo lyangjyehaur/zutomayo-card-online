@@ -22,7 +22,7 @@ ZUTOMAYO CARD Online 的系統架構文檔。本文說明前端 SPA、boardgame.
 
 ## 1. 系統概觀
 
-系統由四個執行面組成：前端 SPA、boardgame.io 遊戲伺服器（game）、獨立 API 伺服器（api）、Colyseus platform 伺服器（platform）。game、api、platform 共用同一個 PostgreSQL 與 Redis 實例，並以 table 前綴 / Redis DB index 隔離資料。
+系統由四個應用執行面組成：前端 SPA、boardgame.io 遊戲伺服器（game）、獨立 API 伺服器（api）、Colyseus platform 伺服器（platform）。game、api、platform 共用同一個 PostgreSQL 與 Redis 實例，搜尋由內網 Meilisearch 提供衍生索引；PostgreSQL 仍是所有內容的唯一真實來源。
 
 ```text
 ┌──────────────────────────────────────────────────────────┐
@@ -97,6 +97,7 @@ flowchart LR
     Api <-->|Pool| PG
     Platform -->|friend lookup| PG
     Api <-->|佇列 / 限流| Redis
+    Api -->|公開知識搜尋 / 原子重建| Search[(Meilisearch)]
 ```
 
 ---
@@ -290,6 +291,8 @@ boardgame.io 多實例需要**兩個獨立的跨節點層**，兩者職責不同
 | `officialRulingsService.cjs`      | 從 active release snapshot 讀取官方 Q&A／勘誤、公開 release 狀態與翻譯維護     |
 | `officialRulingsAdminService.cjs` | 翻譯覆蓋率、人工複核、來源同步狀態與 audit log                                 |
 | `officialRulingsSource.cjs`       | 官方來源抓取、解析與 fail-closed 差異比較                                      |
+| `knowledgeSearchDocuments.cjs`    | 從 PostgreSQL 建立卡牌、裁定、規則、勘誤與公開牌組的多語公開文件               |
+| `knowledgeSearchService.cjs`      | Meilisearch 查詢、原子索引交換、Redis 重建鎖、快取 fallback 與同步排程         |
 | `observability.cjs`               | pino log、Prometheus metrics、request tracing                                  |
 
 ### 卡牌圖片交付規範
@@ -488,6 +491,17 @@ Redis 同時扮演五種角色，全部透過 `REDIS_DB` 切到獨立 DB index�
 | Presence                   | presence 相關 key              | 線上人數 heartbeat                                |
 
 > **為什麼用 DB index 而非 key prefix**：boardgame.io 內部 channel `MATCH-{matchID}` 與 `@socket.io/redis-adapter` 內部 key 無法從應用碼 prefix，唯有 DB index 能完整隔離。`duplicate()` 出的連線會繼承 `db` 選項。
+
+### Meilisearch（公開衍生索引）
+
+- 單一邏輯索引 `zutomayo_knowledge` 依來源與語言分文件，涵蓋 `card`、`qa`、`rule`、`errata`、`deck`。
+- 瀏覽器只呼叫 `/api/search`、`/api/search/ids` 與 `/api/search/suggest`；Meilisearch 不發布 host port，master key 只注入 API、migration indexer 與服務本身。
+- 完整重建先建立臨時索引、寫入文件與設定，最後用 `swap-indexes` 原子交換；查詢不會看到空索引或半套資料。
+- 卡牌／翻譯／官方內容／牌組發布與審核寫入後會合併觸發重建，另有五分鐘背景對帳；Redis lock 防止多個 API replica 同時重建。
+- 搜尋服務失敗時 `/api/search` 使用短期快取的 PostgreSQL 衍生文件降級。`/health`、`/ready` 不把 Meilisearch 當核心依賴。
+- Meilisearch 命中標記在 API 轉為純文字 UTF-16 區間；前端以 React text node 與 `mark` 渲染，不接收或插入 HTML。
+- 公開索引只補強管理端跨語命中與排序；草稿、待複核翻譯和管理備註仍由授權後台資料搜尋，不寫入公開索引，後台的 ID 搜尋以 `analytics=0` 排除零結果聚合。
+- 零結果查詢經敏感內容過濾後才匿名聚合到 PostgreSQL，保留 90 天；Prometheus label 僅使用 engine、scope 與是否落庫，不含原始查詢。
 
 ### Schema migration（node-pg-migrate）
 

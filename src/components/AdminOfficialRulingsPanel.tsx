@@ -3,6 +3,7 @@ import { Languages, RefreshCw, Save, Sparkles } from 'lucide-react';
 import {
   adminCheckOfficialSources,
   adminGenerateOfficialTranslation,
+  adminGetKnowledgeSearchZeroResults,
   adminGetOfficialSyncStatus,
   adminGetOfficialTranslations,
   adminUpdateOfficialTranslation,
@@ -11,7 +12,10 @@ import {
   type AdminOfficialTranslationCoverage,
   type AdminOfficialTranslationItem,
   type AdminOfficialTranslationStatus,
+  type AdminKnowledgeSearchZeroResult,
 } from '../api/client';
+import { useDebouncedSearchQuery } from '../hooks/useDebouncedSearchQuery';
+import { useKnowledgeSearchIds } from '../hooks/useKnowledgeSearch';
 import {
   Alert,
   Badge,
@@ -81,6 +85,7 @@ export function AdminOfficialRulingsPanel() {
   const [items, setItems] = useState<AdminOfficialTranslationItem[]>([]);
   const [coverage, setCoverage] = useState(EMPTY_COVERAGE);
   const [syncRuns, setSyncRuns] = useState<AdminOfficialSyncRun[]>([]);
+  const [zeroResults, setZeroResults] = useState<AdminKnowledgeSearchZeroResult[]>([]);
   const [selectedId, setSelectedId] = useState('');
   const [draft, setDraft] = useState<Record<string, string>>(draftFor(null));
   const [loading, setLoading] = useState(true);
@@ -88,14 +93,42 @@ export function AdminOfficialRulingsPanel() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const selectedIdRef = useRef(selectedId);
+  const { inputBindings: queryInputBindings } = useDebouncedSearchQuery({ value: query, onCommit: setQuery });
+  const { ids: qaSearchIds } = useKnowledgeSearchIds({
+    query,
+    locale,
+    scope: 'qa',
+    limit: 500,
+    enabled: resourceType === 'all' || resourceType === 'qa',
+    analytics: false,
+  });
+  const { ids: errataSearchIds } = useKnowledgeSearchIds({
+    query,
+    locale,
+    scope: 'errata',
+    limit: 500,
+    enabled: resourceType === 'all' || resourceType === 'errata',
+    analytics: false,
+  });
+  const visibleItems = useMemo(() => {
+    const needle = query.trim().toLocaleLowerCase();
+    if (!needle) return items;
+    const qaIds = new Set(qaSearchIds);
+    const errataIds = new Set(errataSearchIds);
+    return items.filter((item) => {
+      const localMatch = JSON.stringify(item).toLocaleLowerCase().includes(needle);
+      const sourceId = item.resourceType === 'qa' ? String(item.number || '') : item.id;
+      return localMatch || (item.resourceType === 'qa' ? qaIds.has(sourceId) : errataIds.has(sourceId));
+    });
+  }, [errataSearchIds, items, qaSearchIds, query]);
 
   useEffect(() => {
     selectedIdRef.current = selectedId;
   }, [selectedId]);
 
   const selected = useMemo(
-    () => items.find((item) => `${item.resourceType}:${item.id}` === selectedId) || null,
-    [items, selectedId],
+    () => visibleItems.find((item) => `${item.resourceType}:${item.id}` === selectedId) || null,
+    [selectedId, visibleItems],
   );
 
   const refresh = useCallback(async () => {
@@ -103,12 +136,15 @@ export function AdminOfficialRulingsPanel() {
     setError('');
     try {
       const [translations, runs] = await Promise.all([
-        adminGetOfficialTranslations({ locale, resourceType, status, query }),
+        adminGetOfficialTranslations({ locale, resourceType, status, query: '' }),
         adminGetOfficialSyncStatus(),
       ]);
       setItems(translations.items);
       setCoverage(translations.coverage);
       setSyncRuns(runs);
+      void adminGetKnowledgeSearchZeroResults({ limit: 12, days: 30 })
+        .then(setZeroResults)
+        .catch(() => setZeroResults([]));
       const currentId = selectedIdRef.current;
       const currentStillExists = translations.items.some((item) => `${item.resourceType}:${item.id}` === currentId);
       const next = currentStillExists
@@ -121,12 +157,19 @@ export function AdminOfficialRulingsPanel() {
     } finally {
       setLoading(false);
     }
-  }, [locale, query, resourceType, status]);
+  }, [locale, resourceType, status]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void refresh(), 200);
     return () => window.clearTimeout(timer);
   }, [refresh]);
+
+  useEffect(() => {
+    if (visibleItems.some((item) => `${item.resourceType}:${item.id}` === selectedId)) return;
+    const next = visibleItems[0] || null;
+    setSelectedId(next ? `${next.resourceType}:${next.id}` : '');
+    setDraft(draftFor(next));
+  }, [selectedId, visibleItems]);
 
   const selectItem = (item: AdminOfficialTranslationItem) => {
     setSelectedId(`${item.resourceType}:${item.id}`);
@@ -274,9 +317,49 @@ export function AdminOfficialRulingsPanel() {
             </Select>
           </FormField>
           <FormField label="搜尋">
-            <SearchInput value={query} onChange={(event) => setQuery(event.target.value)} placeholder="編號或內容" />
+            <SearchInput {...queryInputBindings} placeholder="編號、內容或跨語術語" />
           </FormField>
         </div>
+      </Panel>
+
+      <Panel size="md" className="grid gap-3">
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <h3 className="font-display text-lg font-bold">搜尋缺口</h3>
+            <p className="mt-1 text-body-sm text-content-muted">最近 30 天沒有結果的匿名聚合查詢。</p>
+          </div>
+          <Badge>{zeroResults.length} 組</Badge>
+        </div>
+        {zeroResults.length === 0 ? (
+          <p className="text-body-sm text-content-dim">目前沒有可分析的零結果查詢。</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[36rem] text-left text-body-sm">
+              <thead className="border-b border-border-soft font-mono text-caption text-content-dim">
+                <tr>
+                  <th className="px-2 py-2 font-medium">查詢</th>
+                  <th className="px-2 py-2 font-medium">語言</th>
+                  <th className="px-2 py-2 font-medium">範圍</th>
+                  <th className="px-2 py-2 text-right font-medium">次數</th>
+                  <th className="px-2 py-2 font-medium">最後出現</th>
+                </tr>
+              </thead>
+              <tbody>
+                {zeroResults.map((item) => (
+                  <tr key={`${item.locale}:${item.scope}:${item.query}`} className="border-b border-border-soft/70">
+                    <td className="max-w-[24rem] break-words px-2 py-2 font-medium text-content-primary">
+                      {item.query}
+                    </td>
+                    <td className="px-2 py-2 font-mono text-caption text-content-muted">{item.locale}</td>
+                    <td className="px-2 py-2 font-mono text-caption text-content-muted">{item.scope}</td>
+                    <td className="px-2 py-2 text-right font-mono text-content-primary">{item.count}</td>
+                    <td className="px-2 py-2 text-content-muted">{new Date(item.lastSeenAt).toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </Panel>
 
       {error && (
@@ -288,13 +371,13 @@ export function AdminOfficialRulingsPanel() {
 
       {loading ? (
         <LoadingState label="載入官方規則翻譯" />
-      ) : items.length === 0 ? (
+      ) : visibleItems.length === 0 ? (
         <EmptyState title="沒有符合條件的內容" />
       ) : (
         <div className="grid min-h-[36rem] gap-4 lg:grid-cols-[20rem_minmax(0,1fr)]">
           <Panel className="min-w-0 overflow-hidden" size="md">
             <div className="grid max-h-[70vh] gap-1 overflow-y-auto">
-              {items.map((item) => {
+              {visibleItems.map((item) => {
                 const active = `${item.resourceType}:${item.id}` === selectedId;
                 return (
                   <button

@@ -41,6 +41,7 @@
 
 - 6 言語 UI：繁体字中国語、広東語、簡体字中国語、日本語、英語、韓国語。
 - デッキエディター、カードメタデータと相性提案を備えたデッキ共有／カード図鑑、ランキング、端末間戦績、プロフィール、OAuth identity、フィードバックボード。
+- カード名／効果／楽曲、公式 Q&A、ルール節、訂正情報、公開デッキを横断する多言語の全体／ページ内全文検索。IME 変換中は検索 request を送信しません。
 - 公式グランドルール／基本フロアルール、日本語 Q&A／訂正情報、多言語閲覧ページ、管理レビュー、公式ソース同期。
 - PWA インストール／更新通知と app、build、rules の 3 層バージョン互換チェック。
 - カード、翻訳、ユーザー、ELO、チャット証拠、制裁、フィードバックの管理画面。
@@ -59,7 +60,8 @@ Browser / PWA
 
 game / api / platform
   ├─ PostgreSQL：永続データ、対局状態、参加者、チャット証拠
-  └─ Redis：Pub/Sub、Colyseus presence/driver、rate limit、一時的な協調
+  ├─ Redis：Pub/Sub、Colyseus presence/driver、rate limit、一時的な協調
+  └─ Meilisearch：PostgreSQL から原子的に再構築する公開知識全文 index
 ```
 
 ### 権威境界
@@ -123,6 +125,7 @@ npm run dev
 | `npm run import:official-rulings-translations` | 未追跡の公式裁定翻訳を PostgreSQL に import                 |
 | `npm run sync:official-rulings`                | 公式 Q&A／訂正情報ソースを読み取り専用で比較                |
 | `npm run translate:official-rulings`           | 不足している公式裁定の派生翻訳を生成                        |
+| `npm run search:reindex` / `search:check`      | 公開知識検索 index を原子的に再構築／検査                   |
 | `npm run smoke`                                | コアゲームフロー smoke                                      |
 | `npm run smoke:api`                            | REST API integration smoke                                  |
 | `npm run smoke:online`                         | boardgame.io オンライン対戦 smoke                           |
@@ -141,7 +144,7 @@ docker compose up -d --build
 docker compose ps
 ```
 
-Compose は `postgres`、`redis`、一度だけ実行する `migrate`、`game`、`api`、`platform` の 6 unit で構成されます。
+Compose は `postgres`、`redis`、内部 `meilisearch`、一度だけ実行する `migrate`、`game`、`api`、`platform` の 7 unit で構成されます。Meilisearch の host port は公開せず、本番環境では独立した `MEILI_MASTER_KEY` が必須です。
 
 さらに `docker-compose.e2e.yml`、`docker-compose.load-test.yml`、port／DB を分離した `docker-compose.staging.yml` を提供します。Production-hardening CD は現在 `codex/deferred-production-hardening` に分離され、staging／production の SSH deploy は検証済み artifact を使って `workflow_dispatch` で明示的に実行します。
 

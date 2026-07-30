@@ -141,6 +141,7 @@ jobs:
           REDIS_URL: rediss://:cd-preflight-redis-password@staging-redis.example.internal:6380
           JWT_SECRET: cd-preflight-jwt-secret-32chars-min
           REDIS_PASSWORD: cd-preflight-redis-password
+          MEILI_MASTER_KEY: cd-preflight-meilisearch-master-key
           METRICS_TOKEN: cd-preflight-metrics-token
           PGSSLMODE: verify-full
           PG_MONITOR_HOST: postgres
@@ -457,6 +458,7 @@ jobs:
       PG_APP_PASSWORD: e2e-test-app-password
       JWT_SECRET: e2e-test-jwt-secret-32chars-min
       REDIS_PASSWORD: ''
+      MEILI_MASTER_KEY: e2e-test-meilisearch-master-key
       METRICS_TOKEN: e2e-test-metrics-token
       PGSSLMODE: disable
     steps:

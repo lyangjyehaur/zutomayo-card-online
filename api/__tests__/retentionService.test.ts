@@ -48,11 +48,13 @@ describe('retention service', () => {
       deckShareReports: 2,
       adminAudit: 2,
       accountTokens: 2,
+      searchZeroResults: 2,
       relationshipOutbox: 2,
     });
     expect(pool.queries.some(({ sql }) => sql.startsWith('UPDATE matches'))).toBe(false);
     expect(pool.queries.some(({ sql }) => sql.startsWith('DELETE FROM chat_reports'))).toBe(false);
     expect(pool.queries.some(({ sql }) => sql.startsWith('DELETE FROM deck_share_reports'))).toBe(false);
+    expect(pool.queries.some(({ sql }) => sql.includes('FROM knowledge_search_zero_results'))).toBe(true);
     expect(pool.queries.some(({ sql }) => sql.includes("status = 'succeeded'"))).toBe(true);
   });
 
@@ -69,6 +71,14 @@ describe('retention service', () => {
     expect(destructiveQueries.find(({ sql }) => sql.includes('admin_audit_log'))?.sql).toContain(
       "a.target_type = 'legal_hold'",
     );
+  });
+
+  it('deletes expired zero-result aggregates in bounded batches', async () => {
+    const pool = createPool();
+    await runRetention({ pool, dryRun: false, runId: 'retention_search_analytics' });
+    const query = pool.queries.find(({ sql }) => sql.includes('DELETE FROM knowledge_search_zero_results'));
+    expect(query?.sql).toContain('FOR UPDATE SKIP LOCKED');
+    expect(query?.params).toHaveLength(2);
   });
 
   it('protects live account-owned evidence even before snapshot reconciliation', async () => {

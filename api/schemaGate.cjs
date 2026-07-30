@@ -12,6 +12,7 @@ const REQUIRED_RUNTIME_TABLES = Object.freeze([
   'matches',
   'cards',
   'user_card_collection',
+  'knowledge_search_zero_results',
   'card_synergy_groups',
   'card_synergy_relations',
   'card_texts_i18n',
@@ -117,6 +118,15 @@ const REQUIRED_RUNTIME_COLUMNS = Object.freeze({
     'updated_at',
   ],
   user_card_collection: ['user_id', 'card_id', 'acquired_at', 'updated_at'],
+  knowledge_search_zero_results: [
+    'id',
+    'normalized_query',
+    'locale',
+    'scope',
+    'occurrence_count',
+    'first_seen_at',
+    'last_seen_at',
+  ],
   card_synergy_groups: [
     'id',
     'primary_category',
@@ -618,6 +628,41 @@ const REQUIRED_RUNTIME_COLUMN_CONTRACTS = Object.freeze([
 // / pg_indexes output after identifier and whitespace normalization.
 const REQUIRED_RUNTIME_CONSTRAINTS = Object.freeze([
   {
+    tableName: 'knowledge_search_zero_results',
+    constraintType: 'p',
+    fragments: ['primary key (id)'],
+  },
+  {
+    tableName: 'knowledge_search_zero_results',
+    constraintName: 'knowledge_search_zero_results_id_check',
+    constraintType: 'c',
+    fragments: ['id ~', '^[0-9a-f]{64}$'],
+  },
+  {
+    tableName: 'knowledge_search_zero_results',
+    constraintName: 'knowledge_search_zero_results_query_check',
+    constraintType: 'c',
+    fragments: ["normalized_query <> ''", 'char_length(normalized_query) <= 120'],
+  },
+  {
+    tableName: 'knowledge_search_zero_results',
+    constraintName: 'knowledge_search_zero_results_locale_check',
+    constraintType: 'c',
+    fragments: ['locale = any', 'zh-tw', 'zh-cn', 'zh-hk', 'ko'],
+  },
+  {
+    tableName: 'knowledge_search_zero_results',
+    constraintName: 'knowledge_search_zero_results_scope_check',
+    constraintType: 'c',
+    fragments: ['scope = any', 'all', 'card', 'qa', 'rule', 'errata', 'deck'],
+  },
+  {
+    tableName: 'knowledge_search_zero_results',
+    constraintName: 'knowledge_search_zero_results_count_check',
+    constraintType: 'c',
+    fragments: ['occurrence_count > 0'],
+  },
+  {
     tableName: 'official_qa_item_revisions',
     constraintType: 'p',
     fragments: ['primary key (qa_id, revision)'],
@@ -732,6 +777,16 @@ const REQUIRED_RUNTIME_CONSTRAINTS = Object.freeze([
 ]);
 
 const REQUIRED_RUNTIME_INDEXES = Object.freeze([
+  {
+    tableName: 'knowledge_search_zero_results',
+    indexName: 'idx_knowledge_search_zero_results_last_seen',
+    fragments: ['last_seen_at desc'],
+  },
+  {
+    tableName: 'knowledge_search_zero_results',
+    indexName: 'idx_knowledge_search_zero_results_popular',
+    fragments: ['occurrence_count desc', 'last_seen_at desc'],
+  },
   {
     tableName: 'official_qa_item_revisions',
     indexName: 'idx_official_qa_item_revisions_content',

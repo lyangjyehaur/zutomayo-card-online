@@ -17,6 +17,15 @@ COPY api/schemaGate.cjs ./api/schemaGate.cjs
 COPY api/deckSharingConfig.cjs ./api/deckSharingConfig.cjs
 COPY api/runtimeSecurityConfig.cjs ./api/runtimeSecurityConfig.cjs
 COPY api/officialRulingsSource.cjs ./api/officialRulingsSource.cjs
+COPY api/knowledgeSearchDocuments.cjs ./api/knowledgeSearchDocuments.cjs
+COPY api/knowledgeSearchService.cjs ./api/knowledgeSearchService.cjs
+COPY api/knowledgeSearchSynonyms.cjs ./api/knowledgeSearchSynonyms.cjs
+COPY api/cardDataService.cjs ./api/cardDataService.cjs
+COPY api/cardOrder.cjs ./api/cardOrder.cjs
+COPY api/officialRulingsService.cjs ./api/officialRulingsService.cjs
+COPY api/officialRuleDocumentsService.cjs ./api/officialRuleDocumentsService.cjs
+COPY api/adminService.cjs ./api/adminService.cjs
+COPY api/observability.cjs ./api/observability.cjs
 COPY api/relationshipEvents.cjs ./api/relationshipEvents.cjs
 COPY api/relationshipOutbox.cjs ./api/relationshipOutbox.cjs
 COPY scripts/db-migrate.cjs ./scripts/db-migrate.cjs
@@ -28,6 +37,7 @@ COPY scripts/link-admin-user.cjs ./scripts/link-admin-user.cjs
 COPY scripts/verify-compose-role-env.mjs ./scripts/verify-compose-role-env.mjs
 COPY scripts/relationship-outbox-pg-smoke.cjs ./scripts/relationship-outbox-pg-smoke.cjs
 COPY scripts/redrive-relationship-outbox.cjs ./scripts/redrive-relationship-outbox.cjs
+COPY scripts/reindex-knowledge-search.cjs ./scripts/reindex-knowledge-search.cjs
 COPY scripts/officialRulingsData.ts ./scripts/officialRulingsData.ts
 COPY scripts/release-official-rulings.ts ./scripts/release-official-rulings.ts
 COPY scripts/release-official-rule-documents.ts ./scripts/release-official-rule-documents.ts

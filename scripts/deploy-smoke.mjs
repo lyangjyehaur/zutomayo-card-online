@@ -230,6 +230,55 @@ if (
 }
 console.log(`smoke ok: official-rulings release=${officialRelease.releaseId}`);
 
+async function waitForKnowledgeSearchStatus() {
+  let lastStatus;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    lastStatus = await requestWithRetry('api', '/api/search/status');
+    if (lastStatus?.enabled && Number(lastStatus?.documentCount) > 0 && lastStatus?.lastSuccessfulSyncAt) {
+      return lastStatus;
+    }
+    if (attempt < attempts) await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+  }
+  throw new Error(`knowledge search index is not ready: ${JSON.stringify(lastStatus)}`);
+}
+await waitForKnowledgeSearchStatus();
+
+async function assertKnowledgeSearch(query, scope, predicate, label) {
+  const params = new URLSearchParams({ q: query, scope, lang: 'ja', limit: '20' });
+  let lastResult;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    lastResult = await requestWithRetry('api', `/api/search?${params}`);
+    if (lastResult?.engine === 'meilisearch' && Array.isArray(lastResult?.hits) && lastResult.hits.some(predicate)) {
+      console.log(`smoke ok: knowledge search ${label}`);
+      return;
+    }
+    if (attempt < attempts) await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+  }
+  throw new Error(`knowledge search ${label} smoke failed: ${JSON.stringify(lastResult)}`);
+}
+
+await assertKnowledgeSearch('2nd_40', 'card', (hit) => hit?.type === 'card' && hit?.sourceId === '2nd_40', 'card');
+
+const qa = await requestWithRetry('api', '/api/official/qa?lang=ja');
+const representativeQa = qa?.items?.[0];
+if (!representativeQa?.number) throw new Error('official Q&A smoke source is empty');
+await assertKnowledgeSearch(
+  String(representativeQa.number),
+  'qa',
+  (hit) => hit?.type === 'qa' && hit?.sourceId === String(representativeQa.number),
+  'Q&A',
+);
+
+const grandRules = await requestWithRetry('api', '/api/official/rules/grand?lang=ja');
+const representativeRule = grandRules?.document?.sections?.[0];
+if (!representativeRule?.id) throw new Error('official Grand Rules smoke source is empty');
+await assertKnowledgeSearch(
+  `grand:${representativeRule.id}`,
+  'rule',
+  (hit) => hit?.type === 'rule' && hit?.sourceId === `grand:${representativeRule.id}`,
+  'rule',
+);
+
 const representativeCard = encodeURI('https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_40.jpg')
   .replace(/@/g, '%40')
   .replace(/\?/g, '%3F')

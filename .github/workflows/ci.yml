@@ -46,6 +46,7 @@ jobs:
           REDIS_URL: rediss://:e2e-test-redis-password@staging-redis.example.internal:6380
           JWT_SECRET: e2e-test-jwt-secret-32chars-min
           REDIS_PASSWORD: e2e-test-redis-password
+          MEILI_MASTER_KEY: e2e-test-meilisearch-master-key
           METRICS_TOKEN: e2e-test-metrics-token
           PGSSLMODE: verify-full
           APP_VERSION: '0.2.0'
@@ -105,6 +106,7 @@ jobs:
       PG_PASSWORD: e2e-test-password
       JWT_SECRET: e2e-test-jwt-secret-32chars-min
       REDIS_PASSWORD: ''
+      MEILI_MASTER_KEY: e2e-test-meilisearch-master-key
       METRICS_TOKEN: e2e-test-metrics-token
       PGSSLMODE: disable
 
