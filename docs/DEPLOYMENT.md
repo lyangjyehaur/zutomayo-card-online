@@ -762,7 +762,15 @@ server4 最終 checkout 三者完全一致；不支援 `--sha` 或 `--manifest`�
 - `REDIS_URL`、三個 runtime 共用的 `REDIS_DB`，以及外部 Redis 的
   `REDIS_PASSWORD`（若 Redis 啟用密碼）。
 - 現有 runtime 所需的 `JWT_SECRET`、`METRICS_TOKEN` 與其他功能設定。
-- `MEILI_MASTER_KEY`（至少 16 字元、建議 `openssl rand -hex 32`）；`MEILI_HOST` 由 Compose 固定為內網 service DNS，不得把 7700 port 發布到公網。
+- `MEILI_MASTER_KEY`（至少 16 字元）；部署器會從 1Panel 管理的既有 `meilisearch` 容器安全同步到應用 `.env`，不在日誌輸出。`MEILI_HOST` 由 Compose 固定為 `http://meilisearch:7700`，不得把 7700 port 發布到公網。
+
+Server4 的 Meilisearch 不由應用 Compose 建立。預設容器名稱為 `meilisearch`、1Panel 應用目錄為
+`/opt/1panel/apps/meilisearch/meilisearch`，兩者可分別以 `MEILI_CONTAINER`、`MEILI_APP_DIR`
+覆寫。部署器會先備份其 `.env`、Compose 與 `config.toml`，要求映像為
+`getmeili/meilisearch:v1.51.0`，再設定 `env = "production"`、`http_addr = "0.0.0.0:7700"`
+及 `no_analytics = true` 後重建該容器。容器必須加入外部 `1panel-network`，主機 port 只能綁定
+`127.0.0.1`；部署器會從同網路的臨時容器驗證 service DNS 與健康端點，索引仍可完全由
+PostgreSQL 重建。
 
 `public/battle` 的 PNG/SVG 是不提交 GitHub 的私有部署素材。執行部署的本機必須保有
 完整素材；受版本控制的 `scripts/battle-assets.sha256` 固定其 22 個檔名與內容雜湊。
@@ -772,9 +780,9 @@ server4 最終 checkout 三者完全一致；不支援 `--sha` 或 `--manifest`�
 
 部署順序固定為：備份 `.env`/Compose → 以 migration role 產生新的 `pg_dump -Fc`
 並寫入 SHA-256 → checkout `origin/master` → 同步 `APP_BUILD_ID`、`APP_VERSION`、
-`GAME_RULES_VERSION`、`EXPECTED_SCHEMA_MIGRATION=000046_user_card_collection`
-及 migration checksum → 實際檢查三服務 `REDIS_DB` 一致且 Redis
-`maxmemory-policy=noeviction` → 同步並校驗私有 battle 素材 → build／migration → 發布卡牌、Q&A、勘誤與規則文件 → 啟動內網 Meilisearch → `npm run search:reindex` 原子重建及 `search:check` → `docker compose up --wait` → 透過 SSH tunnel 驗證三服務 `/health`、`/ready`、build ID、卡牌／Q&A／規則搜尋，以及 `/battle/chronos.svg`、`/battle/medal.png` 的真實 MIME 與內容。
+`GAME_RULES_VERSION`、`EXPECTED_SCHEMA_MIGRATION=000047_knowledge_search_zero_results`
+及 migration checksum → 備份、設定並驗證 1Panel Meilisearch → 實際檢查三服務 `REDIS_DB` 一致且 Redis
+`maxmemory-policy=noeviction` → 同步並校驗私有 battle 素材 → build／migration → 發布卡牌、Q&A、勘誤與規則文件 → `npm run search:reindex` 原子重建及 `search:check` → `docker compose up --wait` → 透過 SSH tunnel 驗證三服務 `/health`、`/ready`、build ID、卡牌／Q&A／規則搜尋，以及 `/battle/chronos.svg`、`/battle/medal.png` 的真實 MIME 與內容。
 
 本地完整重建與唯讀狀態檢查分別使用：
 
