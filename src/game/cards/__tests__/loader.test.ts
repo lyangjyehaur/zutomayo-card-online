@@ -1,5 +1,14 @@
+import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getAllCardDefs, getCardDef, initCards, refreshCards, registerCardDefFallbacks } from '../loader';
+import {
+  getAllCardDefs,
+  getCardDef,
+  getGameConfig,
+  initCards,
+  loadConfigFromAPI,
+  refreshCards,
+  registerCardDefFallbacks,
+} from '../loader';
 import { randomDeck, randomElementDeck } from '../deckBuilder';
 
 describe('card loader', () => {
@@ -13,7 +22,47 @@ describe('card loader', () => {
     vi.unstubAllGlobals();
   });
 
-  it('keeps existing PG-backed cards and does not request a JSON fallback when the API times out', async () => {
+  it('accepts a card response slower than the legacy 2.5 second cutoff', async () => {
+    const slowCard = { id: 'slow_card' } as Parameters<typeof initCards>[0][number];
+    const fetchMock = vi.fn(
+      (_path: string | URL | Request, init?: RequestInit) =>
+        new Promise<Response>((resolve, reject) => {
+          const timer = setTimeout(() => resolve(new Response(JSON.stringify([slowCard]), { status: 200 })), 3_000);
+          init?.signal?.addEventListener('abort', () => {
+            clearTimeout(timer);
+            reject(new DOMException('Aborted', 'AbortError'));
+          });
+        }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const cardsPromise = refreshCards();
+    await vi.advanceTimersByTimeAsync(3_000);
+
+    await expect(cardsPromise).resolves.toEqual([slowCard]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('applies the same resilient policy to game config', async () => {
+    const config = { deck_sharing_enabled: true };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        () =>
+          new Promise<Response>((resolve) => {
+            setTimeout(() => resolve(new Response(JSON.stringify(config), { status: 200 })), 3_000);
+          }),
+      ),
+    );
+
+    const configPromise = loadConfigFromAPI();
+    await vi.advanceTimersByTimeAsync(3_000);
+
+    await expect(configPromise).resolves.toEqual(config);
+    expect(getGameConfig()).toEqual(config);
+  });
+
+  it('retries once before keeping existing PG-backed cards after a timeout', async () => {
     const existingCard = { id: 'existing_card' } as Parameters<typeof initCards>[0][number];
     initCards([existingCard]);
     const fetchMock = vi.fn((path: string | URL | Request, init?: RequestInit) => {
@@ -28,13 +77,22 @@ describe('card loader', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const cardsPromise = refreshCards();
-    await vi.advanceTimersByTimeAsync(3000);
+    await vi.advanceTimersByTimeAsync(30_250);
     const cards = await cardsPromise;
 
     expect(cards).toEqual([existingCard]);
     expect(getCardDef('existing_card')).toEqual(existingCard);
     expect(fetchMock).toHaveBeenCalledWith('/api/cards', expect.objectContaining({ cache: 'no-store' }));
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not let the app boot deadline override the bounded cards and config policy', () => {
+    const appSource = readFileSync(new URL('../../../App.tsx', import.meta.url), 'utf8');
+
+    expect(appSource).toContain('const cards = await refreshCards();');
+    expect(appSource).toContain('loadConfigFromAPI(),');
+    expect(appSource).not.toContain('withBootTimeout(refreshCards())');
+    expect(appSource).not.toContain('withBootTimeout(loadConfigFromAPI())');
   });
 
   it('refuses to build a random deck from an empty card pool', () => {
