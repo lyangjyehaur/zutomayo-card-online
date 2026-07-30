@@ -969,7 +969,7 @@ export const zhTW = {
     '這張卡的名稱是「{name}」。遊戲中存在同名卡，所以識別具體卡牌時還要一起確認收錄包與卡號。',
   'tutorial.chapter.cards.fact.element.title': '屬性',
   'tutorial.chapter.cards.fact.element.body':
-    '卡牌有闇、炎、電氣、風、混沌五種屬性；部分效果會依屬性篩選或計算，不同屬性也有各自常見的數值與玩法傾向。',
+    '卡牌有闇、炎、電、風、混沌五種屬性；部分效果會依屬性篩選或計算，不同屬性也有各自常見的數值與玩法傾向。',
   'tutorial.chapter.cards.fact.element.example':
     '這張卡是「{element}」屬性。屬性會影響部分效果的指定與判定；不同屬性在目前牌池中也有各自常見的數值與玩法傾向。',
   'tutorial.chapter.cards.fact.element.profilesLabel': '五種屬性的常見特色',

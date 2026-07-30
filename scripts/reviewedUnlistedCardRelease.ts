@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { parseEffect } from '../src/game/effects/parser';
-import { rulesTerminologyViolations } from '../src/rulesTerminology';
+import { rulesTerminologySourceViolations, rulesTerminologyViolations } from '../src/rulesTerminology';
 import { CARD_DISTRIBUTION_TYPES, type CardDef } from '../src/game/types';
 
 export const REVIEWED_UNLISTED_SOURCE_NOTE = 'reviewed-unlisted-release:v2';
@@ -99,6 +99,27 @@ const SUPPORTED_RELEASE_ACTIONS = new Set([
 const ELEMENTS = new Set(['闇', '炎', '電気', '風', 'カオス']);
 const CARD_TYPES = new Set(['Character', 'Enchant', 'Area Enchant']);
 const DISTRIBUTION_TYPES = new Set<string>(CARD_DISTRIBUTION_TYPES);
+const CARD_TEXT_PROPER_NAMES: ReadonlyArray<{
+  source: string;
+  translations: Record<ReviewedLang, string>;
+}> = [
+  {
+    source: 'うにぐり',
+    translations: { 'zh-TW': '海膽栗子', 'zh-CN': '海胆栗子', 'zh-HK': '海膽栗子', ko: '우니구리' },
+  },
+  {
+    source: 'にらちゃん',
+    translations: { 'zh-TW': 'NIRA醬', 'zh-CN': 'NIRA酱', 'zh-HK': 'NIRA醬', ko: '니라짱' },
+  },
+  {
+    source: '愛のペガサス',
+    translations: { 'zh-TW': '愛之飛馬', 'zh-CN': '爱之飞马', 'zh-HK': '愛之飛馬', ko: '사랑의 페가수스' },
+  },
+  {
+    source: 'スナネコ',
+    translations: { 'zh-TW': '砂貓', 'zh-CN': '砂猫', 'zh-HK': '砂貓', ko: '스나네코' },
+  },
+];
 
 function readJson<T>(path: string): T {
   return JSON.parse(readFileSync(path, 'utf8')) as T;
@@ -125,6 +146,26 @@ function assertExactIds(label: string, ids: string[], expectedIds: string[]): vo
 
 function assertNonempty(value: string, field: string): void {
   if (typeof value !== 'string' || value.trim() === '') throw new Error(`${field} must be nonempty`);
+}
+
+function cardTextProperNameViolations(
+  lang: ReviewedLang,
+  sourceText: string,
+  translatedText: string,
+  requireExactCount: boolean,
+): string[] {
+  const violations: string[] = [];
+  for (const { source, translations } of CARD_TEXT_PROPER_NAMES) {
+    const sourceCount = sourceText.split(source).length - 1;
+    if (sourceCount === 0) continue;
+
+    const translatedTerm = translations[lang];
+    const translatedCount = translatedText.split(translatedTerm).length - 1;
+    if ((requireExactCount && translatedCount !== sourceCount) || translatedCount < sourceCount) {
+      violations.push(`${source} -> ${translatedTerm}`);
+    }
+  }
+  return violations;
 }
 
 export function buildReviewedUnlistedRelease(
@@ -214,10 +255,24 @@ export function buildReviewedUnlistedRelease(
         throw new Error(`${cardId}/${lang}: unsupported reviewed translation`);
       }
       assertNonempty(translation.name, `${cardId}/${lang}.name`);
+      const cardNameViolations = cardTextProperNameViolations(lang, review.nameJa, translation.name, true);
+      if (cardNameViolations.length > 0) {
+        throw new Error(`${cardId}/${lang}: non-canonical card-name terminology (${cardNameViolations.join(', ')})`);
+      }
       if (review.effectJa) assertNonempty(translation.effect, `${cardId}/${lang}.effect`);
+      const effectProperNameViolations = cardTextProperNameViolations(lang, review.effectJa, translation.effect, false);
+      if (effectProperNameViolations.length > 0) {
+        throw new Error(
+          `${cardId}/${lang}: non-canonical card-effect proper name (${effectProperNameViolations.join(', ')})`,
+        );
+      }
       const terminologyViolations = rulesTerminologyViolations(lang, translation.effect);
       if (terminologyViolations.length > 0) {
         throw new Error(`${cardId}/${lang}: non-canonical rules terminology (${terminologyViolations.join(', ')})`);
+      }
+      const missingCanonicalTerms = rulesTerminologySourceViolations('ja', lang, review.effectJa, translation.effect);
+      if (missingCanonicalTerms.length > 0) {
+        throw new Error(`${cardId}/${lang}: missing canonical rules terminology (${missingCanonicalTerms.join(', ')})`);
       }
     }
 
