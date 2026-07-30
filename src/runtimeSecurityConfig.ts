@@ -49,6 +49,12 @@ export function websocketConnectSources(env: RuntimeEnvironment = process.env): 
   return isProduction(env) ? ['wss:', 'https:'] : ['ws:', 'wss:', 'http:', 'https:'];
 }
 
+export function contentSecurityScriptSources(env: RuntimeEnvironment = process.env): string[] {
+  const sources = ["'self'", "'unsafe-inline'"];
+  if (isProduction(env)) sources.push('https://static.cloudflareinsights.com');
+  return sources;
+}
+
 function isLocalRedisHost(hostname: string): boolean {
   const rawHost = String(hostname || '')
     .replace(/^\[|\]$/g, '')

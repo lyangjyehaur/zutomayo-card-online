@@ -3,7 +3,7 @@ import type { Locale } from './i18n';
 export const LEGAL_OPERATOR = 'ZUTOMAYO CARD ONLINE Community';
 export const LEGAL_CONTACT_EMAIL = 'contact@mail.zutomayocard.online';
 export const OFFICIAL_FAN_GUIDELINE_URL = 'https://zutomayo.net/legal/';
-export const LEGAL_EFFECTIVE_DATE = '2026-07-19';
+export const LEGAL_EFFECTIVE_DATE = '2026-07-30';
 
 export type LegalDocumentId = 'overview' | 'privacy' | 'terms' | 'contact';
 
@@ -98,7 +98,7 @@ const zhTW: LegalLocaleContent = {
         {
           heading: '服務供應與分析',
           paragraphs: [
-            '服務可能使用主機與 CDN、Postgres/Redis、OAuth 或 Logto 登入、Email 寄送、Umami 分析及 Sentry 相容錯誤追蹤。只有玩家選擇或正式環境實際啟用的供應者才會收到必要資料。',
+            '服務可能使用主機與 CDN、Postgres/Redis、OAuth 或 Logto 登入、Email 寄送、Umami、Cloudflare Web Analytics 及 Sentry 相容錯誤追蹤。Cloudflare Web Analytics 用於彙總流量與 Web Vitals；只有玩家選擇或正式環境實際啟用的供應者才會收到必要資料。',
             '分析事件採允許清單，不包含聊天內容、卡牌內容或不必要的原始玩家識別碼。',
           ],
         },
@@ -294,7 +294,7 @@ const en: LegalLocaleContent = {
         {
           heading: 'Providers and analytics',
           paragraphs: [
-            'The service may use hosting/CDN, Postgres/Redis, OAuth or Logto, email delivery, Umami analytics, and Sentry-compatible error tracking. Only providers actually enabled or selected receive necessary data.',
+            'The service may use hosting/CDN, Postgres/Redis, OAuth or Logto, email delivery, Umami, Cloudflare Web Analytics, and Sentry-compatible error tracking. Cloudflare Web Analytics provides aggregate traffic and Web Vitals; only providers actually enabled or selected receive necessary data.',
             'Analytics uses an allowlist and excludes chat content, card content, and unnecessary raw player identifiers.',
           ],
         },

@@ -21,7 +21,7 @@
 
 ## 第三方服務與分析
 
-正式環境可能依實際啟用功能使用主機與 CDN、Postgres/Redis、OAuth 或 Logto、郵件服務、Umami，以及 Sentry 相容錯誤追蹤。只有玩家選擇或正式環境實際啟用的服務會接收提供功能所需的最少資料。
+正式環境可能依實際啟用功能使用主機與 CDN、Postgres/Redis、OAuth 或 Logto、郵件服務、Umami、Cloudflare Web Analytics，以及 Sentry 相容錯誤追蹤。Cloudflare Web Analytics 用於彙總流量與 Web Vitals；只有玩家選擇或正式環境實際啟用的服務會接收提供功能所需的最少資料。
 
 分析事件採明確 allowlist，不得包含聊天內容、卡牌內容或不必要的原始玩家識別碼。事件契約與查詢方式見 [funnel-analytics.md](./funnel-analytics.md)。
 

@@ -164,7 +164,7 @@ flowchart LR
 
 入口：`src/server.ts`。以 boardgame.io 的 `Server({ games, db, transport, origins, authenticateCredentials })` 為核心，外層包 Koa 中間件。
 
-前端分析固定使用同源 `/analytics/script.js` 與 `/analytics/api/send`。Game Server 僅將這兩個端點代理至 runtime `UMAMI_UPSTREAM_URL`，並套用獨立 Redis/IP 限流、請求與回應大小上限及上游逾時；瀏覽器不取得上游地址，Helmet CSP 亦無須放行第三方腳本來源。
+應用漏斗分析固定使用同源 `/analytics/script.js` 與 `/analytics/api/send`。Game Server 僅將這兩個端點代理至 runtime `UMAMI_UPSTREAM_URL`，並套用獨立 Redis/IP 限流、請求與回應大小上限及上游逾時；瀏覽器不取得 Umami 上游地址。Cloudflare 可在 CDN 邊緣注入 Web Analytics beacon 以提供彙總流量與 Web Vitals，Helmet CSP 僅額外放行其固定腳本來源 `https://static.cloudflareinsights.com`。
 
 ### boardgame.io Server 配置
 
