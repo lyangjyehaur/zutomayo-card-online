@@ -17,6 +17,27 @@ function readMigrations(): string {
 }
 
 describe('schema migrations', () => {
+  it('keeps privacy-filtered zero-result analytics aligned with the development fallback', () => {
+    const migration = readRepoFile('migrations/000047_knowledge_search_zero_results.js');
+    const initSchema = readRepoFile('api/server.cjs');
+    const schemaGate = readRepoFile('api/schemaGate.cjs');
+    for (const artifact of [
+      'knowledge_search_zero_results',
+      'normalized_query',
+      'occurrence_count',
+      'first_seen_at',
+      'last_seen_at',
+      'knowledge_search_zero_results_id_check',
+      'knowledge_search_zero_results_count_check',
+      'idx_knowledge_search_zero_results_popular',
+    ]) {
+      expect(migration).toContain(artifact);
+      expect(initSchema).toContain(artifact);
+      expect(schemaGate).toContain(artifact);
+    }
+    expect(migration).toContain('export const down = false');
+  });
+
   it('persists physical card ownership for signed-in users', () => {
     const migration = readRepoFile('migrations/000046_user_card_collection.js');
     const initSchema = readRepoFile('api/server.cjs');

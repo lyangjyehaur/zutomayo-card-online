@@ -46,6 +46,9 @@ const DeckEditorPage = lazy(() =>
 const CardCatalogPage = lazy(() =>
   import('./pages/CardCatalogPage').then((module) => ({ default: module.CardCatalogPage })),
 );
+const KnowledgeSearchPage = lazy(() =>
+  import('./pages/KnowledgeSearchPage').then((module) => ({ default: module.KnowledgeSearchPage })),
+);
 const DeckShareLobbyPage = lazy(() =>
   import('./pages/DeckShareLobbyPage').then((module) => ({ default: module.DeckShareLobbyPage })),
 );
@@ -115,6 +118,7 @@ function isFullscreenRoute(pathname: string): boolean {
     pathname === '/deck-builder' ||
     pathname === '/cards' ||
     pathname.startsWith('/cards/') ||
+    pathname === '/search' ||
     pathname === '/deck-shares' ||
     pathname.startsWith('/deck-shares/') ||
     pathname === '/feedback' ||
@@ -690,6 +694,7 @@ function RouterShell() {
             />
             <Route path="/cards" element={<CardCatalogPage />} />
             <Route path="/cards/:cardId" element={<CardCatalogPage />} />
+            <Route path="/search" element={<KnowledgeSearchPage />} />
             {deckSharingEnabled && <Route path="/deck-shares" element={<DeckShareLobbyPage />} />}
             {deckSharingEnabled && (
               <Route

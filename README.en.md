@@ -41,6 +41,7 @@ Version 0.2.5 expands the reviewed incremental-card pipeline and adds 54 playabl
 
 - Six UI languages: Traditional Chinese, Cantonese, Simplified Chinese, Japanese, English, and Korean.
 - Deck editor, deck sharing and card catalog with card metadata and synergy recommendations, leaderboard, cross-device match history, profile, OAuth identities, and feedback board.
+- Multilingual global and in-page full-text search across card names/effects/songs, official Q&A, rule sections, errata, and public deck shares, with IME-safe request timing.
 - Official Grand Rules, Basic Floor Rules, Japanese Q&A and errata, localized reading pages, and a Refine 5 admin console for review and source synchronization.
 - PWA install/update prompts plus app, build, and rules compatibility checks.
 - Admin tooling for cards, translations, users, ELO, chat evidence, sanctions, and feedback.
@@ -59,7 +60,8 @@ Browser / PWA
 
 game / api / platform
   ├─ PostgreSQL: durable product data, match state, participants, chat evidence
-  └─ Redis: Pub/Sub, Colyseus presence/driver, rate limits, ephemeral coordination
+  ├─ Redis: Pub/Sub, Colyseus presence/driver, rate limits, ephemeral coordination
+  └─ Meilisearch: public knowledge index atomically rebuilt from PostgreSQL
 ```
 
 ### Authority Boundaries
@@ -122,6 +124,7 @@ To run the real boardgame.io server, start Compose's `game` service or run `npm 
 | `npm run db:migrate`                           | Apply PostgreSQL migrations                                                    |
 | `npm run import:official-rulings-translations` | Import untracked official-rulings translations into PostgreSQL                 |
 | `npm run release:official-rulings`             | Atomically release current official sources and five static translations       |
+| `npm run search:reindex` / `search:check`      | Atomically rebuild / verify the public knowledge search index                  |
 | `npm run sync:official-rulings`                | Read-only comparison of the official Q&A and errata sources                    |
 | `npm run translate:official-rulings`           | Generate missing derived official-rulings translations                         |
 | `npm run smoke`                                | Core game-flow smoke test                                                      |
@@ -142,7 +145,7 @@ docker compose up -d --build
 docker compose ps
 ```
 
-Compose contains six units: `postgres`, `redis`, one-shot `migrate`, `game`, `api`, and `platform`.
+Compose contains seven units: `postgres`, `redis`, internal `meilisearch`, one-shot `migrate`, `game`, `api`, and `platform`. Meilisearch publishes no host port; production must set an independent `MEILI_MASTER_KEY`.
 
 The repository also provides `docker-compose.e2e.yml`, `docker-compose.load-test.yml`, and an isolated-port/database `docker-compose.staging.yml`. Production-hardening CD is currently isolated on `codex/deferred-production-hardening`; staging and production SSH deployment is explicitly triggered with `workflow_dispatch` using verified artifacts.
 

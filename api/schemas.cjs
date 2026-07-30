@@ -97,9 +97,62 @@ const deckShareListQuerySchema = z
   .object({
     sort: z.enum(['newest', 'popular', 'most-copied']).optional(),
     q: z.string().trim().max(120).optional(),
+    lang: z.enum(['ja', 'zh-TW', 'zh-CN', 'zh-HK', 'en', 'ko']).optional(),
     element: z.enum(['闇', '炎', '電気', '風', 'カオス']).optional(),
     cursor: z.string().max(512).optional(),
     limit: z.coerce.number().int().min(1).max(48).optional(),
+  })
+  .strict();
+
+const knowledgeSearchQuerySchema = z
+  .object({
+    q: z.string().trim().max(240).default(''),
+    scope: z.string().trim().max(80).optional(),
+    lang: z.enum(['ja', 'zh-TW', 'zh-CN', 'zh-HK', 'en', 'ko']).optional(),
+    pack: z.string().trim().max(120).optional(),
+    rarity: z.string().trim().max(16).optional(),
+    element: z.string().trim().max(32).optional(),
+    cardType: z.string().trim().max(32).optional(),
+    distributionType: z.string().trim().max(32).optional(),
+    documentId: z.enum(['grand', 'floor']).optional(),
+    tag: z.string().trim().max(120).optional(),
+    cardId: z.string().trim().max(120).optional(),
+    limit: z.coerce.number().int().min(1).max(100).optional(),
+    offset: z.coerce.number().int().min(0).max(10000).optional(),
+  })
+  .strict();
+
+const knowledgeSearchIdsQuerySchema = z
+  .object({
+    q: z.string().trim().min(1).max(240),
+    scope: z.enum(['card', 'qa', 'rule', 'errata']),
+    lang: z.enum(['ja', 'zh-TW', 'zh-CN', 'zh-HK', 'en', 'ko']).optional(),
+    pack: z.string().trim().max(120).optional(),
+    rarity: z.string().trim().max(16).optional(),
+    element: z.string().trim().max(32).optional(),
+    cardType: z.string().trim().max(32).optional(),
+    distributionType: z.string().trim().max(32).optional(),
+    documentId: z.enum(['grand', 'floor']).optional(),
+    tag: z.string().trim().max(120).optional(),
+    cardId: z.string().trim().max(120).optional(),
+    limit: z.coerce.number().int().min(1).max(500).optional(),
+    analytics: z.enum(['0', '1']).optional(),
+  })
+  .strict();
+
+const knowledgeSearchSuggestQuerySchema = z
+  .object({
+    q: z.string().trim().min(1).max(120),
+    scope: z.string().trim().max(80).optional(),
+    lang: z.enum(['ja', 'zh-TW', 'zh-CN', 'zh-HK', 'en', 'ko']).optional(),
+    limit: z.coerce.number().int().min(1).max(8).optional(),
+  })
+  .strict();
+
+const adminKnowledgeSearchZeroResultsQuerySchema = z
+  .object({
+    limit: z.coerce.number().int().min(1).max(200).optional(),
+    days: z.coerce.number().int().min(1).max(90).optional(),
   })
   .strict();
 
@@ -452,6 +505,10 @@ module.exports = {
   deckShareCreateSchema,
   deckShareUpdateSchema,
   deckShareListQuerySchema,
+  knowledgeSearchQuerySchema,
+  knowledgeSearchIdsQuerySchema,
+  knowledgeSearchSuggestQuerySchema,
+  adminKnowledgeSearchZeroResultsQuerySchema,
   deckShareCopySchema,
   deckShareReportCreateSchema,
   adminDeckShareReportListSchema,

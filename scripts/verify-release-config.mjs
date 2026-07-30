@@ -4,7 +4,7 @@ import path from 'node:path';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SERVER4_COMPOSE = 'docker-compose.server4.yml';
-const SERVER4_SERVICES = Object.freeze(['migrate', 'game', 'api', 'platform']);
+const SERVER4_SERVICES = Object.freeze(['migrate', 'meilisearch', 'game', 'api', 'platform']);
 const SERVER4_RUNTIME_SERVICES = Object.freeze(['game', 'api', 'platform']);
 
 function read(relativePath) {
@@ -101,11 +101,20 @@ function assertRuntimeEnvironmentInventory() {
     'CHAT_TRANSLATION_PROVIDER',
     'CHAT_TRANSLATION_MODEL',
     'CHAT_TRANSLATION_TIMEOUT_MS',
+    'MEILI_MASTER_KEY',
+    'MEILI_INDEX_UID',
+    'MEILI_TIMEOUT_MS',
+    'SEARCH_REINDEX_INTERVAL_MS',
+    'SEARCH_REINDEX_DEBOUNCE_MS',
+    'SEARCH_FALLBACK_CACHE_MS',
   ];
   for (const variable of requiredApiVariables) {
     if (!api.includes(`${variable}=\${${variable}`)) {
       throw new Error(`${SERVER4_COMPOSE} API runtime must explicitly map ${variable}`);
     }
+  }
+  if (!api.includes('MEILI_HOST=http://meilisearch:7700')) {
+    throw new Error(`${SERVER4_COMPOSE} API runtime must use the internal Meilisearch service`);
   }
   for (const serviceName of SERVER4_RUNTIME_SERVICES) {
     const block = serviceBlock(SERVER4_COMPOSE, serviceName);
@@ -155,7 +164,6 @@ function assertServer4BetaCompose() {
     '${API_IMAGE:?',
     '${PLATFORM_IMAGE:?',
     '${MIGRATE_IMAGE:?',
-    '@sha256:',
   ];
   for (const input of forbiddenMaturityInputs) {
     if (compose.includes(input)) throw new Error(`${SERVER4_COMPOSE} beta path must not require ${input}`);
@@ -171,8 +179,25 @@ function assertServer4BetaCompose() {
     'REQUIRE_APP_ROLE_GATE=true',
     'REQUIRE_ROLE_MATRIX_GATE=false',
     'DATABASE_URL=',
+    'MEILI_HOST=http://meilisearch:7700',
+    'MEILI_MASTER_KEY=${MEILI_MASTER_KEY:?',
   ]) {
     if (!migrate.includes(fragment)) throw new Error(`${SERVER4_COMPOSE} migrate is missing ${fragment}`);
+  }
+
+  const meilisearch = serviceBlock(SERVER4_COMPOSE, 'meilisearch');
+  for (const fragment of [
+    'getmeili/meilisearch:v1.51.0@sha256:a9eb29ee09ab4943db3b4c68620bd6f3382e6b2b0ac4431c0e607b48dbcd4c14',
+    'MEILI_ENV=production',
+    'MEILI_NO_ANALYTICS=true',
+    'MEILI_MASTER_KEY=${MEILI_MASTER_KEY:?',
+    'meili-data:/meili_data',
+    'healthcheck:',
+  ]) {
+    if (!meilisearch.includes(fragment)) throw new Error(`${SERVER4_COMPOSE} meilisearch is missing ${fragment}`);
+  }
+  if (meilisearch.includes('ports:')) {
+    throw new Error(`${SERVER4_COMPOSE} must not publish the Meilisearch port`);
   }
 
   for (const serviceName of SERVER4_RUNTIME_SERVICES) {
@@ -246,6 +271,10 @@ function assertServer4DeployScript() {
     'release_official_rulings',
     'release-official-rulings.ts',
     '--translations=-',
+    'MEILI_MASTER_KEY',
+    'meilisearch',
+    'npm run search:reindex',
+    'npm run search:check',
   ];
   for (const fragment of requiredFragments) {
     if (!deploy.includes(fragment)) throw new Error(`${relativePath} is missing beta safety step: ${fragment}`);
@@ -280,6 +309,7 @@ function assertWorkflowContract() {
     'PG_MIGRATION_PASSWORD:',
     'PG_APP_USER:',
     'PG_APP_PASSWORD:',
+    'MEILI_MASTER_KEY:',
     'docker compose -f docker-compose.server4.yml config --no-env-resolution --quiet',
     'npm run release:config',
   ]) {

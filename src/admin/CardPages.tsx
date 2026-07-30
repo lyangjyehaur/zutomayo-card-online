@@ -8,6 +8,9 @@ import { z } from 'zod';
 import { adminUpdateCardI18n, fetchCardTextsI18n, type AdminCardTextUpdate } from '../api/client';
 import { CARD_DISTRIBUTION_TYPES, type CardDef } from '../game/types';
 import { CardImage } from '../components/CardImage';
+import { useDebouncedSearchQuery } from '../hooks/useDebouncedSearchQuery';
+import { useKnowledgeSearchIds } from '../hooks/useKnowledgeSearch';
+import { useLocale } from '../i18n';
 import { Alert, Badge, Button, EmptyState, FormField, Input, LoadingState, Select, Textarea } from '../ui';
 
 const elements = ['闇', '炎', '電気', '風', 'カオス'] as const;
@@ -149,27 +152,47 @@ function statusTone(status: string): 'jade' | 'gold' | 'vermilion' | 'neutral' {
 export function CardListPage() {
   const { query } = useList<CardDef>({ resource: 'cards', pagination: { mode: 'off' } });
   const { create, edit } = useNavigation();
+  const locale = useLocale();
   const [search, setSearch] = useState('');
   const [publication, setPublication] = useState('all');
   const [playStatus, setPlayStatus] = useState('all');
   const [catalogStatus, setCatalogStatus] = useState('all');
   const [distribution, setDistribution] = useState('all');
+  const { inputBindings: searchInputBindings } = useDebouncedSearchQuery({ value: search, onCommit: setSearch });
+  const { ids: publicSearchIds } = useKnowledgeSearchIds({
+    query: search,
+    locale,
+    scope: 'card',
+    limit: 500,
+    analytics: false,
+  });
   const cards = useMemo(() => query.data?.data ?? [], [query.data?.data]);
+  const publicSearchOrder = useMemo(() => new Map(publicSearchIds.map((id, index) => [id, index])), [publicSearchIds]);
   const filtered = useMemo(() => {
     const needle = search.trim().toLocaleLowerCase();
-    return cards.filter((card) => {
+    const matches = cards.filter((card) => {
       if (publication !== 'all' && card.publicationStatus !== publication) return false;
       if (playStatus !== 'all' && card.playStatus !== playStatus) return false;
       if (catalogStatus !== 'all' && card.catalogStatus !== catalogStatus) return false;
       if (distribution !== 'all' && card.distributionType !== distribution) return false;
-      return (
-        !needle ||
-        [card.id, card.name, card.enNameOfficial, card.pack, card.song].some((value) =>
-          value?.toLocaleLowerCase().includes(needle),
-        )
-      );
+      const localMatch = [
+        card.id,
+        card.name,
+        card.enNameOfficial,
+        card.pack,
+        card.song,
+        card.effect,
+        card.enEffectOfficial,
+      ].some((value) => value?.toLocaleLowerCase().includes(needle));
+      return !needle || localMatch || publicSearchOrder.has(card.id);
     });
-  }, [cards, catalogStatus, distribution, playStatus, publication, search]);
+    if (!needle || publicSearchOrder.size === 0) return matches;
+    return matches.sort(
+      (left, right) =>
+        (publicSearchOrder.get(left.id) ?? Number.MAX_SAFE_INTEGER) -
+        (publicSearchOrder.get(right.id) ?? Number.MAX_SAFE_INTEGER),
+    );
+  }, [cards, catalogStatus, distribution, playStatus, publication, publicSearchOrder, search]);
 
   return (
     <section className="admin-resource-page">
@@ -184,12 +207,7 @@ export function CardListPage() {
         </Button>
       </header>
       <div className="admin-status-filters">
-        <Input
-          aria-label="搜尋卡牌"
-          placeholder="搜尋 ID、卡名、歌曲或系列"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-        />
+        <Input aria-label="搜尋卡牌" placeholder="搜尋 ID、卡名、歌曲或系列" {...searchInputBindings} />
         <Select aria-label="發布狀態" value={publication} onChange={(event) => setPublication(event.target.value)}>
           <option value="all">全部發布狀態</option>
           {publicationStatuses.map((value) => (

@@ -239,6 +239,8 @@ verify_remote_runtime_config() {
     : \"\${PG_APP_USER:?PG_APP_USER is required}\"
     : \"\${PG_APP_PASSWORD:?PG_APP_PASSWORD is required}\"
     : \"\${REDIS_URL:?REDIS_URL is required}\"
+    : \"\${MEILI_MASTER_KEY:?MEILI_MASTER_KEY is required}\"
+    test \"\${#MEILI_MASTER_KEY}\" -ge 16 || { echo 'MEILI_MASTER_KEY must contain at least 16 characters' >&2; exit 1; }
     test \"\${PGSSLMODE:-}\" = verify-full || { echo 'PGSSLMODE must be verify-full' >&2; exit 1; }
     test -r \"\${PG_CA_FILE:?PG_CA_FILE is required}\" || { echo 'PG_CA_FILE is not readable' >&2; exit 1; }
     docker compose -f '$COMPOSE_FILE' config --quiet
@@ -274,6 +276,19 @@ remote_build_and_migrate() {
     cd '$REMOTE_DIR'
     docker compose -f '$COMPOSE_FILE' build --pull migrate game api platform
     docker compose -f '$COMPOSE_FILE' run --rm migrate"
+}
+
+remote_start_search() {
+  ssh_run "set -euo pipefail
+    cd '$REMOTE_DIR'
+    docker compose -f '$COMPOSE_FILE' up -d --wait --wait-timeout '$DEPLOY_WAIT_SECONDS' meilisearch"
+}
+
+reindex_knowledge_search() {
+  ssh_run "set -euo pipefail
+    cd '$REMOTE_DIR'
+    docker compose -f '$COMPOSE_FILE' run --rm migrate npm run search:reindex
+    docker compose -f '$COMPOSE_FILE' run --rm migrate npm run search:check"
 }
 
 release_official_rulings() {
@@ -372,6 +387,7 @@ if [[ "$DRY_RUN" == true ]]; then
   log "[dry-run] would stream and atomically activate the translated official rule documents"
   log "[dry-run] would stream and transactionally import reviewed card-derived effects"
   log "[dry-run] would stream and transactionally publish reviewed unlisted cards"
+  log "[dry-run] would atomically rebuild and verify the Meilisearch knowledge index"
   log "[dry-run] would synchronize and verify $BATTLE_ASSET_COUNT private battle assets"
   exit 0
 fi
@@ -398,6 +414,10 @@ log 'synchronizing and atomically activating current official Q&A, errata, and f
 release_official_rulings || die 'official-rulings release gate failed; the running release was not replaced'
 log 'synchronizing and atomically activating Grand Rules and Floor Rules in five reviewed locales'
 release_official_rule_documents || die 'official rule documents release gate failed; the running release was not replaced'
+log 'starting the internal Meilisearch service'
+remote_start_search || die 'Meilisearch failed to become healthy; the running application release was not replaced'
+log 'atomically rebuilding and verifying the public knowledge search index'
+reindex_knowledge_search || die 'knowledge search reindex failed; the running application release was not replaced'
 remote_start || die 'deployment failed; inspect the server4 Compose logs before retrying'
 
 run_smoke "$TARGET_SHA" || die 'health verification failed; inspect the deployed release before retrying'

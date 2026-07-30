@@ -366,6 +366,72 @@ describe('server routes', () => {
     mockRedisMget.mockResolvedValue([]);
   });
 
+  describe('knowledge search', () => {
+    it('serves compact public suggestions without exposing the search backend', async () => {
+      const res = await sendRequest('GET', '/api/search/suggest?q=Chronos&scope=card&lang=zh-TW&limit=8');
+      expect(res.statusCode).toBe(200);
+      expect(res.headers['cache-control']).toBe('private, max-age=15');
+      expect(parseBody(res)).toMatchObject({ suggestions: [], engine: 'postgres-fallback' });
+    });
+
+    it('lets authorized internal screens opt out of zero-result aggregation', async () => {
+      const res = await sendRequest('GET', '/api/search/ids?q=review-note&scope=card&analytics=0');
+      expect(res.statusCode).toBe(200);
+      expect(parseBody(res)).toMatchObject({ ids: [], estimatedTotalHits: 0, engine: 'postgres-fallback' });
+      expect(mockQuery).not.toHaveBeenCalledWith(
+        expect.stringContaining('INSERT INTO knowledge_search_zero_results'),
+        expect.anything(),
+      );
+    });
+
+    it('aggregates privacy-filtered public zero-result searches', async () => {
+      const res = await sendRequest('GET', '/api/search/ids?q=missing-card&scope=card');
+      expect(res.statusCode).toBe(200);
+      await vi.waitFor(() =>
+        expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO knowledge_search_zero_results'), [
+          expect.stringMatching(/^[a-f0-9]{64}$/),
+          'missing-card',
+          'zh-TW',
+          'card',
+        ]),
+      );
+    });
+
+    it('protects and serves the administrator zero-result report', async () => {
+      const unauthorized = await sendRequest('GET', '/api/admin/search/zero-results');
+      expect(unauthorized.statusCode).toBe(401);
+
+      mockQuery.mockImplementation(async (sql: string) => {
+        if (sql.includes('FROM knowledge_search_zero_results')) {
+          return {
+            rows: [
+              {
+                normalized_query: 'chronos',
+                locale: 'zh-TW',
+                scope: 'all',
+                occurrence_count: '3',
+                first_seen_at: '2026-07-01T00:00:00.000Z',
+                last_seen_at: '2026-07-30T00:00:00.000Z',
+              },
+            ],
+            rowCount: 1,
+          };
+        }
+        return { rows: [], rowCount: 0 };
+      });
+      const authorized = await sendRequest(
+        'GET',
+        '/api/admin/search/zero-results?limit=12&days=30',
+        undefined,
+        adminHeaders(),
+      );
+      expect(authorized.statusCode).toBe(200);
+      expect(parseBody(authorized)).toMatchObject({
+        items: [{ query: 'chronos', locale: 'zh-TW', scope: 'all', count: 3 }],
+      });
+    });
+  });
+
   describe('official rulings', () => {
     it('serves the localized public Q&A list with cache headers', async () => {
       mockQuery.mockImplementation(async (sql: string, params?: unknown[]) => {

@@ -20,6 +20,8 @@ import {
 import { t, useLocale } from '../i18n';
 import { officialQaTagOptionIsSelected, officialQaTagOptions } from '../lib/officialQaTags';
 import { filterAndSortOfficialQa, type OfficialQaSort } from '../lib/officialRulesView';
+import { useDebouncedSearchQuery } from '../hooks/useDebouncedSearchQuery';
+import { useKnowledgeSearchIds } from '../hooks/useKnowledgeSearch';
 import { Alert, AppHeader, Button, EmptyState, LoadingState, PageShell, Select, Tag } from '../ui';
 
 const PAGE_SIZE = 18;
@@ -36,6 +38,35 @@ export function OfficialQaPage() {
   const selectedTag = searchParams.get('tag') ?? '';
   const cardId = searchParams.get('cardId') ?? '';
   const sort: OfficialQaSort = searchParams.get('sort') === 'latest' ? 'latest' : 'official';
+  const {
+    draft: searchDraft,
+    setDraft: setSearchDraft,
+    inputBindings,
+  } = useDebouncedSearchQuery({
+    value: query,
+    onCommit: (value) => {
+      setSearchParams(
+        (current) => {
+          const next = new URLSearchParams(current);
+          if (value) next.set('query', value);
+          else next.delete('query');
+          return next;
+        },
+        { replace: true },
+      );
+    },
+  });
+  const {
+    ids: qaSearchIds,
+    loading: qaSearchLoading,
+    error: qaSearchError,
+  } = useKnowledgeSearchIds({
+    query,
+    locale,
+    scope: 'qa',
+    limit: 500,
+    filters: { tag: selectedTag || undefined, cardId: cardId || undefined },
+  });
 
   useEffect(() => {
     let active = true;
@@ -61,10 +92,19 @@ export function OfficialQaPage() {
     () => new Map(tags.map((tag) => [tag.id, items.filter((item) => item.tagIds.includes(tag.id)).length] as const)),
     [items, tags],
   );
-  const visibleItems = useMemo(
-    () => filterAndSortOfficialQa(items, { query, tag: selectedTag, cardId, locale, sort }),
-    [cardId, items, locale, query, selectedTag, sort],
-  );
+  const qaSearchOrder = useMemo(() => new Set(qaSearchIds), [qaSearchIds]);
+  const useIndexedQaSearch = Boolean(query) && !qaSearchLoading && !qaSearchError;
+  const visibleItems = useMemo(() => {
+    const filtered = filterAndSortOfficialQa(items, {
+      query: useIndexedQaSearch ? '' : query,
+      tag: selectedTag,
+      cardId,
+      locale,
+      sort,
+    });
+    if (!useIndexedQaSearch) return filtered;
+    return filtered.filter((item) => qaSearchOrder.has(String(item.number)));
+  }, [cardId, items, locale, qaSearchOrder, query, selectedTag, sort, useIndexedQaSearch]);
   const listKey = `${query}\n${selectedTag}\n${cardId}\n${sort}\n${locale}`;
   const visibleLimit = pageState.key === listKey ? pageState.limit : PAGE_SIZE;
   const pagedItems = visibleItems.slice(0, visibleLimit);
@@ -101,9 +141,14 @@ export function OfficialQaPage() {
             </p>
           </div>
           <RulesSearchField
-            value={query}
-            onChange={(event) => updateParam('query', event.target.value)}
-            onClear={() => updateParam('query', '')}
+            value={searchDraft}
+            onChange={inputBindings.onChange}
+            onCompositionStart={inputBindings.onCompositionStart}
+            onCompositionEnd={inputBindings.onCompositionEnd}
+            onClear={() => {
+              setSearchDraft('');
+              updateParam('query', '');
+            }}
             placeholder={t('officialRules.searchPlaceholder')}
           />
         </header>

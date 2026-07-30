@@ -296,6 +296,75 @@ Public responses use five-minute cache headers, stale-while-revalidate, and cont
 
 Grand Rules and Floor Rules are stored as versioned PostgreSQL documents and ordered sections. The public document endpoint returns Japanese source text beside the requested reviewed translation, section hierarchy, source page numbers, the official PDF URL, and the PDF SHA-256 fingerprint. Structural chapter and section headings may have an empty body; content-bearing sections preserve the complete source text. Grand Rules translations retain the exact numbered-rule sequence, while Floor Rules translations retain every ordered list, bullet, note, and numbered procedural step from the Japanese source.
 
+## Knowledge Search / 統一全文搜尋
+
+### `GET /api/search`
+
+Searches public cards, official Q&A, Grand/Floor Rules sections, errata, and public deck shares. PostgreSQL remains the source of truth; the API queries the internal Meilisearch index and transparently uses a cached PostgreSQL-derived substring search when the index is unavailable.
+
+Query parameters:
+
+| Parameter          | Contract                                                                                   |
+| ------------------ | ------------------------------------------------------------------------------------------ |
+| `q`                | Search text, up to 240 characters. An empty query returns no hits.                         |
+| `scope`            | `all` or a comma-separated allowlist of `card`, `qa`, `rule`, `errata`, and `deck`.        |
+| `lang`             | `ja`, `zh-TW`, `zh-CN`, `zh-HK`, `en`, or `ko`; defaults to `zh-TW`.                       |
+| `limit`, `offset`  | `limit` is 1–100; `offset` is 0–10,000.                                                    |
+| structured filters | `pack`, `rarity`, `element`, `cardType`, `distributionType`, `documentId`, `tag`, `cardId` |
+
+Example:
+
+```http
+GET /api/search?q=Chronos&scope=card,qa&lang=zh-TW&limit=24&offset=0
+```
+
+Response:
+
+```json
+{
+  "hits": [
+    {
+      "uid": "card__4th_106__zh-TW",
+      "type": "card",
+      "sourceId": "4th_106",
+      "title": "海膽栗子",
+      "titleHighlights": [{ "start": 0, "end": 2 }],
+      "snippet": "將 Chronos 回溯一格。",
+      "snippetHighlights": [{ "start": 2, "end": 9 }],
+      "url": "/cards/4th_106",
+      "relatedCardIds": ["4th_106"]
+    }
+  ],
+  "estimatedTotalHits": 1,
+  "limit": 24,
+  "offset": 0,
+  "processingTimeMs": 2,
+  "engine": "meilisearch"
+}
+```
+
+`engine` is diagnostic and is either `meilisearch` or `postgres-fallback`. Deck-share page searches use a larger, server-only candidate window, then reapply PostgreSQL publication, moderation, visibility, block, element, cursor, and sort checks before returning any share.
+
+`titleHighlights` and `snippetHighlights` are zero-based UTF-16 text ranges (`start` inclusive, `end` exclusive). The API removes Meilisearch markers before responding. Clients must render the returned plain text and ranges as text nodes; they must not interpret either value as HTML.
+
+### `GET /api/search/suggest`
+
+Returns up to eight compact autocomplete suggestions from the same public index and PostgreSQL fallback. It accepts `q` (required, 1–120 characters), optional `scope`/`lang`, and `limit` (1–8). Each suggestion contains only `uid`, `type`, `sourceId`, `title`, `titleHighlights`, `subtitle`, and `url`; private or administrative fields are never returned.
+
+### `GET /api/search/ids`
+
+Page-local filtering uses this reduced-payload endpoint. It requires exactly one non-deck `scope`, accepts the same structured filters, limits results to 500 public source IDs, and returns `{ ids, estimatedTotalHits, engine }`. The full result endpoint remains capped at 100. Authorized administrative screens set `analytics=0` so searches over drafts or review notes are never included in public zero-result aggregation; public page searches default to analytics enabled.
+
+### `GET /api/search/status`
+
+Returns index enablement, logical index UID, last successful sync, public document count, last sync error, and fallback readiness. It never returns the Meilisearch host or master key.
+
+The index includes only published/reviewed card text, active official content, and `public + published + visible` deck shares. Private/unlisted decks, pending translations, ownership data, and administrative notes are excluded.
+
+### `GET /api/admin/search/zero-results`
+
+Requires an administrator session with `audit:read`. Returns privacy-filtered zero-result query aggregates ordered by count, with `limit` 1–200 and `days` 1–90. The aggregate stores no user ID, IP, or request ID. Queries resembling email addresses, URLs, credentials/tokens, secrets, or values longer than 120 characters increment only a low-cardinality Prometheus counter and are not stored in plaintext.
+
 ## Matches / 對戰
 
 ### `POST /api/matches`

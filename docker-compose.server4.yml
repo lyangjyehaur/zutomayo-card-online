@@ -22,12 +22,31 @@ services:
       - DATABASE_URL=
       - EXPECTED_SCHEMA_MIGRATION=${EXPECTED_SCHEMA_MIGRATION:?Set EXPECTED_SCHEMA_MIGRATION to the release migration basename}
       - EXPECTED_SCHEMA_CHECKSUM=${EXPECTED_SCHEMA_CHECKSUM:?Set EXPECTED_SCHEMA_CHECKSUM to the release migration SHA-256}
+      - MEILI_HOST=http://meilisearch:7700
+      - MEILI_MASTER_KEY=${MEILI_MASTER_KEY:?Set a strong MEILI_MASTER_KEY in .env}
+      - MEILI_INDEX_UID=${MEILI_INDEX_UID:-zutomayo_knowledge}
     networks:
       - default
       - 1panel-network
     volumes:
       - ${PG_CA_FILE:?Set PG_CA_FILE to the mounted PostgreSQL CA}:/run/secrets/zutomayo-service-ca.crt:ro
     restart: 'no'
+
+  meilisearch:
+    image: getmeili/meilisearch:v1.51.0@sha256:a9eb29ee09ab4943db3b4c68620bd6f3382e6b2b0ac4431c0e607b48dbcd4c14
+    env_file: .env
+    environment:
+      - MEILI_ENV=production
+      - MEILI_NO_ANALYTICS=true
+      - MEILI_MASTER_KEY=${MEILI_MASTER_KEY:?Set a strong MEILI_MASTER_KEY in .env}
+    volumes:
+      - meili-data:/meili_data
+    healthcheck:
+      test: ['CMD-SHELL', 'curl --fail --silent http://localhost:7700/health >/dev/null || exit 1']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
 
   game:
     image: ghcr.io/${GHCR_OWNER:-lyangjyehaur}/zutomayo-card-online-game:${TAG:-latest}
@@ -201,6 +220,13 @@ services:
       - TRANSLATION_PROVIDER=${TRANSLATION_PROVIDER:-}
       - TRANSLATION_MODEL=${TRANSLATION_MODEL:-}
       - TRANSLATION_TIMEOUT_MS=${TRANSLATION_TIMEOUT_MS:-10000}
+      - MEILI_HOST=http://meilisearch:7700
+      - MEILI_MASTER_KEY=${MEILI_MASTER_KEY:?Set a strong MEILI_MASTER_KEY in .env}
+      - MEILI_INDEX_UID=${MEILI_INDEX_UID:-zutomayo_knowledge}
+      - MEILI_TIMEOUT_MS=${MEILI_TIMEOUT_MS:-2500}
+      - SEARCH_REINDEX_INTERVAL_MS=${SEARCH_REINDEX_INTERVAL_MS:-300000}
+      - SEARCH_REINDEX_DEBOUNCE_MS=${SEARCH_REINDEX_DEBOUNCE_MS:-2000}
+      - SEARCH_FALLBACK_CACHE_MS=${SEARCH_FALLBACK_CACHE_MS:-60000}
       - CHAT_BLOCKED_WORDS=${CHAT_BLOCKED_WORDS:-}
       - CHAT_REVIEW_WORDS=${CHAT_REVIEW_WORDS:-}
       - SENTRY_DSN=${SENTRY_DSN:-}
@@ -308,3 +334,6 @@ services:
 networks:
   1panel-network:
     external: true
+
+volumes:
+  meili-data:

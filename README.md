@@ -41,6 +41,7 @@
 
 - 六語 UI：繁中、粵語、簡中、日文、英文、韓文。
 - 牌組編輯器、帶有卡牌中繼資料與搭配推薦的卡組分享／圖鑑、排行榜、跨裝置戰績、個人頁、OAuth 身份與反饋看板。
+- 全站與頁面內的多語全文搜尋，涵蓋卡牌名稱／效果／歌名、官方 Q&A、規則章節、勘誤與公開牌組；IME 組字期間不送請求。
 - 官方 Grand Rules／基本 Floor Rules、日文 Q&A／勘誤、在地化閱讀頁面，以及人工校訂與來源同步後台。
 - PWA 安裝／更新提示與 app、build、rules 三層版本相容檢查。
 - Refine 5 管理後台，統一維護卡牌／限定卡、翻譯、使用者、ELO、聊天證據、處分、公告與官方裁定。
@@ -59,7 +60,8 @@ Browser / PWA
 
 game / api / platform
   ├─ PostgreSQL：持久資料、對局狀態、參與者與聊天證據
-  └─ Redis：Pub/Sub、Colyseus presence/driver、限流與暫態協調
+  ├─ Redis：Pub/Sub、Colyseus presence/driver、限流與暫態協調
+  └─ Meilisearch：由 PostgreSQL 原子重建的公開知識全文索引
 ```
 
 ### 權威邊界
@@ -122,6 +124,7 @@ npm run dev
 | `npm run db:migrate`                           | 套用 PostgreSQL migrations                                  |
 | `npm run import:official-rulings-translations` | 從本機未追蹤來源匯入官方裁定翻譯至 PostgreSQL               |
 | `npm run release:official-rulings`             | 原子發布最新官方日文與五語靜態翻譯                          |
+| `npm run search:reindex` / `search:check`      | 原子重建／檢查公開知識搜尋索引                              |
 | `npm run sync:official-rulings`                | 唯讀檢查官方 Q&A／勘誤是否有差異                            |
 | `npm run translate:official-rulings`           | 產生缺少的官方規則衍生語言翻譯                              |
 | `npm run smoke`                                | 核心遊戲流程 smoke                                          |
@@ -142,7 +145,7 @@ docker compose up -d --build
 docker compose ps
 ```
 
-Compose 包含六個單元：`postgres`、`redis`、一次性的 `migrate`、`game`、`api` 與 `platform`。
+Compose 包含七個單元：`postgres`、`redis`、內網 `meilisearch`、一次性的 `migrate`、`game`、`api` 與 `platform`。Meilisearch 不發布 host port；正式環境必須設定獨立的 `MEILI_MASTER_KEY`。
 
 另提供 `docker-compose.e2e.yml`、`docker-compose.load-test.yml` 與隔離 port／資料庫的 `docker-compose.staging.yml`。Production-hardening CD 目前隔離在 `codex/deferred-production-hardening`；staging／production SSH 部署由 `workflow_dispatch` 以已驗證 artifacts 明確觸發。
 

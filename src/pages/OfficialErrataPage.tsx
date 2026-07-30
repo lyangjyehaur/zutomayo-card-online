@@ -10,6 +10,8 @@ import {
   TranslationStatusBadge,
 } from '../components/rules/OfficialRulesComponents';
 import { t, useLocale } from '../i18n';
+import { useDebouncedSearchQuery } from '../hooks/useDebouncedSearchQuery';
+import { useKnowledgeSearchIds } from '../hooks/useKnowledgeSearch';
 import { filterOfficialErrata, officialErrataPacks, type OfficialErrataChangeFilter } from '../lib/officialRulesView';
 import { Alert, AppHeader, Badge, Button, EmptyState, LoadingState, PageShell, Select } from '../ui';
 
@@ -25,6 +27,35 @@ export function OfficialErrataPage() {
   const change: OfficialErrataChangeFilter =
     requestedChange === 'name' || requestedChange === 'effect' ? requestedChange : 'all';
   const pack = searchParams.get('pack') ?? '';
+  const {
+    draft: searchDraft,
+    setDraft: setSearchDraft,
+    inputBindings,
+  } = useDebouncedSearchQuery({
+    value: query,
+    onCommit: (value) => {
+      setSearchParams(
+        (current) => {
+          const next = new URLSearchParams(current);
+          if (value) next.set('query', value);
+          else next.delete('query');
+          return next;
+        },
+        { replace: true },
+      );
+    },
+  });
+  const {
+    ids: errataSearchIds,
+    loading: errataSearchLoading,
+    error: errataSearchError,
+  } = useKnowledgeSearchIds({
+    query,
+    locale,
+    scope: 'errata',
+    limit: 500,
+    filters: { pack: pack || undefined },
+  });
 
   useEffect(() => {
     let active = true;
@@ -46,10 +77,24 @@ export function OfficialErrataPage() {
   }, [locale]);
 
   const packs = useMemo(() => officialErrataPacks(items), [items]);
-  const visibleItems = useMemo(
-    () => filterOfficialErrata(items, { query, change, pack, locale }),
-    [change, items, locale, pack, query],
-  );
+  const errataSearchOrder = useMemo(() => new Map(errataSearchIds.map((id, index) => [id, index])), [errataSearchIds]);
+  const useIndexedErrataSearch = Boolean(query) && !errataSearchLoading && !errataSearchError;
+  const visibleItems = useMemo(() => {
+    const filtered = filterOfficialErrata(items, {
+      query: useIndexedErrataSearch ? '' : query,
+      change,
+      pack,
+      locale,
+    });
+    if (!useIndexedErrataSearch) return filtered;
+    return filtered
+      .filter((item) => errataSearchOrder.has(item.errataId))
+      .sort(
+        (left, right) =>
+          (errataSearchOrder.get(left.errataId) ?? Number.MAX_SAFE_INTEGER) -
+          (errataSearchOrder.get(right.errataId) ?? Number.MAX_SAFE_INTEGER),
+      );
+  }, [change, errataSearchOrder, items, locale, pack, query, useIndexedErrataSearch]);
   const hasFilters = Boolean(query || pack || change !== 'all');
 
   const updateParam = (key: string, value: string) => {
@@ -83,9 +128,14 @@ export function OfficialErrataPage() {
             </p>
           </div>
           <RulesSearchField
-            value={query}
-            onChange={(event) => updateParam('query', event.target.value)}
-            onClear={() => updateParam('query', '')}
+            value={searchDraft}
+            onChange={inputBindings.onChange}
+            onCompositionStart={inputBindings.onCompositionStart}
+            onCompositionEnd={inputBindings.onCompositionEnd}
+            onClear={() => {
+              setSearchDraft('');
+              updateParam('query', '');
+            }}
             placeholder={t('officialRules.errataSearchPlaceholder')}
           />
         </header>

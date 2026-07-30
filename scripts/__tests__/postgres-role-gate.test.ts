@@ -104,7 +104,9 @@ describe('PostgreSQL runtime role gate', () => {
     expect(APPLICATION_TABLES).toContain('official_rule_sections');
     expect(APPLICATION_TABLES).toContain('official_rule_section_translations');
     expect(APPLICATION_TABLES).toContain('official_rule_active_versions');
+    expect(APPLICATION_TABLES).toContain('knowledge_search_zero_results');
     expect(REQUIRED_RUNTIME_TABLES).toContain('official_rulings_sync_runs');
+    expect(REQUIRED_RUNTIME_TABLES).toContain('knowledge_search_zero_results');
   });
 
   it('quotes identifiers and rejects empty role names', () => {
@@ -135,6 +137,13 @@ describe('PostgreSQL runtime role gate', () => {
       'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public."user_card_collection" TO "z_api"',
     );
     expect(statements).toContain('GRANT SELECT ON TABLE public."user_card_collection" TO "z_backup"');
+    expect(statements).toContain(
+      'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public."knowledge_search_zero_results" TO "z_api"',
+    );
+    expect(statements).toContain(
+      'GRANT SELECT, DELETE ON TABLE public."knowledge_search_zero_results" TO "z_retention"',
+    );
+    expect(statements).toContain('GRANT SELECT ON TABLE public."knowledge_search_zero_results" TO "z_backup"');
     expect(statements).toContain('GRANT SELECT ON TABLE public."card_texts_i18n" TO "z_game"');
     expect(statements).toContain('GRANT SELECT ON TABLE public."card_official_errata" TO "z_game"');
     expect(statements).toContain('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public."official_qa_items" TO "z_api"');

@@ -98,6 +98,8 @@ describe('production schema gate', () => {
     expect(REQUIRED_RUNTIME_TABLES).toContain('official_rule_sections');
     expect(REQUIRED_RUNTIME_TABLES).toContain('official_rule_section_translations');
     expect(REQUIRED_RUNTIME_TABLES).toContain('official_rule_active_versions');
+    expect(REQUIRED_RUNTIME_TABLES).toContain('knowledge_search_zero_results');
+    expect(REQUIRED_RUNTIME_COLUMNS.knowledge_search_zero_results).toContain('normalized_query');
     expect(REQUIRED_RUNTIME_COLUMNS.cards).toContain('en_name_official');
     expect(REQUIRED_RUNTIME_COLUMNS.cards).toContain('has_official_errata');
     expect(REQUIRED_RUNTIME_COLUMNS.card_texts_i18n).toContain('review_status');

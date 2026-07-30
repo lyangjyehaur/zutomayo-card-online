@@ -80,6 +80,13 @@ const {
   relationshipOutboxProcessedTotal,
   relationshipOutboxMetricsLastSuccess,
   relationshipOutboxMetricsRefreshSuccess,
+  knowledgeSearchDocuments,
+  knowledgeSearchDuration,
+  knowledgeSearchLastSuccess,
+  knowledgeSearchQueriesTotal,
+  knowledgeSearchSuggestionsTotal,
+  knowledgeSearchSyncTotal,
+  knowledgeSearchZeroResultsTotal,
 } = require('./observability.cjs');
 const { validateBody } = require('./validate.cjs');
 const S = require('./schemas.cjs');
@@ -196,6 +203,16 @@ const {
   upsertOfficialQaTranslation,
 } = require('./officialRulingsService.cjs');
 const { getPublicRuleDocument } = require('./officialRuleDocumentsService.cjs');
+const {
+  createKnowledgeSearchService,
+  parseKnowledgeSearchScopes,
+  validateKnowledgeSearchConfig,
+} = require('./knowledgeSearchService.cjs');
+const {
+  listZeroResults: listKnowledgeSearchZeroResults,
+  recordZeroResult: recordKnowledgeSearchZeroResult,
+  zeroResultScope,
+} = require('./knowledgeSearchAnalytics.cjs');
 const {
   checkOfficialSources,
   generateOfficialTranslation,
@@ -347,6 +364,7 @@ if (process.env.SENTRY_DSN) {
 
 // 安全性驗證：JWT_SECRET 必須在生產環境設定
 function validateSecurityConfig() {
+  validateKnowledgeSearchConfig(process.env);
   if (!JWT_SECRET) {
     logger.fatal('JWT_SECRET environment variable is required');
     logger.fatal('Generate secrets with: openssl rand -hex 32');
@@ -422,6 +440,34 @@ const redis = new Redis(REDIS_URL, {
 // 連線層錯誤（如 Redis 暫時斷線）不應變成 unhandled error event；
 // query 層錯誤仍會 reject promise 由各 handler 的 safe() 接住。
 redis.on('error', () => {});
+
+const knowledgeSearch = createKnowledgeSearchService({
+  pool,
+  redis,
+  env: process.env,
+  logger,
+  onSync: (result, details) => {
+    knowledgeSearchSyncTotal.labels(result).inc();
+    knowledgeSearchDocuments.set(details.documentCount || 0);
+    if (result === 'success') knowledgeSearchLastSuccess.set(Date.now() / 1000);
+  },
+});
+
+function refreshKnowledgeSearchAfter(result) {
+  if (result?.ok) knowledgeSearch.scheduleReindex();
+  return result;
+}
+
+function recordKnowledgeSearchOutcome(params, result) {
+  if (result.estimatedTotalHits > 0 || !String(params.query || '').trim()) return;
+  const scope = zeroResultScope(params.scopes);
+  void recordKnowledgeSearchZeroResult(pool, params)
+    .then(({ stored }) => knowledgeSearchZeroResultsTotal.labels(result.engine, scope, String(stored)).inc())
+    .catch((error) => {
+      knowledgeSearchZeroResultsTotal.labels(result.engine, scope, 'false').inc();
+      logger.warn({ err: error }, 'Knowledge search zero-result aggregation failed');
+    });
+}
 
 const relationshipOutboxWorker = createRelationshipOutboxWorker({
   pool,
@@ -673,6 +719,28 @@ async function initSchema() {
     )`,
     `CREATE INDEX IF NOT EXISTS idx_user_card_collection_user_updated
       ON user_card_collection(user_id, updated_at DESC)`,
+
+    `CREATE TABLE IF NOT EXISTS knowledge_search_zero_results (
+      id TEXT PRIMARY KEY,
+      normalized_query TEXT NOT NULL,
+      locale TEXT NOT NULL,
+      scope TEXT NOT NULL,
+      occurrence_count BIGINT NOT NULL DEFAULT 1,
+      first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CONSTRAINT knowledge_search_zero_results_query_check
+        CHECK (normalized_query <> '' AND char_length(normalized_query) <= 120),
+      CONSTRAINT knowledge_search_zero_results_id_check CHECK (id ~ '^[0-9a-f]{64}$'),
+      CONSTRAINT knowledge_search_zero_results_locale_check
+        CHECK (locale IN ('ja', 'zh-TW', 'zh-CN', 'zh-HK', 'en', 'ko')),
+      CONSTRAINT knowledge_search_zero_results_scope_check
+        CHECK (scope IN ('all', 'card', 'qa', 'rule', 'errata', 'deck')),
+      CONSTRAINT knowledge_search_zero_results_count_check CHECK (occurrence_count > 0)
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_knowledge_search_zero_results_last_seen
+      ON knowledge_search_zero_results(last_seen_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_knowledge_search_zero_results_popular
+      ON knowledge_search_zero_results(occurrence_count DESC, last_seen_at DESC)`,
 
     `CREATE TABLE IF NOT EXISTS card_synergy_groups (
       id TEXT PRIMARY KEY,
@@ -3952,6 +4020,94 @@ function handleRequest(req, res) {
       return;
     }
 
+    if (pathname === '/api/search/status' && method === 'GET') {
+      res.setHeader('Cache-Control', 'no-store');
+      json(knowledgeSearch.status());
+      return;
+    }
+
+    if (pathname === '/api/search/suggest' && method === 'GET') {
+      const parsed = validateBody(S.knowledgeSearchSuggestQuerySchema, Object.fromEntries(url.searchParams.entries()));
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      const scopes = parseKnowledgeSearchScopes(parsed.data.scope);
+      if (scopes === null) return json({ error: 'Invalid search scope' }, 400);
+      res.setHeader('Cache-Control', 'private, max-age=15');
+      const result = await knowledgeSearch.suggest({
+        query: parsed.data.q,
+        scopes,
+        locale: parsed.data.lang || 'zh-TW',
+        limit: parsed.data.limit || 8,
+      });
+      knowledgeSearchSuggestionsTotal.labels(result.engine).inc();
+      json(result);
+      return;
+    }
+
+    if (pathname === '/api/search/ids' && method === 'GET') {
+      const parsed = validateBody(S.knowledgeSearchIdsQuerySchema, Object.fromEntries(url.searchParams.entries()));
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      res.setHeader('Cache-Control', 'no-store');
+      const searchStartedAt = process.hrtime.bigint();
+      const result = await knowledgeSearch.search({
+        query: parsed.data.q,
+        scopes: [parsed.data.scope],
+        locale: parsed.data.lang || 'zh-TW',
+        pack: parsed.data.pack || '',
+        rarity: parsed.data.rarity || '',
+        element: parsed.data.element || '',
+        cardType: parsed.data.cardType || '',
+        distributionType: parsed.data.distributionType || '',
+        documentId: parsed.data.documentId || '',
+        tag: parsed.data.tag || '',
+        cardId: parsed.data.cardId || '',
+        limit: parsed.data.limit || 500,
+        offset: 0,
+      });
+      knowledgeSearchQueriesTotal.labels(result.engine).inc();
+      knowledgeSearchDuration.labels(result.engine).observe(Number(process.hrtime.bigint() - searchStartedAt) / 1e9);
+      if (parsed.data.analytics !== '0') {
+        recordKnowledgeSearchOutcome(
+          { query: parsed.data.q, locale: parsed.data.lang || 'zh-TW', scopes: [parsed.data.scope] },
+          result,
+        );
+      }
+      json({
+        ids: result.hits.map((hit) => hit.sourceId),
+        estimatedTotalHits: result.estimatedTotalHits,
+        engine: result.engine,
+      });
+      return;
+    }
+
+    if (pathname === '/api/search' && method === 'GET') {
+      const parsed = validateBody(S.knowledgeSearchQuerySchema, Object.fromEntries(url.searchParams.entries()));
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      const scopes = parseKnowledgeSearchScopes(parsed.data.scope);
+      if (scopes === null) return json({ error: 'Invalid search scope' }, 400);
+      res.setHeader('Cache-Control', 'no-store');
+      const searchStartedAt = process.hrtime.bigint();
+      const result = await knowledgeSearch.search({
+        query: parsed.data.q,
+        scopes,
+        locale: parsed.data.lang || 'zh-TW',
+        pack: parsed.data.pack || '',
+        rarity: parsed.data.rarity || '',
+        element: parsed.data.element || '',
+        cardType: parsed.data.cardType || '',
+        distributionType: parsed.data.distributionType || '',
+        documentId: parsed.data.documentId || '',
+        tag: parsed.data.tag || '',
+        cardId: parsed.data.cardId || '',
+        limit: parsed.data.limit || 24,
+        offset: parsed.data.offset || 0,
+      });
+      knowledgeSearchQueriesTotal.labels(result.engine).inc();
+      knowledgeSearchDuration.labels(result.engine).observe(Number(process.hrtime.bigint() - searchStartedAt) / 1e9);
+      recordKnowledgeSearchOutcome({ query: parsed.data.q, locale: parsed.data.lang || 'zh-TW', scopes }, result);
+      json(result);
+      return;
+    }
+
     if (pathname === '/api/oauth/providers' && method === 'GET') {
       json({
         authMode: AUTH_MODE,
@@ -4748,13 +4904,25 @@ function handleRequest(req, res) {
       const parsed = validateBody(S.deckShareListQuerySchema, {
         sort: url.searchParams.get('sort') || undefined,
         q: url.searchParams.get('q') || undefined,
+        lang: url.searchParams.get('lang') || undefined,
         element: url.searchParams.get('element') || undefined,
         cursor: url.searchParams.get('cursor') || undefined,
         limit: url.searchParams.get('limit') || undefined,
       });
       if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
       const viewerUserId = await getAuthUserId(req);
-      serviceJson(await listDeckShares(pool, viewerUserId, parsed.data));
+      let searchIds;
+      if (parsed.data.q) {
+        const candidates = await knowledgeSearch.search({
+          query: parsed.data.q,
+          scopes: ['deck'],
+          locale: parsed.data.lang || 'zh-TW',
+          limit: 500,
+          offset: 0,
+        });
+        searchIds = candidates.hits.map((hit) => hit.sourceId);
+      }
+      serviceJson(await listDeckShares(pool, viewerUserId, { ...parsed.data, searchIds }));
       return;
     }
 
@@ -4765,7 +4933,9 @@ function handleRequest(req, res) {
       const parsed = validateBody(S.deckShareCreateSchema, body);
       if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
       serviceJson(
-        await publishDeckShare(pool, userId, parsed.data.deckId, parsed.data.visibility, GAME_RULES_VERSION),
+        refreshKnowledgeSearchAfter(
+          await publishDeckShare(pool, userId, parsed.data.deckId, parsed.data.visibility, GAME_RULES_VERSION),
+        ),
         201,
       );
       return;
@@ -4790,14 +4960,18 @@ function handleRequest(req, res) {
       const body = await readBody(32 * 1024);
       const parsed = validateBody(S.deckShareUpdateSchema, body);
       if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
-      serviceJson(await updateDeckShare(pool, userId, publicDeckShareRoute[1], parsed.data, GAME_RULES_VERSION));
+      serviceJson(
+        refreshKnowledgeSearchAfter(
+          await updateDeckShare(pool, userId, publicDeckShareRoute[1], parsed.data, GAME_RULES_VERSION),
+        ),
+      );
       return;
     }
 
     if (publicDeckShareRoute && method === 'DELETE') {
       const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
-      serviceJson(await unpublishDeckShare(pool, userId, publicDeckShareRoute[1]));
+      serviceJson(refreshKnowledgeSearchAfter(await unpublishDeckShare(pool, userId, publicDeckShareRoute[1])));
       return;
     }
 
@@ -5279,6 +5453,18 @@ function handleRequest(req, res) {
       return;
     }
 
+    if (pathname === '/api/admin/search/zero-results' && method === 'GET') {
+      if (!(await authorizeAdmin(req, 'audit:read'))) return json({ error: 'Unauthorized' }, 401);
+      const parsed = validateBody(
+        S.adminKnowledgeSearchZeroResultsQuerySchema,
+        Object.fromEntries(url.searchParams.entries()),
+      );
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      res.setHeader('Cache-Control', 'no-store');
+      json({ items: await listKnowledgeSearchZeroResults(pool, parsed.data) });
+      return;
+    }
+
     // Admin：使用者列表
     if (pathname === '/api/admin/users' && method === 'GET') {
       const admin = await authorizeAdmin(req, 'users:read');
@@ -5561,15 +5747,17 @@ function handleRequest(req, res) {
         reviewerUserId: admin.adminUserId,
       };
       serviceJson(
-        resourceType === 'qa'
-          ? await upsertOfficialQaTranslation({
-              ...shared,
-              qaId: decodeURIComponent(adminOfficialTranslationWriteRoute[2]),
-            })
-          : await upsertOfficialErrataTranslation({
-              ...shared,
-              errataId: decodeURIComponent(adminOfficialTranslationWriteRoute[2]),
-            }),
+        refreshKnowledgeSearchAfter(
+          resourceType === 'qa'
+            ? await upsertOfficialQaTranslation({
+                ...shared,
+                qaId: decodeURIComponent(adminOfficialTranslationWriteRoute[2]),
+              })
+            : await upsertOfficialErrataTranslation({
+                ...shared,
+                errataId: decodeURIComponent(adminOfficialTranslationWriteRoute[2]),
+              }),
+        ),
       );
       return;
     }
@@ -5584,12 +5772,14 @@ function handleRequest(req, res) {
       const parsed = validateBody(S.officialQaTranslationWriteSchema, body);
       if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
       serviceJson(
-        await upsertOfficialQaTranslation({
-          pool,
-          qaId: decodeURIComponent(adminOfficialQaTranslationRoute[1]),
-          body: { ...parsed.data, locale: decodeURIComponent(adminOfficialQaTranslationRoute[2]) },
-          reviewerUserId: admin.adminUserId,
-        }),
+        refreshKnowledgeSearchAfter(
+          await upsertOfficialQaTranslation({
+            pool,
+            qaId: decodeURIComponent(adminOfficialQaTranslationRoute[1]),
+            body: { ...parsed.data, locale: decodeURIComponent(adminOfficialQaTranslationRoute[2]) },
+            reviewerUserId: admin.adminUserId,
+          }),
+        ),
       );
       return;
     }
@@ -5604,12 +5794,14 @@ function handleRequest(req, res) {
       const parsed = validateBody(S.officialErrataTranslationWriteSchema, body);
       if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
       serviceJson(
-        await upsertOfficialErrataTranslation({
-          pool,
-          errataId: adminOfficialErrataTranslationRoute[1],
-          body: { ...parsed.data, locale: decodeURIComponent(adminOfficialErrataTranslationRoute[2]) },
-          reviewerUserId: admin.adminUserId,
-        }),
+        refreshKnowledgeSearchAfter(
+          await upsertOfficialErrataTranslation({
+            pool,
+            errataId: adminOfficialErrataTranslationRoute[1],
+            body: { ...parsed.data, locale: decodeURIComponent(adminOfficialErrataTranslationRoute[2]) },
+            reviewerUserId: admin.adminUserId,
+          }),
+        ),
       );
       return;
     }
@@ -5756,7 +5948,11 @@ function handleRequest(req, res) {
       const body = await readBody(32 * 1024);
       const parsed = validateBody(S.adminDeckShareModerationSchema, body);
       if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
-      serviceJson(await moderateDeckShare(pool, admin.adminUserId, adminDeckShareModerationRoute[1], parsed.data));
+      serviceJson(
+        refreshKnowledgeSearchAfter(
+          await moderateDeckShare(pool, admin.adminUserId, adminDeckShareModerationRoute[1], parsed.data),
+        ),
+      );
       return;
     }
 
@@ -5824,6 +6020,7 @@ function handleRequest(req, res) {
     // Admin: no-op reload signal for clients that refetch card data after edits.
     if (pathname === '/api/admin/cards/reload' && method === 'POST') {
       if (!(await authorizeAdmin(req, 'cards:write'))) return json({ error: 'Unauthorized' }, 401);
+      knowledgeSearch.scheduleReindex();
       json({ ok: true });
       return;
     }
@@ -5889,6 +6086,7 @@ function handleRequest(req, res) {
       const cardId = decodeURIComponent(adminCardI18nRoute[1]);
       const result = await upsertCardI18n(pool, cardId, await readBody(), admin.adminUserId);
       if (!result.ok) return json({ error: result.error }, result.status);
+      knowledgeSearch.scheduleReindex();
       json(result.body);
       return;
     }
@@ -5900,6 +6098,7 @@ function handleRequest(req, res) {
       const cardId = decodeURIComponent(adminCardRoute[1]);
       const result = await upsertCard(pool, cardId, await readBody(), admin.adminUserId);
       if (!result.ok) return json({ error: result.error }, result.status);
+      knowledgeSearch.scheduleReindex();
       json(result.body);
       return;
     }
@@ -5911,6 +6110,7 @@ function handleRequest(req, res) {
       const key = decodeURIComponent(adminConfigRoute[1]);
       const result = await upsertGameConfig(pool, key, await readBody(), admin.adminUserId);
       if (!result.ok) return json({ error: result.error }, result.status);
+      knowledgeSearch.scheduleReindex();
       json(result.body);
       return;
     }
@@ -6277,6 +6477,7 @@ const server = http.createServer(handleRequest);
 
 async function closeDatabase() {
   stopAccountDeletionRecovery();
+  knowledgeSearch.stop();
   await relationshipOutboxWorker.stop();
   await pool.end();
   await redis.quit();
@@ -6304,6 +6505,7 @@ if (require.main === module) {
       if (schemaInitError) throw schemaInitError;
       server.listen(PORT, () => {
         relationshipOutboxWorker.start();
+        knowledgeSearch.start();
         startAccountDeletionRecovery();
         logger.info({ port: PORT }, 'Zutomayo API server running');
       });

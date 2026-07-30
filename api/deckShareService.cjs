@@ -617,8 +617,16 @@ async function listDeckShares(pool, viewerUserId, query = {}) {
   }
   const search = typeof query.q === 'string' ? query.q.trim().slice(0, 120) : '';
   if (search) {
-    values.push(`%${search}%`);
-    conditions.push(`(ds.name ILIKE $${values.length} OR owner.nickname ILIKE $${values.length})`);
+    if (Array.isArray(query.searchIds)) {
+      if (query.searchIds.length === 0) conditions.push('FALSE');
+      else {
+        values.push(query.searchIds);
+        conditions.push(`ds.id = ANY($${values.length}::text[])`);
+      }
+    } else {
+      values.push(`%${search}%`);
+      conditions.push(`(ds.name ILIKE $${values.length} OR owner.nickname ILIKE $${values.length})`);
+    }
   }
   const element = typeof query.element === 'string' ? query.element.trim() : '';
   if (element) {
