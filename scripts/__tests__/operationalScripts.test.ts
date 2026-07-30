@@ -103,6 +103,19 @@ describe('operational shell scripts', () => {
     expect(deploy).toContain('CARD_UNLISTED_RELEASE_SOURCE');
     expect(deploy).toContain('release-reviewed-unlisted-cards.ts');
     expect(deploy).toContain('audit-reviewed-unlisted-cards.ts');
+    expect(deploy).toContain('prepare_external_meilisearch');
+    expect(deploy).toContain("docker inspect '$MEILI_CONTAINER'");
+    expect(deploy).toContain('docker compose up -d --force-recreate meilisearch');
+    expect(deploy).toContain('1Panel Meilisearch key does not match the running container');
+    expect(deploy).toContain('external Meilisearch master key changed during recreation');
+    expect(deploy).toContain('1panel-network');
+    expect(deploy).toContain('no_analytics = true');
+    expect(deploy).toContain("sed -i 's/^env = .*/env =");
+    expect(deploy).toContain('host_binding');
+    expect(deploy).toContain('127.0.0.1');
+    expect(compose).toContain('MEILI_HOST=http://meilisearch:7700');
+    expect(compose).not.toMatch(/^ {2}meilisearch:/m);
+    expect(compose).not.toContain('meili-data');
     expect(deploy.indexOf('release_reviewed_unlisted_cards ||')).toBeLessThan(
       deploy.indexOf('release_card_derived_effects ||'),
     );

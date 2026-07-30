@@ -17,6 +17,9 @@ REMOTE_DIR="${REMOTE_DIR:-/opt/zutomayo-card-online}"
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.server4.yml}"
 POSTGRES_CONTAINER="${POSTGRES_CONTAINER:-postgresql}"
 REDIS_CONTAINER="${REDIS_CONTAINER:-redis}"
+MEILI_CONTAINER="${MEILI_CONTAINER:-meilisearch}"
+MEILI_EXPECTED_IMAGE="${MEILI_EXPECTED_IMAGE:-getmeili/meilisearch:v1.51.0}"
+MEILI_APP_DIR="${MEILI_APP_DIR:-/opt/1panel/apps/meilisearch/meilisearch}"
 REMOTE_BACKUP_DIR="${REMOTE_BACKUP_DIR:-$REMOTE_DIR/backups/pre-deploy}"
 BATTLE_ASSET_DIR="${BATTLE_ASSET_DIR:-$PROJECT_DIR/public/battle}"
 BATTLE_ASSET_CHECKSUMS="${BATTLE_ASSET_CHECKSUMS:-$PROJECT_DIR/scripts/battle-assets.sha256}"
@@ -71,6 +74,9 @@ ssh_run() { ssh -p "$SERVER_PORT" "$SERVER_USER@$SERVER_HOST" "$@"; }
 [[ "$COMPOSE_FILE" =~ ^[A-Za-z0-9._-]+$ ]] || die 'COMPOSE_FILE must be a file name'
 [[ "$POSTGRES_CONTAINER" =~ ^[A-Za-z0-9._-]+$ ]] || die 'POSTGRES_CONTAINER is invalid'
 [[ "$REDIS_CONTAINER" =~ ^[A-Za-z0-9._-]+$ ]] || die 'REDIS_CONTAINER is invalid'
+[[ "$MEILI_CONTAINER" =~ ^[A-Za-z0-9._-]+$ ]] || die 'MEILI_CONTAINER is invalid'
+[[ "$MEILI_EXPECTED_IMAGE" =~ ^[A-Za-z0-9._/:@-]+$ ]] || die 'MEILI_EXPECTED_IMAGE is invalid'
+[[ "$MEILI_APP_DIR" =~ ^/[A-Za-z0-9._/-]+$ ]] || die 'MEILI_APP_DIR contains unsupported characters'
 [[ "$DEPLOY_WAIT_SECONDS" =~ ^[0-9]+$ ]] || die 'DEPLOY_WAIT_SECONDS must be an integer'
 
 sha256_file() {
@@ -160,12 +166,18 @@ remote_predeploy_backup() {
     cd '$REMOTE_DIR'
     test -f .env
     test -f '$COMPOSE_FILE'
+    test -f '$MEILI_APP_DIR/.env'
+    test -f '$MEILI_APP_DIR/docker-compose.yml'
+    test -f '$MEILI_APP_DIR/config/config.toml'
     umask 077
     timestamp=\$(date -u +%Y%m%dT%H%M%SZ)
     mkdir -p '$REMOTE_BACKUP_DIR'
     chmod 0700 '$REMOTE_BACKUP_DIR'
     cp -p .env '$REMOTE_BACKUP_DIR/.env.'\"\$timestamp\"
     cp -p '$COMPOSE_FILE' '$REMOTE_BACKUP_DIR/$COMPOSE_FILE.'\"\$timestamp\"
+    cp -p '$MEILI_APP_DIR/.env' '$REMOTE_BACKUP_DIR/meilisearch.env.'"\$timestamp"
+    cp -p '$MEILI_APP_DIR/docker-compose.yml' '$REMOTE_BACKUP_DIR/meilisearch.compose.'"\$timestamp"'.yml'
+    cp -p '$MEILI_APP_DIR/config/config.toml' '$REMOTE_BACKUP_DIR/meilisearch.config.'"\$timestamp"'.toml'
     set -a
     . ./.env
     set +a
@@ -181,6 +193,79 @@ remote_predeploy_backup() {
     sha256sum \"\$dump\" > \"\$dump.sha256\"
     sha256sum --check \"\$dump.sha256\"
     printf 'pre-deploy backup: %s\n' \"\$dump\""
+}
+
+prepare_external_meilisearch() {
+  ssh_run "set -euo pipefail
+    cd '$REMOTE_DIR'
+    docker inspect '$MEILI_CONTAINER' >/dev/null
+    test \"\$(docker inspect '$MEILI_CONTAINER' --format '{{.State.Running}}')\" = true || {
+      echo 'external Meilisearch container is not running' >&2
+      exit 1
+    }
+    actual_image=\$(docker inspect '$MEILI_CONTAINER' --format '{{.Config.Image}}')
+    test \"\$actual_image\" = '$MEILI_EXPECTED_IMAGE' || {
+      printf 'external Meilisearch image mismatch: expected %s, got %s\n' '$MEILI_EXPECTED_IMAGE' \"\$actual_image\" >&2
+      exit 1
+    }
+    docker inspect '$MEILI_CONTAINER' --format '{{json .NetworkSettings.Networks}}' | grep -q '\"1panel-network\"' || {
+      echo 'external Meilisearch is not attached to 1panel-network' >&2
+      exit 1
+    }
+    container_key=\$(docker inspect '$MEILI_CONTAINER' --format '{{range .Config.Env}}{{println .}}{{end}}' |
+      sed -n 's/^MEILI_MASTER_KEY=//p')
+    test \"\${#container_key}\" -ge 16 || {
+      echo 'external Meilisearch master key must contain at least 16 characters' >&2
+      exit 1
+    }
+    app_key=\$(set -a; . '$MEILI_APP_DIR/.env'; printf '%s' \"\${MEILI_MASTER_KEY:-}\")
+    test \"\$app_key\" = \"\$container_key\" || {
+      echo '1Panel Meilisearch key does not match the running container' >&2
+      exit 1
+    }
+    sed -i '/^MEILI_MASTER_KEY=/d' .env
+    printf 'MEILI_MASTER_KEY=%s\n' \"\$container_key\" >> .env
+    chmod 0600 .env
+
+    config='$MEILI_APP_DIR/config/config.toml'
+    sed -i 's/^env = .*/env = \"production\"/' \"\$config\"
+    sed -i 's/^http_addr = .*/http_addr = \"0.0.0.0:7700\"/' \"\$config\"
+    if grep -Eq '^#? *no_analytics = ' \"\$config\"; then
+      sed -i 's/^#\? *no_analytics = .*/no_analytics = true/' \"\$config\"
+    else
+      printf '\nno_analytics = true\n' >> \"\$config\"
+    fi
+    grep -qx 'env = \"production\"' \"\$config\"
+    grep -qx 'http_addr = \"0.0.0.0:7700\"' \"\$config\"
+    grep -qx 'no_analytics = true' \"\$config\"
+
+    cd '$MEILI_APP_DIR'
+    docker compose up -d --force-recreate meilisearch >/dev/null
+    for attempt in \$(seq 1 30); do
+      if docker exec '$MEILI_CONTAINER' curl --fail --silent http://localhost:7700/health |
+        grep -q '\"status\":\"available\"'; then
+        break
+      fi
+      test \"\$attempt\" -lt 30 || { echo 'external Meilisearch health check timed out' >&2; exit 1; }
+      sleep 2
+    done
+    runtime_key=\$(docker inspect '$MEILI_CONTAINER' --format '{{range .Config.Env}}{{println .}}{{end}}' |
+      sed -n 's/^MEILI_MASTER_KEY=//p')
+    test \"\$runtime_key\" = \"\$container_key\" || {
+      echo 'external Meilisearch master key changed during recreation' >&2
+      exit 1
+    }
+    docker exec '$MEILI_CONTAINER' curl --fail --silent \
+      --header \"Authorization: Bearer \$runtime_key\" http://localhost:7700/keys >/dev/null
+    host_binding=\$(docker inspect '$MEILI_CONTAINER' \
+      --format '{{(index (index .HostConfig.PortBindings \"7700/tcp\") 0).HostIp}}')
+    test \"\$host_binding\" = '127.0.0.1' || {
+      printf 'external Meilisearch must bind host port 7700 to 127.0.0.1 (got: %s)\n' \"\$host_binding\" >&2
+      exit 1
+    }
+    docker run --rm --network 1panel-network --entrypoint curl '$MEILI_EXPECTED_IMAGE' \
+      --fail --silent http://meilisearch:7700/health | grep -q '\"status\":\"available\"'
+    echo 'external Meilisearch verified: production, private, healthy, and reachable on 1panel-network'"
 }
 
 remote_sync_master_and_env() {
@@ -276,12 +361,6 @@ remote_build_and_migrate() {
     cd '$REMOTE_DIR'
     docker compose -f '$COMPOSE_FILE' build --pull migrate game api platform
     docker compose -f '$COMPOSE_FILE' run --rm migrate"
-}
-
-remote_start_search() {
-  ssh_run "set -euo pipefail
-    cd '$REMOTE_DIR'
-    docker compose -f '$COMPOSE_FILE' up -d --wait --wait-timeout '$DEPLOY_WAIT_SECONDS' meilisearch"
 }
 
 reindex_knowledge_search() {
@@ -387,6 +466,7 @@ if [[ "$DRY_RUN" == true ]]; then
   log "[dry-run] would stream and atomically activate the translated official rule documents"
   log "[dry-run] would stream and transactionally import reviewed card-derived effects"
   log "[dry-run] would stream and transactionally publish reviewed unlisted cards"
+  log "[dry-run] would back up, configure, and verify the external 1Panel Meilisearch service"
   log "[dry-run] would atomically rebuild and verify the Meilisearch knowledge index"
   log "[dry-run] would synchronize and verify $BATTLE_ASSET_COUNT private battle assets"
   exit 0
@@ -400,7 +480,9 @@ log 'creating a fresh PostgreSQL custom-format backup and configuration snapshot
 remote_predeploy_backup
 log "aligning server4 source and release metadata to origin/master $TARGET_SHORT"
 remote_sync_master_and_env
-log 'checking PostgreSQL TLS and shared Redis safety configuration'
+log 'configuring and verifying the external 1Panel Meilisearch service'
+prepare_external_meilisearch || die 'external Meilisearch verification failed; the application release was not replaced'
+log 'checking PostgreSQL TLS, shared Redis, and search safety configuration'
 verify_remote_runtime_config
 log 'synchronizing private battle assets outside GitHub'
 sync_battle_assets
@@ -414,8 +496,6 @@ log 'synchronizing and atomically activating current official Q&A, errata, and f
 release_official_rulings || die 'official-rulings release gate failed; the running release was not replaced'
 log 'synchronizing and atomically activating Grand Rules and Floor Rules in five reviewed locales'
 release_official_rule_documents || die 'official rule documents release gate failed; the running release was not replaced'
-log 'starting the internal Meilisearch service'
-remote_start_search || die 'Meilisearch failed to become healthy; the running application release was not replaced'
 log 'atomically rebuilding and verifying the public knowledge search index'
 reindex_knowledge_search || die 'knowledge search reindex failed; the running application release was not replaced'
 remote_start || die 'deployment failed; inspect the server4 Compose logs before retrying'

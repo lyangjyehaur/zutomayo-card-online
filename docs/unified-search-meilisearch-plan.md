@@ -162,7 +162,7 @@ GET /api/search?q=回溯&scope=card,qa&lang=zh-TW&limit=24&offset=0
 ## 7. 部署與維運
 
 - 本地與 E2E Compose 加入固定版本及 digest 的 Meilisearch，使用獨立 volume。
-- Server4 Compose 加入內網限定的 Meilisearch 服務與持久 volume，API 使用 service DNS 連線。
+- Server4 使用 1Panel 管理、僅綁定 `127.0.0.1:7700` 且加入 `1panel-network` 的 Meilisearch；API 透過內網 service DNS 連線。其資料目錄由 1Panel bind mount 持久化，Server4 應用 Compose 不重複建立服務或 volume。
 - production 必須設定至少 16 字元的 `MEILI_MASTER_KEY`；不得使用預設值。
 - Meilisearch 資料卷不納入唯一備份來源，災難復原以 PostgreSQL 完整重建為準。
 - 提供 `npm run search:reindex` 與 `npm run search:check`。

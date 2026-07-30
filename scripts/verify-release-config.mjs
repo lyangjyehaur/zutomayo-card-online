@@ -4,7 +4,7 @@ import path from 'node:path';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SERVER4_COMPOSE = 'docker-compose.server4.yml';
-const SERVER4_SERVICES = Object.freeze(['migrate', 'meilisearch', 'game', 'api', 'platform']);
+const SERVER4_SERVICES = Object.freeze(['migrate', 'game', 'api', 'platform']);
 const SERVER4_RUNTIME_SERVICES = Object.freeze(['game', 'api', 'platform']);
 
 function read(relativePath) {
@@ -185,19 +185,8 @@ function assertServer4BetaCompose() {
     if (!migrate.includes(fragment)) throw new Error(`${SERVER4_COMPOSE} migrate is missing ${fragment}`);
   }
 
-  const meilisearch = serviceBlock(SERVER4_COMPOSE, 'meilisearch');
-  for (const fragment of [
-    'getmeili/meilisearch:v1.51.0@sha256:a9eb29ee09ab4943db3b4c68620bd6f3382e6b2b0ac4431c0e607b48dbcd4c14',
-    'MEILI_ENV=production',
-    'MEILI_NO_ANALYTICS=true',
-    'MEILI_MASTER_KEY=${MEILI_MASTER_KEY:?',
-    'meili-data:/meili_data',
-    'healthcheck:',
-  ]) {
-    if (!meilisearch.includes(fragment)) throw new Error(`${SERVER4_COMPOSE} meilisearch is missing ${fragment}`);
-  }
-  if (meilisearch.includes('ports:')) {
-    throw new Error(`${SERVER4_COMPOSE} must not publish the Meilisearch port`);
+  if (/^volumes:\s*\n[\s\S]*?meili-data:/m.test(compose)) {
+    throw new Error(`${SERVER4_COMPOSE} must use the external 1Panel Meilisearch volume`);
   }
 
   for (const serviceName of SERVER4_RUNTIME_SERVICES) {
@@ -272,6 +261,19 @@ function assertServer4DeployScript() {
     'release-official-rulings.ts',
     '--translations=-',
     'MEILI_MASTER_KEY',
+    'MEILI_CONTAINER',
+    'MEILI_EXPECTED_IMAGE',
+    'MEILI_APP_DIR',
+    'prepare_external_meilisearch',
+    "docker inspect '$MEILI_CONTAINER'",
+    'docker compose up -d --force-recreate meilisearch',
+    '1Panel Meilisearch key does not match the running container',
+    'external Meilisearch master key changed during recreation',
+    '1panel-network',
+    'host_binding',
+    '127.0.0.1',
+    'no_analytics = true',
+    "sed -i 's/^env = .*/env =",
     'meilisearch',
     'npm run search:reindex',
     'npm run search:check',
