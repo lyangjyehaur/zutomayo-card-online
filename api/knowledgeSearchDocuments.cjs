@@ -8,6 +8,7 @@ const KNOWLEDGE_SEARCH_LOCALES = Object.freeze(['ja', 'zh-TW', 'zh-CN', 'zh-HK',
 const KNOWLEDGE_SEARCH_TYPES = Object.freeze(['card', 'qa', 'rule', 'errata', 'deck']);
 
 function text(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
   return typeof value === 'string' ? value.trim() : '';
 }
 

@@ -47,16 +47,17 @@ describe('knowledge search documents', () => {
   });
 
   it('normalizes missing fields without leaking arbitrary source properties', () => {
-    expect(
-      baseDocument({
-        type: 'qa',
-        locale: 'zh-TW',
-        sourceId: '74',
-        title: '問題',
-        aliases: ['問題', '', '問題'],
-        internalReviewNote: 'must not leak',
-      }),
-    ).toEqual(
+    const document = baseDocument({
+      type: 'qa',
+      locale: 'zh-TW',
+      sourceId: 74,
+      title: '問題',
+      aliases: ['問題', '', '問題'],
+      internalReviewNote: 'must not leak',
+    });
+
+    expect(document).toMatchObject({ sourceId: '74' });
+    expect(document).toEqual(
       expect.not.objectContaining({
         internalReviewNote: expect.anything(),
       }),

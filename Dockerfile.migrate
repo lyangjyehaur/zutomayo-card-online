@@ -41,6 +41,9 @@ COPY scripts/reindex-knowledge-search.cjs ./scripts/reindex-knowledge-search.cjs
 COPY scripts/officialRulingsData.ts ./scripts/officialRulingsData.ts
 COPY scripts/release-official-rulings.ts ./scripts/release-official-rulings.ts
 COPY scripts/release-official-rule-documents.ts ./scripts/release-official-rule-documents.ts
+COPY scripts/cardNameTranslations.ts ./scripts/cardNameTranslations.ts
+COPY scripts/audit-card-derived-names.ts ./scripts/audit-card-derived-names.ts
+COPY scripts/import-card-derived-names-pg.ts ./scripts/import-card-derived-names-pg.ts
 COPY scripts/cardDerivedEffects.ts ./scripts/cardDerivedEffects.ts
 COPY scripts/import-card-derived-effects-pg.ts ./scripts/import-card-derived-effects-pg.ts
 COPY scripts/reviewedUnlistedCardRelease.ts ./scripts/reviewedUnlistedCardRelease.ts

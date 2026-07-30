@@ -117,8 +117,12 @@ describe('operational shell scripts', () => {
     expect(compose).not.toMatch(/^ {2}meilisearch:/m);
     expect(compose).not.toContain('meili-data');
     expect(deploy.indexOf('release_reviewed_unlisted_cards ||')).toBeLessThan(
+      deploy.indexOf('release_card_derived_names ||'),
+    );
+    expect(deploy.indexOf('release_card_derived_names ||')).toBeLessThan(
       deploy.indexOf('release_card_derived_effects ||'),
     );
+    expect(deploy).toContain('scripts/import-card-derived-names-pg.ts');
     expect(deploy).toContain('--translations=-');
     expect(deploy).toContain('COPYFILE_DISABLE=1 tar');
     expect(deploy).toContain("-name '._*' -delete");
