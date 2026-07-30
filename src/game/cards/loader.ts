@@ -8,7 +8,9 @@ let currentConfig: Record<string, unknown> = {};
 let cardsRefreshPromise: Promise<CardDef[]> | null = null;
 let _initialized = false;
 let cardsRevision = 0;
-const CARD_FETCH_TIMEOUT_MS = 2500;
+const PUBLIC_DATA_FETCH_TIMEOUT_MS = 15_000;
+const PUBLIC_DATA_FETCH_ATTEMPTS = 2;
+const PUBLIC_DATA_RETRY_DELAY_MS = 250;
 
 export function isCardsInitialized(): boolean {
   return _initialized;
@@ -44,27 +46,42 @@ function isCardDefArray(value: unknown): value is CardDef[] {
 async function fetchJson<T>(
   path: string,
   cache: RequestCache = 'no-store',
-  timeoutMs = CARD_FETCH_TIMEOUT_MS,
+  timeoutMs = PUBLIC_DATA_FETCH_TIMEOUT_MS,
 ): Promise<T | null> {
   if (typeof fetch === 'undefined') return null;
-  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-  const timeout = controller ? globalThis.setTimeout(() => controller.abort(), timeoutMs) : null;
-  try {
-    const response = await fetch(path, { cache, signal: controller?.signal });
-    if (!response.ok) return null;
-    return (await response.json()) as T;
-  } catch (err) {
-    // 卡牌載入失敗會導致空牌組崩潰，記錄 breadcrumb 以利追蹤載入問題。
-    Sentry.addBreadcrumb({
-      category: 'card-loader',
-      message: `fetchJson failed: ${path}`,
-      level: 'warning',
-      data: { path, error: err instanceof Error ? err.message : String(err) },
-    });
-    return null;
-  } finally {
-    if (timeout !== null) globalThis.clearTimeout(timeout);
+  let lastError: unknown = new Error('Request failed');
+
+  for (let attempt = 1; attempt <= PUBLIC_DATA_FETCH_ATTEMPTS; attempt += 1) {
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timeout = controller ? globalThis.setTimeout(() => controller.abort(), timeoutMs) : null;
+    try {
+      const response = await fetch(path, { cache, signal: controller?.signal });
+      if (response.ok) return (await response.json()) as T;
+      lastError = new Error(`HTTP ${response.status}`);
+      if (response.status < 500 && ![408, 425, 429].includes(response.status)) return null;
+    } catch (err) {
+      lastError = err;
+    } finally {
+      if (timeout !== null) globalThis.clearTimeout(timeout);
+    }
+
+    if (attempt < PUBLIC_DATA_FETCH_ATTEMPTS) {
+      await new Promise<void>((resolve) => globalThis.setTimeout(resolve, PUBLIC_DATA_RETRY_DELAY_MS));
+    }
   }
+
+  // 卡牌與遊戲配置是啟動基礎資料；重試耗盡後保留可觀測證據。
+  Sentry.addBreadcrumb({
+    category: 'card-loader',
+    message: `fetchJson failed: ${path}`,
+    level: 'warning',
+    data: {
+      path,
+      attempts: PUBLIC_DATA_FETCH_ATTEMPTS,
+      error: lastError instanceof Error ? lastError.message : String(lastError),
+    },
+  });
+  return null;
 }
 
 /**

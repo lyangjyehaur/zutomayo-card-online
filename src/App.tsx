@@ -441,7 +441,7 @@ function RouterShell() {
     setCardResourceState('loading');
     try {
       const { refreshCards } = await import('./game/cards/loader');
-      const cards = await withBootTimeout(refreshCards());
+      const cards = await refreshCards();
       setCardResourceState(cards && cards.length > 0 ? 'ready' : 'error');
     } catch {
       setCardResourceState('error');
@@ -457,7 +457,7 @@ function RouterShell() {
       ]);
       await Promise.allSettled([
         refreshCardResources(),
-        withBootTimeout(loadConfigFromAPI()),
+        loadConfigFromAPI(),
         withBootTimeout(loadCardTextsI18nFromAPI()),
         withBootTimeout(waitForFonts(), 2500),
       ]);
