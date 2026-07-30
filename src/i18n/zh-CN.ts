@@ -971,7 +971,7 @@ export const zhCN: Record<TranslationKey, string> = {
     '这张卡的名称是“{name}”。游戏中存在同名卡，所以识别具体卡牌时还要一起确认收录包与卡号。',
   'tutorial.chapter.cards.fact.element.title': '属性',
   'tutorial.chapter.cards.fact.element.body':
-    '卡牌有暗、炎、电气、风、混沌五种属性；部分效果会依属性筛选或计算，不同属性也有各自常见的数值与玩法倾向。',
+    '卡牌有暗、炎、电、风、混沌五种属性；部分效果会依属性筛选或计算，不同属性也有各自常见的数值与玩法倾向。',
   'tutorial.chapter.cards.fact.element.example':
     '这张卡是“{element}”属性。属性会影响部分效果的指定与判定；不同属性在当前牌池中也有各自常见的数值与玩法倾向。',
   'tutorial.chapter.cards.fact.element.profilesLabel': '五种属性的常见特色',

@@ -113,6 +113,34 @@ function inputs() {
     playStatus,
     translations: completeTranslations(cardId),
   }));
+  cards[0].translations = {
+    'zh-TW': {
+      name: 'CHIRITORI-OTOKO DA!!',
+      effect:
+        '選擇深淵中的8張卡牌，翻成背面朝上後洗混，放置於牌組底。若不如此做，則遊戲敗北。將雙方充能區的所有卡牌放置於深淵。',
+    },
+    'zh-CN': {
+      name: 'CHIRITORI-OTOKO DA!!',
+      effect:
+        '选择深渊中的8张卡牌，翻成背面朝上后洗混，放置于牌组底。若不如此做，则游戏败北。将双方充能区的所有卡牌放置于深渊。',
+    },
+    'zh-HK': {
+      name: 'CHIRITORI-OTOKO DA!!',
+      effect:
+        '選擇深淵中的8張卡牌，翻成背面朝上後洗混，放置於牌組底。若不如此做，則遊戲敗北。將雙方充能區的所有卡牌放置於深淵。',
+    },
+    ko: {
+      name: 'CHIRITORI-OTOKO DA!!',
+      effect:
+        '어비스의 카드 8장을 선택하여 뒷면으로 섞은 뒤 덱 맨 아래에 놓는다. 그렇게 하지 않으면 게임에서 패배한다. 양쪽 플레이어의 파워 차저에 있는 카드를 모두 어비스에 놓는다.',
+    },
+  };
+  cards[1].translations = {
+    'zh-TW': { name: '從正確的謊言中醒來', effect: '將對手角色卡的屬性在戰鬥區期間變為闇。' },
+    'zh-CN': { name: '从正确的谎言中醒来', effect: '将对手角色卡的属性在战斗区期间变为暗。' },
+    'zh-HK': { name: '從正確的謊言中醒來', effect: '將對手角色卡的屬性在戰鬥區期間變為闇。' },
+    ko: { name: '올바른 거짓에서 깨어남', effect: '상대 캐릭터 카드의 속성을 배틀 존에 있는 동안 어둠으로 변경한다.' },
+  };
   return {
     sources: { cards: sourceCards },
     reviews: { reviews },
@@ -166,6 +194,113 @@ describe('reviewed unlisted card release', () => {
     translation.effect = '將克洛諾斯推進8格';
     expect(() => buildReviewedUnlistedRelease(sources, reviews, manifest)).toThrow(
       'non-canonical rules terminology (克洛諾斯 -> Chronos)',
+    );
+  });
+
+  it('rejects reviewed effects that omit canonical terms present in the Japanese source', () => {
+    const { sources, reviews, manifest } = inputs();
+    const translation = manifest.cards[0].translations?.['zh-TW'];
+    if (!translation) throw new Error('test fixture translation missing');
+    translation.effect = translation.effect.replaceAll('卡牌', '卡');
+
+    expect(() => buildReviewedUnlistedRelease(sources, reviews, manifest)).toThrow(
+      'missing canonical rules terminology (カード -> 卡牌)',
+    );
+  });
+
+  it('rejects untranslated character names in reviewed Chinese card names', () => {
+    const { sources, reviews, manifest } = inputs();
+    reviews.reviews.limited_001.nameJa = '肉まんうにぐり（ご当地うにぐりver.テクノプア）';
+    const translation = manifest.cards[1].translations?.['zh-TW'];
+    if (!translation) throw new Error('test fixture translation missing');
+    translation.name = '肉包 UNIGURI（在地 UNIGURI ver. TECHNO POOR）';
+
+    expect(() => buildReviewedUnlistedRelease(sources, reviews, manifest)).toThrow(
+      'non-canonical card-name terminology (うにぐり -> 海膽栗子)',
+    );
+  });
+
+  it('requires the canonical regional Chinese spelling for character names', () => {
+    const { sources, reviews, manifest } = inputs();
+    reviews.reviews.limited_001.nameJa = 'うにぐりくん';
+    const translations = manifest.cards[1].translations;
+    if (!translations) throw new Error('test fixture translations missing');
+    translations['zh-TW']!.name = '海膽栗子君';
+    translations['zh-HK']!.name = '海膽栗子君';
+    translations['zh-CN']!.name = '海膽栗子君';
+
+    expect(() => buildReviewedUnlistedRelease(sources, reviews, manifest)).toThrow(
+      'non-canonical card-name terminology (うにぐり -> 海胆栗子)',
+    );
+  });
+
+  it('accepts canonical character names and preserves every source occurrence', () => {
+    const { sources, reviews, manifest } = inputs();
+    reviews.reviews.limited_001.nameJa = '肉まんうにぐり（ご当地うにぐりver.テクノプア）';
+    const translations = manifest.cards[1].translations;
+    if (!translations) throw new Error('test fixture translations missing');
+    translations['zh-TW']!.name = '肉包海膽栗子（在地海膽栗子 ver. TECHNO POOR）';
+    translations['zh-HK']!.name = '肉包海膽栗子（在地海膽栗子 ver. TECHNO POOR）';
+    translations['zh-CN']!.name = '肉包海胆栗子（当地海胆栗子 ver. TECHNO POOR）';
+    translations.ko!.name = '니쿠만 우니구리 (지역 한정 우니구리 ver. TECHNO POOR)';
+
+    expect(() => buildReviewedUnlistedRelease(sources, reviews, manifest)).not.toThrow();
+  });
+
+  it('rejects untranslated collection character names', () => {
+    const { sources, reviews, manifest } = inputs();
+    reviews.reviews.limited_001.nameJa = 'ご当地うにぐり ver. スナネコ';
+    const translations = manifest.cards[1].translations;
+    if (!translations) throw new Error('test fixture translations missing');
+    translations['zh-TW']!.name = '在地海膽栗子 ver. SUNANEKO';
+    translations['zh-CN']!.name = '当地海胆栗子 ver. 砂猫';
+    translations['zh-HK']!.name = '在地海膽栗子 ver. 砂貓';
+    translations.ko!.name = '지역 한정 우니구리 ver. 스나네코';
+
+    expect(() => buildReviewedUnlistedRelease(sources, reviews, manifest)).toThrow(
+      'non-canonical card-name terminology (スナネコ -> 砂貓)',
+    );
+  });
+
+  it('rejects inconsistent established proper names in card names', () => {
+    const { sources, reviews, manifest } = inputs();
+    reviews.reviews.limited_001.nameJa = '喫茶 愛のペガサス';
+    const translation = manifest.cards[1].translations?.['zh-TW'];
+    if (!translation) throw new Error('test fixture translation missing');
+    translation.name = '咖啡 愛之天馬';
+
+    expect(() => buildReviewedUnlistedRelease(sources, reviews, manifest)).toThrow(
+      'non-canonical card-name terminology (愛のペガサス -> 愛之飛馬)',
+    );
+  });
+
+  it('rejects spacing that breaks the canonical NIRA name', () => {
+    const { sources, reviews, manifest } = inputs();
+    reviews.reviews.limited_001.nameJa = 'にらちゃん（ねんどろいど ver.）';
+    const translation = manifest.cards[1].translations?.['zh-TW'];
+    if (!translation) throw new Error('test fixture translation missing');
+    translation.name = 'NIRA 醬（黏土人 ver.）';
+
+    expect(() => buildReviewedUnlistedRelease(sources, reviews, manifest)).toThrow(
+      'non-canonical card-name terminology (にらちゃん -> NIRA醬)',
+    );
+  });
+
+  it('rejects inconsistent established proper names in card effects', () => {
+    const { sources, reviews, manifest } = inputs();
+    const review = reviews.reviews.limited_013;
+    review.printedEffectStatus = 'present';
+    review.effectJa = '喫茶 愛のペガサスで日替わりランチ。';
+    review.effectEnOfficial = 'Have the daily lunch at Cafe Ai no Pegasus.';
+    const translations = manifest.cards[2].translations;
+    if (!translations) throw new Error('test fixture translations missing');
+    translations['zh-TW']!.effect = '在咖啡 愛之天馬享用每日午餐。';
+    translations['zh-CN']!.effect = '在咖啡 爱之飞马享用每日午餐。';
+    translations['zh-HK']!.effect = '在咖啡 愛之飛馬享用每日午餐。';
+    translations.ko!.effect = '킷사 사랑의 페가수스에서 오늘의 점심을 먹는다.';
+
+    expect(() => buildReviewedUnlistedRelease(sources, reviews, manifest)).toThrow(
+      'non-canonical card-effect proper name (愛のペガサス -> 愛之飛馬)',
     );
   });
 
