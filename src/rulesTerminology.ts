@@ -443,7 +443,7 @@ const NON_CANONICAL_PATTERNS: Partial<
     { pattern: /戰場期間/gu, expected: '戰鬥區期間' },
     { pattern: /電氣/gu, expected: '電' },
     { pattern: /暗屬性|火屬性/gu, expected: '闇屬性／炎屬性' },
-    { pattern: /恢復(?=[^，。；\n]{0,16}HP)/gu, expected: '回復' },
+    { pattern: /(?:(?<=HP[^，。；\n]{0,16})恢復|恢復(?=(?:[^，。；\n]{0,16}HP|效果)))/gu, expected: '回復' },
     { pattern: /克洛諾斯|克洛诺斯/gu, expected: 'Chronos' },
   ],
   'zh-CN': [
@@ -480,7 +480,7 @@ const NON_CANONICAL_PATTERNS: Partial<
     { pattern: /戰場期間/gu, expected: '戰鬥區期間' },
     { pattern: /電氣/gu, expected: '電' },
     { pattern: /暗屬性|火屬性/gu, expected: '闇屬性／炎屬性' },
-    { pattern: /恢復(?=[^，。；\n]{0,16}HP)/gu, expected: '回復' },
+    { pattern: /(?:(?<=HP[^，。；\n]{0,16})恢復|恢復(?=(?:[^，。；\n]{0,16}HP|效果)))/gu, expected: '回復' },
     { pattern: /克洛諾斯|克洛诺斯/gu, expected: 'Chronos' },
   ],
   en: [
