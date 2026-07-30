@@ -218,6 +218,13 @@ describe('operational shell scripts', () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('synthetic production probe requires');
   });
+
+  it('does not hide Cloudflare analytics CSP violations from browser QA', () => {
+    const benchmark = readFileSync(resolve('scripts/ai-browser-benchmark.mjs'), 'utf8');
+    expect(benchmark).not.toContain('static.cloudflareinsights.com');
+    expect(benchmark).not.toContain('isIgnorableConsoleError');
+    expect(benchmark).toContain("if (message.type() === 'error') consoleErrors.push(message.text())");
+  });
 });
 
 describe('synthetic probe script', () => {

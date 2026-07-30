@@ -1,6 +1,6 @@
 # Public Beta Funnel Analytics
 
-This is the event contract for RR-08. Umami remains the analytics backend; no second product analytics service is introduced.
+This is the event contract for RR-08. Umami remains the product-event analytics backend. Optional Cloudflare Web Analytics supplies aggregate traffic and Web Vitals only; it is not part of this funnel event contract.
 
 ## Privacy Boundary
 

@@ -167,6 +167,8 @@ Frontend build-time variables (baked into the bundle at `vite build`):
 
 Cloudflare-fronted deployments must include every current CIDR from [Cloudflare IP Ranges](https://www.cloudflare.com/ips/) in `TRUSTED_PROXY`, in addition to the local ingress/container ranges.
 
+Cloudflare Web Analytics may inject its browser beacon for aggregate traffic and Web Vitals reporting. Production CSP allows only its documented script origin, `https://static.cloudflareinsights.com`; do not broaden this to a wildcard or enable unrelated script injection products without a separate security review. Umami remains the source of application funnel events through the same-origin `/analytics` proxy. Browser QA must treat any remaining analytics CSP violation as a failure.
+
 ### `platform`
 
 | Variable                           | Default                                   | Notes                                                                                                                                                                                          |

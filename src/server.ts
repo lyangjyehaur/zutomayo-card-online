@@ -32,6 +32,7 @@ import { createRateLimit, getClientIpFromRequest } from './server/rateLimit';
 import type { IncomingHttpHeaders, IncomingMessage } from 'http';
 import { createPlatformSeatToken } from './platform/seatToken';
 import {
+  contentSecurityScriptSources,
   postgresConnectionString,
   postgresSslConfig,
   requireSecret,
@@ -433,7 +434,7 @@ server.app.use(
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", "'unsafe-inline'"],
+        scriptSrc: contentSecurityScriptSources(process.env),
         styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
         imgSrc: ["'self'", 'https://www.gravatar.com', 'https://cravatar.cn', 'https://q1.qlogo.cn', 'data:', 'blob:'],
         connectSrc: ["'self'", ...websocketConnectSources(process.env)],
