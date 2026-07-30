@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import { readFileSync } from 'node:fs';
+
 const args = new Map();
 for (let index = 2; index < process.argv.length; index += 1) {
   const value = process.argv[index];
@@ -20,6 +22,19 @@ const ports = {
 };
 const expectedBuildId = args.get('expected-build-id') || process.env.EXPECTED_BUILD_ID || '';
 const checkBattleAssets = (args.get('check-battle-assets') || process.env.CHECK_BATTLE_ASSETS || 'false') === 'true';
+const publicBaseUrlValue = args.get('public-base-url') || process.env.SMOKE_PUBLIC_BASE_URL || '';
+const publicBaseUrl = publicBaseUrlValue ? new URL(publicBaseUrlValue).toString() : '';
+if (publicBaseUrl && !['http:', 'https:'].includes(new URL(publicBaseUrl).protocol)) {
+  throw new Error('public base URL must use HTTP or HTTPS');
+}
+const battleAssets = readFileSync(new URL('./battle-assets.sha256', import.meta.url), 'utf8')
+  .trim()
+  .split('\n')
+  .map((line) => {
+    const match = line.match(/^[a-f0-9]{64} {2}([A-Za-z0-9._/-]+\.(?:png|svg))$/);
+    if (!match) throw new Error(`invalid battle asset checksum entry: ${line}`);
+    return match[1];
+  });
 const timeoutMs = Number(args.get('timeout-ms') || process.env.SMOKE_TIMEOUT_MS || 8_000);
 const attempts = Number(args.get('attempts') || process.env.SMOKE_ATTEMPTS || 12);
 const retryDelayMs = Number(args.get('retry-delay-ms') || process.env.SMOKE_RETRY_DELAY_MS || 5_000);
@@ -64,30 +79,46 @@ async function requestWithRetry(service, pathname) {
   throw lastError;
 }
 
-async function requestAsset(pathname, expectedContentType) {
-  const url = endpoint('game', pathname);
+function assertBattleAssetPayload(pathname, buffer) {
+  const bytes = new Uint8Array(buffer);
+  if (pathname.endsWith('.svg')) {
+    const source = new TextDecoder().decode(bytes.subarray(0, Math.min(bytes.length, 4096)));
+    if (!source.includes('<svg')) throw new Error(`${pathname} does not contain an SVG document`);
+    return;
+  }
+  if (
+    pathname.endsWith('.png') &&
+    (bytes.length < 24 || bytes[0] !== 0x89 || readAscii(bytes, 1, 3) !== 'PNG' || readAscii(bytes, 12, 4) !== 'IHDR')
+  ) {
+    throw new Error(`${pathname} does not contain a PNG image`);
+  }
+}
+
+async function requestAsset(pathname, expectedContentType, baseUrl = endpoint('game', ''), label = 'game') {
+  const url = new URL(pathname, baseUrl).toString();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(url, { signal: controller.signal, headers: { Accept: expectedContentType } });
     const contentType = response.headers.get('content-type') || '';
     const body = await response.arrayBuffer();
-    if (!response.ok) throw new Error(`game${pathname} returned HTTP ${response.status}`);
+    if (!response.ok) throw new Error(`${label}${pathname} returned HTTP ${response.status}`);
     if (!contentType.toLowerCase().startsWith(expectedContentType)) {
-      throw new Error(`game${pathname} returned unexpected content type: ${contentType || 'missing'}`);
+      throw new Error(`${label}${pathname} returned unexpected content type: ${contentType || 'missing'}`);
     }
-    if (body.byteLength === 0) throw new Error(`game${pathname} returned an empty asset`);
+    if (body.byteLength === 0) throw new Error(`${label}${pathname} returned an empty asset`);
+    assertBattleAssetPayload(new URL(url).pathname, body);
     return body.byteLength;
   } finally {
     clearTimeout(timeout);
   }
 }
 
-async function requestAssetWithRetry(pathname, expectedContentType) {
+async function requestAssetWithRetry(pathname, expectedContentType, baseUrl, label) {
   let lastError;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
-      return await requestAsset(pathname, expectedContentType);
+      return await requestAsset(pathname, expectedContentType, baseUrl, label);
     } catch (error) {
       lastError = error;
       if (attempt < attempts) await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
@@ -294,11 +325,16 @@ for (const [suffix, contentType, format] of [
 }
 
 if (checkBattleAssets) {
-  for (const [pathname, contentType] of [
-    ['/battle/chronos.svg', 'image/svg+xml'],
-    ['/battle/medal.png', 'image/png'],
-  ]) {
-    const bytes = await requestAssetWithRetry(pathname, contentType);
-    console.log(`smoke ok: game${pathname} (${bytes} bytes)`);
+  const assetVersion = encodeURIComponent(expectedBuildId || buildIds[0]);
+  for (const asset of battleAssets) {
+    const pathname = `/battle/${asset}`;
+    const versionedPathname = `${pathname}?v=${assetVersion}`;
+    const contentType = asset.endsWith('.png') ? 'image/png' : 'image/svg+xml';
+    const originBytes = await requestAssetWithRetry(versionedPathname, contentType, undefined, 'game');
+    console.log(`smoke ok: game${pathname} (${originBytes} bytes)`);
+    if (publicBaseUrl) {
+      const publicBytes = await requestAssetWithRetry(versionedPathname, contentType, publicBaseUrl, 'public');
+      console.log(`smoke ok: public${pathname} (${publicBytes} bytes)`);
+    }
   }
 }

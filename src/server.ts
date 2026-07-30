@@ -43,6 +43,7 @@ import { createServiceReadiness } from './operational/serviceLifecycle';
 import { drainNetwork } from './operational/networkDrain';
 import { replayJsonRequestBody } from './server/requestBodyReplay';
 import { createOnlineRematchSetupData } from './server/onlineRematch';
+import { shouldServeSpaFallback } from './server/staticRouting';
 import { createUmamiProxyMiddleware, UMAMI_SCRIPT_PATH, UMAMI_SEND_PATH } from './server/umamiProxy';
 import {
   configurePlatformJwtAccountStore,
@@ -981,7 +982,8 @@ server.app.use(async (ctx: KoaContext, next: Next) => {
 // configureApp 掛載到 app，位於此中間件之後。因此 /games/ 路徑必須 await next()
 // 讓請求繼續到 boardgame.io router，否則 createMatch/join 等都會被擋成 404。
 server.app.use(async (ctx: KoaContext, next: Next) => {
-  if (ctx.status === 404 && !ctx.path.startsWith('/games/')) {
+  if (ctx.status === 404 && shouldServeSpaFallback(ctx.path)) {
+    ctx.set('Cache-Control', 'no-store');
     ctx.type = 'html';
     ctx.body = fs.readFileSync(path.join(root, 'dist', 'index.html'));
     return;

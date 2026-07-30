@@ -1,10 +1,11 @@
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
 import { sentryVitePlugin } from '@sentry/vite-plugin';
 import fs from 'fs';
 import path from 'path';
+import { versionBattleAssetCssUrls } from './scripts/battleAssetVersion';
 
 const packageJson = JSON.parse(fs.readFileSync(path.resolve('package.json'), 'utf8')) as { version?: string };
 if (!packageJson.version) throw new Error('package.json version is required');
@@ -20,6 +21,15 @@ const appBuildId = versionEnv('APP_BUILD_ID', appVersion);
 const gameRulesVersion = versionEnv('GAME_RULES_VERSION', appVersion);
 const imgproxyDevProxyTarget = process.env.IMGPROXY_DEV_PROXY_TARGET?.trim();
 const apiDevProxyTarget = process.env.API_DEV_PROXY_TARGET?.trim() || 'http://127.0.0.1:3001';
+const battleAssetVersionPlugin: Plugin = {
+  name: 'battle-asset-version',
+  enforce: 'pre',
+  transform(code, id) {
+    if (!id.split('?', 1)[0].endsWith('.css') || !code.includes('/battle/')) return null;
+    const transformed = versionBattleAssetCssUrls(code, appBuildId);
+    return transformed === code ? null : { code: transformed, map: null };
+  },
+};
 
 // Release 字串必須與 src/sentry.ts 的 release 完全一致，source map 才能正確關聯。
 const release = `${appVersion}@${appBuildId}`;
@@ -59,6 +69,7 @@ export default defineConfig({
     chunkSizeWarningLimit: 800,
   },
   plugins: [
+    battleAssetVersionPlugin,
     tailwindcss(),
     react(),
     // 只有四個 Sentry upload 變數都存在時才啟用 source map 上傳。

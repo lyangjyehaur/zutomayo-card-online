@@ -2,6 +2,7 @@ import { useEffect, useState, type CSSProperties, type SyntheticEvent } from 're
 import { CHRONOS_MAPPING, type ChronosState, type ChronosTime, type PlayerIndex } from '../../game/types';
 import { normalizeChronosPosition } from '../../game/chronos';
 import { t } from '../../i18n';
+import { battleAssetUrl } from './battleAssets';
 
 /**
  * ChronosDial — Chronos 狀態板。
@@ -14,25 +15,27 @@ const SLOT_RADIUS_PERCENT = 43.5;
 const MEDAL_STEP_MS = 120;
 
 const SLOT_ASSET_BASE = '/battle/chronos-slots';
+const CHRONOS_FACE_ASSET = battleAssetUrl('/battle/chronos.svg');
+const CHRONOS_MEDAL_ASSET = battleAssetUrl('/battle/medal.png');
 const CHRONOS_SLOT_ASSETS: Record<number, { src: string; mirror?: boolean }> = {
-  0: { src: `${SLOT_ASSET_BASE}/00.svg` },
-  1: { src: `${SLOT_ASSET_BASE}/01-17mirror.svg` },
-  2: { src: `${SLOT_ASSET_BASE}/02-16mirror.svg` },
-  3: { src: `${SLOT_ASSET_BASE}/03-15mirror.svg` },
-  4: { src: `${SLOT_ASSET_BASE}/04-14mirror.svg` },
-  5: { src: `${SLOT_ASSET_BASE}/05-13.svg` },
-  6: { src: `${SLOT_ASSET_BASE}/06-12.svg` },
-  7: { src: `${SLOT_ASSET_BASE}/07-11.svg` },
-  8: { src: `${SLOT_ASSET_BASE}/08-10.svg` },
-  9: { src: `${SLOT_ASSET_BASE}/09.svg` },
-  10: { src: `${SLOT_ASSET_BASE}/08-10.svg` },
-  11: { src: `${SLOT_ASSET_BASE}/07-11.svg` },
-  12: { src: `${SLOT_ASSET_BASE}/06-12.svg` },
-  13: { src: `${SLOT_ASSET_BASE}/05-13.svg` },
-  14: { src: `${SLOT_ASSET_BASE}/04-14mirror.svg`, mirror: true },
-  15: { src: `${SLOT_ASSET_BASE}/03-15mirror.svg`, mirror: true },
-  16: { src: `${SLOT_ASSET_BASE}/02-16mirror.svg`, mirror: true },
-  17: { src: `${SLOT_ASSET_BASE}/01-17mirror.svg`, mirror: true },
+  0: { src: battleAssetUrl(`${SLOT_ASSET_BASE}/00.svg`) },
+  1: { src: battleAssetUrl(`${SLOT_ASSET_BASE}/01-17mirror.svg`) },
+  2: { src: battleAssetUrl(`${SLOT_ASSET_BASE}/02-16mirror.svg`) },
+  3: { src: battleAssetUrl(`${SLOT_ASSET_BASE}/03-15mirror.svg`) },
+  4: { src: battleAssetUrl(`${SLOT_ASSET_BASE}/04-14mirror.svg`) },
+  5: { src: battleAssetUrl(`${SLOT_ASSET_BASE}/05-13.svg`) },
+  6: { src: battleAssetUrl(`${SLOT_ASSET_BASE}/06-12.svg`) },
+  7: { src: battleAssetUrl(`${SLOT_ASSET_BASE}/07-11.svg`) },
+  8: { src: battleAssetUrl(`${SLOT_ASSET_BASE}/08-10.svg`) },
+  9: { src: battleAssetUrl(`${SLOT_ASSET_BASE}/09.svg`) },
+  10: { src: battleAssetUrl(`${SLOT_ASSET_BASE}/08-10.svg`) },
+  11: { src: battleAssetUrl(`${SLOT_ASSET_BASE}/07-11.svg`) },
+  12: { src: battleAssetUrl(`${SLOT_ASSET_BASE}/06-12.svg`) },
+  13: { src: battleAssetUrl(`${SLOT_ASSET_BASE}/05-13.svg`) },
+  14: { src: battleAssetUrl(`${SLOT_ASSET_BASE}/04-14mirror.svg`), mirror: true },
+  15: { src: battleAssetUrl(`${SLOT_ASSET_BASE}/03-15mirror.svg`), mirror: true },
+  16: { src: battleAssetUrl(`${SLOT_ASSET_BASE}/02-16mirror.svg`), mirror: true },
+  17: { src: battleAssetUrl(`${SLOT_ASSET_BASE}/01-17mirror.svg`), mirror: true },
 };
 
 const CHRONOS_SLOTS = Array.from({ length: POSITIONS }, (_, position) => {
@@ -118,7 +121,7 @@ export function ChronosDial({
     >
       <img
         className="chronosdial-face-art"
-        src="/battle/chronos.svg"
+        src={CHRONOS_FACE_ASSET}
         alt=""
         draggable={false}
         onLoad={markAssetReady(setHasFaceArt)}
@@ -172,7 +175,7 @@ export function ChronosDial({
         <span className="chronosdial-medal" data-position={medalPosition} style={medalSlot.style}>
           <img
             className="chronosdial-medal-img"
-            src="/battle/medal.png"
+            src={CHRONOS_MEDAL_ASSET}
             alt=""
             draggable={false}
             onError={hideMissingAsset}
