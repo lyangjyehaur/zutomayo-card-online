@@ -1,6 +1,6 @@
 # ZUTOMAYO CARD Online — Online Card Battle Game
 
-**Languages:** [繁體中文](README.md) | [日本語](README.ja.md) | [English](README.en.md)
+**Languages:** [繁體中文](README.md) | [日本語](README.ja.md) | [English](README.en.md) | [한국어](README.ko.md)
 
 Current version: **0.2.5**
 
