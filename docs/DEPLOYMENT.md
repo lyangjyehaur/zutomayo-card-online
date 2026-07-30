@@ -169,6 +169,10 @@ Cloudflare-fronted deployments must include every current CIDR from [Cloudflare 
 
 Cloudflare Web Analytics may inject its browser beacon for aggregate traffic and Web Vitals reporting. Production CSP allows only its documented script origin, `https://static.cloudflareinsights.com`; do not broaden this to a wildcard or enable unrelated script injection products without a separate security review. Umami remains the source of application funnel events through the same-origin `/analytics` proxy. Browser QA must treat any remaining analytics CSP violation as a failure.
 
+正式網域使用 GeoDNS：中國大陸直接解析到香港入口，其他地區經 Cloudflare。兩條路共用源站
+`Cache-Control`，Cloudflare 設定與部署後雙路徑驗證見 [線上快取與 GeoDNS 路由](CACHE_POLICY.md)。
+Cloudflare token 是部署端 secret，不得放入 server4 `.env`。
+
 ### `platform`
 
 | Variable                           | Default                                   | Notes                                                                                                                                                                                          |
@@ -774,6 +778,11 @@ Server4 的 Meilisearch 不由應用 Compose 建立。預設容器名稱為 `mei
 `127.0.0.1`；部署器會從同網路的臨時容器驗證 service DNS 與健康端點，索引仍可完全由
 PostgreSQL 重建。
 
+部署 shell 可另外設定 `CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ZONE_ID`、
+`CLOUDFLARE_CACHE_RULES_REQUIRED=true`、`PUBLIC_SMOKE_BASE_URL` 與
+`DIRECT_SMOKE_ADDRESS`。前兩項只供本機同步 Cache Rules，不會寫入遠端 `.env`；後兩項分別驗證
+正常 GeoDNS／Cloudflare 路徑及同 hostname 強制連線香港 IP 的路徑。
+
 `public/battle` 的 PNG/SVG 是不提交 GitHub 的私有部署素材。執行部署的本機必須保有
 完整素材；受版本控制的 `scripts/battle-assets.sha256` 固定其 22 個檔名與內容雜湊。
 部署器會先驗證本機清單，再將素材串流到 server4、於遠端重新驗證後原子替換
@@ -784,7 +793,7 @@ PostgreSQL 重建。
 並寫入 SHA-256 → checkout `origin/master` → 同步 `APP_BUILD_ID`、`APP_VERSION`、
 `GAME_RULES_VERSION`、`EXPECTED_SCHEMA_MIGRATION=000047_knowledge_search_zero_results`
 及 migration checksum → 備份、設定並驗證 1Panel Meilisearch → 實際檢查三服務 `REDIS_DB` 一致且 Redis
-`maxmemory-policy=noeviction` → 同步並校驗私有 battle 素材 → build／migration → 發布卡牌、Q&A、勘誤與規則文件 → `npm run search:reindex` 原子重建及 `search:check` → `docker compose up --wait` → 透過 SSH tunnel 驗證三服務 `/health`、`/ready`、build ID、卡牌／Q&A／規則搜尋，以及 `/battle/chronos.svg`、`/battle/medal.png` 的真實 MIME 與內容。
+`maxmemory-policy=noeviction` → 同步並校驗私有 battle 素材 → build／migration → 發布卡牌、Q&A、勘誤與規則文件 → `npm run search:reindex` 原子重建及 `search:check` → `docker compose up --wait` → 透過 SSH tunnel 驗證三服務 `/health`、`/ready`、build ID、卡牌／Q&A／規則搜尋及所有 battle 素材 → 視憑證設定同步 Cloudflare Cache Rules → 透過正常 DNS 與香港直連驗證快取。Cache smoke 涵蓋 PWA 控制檔、公開／私人 API Header、battle 素材版本、真實 MIME、內容與缺失素材 404。
 
 本地完整重建與唯讀狀態檢查分別使用：
 

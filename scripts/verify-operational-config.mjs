@@ -94,6 +94,25 @@ export function validateOperationalConfig() {
   requireFragments('package.json', ['"synthetic:probe"']);
   requireFragments('package.json', ['"relationship:outbox:redrive"']);
   requireFragments('package.json', ['"relationship:outbox:pg-smoke"']);
+  requireFragments('package.json', ['"cloudflare:cache:plan"', '"cloudflare:cache:apply"', '"smoke:cache-policy"']);
+  requireFragments('scripts/cloudflare-cache-rules.ts', [
+    'zutomayo-cache-',
+    'http_request_cache_settings',
+    'CLOUDFLARE_API_TOKEN',
+    "mode: 'respect_origin'",
+  ]);
+  requireFragments('scripts/cache-policy-smoke.ts', [
+    'direct-address',
+    'servername: url.hostname',
+    'cf-cache-status',
+    '/battle/__cache-smoke-missing-',
+  ]);
+  requireFragments('scripts/deploy-server4.sh', [
+    'CLOUDFLARE_CACHE_RULES_REQUIRED',
+    'cloudflare:cache:apply',
+    'cache-policy-smoke.ts',
+    'DIRECT_SMOKE_ADDRESS',
+  ]);
   requireFragments('scripts/redrive-relationship-outbox.cjs', [
     'assertPostgresExpectedRole',
     "'PG_API_USER'",

@@ -32,6 +32,8 @@ SMOKE_LOCAL_GAME_PORT="${SMOKE_LOCAL_GAME_PORT:-13000}"
 SMOKE_LOCAL_API_PORT="${SMOKE_LOCAL_API_PORT:-13001}"
 SMOKE_LOCAL_PLATFORM_PORT="${SMOKE_LOCAL_PLATFORM_PORT:-13002}"
 PUBLIC_SMOKE_BASE_URL="${PUBLIC_SMOKE_BASE_URL:-https://battle.zutomayocard.online}"
+DIRECT_SMOKE_ADDRESS="${DIRECT_SMOKE_ADDRESS:-$SERVER_HOST}"
+CLOUDFLARE_CACHE_RULES_REQUIRED="${CLOUDFLARE_CACHE_RULES_REQUIRED:-false}"
 OFFICIAL_TRANSLATIONS_SOURCE="${OFFICIAL_TRANSLATIONS_SOURCE:-$PROJECT_DIR/data/official-rulings-translations.json}"
 OFFICIAL_RULE_DOCUMENTS_SOURCE="${OFFICIAL_RULE_DOCUMENTS_SOURCE:-$PROJECT_DIR/data/official-rule-documents-20260721.json}"
 CARD_DERIVED_EFFECTS_DIR="${CARD_DERIVED_EFFECTS_DIR:-$PROJECT_DIR/data}"
@@ -504,6 +506,37 @@ run_smoke() {
   return "$status"
 }
 
+sync_cloudflare_cache_rules() {
+  local token_set=false zone_set=false
+  [[ -n "${CLOUDFLARE_API_TOKEN:-}" ]] && token_set=true
+  [[ -n "${CLOUDFLARE_ZONE_ID:-}" ]] && zone_set=true
+  if [[ "$token_set" != true && "$zone_set" != true ]]; then
+    [[ "$CLOUDFLARE_CACHE_RULES_REQUIRED" == true ]] && \
+      die 'Cloudflare cache rules are required but CLOUDFLARE_API_TOKEN/CLOUDFLARE_ZONE_ID are missing'
+    log 'Cloudflare cache rule sync skipped (operator credentials not configured)'
+    return
+  fi
+  [[ "$token_set" == true && "$zone_set" == true ]] || \
+    die 'CLOUDFLARE_API_TOKEN and CLOUDFLARE_ZONE_ID must be configured together'
+  log 'synchronizing repository-managed Cloudflare cache rules'
+  (cd "$PROJECT_DIR" && npm run cloudflare:cache:apply)
+}
+
+run_cache_policy_smoke() {
+  local args=(
+    --base-url "$PUBLIC_SMOKE_BASE_URL"
+    --expected-build-id "$TARGET_SHA"
+  )
+  if [[ -n "$DIRECT_SMOKE_ADDRESS" ]]; then
+    args+=(--direct-address "$DIRECT_SMOKE_ADDRESS")
+  fi
+  if [[ -n "${CLOUDFLARE_API_TOKEN:-}" && -n "${CLOUDFLARE_ZONE_ID:-}" ]]; then
+    args+=(--expect-cloudflare true)
+  fi
+  log 'verifying cache policy through public DNS and the direct Hong Kong route'
+  node --import tsx "$SCRIPT_DIR/cache-policy-smoke.ts" "${args[@]}"
+}
+
 load_local_release
 confirm_action "deploy origin/master $TARGET_SHORT"
 if [[ "$DRY_RUN" == true ]]; then
@@ -518,6 +551,8 @@ if [[ "$DRY_RUN" == true ]]; then
   log "[dry-run] would atomically rebuild and verify the Meilisearch knowledge index"
   log "[dry-run] would synchronize and verify $BATTLE_ASSET_COUNT private battle assets"
   log "[dry-run] would verify every battle asset through origin and $PUBLIC_SMOKE_BASE_URL"
+  log '[dry-run] would sync Cloudflare cache rules when credentials are configured'
+  log "[dry-run] would verify cache headers through $PUBLIC_SMOKE_BASE_URL and $DIRECT_SMOKE_ADDRESS"
   exit 0
 fi
 
@@ -552,6 +587,8 @@ reindex_knowledge_search || die 'knowledge search reindex failed; the running ap
 remote_start || die 'deployment failed; inspect the server4 Compose logs before retrying'
 
 run_smoke "$TARGET_SHA" || die 'health verification failed; inspect the deployed release before retrying'
+sync_cloudflare_cache_rules || die 'Cloudflare cache rule synchronization failed'
+run_cache_policy_smoke || die 'public/direct cache policy verification failed'
 
 ssh_run "date -u +%Y-%m-%dT%H:%M:%SZ > '$REMOTE_DIR/.release.deployed-at'"
 log "deployment completed: origin/master $TARGET_SHORT"

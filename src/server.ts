@@ -45,6 +45,7 @@ import { createServiceReadiness } from './operational/serviceLifecycle';
 import { drainNetwork } from './operational/networkDrain';
 import { replayJsonRequestBody } from './server/requestBodyReplay';
 import { createOnlineRematchSetupData } from './server/onlineRematch';
+import { CACHE_CONTROL, frontendCacheControl } from './server/cachePolicy';
 import { shouldServeSpaFallback } from './server/staticRouting';
 import { createUmamiProxyMiddleware, UMAMI_SCRIPT_PATH, UMAMI_SEND_PATH } from './server/umamiProxy';
 import {
@@ -446,6 +447,13 @@ server.app.use(
   }),
 );
 
+// Dynamic responses are private by default. Static middleware below replaces
+// this header only for resources whose URL is safe to cache across deployments.
+server.app.use(async (ctx: KoaContext, next: Next) => {
+  ctx.set('Cache-Control', CACHE_CONTROL.noStore);
+  await next();
+});
+
 // Structured request logging + Prometheus metrics (before route handlers).
 server.app.use(requestLoggingMiddleware());
 server.app.use(metricsMiddleware());
@@ -801,7 +809,19 @@ server.router.post('/games/zutomayo-card/:id/join', koaBody(), async (ctx: KoaCo
   };
 });
 
-// Serve dist (frontend)
+// Serve dist (frontend). The same origin policy is consumed by direct Hong Kong
+// traffic and by Cloudflare, so both DNS paths share identical cache semantics.
+server.app.use(async (ctx: KoaContext, next: Next) => {
+  await next();
+  const cacheControl = frontendCacheControl({
+    buildId: APP_VERSION_INFO.buildId,
+    method: ctx.method,
+    pathname: ctx.path,
+    searchParams: new URLSearchParams(ctx.querystring),
+    status: ctx.status,
+  });
+  if (cacheControl) ctx.set('Cache-Control', cacheControl);
+});
 server.app.use(serve(path.join(root, 'dist')));
 
 // Serve admin panel assets for the React /admin iframe.

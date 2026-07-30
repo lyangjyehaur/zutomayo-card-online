@@ -130,6 +130,10 @@ describe('operational shell scripts', () => {
     expect(deploy).toContain('--check-battle-assets true');
     expect(deploy).toContain('--public-base-url');
     expect(deploy).toContain('PUBLIC_SMOKE_BASE_URL');
+    expect(deploy).toContain('cloudflare:cache:apply');
+    expect(deploy).toContain('CLOUDFLARE_CACHE_RULES_REQUIRED');
+    expect(deploy).toContain('cache-policy-smoke.ts');
+    expect(deploy).toContain('DIRECT_SMOKE_ADDRESS');
     expect(deploy).not.toContain('--rollback');
     expect(deploy).not.toContain('rollback_and_smoke');
     expect(deploy).not.toContain('.env.previous');
@@ -145,6 +149,19 @@ describe('operational shell scripts', () => {
     expect(deploy).not.toContain('--manifest');
     expect(deploy).not.toContain('cosign');
     expect(deploy).not.toContain('attestation');
+  });
+
+  it('manages cache rules without embedding Cloudflare credentials', () => {
+    const rules = readFileSync(resolve('scripts/cloudflare-cache-rules.ts'), 'utf8');
+    const smoke = readFileSync(resolve('scripts/cache-policy-smoke.ts'), 'utf8');
+    expect(rules).toContain('zutomayo-cache-');
+    expect(rules).toContain('http_request_cache_settings');
+    expect(rules).toContain('CLOUDFLARE_API_TOKEN');
+    expect(rules).toContain("mode: 'respect_origin'");
+    expect(rules).not.toMatch(/Bearer [A-Za-z0-9_-]{20,}/);
+    expect(smoke).toContain('direct-address');
+    expect(smoke).toContain('servername: url.hostname');
+    expect(smoke).toContain('CF-Cache-Status'.toLowerCase());
   });
 
   it('keeps source recovery staging-only and reuses the normal deploy path', () => {
