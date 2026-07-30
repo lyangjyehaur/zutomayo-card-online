@@ -1662,10 +1662,18 @@ export const en: Record<TranslationKey, string> = {
   'cardCatalog.cardDetails': 'Card details',
   'cardCatalog.effect': 'Card effect',
   'cardCatalog.pack': 'Set',
+  'cardCatalog.noPack': 'Not included in any pack',
   'cardCatalog.illustrator': 'Illustrator',
   'cardCatalog.distribution': 'Distribution',
   'cardCatalog.playStatus': 'Play status',
   'cardCatalog.playable': 'Deck eligible',
+  'cardCatalog.tournamentNoticeTitle': 'Official tournament card restrictions',
+  'cardCatalog.tournamentNotice':
+    'Under the official Floor Rules, limited cards marked UR+, SR+, R+, or N+ are generally not permitted in official or sanctioned tournaments unless the rules for that event allow them.',
+  'cardCatalog.tournamentRestricted': 'Generally tournament restricted',
+  'cardCatalog.tournamentRestrictionDetail':
+    'This limited card has a “+” rarity and is generally not permitted in official or sanctioned tournaments. It may be used when the rules for the specific tournament or event do not restrict it.',
+  'cardCatalog.tournamentRulesLink': 'View the official Floor Rules',
   'cardCatalog.openSource': 'View source',
   'cardCatalog.cardNavigation': 'Previous and next cards',
   'cardCatalog.previousCard': 'Previous card',

@@ -10,7 +10,7 @@ const sourceCard = {
   candidateId: 'limited_001',
   expectedCardId: '',
   name: 'テストカード',
-  pack: '限定カード',
+  pack: 'Fantasy Is Reality',
   catalogStatus: 'unlisted' as const,
   distributionType: 'bonus',
   sourcePageUrl: 'https://example.com/source',
@@ -28,8 +28,11 @@ describe('unlisted-card review service', () => {
     const reviewUi = readFileSync(resolve(process.cwd(), 'tools/unlisted-card-review/index.html'), 'utf8');
 
     expect(reviewUi).toContain('<select id="type" aria-required="true">');
-    expect(reviewUi).toContain('<select id="pack" aria-required="true">');
+    expect(reviewUi).toContain('<select id="pack" aria-required="${packless ? \'false\' : \'true\'}">');
     expect(reviewUi).not.toContain('<input id="pack"');
+    expect(reviewUi).toContain('<option value="taxonomy">卡包／稀有度待更新</option>');
+    expect(reviewUi).toContain('state.taxonomy.packlessCardIds.includes(review.cardId)');
+    expect(reviewUi).toContain("[['', '不屬於任何卡包']]");
   });
 
   it('accepts the supported image formats by file signature', () => {
@@ -112,7 +115,7 @@ describe('unlisted-card review service', () => {
       printedNumber: 'PR-001',
       nameEnOfficial: 'Test Card',
       type: 'Enchant',
-      rarity: 'PR',
+      rarity: 'N+',
       element: '風',
       clock: '2',
       powerCost: '1',
@@ -143,7 +146,7 @@ describe('unlisted-card review service', () => {
         printedNumber: 'PR-001',
         nameEnOfficial: 'Test Card',
         type: 'Character',
-        rarity: 'PR',
+        rarity: 'N+',
         element: '風',
         clock: '2',
         powerCost: '1',
@@ -162,7 +165,7 @@ describe('unlisted-card review service', () => {
         printedNumber: 'PR-001',
         nameEnOfficial: 'Test Card',
         type: 'Enchant',
-        rarity: 'PR',
+        rarity: 'N+',
         element: '風',
         clock: '2',
         powerCost: '1',
@@ -182,7 +185,7 @@ describe('unlisted-card review service', () => {
         printedNumber: 'PR-001',
         nameEnOfficial: 'Test Card',
         type: 'Enchant',
-        rarity: 'PR',
+        rarity: 'N+',
         element: '風',
         clock: '2',
         powerCost: '1',
@@ -202,7 +205,7 @@ describe('unlisted-card review service', () => {
         printedNumber: 'PR-001',
         nameEnOfficial: 'Test Card',
         type: 'Enchant',
-        rarity: 'PR',
+        rarity: 'N+',
         element: '風',
         clock: '2',
         powerCost: '1',
@@ -228,7 +231,7 @@ describe('unlisted-card review service', () => {
       sendToPower: '',
       attackNight: '2021',
       attackDay: '817',
-      pack: 'ZUTOMAYO PREMIUM',
+      pack: '',
       printedEffectStatus: 'none',
       playStatus: 'display_only',
       playStatusReason: '沒有明確的屬性、Power Cost 等，無法加入遊戲',
@@ -237,10 +240,35 @@ describe('unlisted-card review service', () => {
 
     expect(review).toMatchObject({
       element: '',
+      pack: '',
       powerCost: '',
       sendToPower: '',
       textReviewStatus: 'verified',
     });
+  });
+
+  it('rejects assigning a pack to the known packless card', () => {
+    expect(() =>
+      applyUnlistedCardReview(sourceCard, undefined, {
+        cardId: 'collaboration_007',
+        printedNumber: '07/**',
+        nameJa: '仲間のドクロ',
+        nameEnOfficial: 'Nakamano Dokuro',
+        type: 'Character',
+        rarity: 'SR+',
+        element: '',
+        clock: '5',
+        powerCost: '',
+        sendToPower: '',
+        attackNight: '2021',
+        attackDay: '817',
+        pack: 'Fantasy Is Reality',
+        printedEffectStatus: 'none',
+        playStatus: 'display_only',
+        playStatusReason: '沒有明確的屬性、Power Cost 等，無法加入遊戲',
+        textReviewStatus: 'verified',
+      }),
+    ).toThrow('collaboration_007 must not have a pack');
   });
 
   it('still requires complete gameplay metadata for verified playable cards', () => {
@@ -260,5 +288,45 @@ describe('unlisted-card review service', () => {
         textReviewStatus: 'verified',
       }),
     ).toThrow('clock must be an integer');
+  });
+
+  it('rejects distribution labels stored as packs when verifying text', () => {
+    expect(() =>
+      applyUnlistedCardReview(sourceCard, undefined, {
+        cardId: 'bonus_001',
+        printedNumber: '001/007',
+        nameEnOfficial: 'Test Card',
+        type: 'Enchant',
+        rarity: 'R+',
+        element: '風',
+        clock: '2',
+        powerCost: '1',
+        sendToPower: '1',
+        pack: '来場者カード',
+        printedEffectStatus: 'none',
+        playStatus: 'playable',
+        textReviewStatus: 'verified',
+      }),
+    ).toThrow('Unsupported pack: 来場者カード');
+  });
+
+  it('accepts every supported plus rarity', () => {
+    for (const rarity of ['N+', 'R+', 'SR+', 'UR+']) {
+      const review = applyUnlistedCardReview(sourceCard, undefined, {
+        cardId: 'bonus_001',
+        printedNumber: '001/007',
+        nameEnOfficial: 'Test Card',
+        type: 'Enchant',
+        rarity,
+        element: '風',
+        clock: '2',
+        powerCost: '1',
+        sendToPower: '1',
+        printedEffectStatus: 'none',
+        playStatus: 'playable',
+        textReviewStatus: 'verified',
+      });
+      expect(review.rarity).toBe(rarity);
+    }
   });
 });

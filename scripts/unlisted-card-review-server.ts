@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 import { toHalfwidthAscii } from './reviewTextNormalization';
+import { CARD_PACKLESS_IDS, CARD_PACKS, CARD_RARITIES, isPacklessCard } from '../src/game/types';
 
 export type ImageReviewStatus = 'needs_review' | 'approved' | 'needs_better_image' | 'rejected';
 export type TextReviewStatus = 'draft' | 'verified';
@@ -82,20 +83,23 @@ export type UnlistedCardReviewLedger = {
 type ReviewRequest = Partial<Omit<UnlistedCardReview, 'reviewedAt'>>;
 
 const repoRoot = fileURLToPath(new URL('..', import.meta.url));
-const manifestPath = path.join(repoRoot, 'data', 'card-unlisted-sources.json');
-const ledgerPath = path.join(repoRoot, 'data', 'card-unlisted-human-reviews.json');
-const suggestionPath = path.join(repoRoot, 'data', 'card-unlisted-review-suggestions.json');
-const uiPath = path.join(repoRoot, 'tools', 'unlisted-card-review', 'index.html');
-const allowedImageRoot = path.join(repoRoot, 'data', 'vision-ocr', 'unlisted-cards');
-const imageBackupRoot = path.join(allowedImageRoot, '.review-backups');
-const host = '127.0.0.1';
-const maxImageBytes = 20 * 1024 * 1024;
 
 function argument(name: string): string | undefined {
   const index = process.argv.indexOf(name);
   return index >= 0 ? process.argv[index + 1] : undefined;
 }
 
+const dataRoot = path.resolve(
+  argument('--data-dir') || process.env.UNLISTED_CARD_DATA_DIR || path.join(repoRoot, 'data'),
+);
+const manifestPath = path.join(dataRoot, 'card-unlisted-sources.json');
+const ledgerPath = path.join(dataRoot, 'card-unlisted-human-reviews.json');
+const suggestionPath = path.join(dataRoot, 'card-unlisted-review-suggestions.json');
+const uiPath = path.join(repoRoot, 'tools', 'unlisted-card-review', 'index.html');
+const allowedImageRoot = path.join(dataRoot, 'vision-ocr', 'unlisted-cards');
+const imageBackupRoot = path.join(allowedImageRoot, '.review-backups');
+const host = argument('--host') || process.env.UNLISTED_CARD_REVIEW_HOST || '127.0.0.1';
+const maxImageBytes = 20 * 1024 * 1024;
 const port = Number(argument('--port') || process.env.UNLISTED_CARD_REVIEW_PORT || 4176);
 
 function readJson<T>(file: string): T {
@@ -283,13 +287,21 @@ export function applyUnlistedCardReview(
       ['official English name', next.nameEnOfficial],
       ['card type', next.type],
       ['rarity', next.rarity],
-      ['pack', next.pack],
     ].find(([, value]) => !value);
     if (required) throw new Error(`${required[0]} is required before verifying text`);
     if (next.playStatus === 'playable' && !next.element) {
       throw new Error('element is required before verifying playable card text');
     }
     if (!['Character', 'Enchant', 'Area Enchant'].includes(next.type)) throw new Error('Invalid card type');
+    if (!CARD_RARITIES.includes(next.rarity as (typeof CARD_RARITIES)[number])) {
+      throw new Error(`Unsupported rarity: ${next.rarity}`);
+    }
+    if (isPacklessCard(next.cardId) && next.pack) {
+      throw new Error(`${next.cardId} must not have a pack`);
+    }
+    if (!isPacklessCard(next.cardId) && !CARD_PACKS.includes(next.pack as (typeof CARD_PACKS)[number])) {
+      throw new Error(`Unsupported pack: ${next.pack}`);
+    }
     if (next.printedEffectStatus === 'unknown') {
       throw new Error('printed effect status is required before verifying text');
     }
@@ -329,6 +341,11 @@ function statePayload(
   suggestions: MachineSuggestionFile,
 ): unknown {
   return {
+    taxonomy: {
+      packs: CARD_PACKS,
+      packlessCardIds: CARD_PACKLESS_IDS,
+      rarities: CARD_RARITIES,
+    },
     summary: summary(manifest, ledger, suggestions),
     ledgerPath,
     cards: manifest.cards.map((card) => ({
@@ -404,14 +421,26 @@ function safeTimestamp(): string {
   return new Date().toISOString().replace(/[:.]/g, '-');
 }
 
+function resolveReviewImagePath(localImagePath: string): string {
+  const normalized = localImagePath.replaceAll('\\', '/');
+  const relativeToData = normalized.startsWith('data/') ? normalized.slice('data/'.length) : normalized;
+  const resolved = path.resolve(dataRoot, relativeToData);
+  if (!resolved.startsWith(`${allowedImageRoot}${path.sep}`)) throw new Error('Local card image path is invalid');
+  return resolved;
+}
+
+function manifestImagePath(imagePath: string): string {
+  return `data/${path.relative(dataRoot, imagePath).split(path.sep).join('/')}`;
+}
+
 function replaceReviewImage(
   card: SourceCard,
   manifest: SourceManifest,
   image: Buffer,
 ): { imageUrl: string; sha256: string } {
   const extension = detectReviewImageExtension(image);
-  const previousPath = path.resolve(repoRoot, card.localImagePath);
-  if (!previousPath.startsWith(`${allowedImageRoot}${path.sep}`) || !fs.existsSync(previousPath)) {
+  const previousPath = resolveReviewImagePath(card.localImagePath);
+  if (!fs.existsSync(previousPath)) {
     throw new Error('Local card image not found');
   }
 
@@ -428,7 +457,7 @@ function replaceReviewImage(
   fs.renameSync(temporaryPath, nextPath);
 
   const sha256 = createHash('sha256').update(image).digest('hex');
-  card.localImagePath = path.relative(repoRoot, nextPath).split(path.sep).join('/');
+  card.localImagePath = manifestImagePath(nextPath);
   card.sourceSha256 = sha256;
   writeJsonAtomic(manifestPath, manifest);
   return { imageUrl: `/images/${encodeURIComponent(card.candidateId)}?v=${sha256.slice(0, 12)}`, sha256 };
@@ -492,8 +521,8 @@ async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> 
   if (req.method === 'GET' && imageMatch) {
     const card = manifest.cards.find((entry) => entry.candidateId === imageMatch[1]);
     if (!card) throw new Error('Card not found');
-    const imagePath = path.resolve(repoRoot, card.localImagePath);
-    if (!imagePath.startsWith(`${allowedImageRoot}${path.sep}`) || !fs.existsSync(imagePath)) {
+    const imagePath = resolveReviewImagePath(card.localImagePath);
+    if (!fs.existsSync(imagePath)) {
       throw new Error('Local card image not found');
     }
     res.writeHead(200, { 'Content-Type': contentType(imagePath), 'Cache-Control': 'no-store' });

@@ -2,7 +2,22 @@ import type { AppVersionInfo } from '../version';
 
 export type Element = '闇' | '炎' | '電気' | '風' | 'カオス';
 export type CardType = 'Character' | 'Enchant' | 'Area Enchant';
-export type Rarity = 'N' | 'R' | 'SR' | 'UR' | 'SE';
+export const CARD_RARITIES = ['N', 'N+', 'R', 'R+', 'SR', 'SR+', 'UR', 'UR+', 'SE'] as const;
+export type Rarity = (typeof CARD_RARITIES)[number];
+export const CARD_TOURNAMENT_RESTRICTED_RARITIES = ['N+', 'R+', 'SR+', 'UR+'] as const;
+export type TournamentRestrictedRarity = (typeof CARD_TOURNAMENT_RESTRICTED_RARITIES)[number];
+export const CARD_PACKS = [
+  'THE WORLD IS CHANGING',
+  'ALL ALONG THE WATCHTOWER',
+  'Off Minor',
+  'Fantasy Is Reality',
+] as const;
+export type CardPack = (typeof CARD_PACKS)[number];
+export const CARD_PACKLESS_IDS = ['collaboration_007'] as const;
+
+export function isPacklessCard(cardId: string): boolean {
+  return CARD_PACKLESS_IDS.includes(cardId as (typeof CARD_PACKLESS_IDS)[number]);
+}
 export type ChronosTime = 'night' | 'day';
 export type CardCatalogStatus = 'listed' | 'pending_listing' | 'unlisted';
 export const CARD_DISTRIBUTION_TYPES = ['standard', 'bonus', 'collaboration', 'live', 'event', 'regional'] as const;

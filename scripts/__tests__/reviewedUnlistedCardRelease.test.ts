@@ -73,7 +73,7 @@ function inputs() {
       attackDay: '',
       song: '',
       illustrator: 'reviewed illustrator',
-      pack: 'Bonus',
+      pack: 'ALL ALONG THE WATCHTOWER',
       imageReviewStatus: 'approved',
       textReviewStatus: 'verified',
       reviewedAt: '2026-07-30T00:00:00.000Z',
@@ -97,7 +97,7 @@ function inputs() {
       attackDay: '817',
       song: '',
       illustrator: 'Yosuke Torii',
-      pack: 'Collaboration',
+      pack: '',
       imageReviewStatus: 'approved',
       textReviewStatus: 'verified',
       reviewedAt: '2026-07-30T00:00:00.000Z',
@@ -339,6 +339,43 @@ describe('reviewed unlisted card release', () => {
     reviews.reviews.limited_013.rarity = '';
     expect(() => buildReviewedUnlistedRelease(sources, reviews, manifest)).toThrow(
       'collaboration_007.rarity must be nonempty',
+    );
+  });
+
+  it('rejects distribution classifications stored as packs', () => {
+    const { sources, reviews, manifest } = inputs();
+    reviews.reviews.limited_001.pack = '特典カード';
+    expect(() => buildReviewedUnlistedRelease(sources, reviews, manifest)).toThrow(
+      'bonus_001: unsupported pack 特典カード',
+    );
+  });
+
+  it('accepts plus rarities and rejects unknown rarity labels', () => {
+    const supported = inputs();
+    supported.reviews.reviews.limited_001.rarity = 'UR+';
+    expect(() => buildReviewedUnlistedRelease(supported.sources, supported.reviews, supported.manifest)).not.toThrow();
+
+    const unsupported = inputs();
+    unsupported.reviews.reviews.limited_001.rarity = 'PROMO';
+    expect(() => buildReviewedUnlistedRelease(unsupported.sources, unsupported.reviews, unsupported.manifest)).toThrow(
+      'bonus_001: unsupported rarity PROMO',
+    );
+  });
+
+  it('allows only the known packless card to omit its pack', () => {
+    const packless = inputs();
+    expect(() => buildReviewedUnlistedRelease(packless.sources, packless.reviews, packless.manifest)).not.toThrow();
+
+    const assigned = inputs();
+    assigned.reviews.reviews.limited_013.pack = 'THE WORLD IS CHANGING';
+    expect(() => buildReviewedUnlistedRelease(assigned.sources, assigned.reviews, assigned.manifest)).toThrow(
+      'collaboration_007: pack must be empty',
+    );
+
+    const missing = inputs();
+    missing.reviews.reviews.limited_001.pack = '';
+    expect(() => buildReviewedUnlistedRelease(missing.sources, missing.reviews, missing.manifest)).toThrow(
+      'bonus_001: unsupported pack',
     );
   });
 

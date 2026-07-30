@@ -33,6 +33,10 @@ import {
 import { getCardElementTranslationKey } from '../game/cards/taxonomy';
 import {
   CARD_DISTRIBUTION_TYPES,
+  CARD_PACKS,
+  CARD_RARITIES,
+  CARD_TOURNAMENT_RESTRICTED_RARITIES,
+  isPacklessCard,
   type CardDef,
   type CardDistributionType,
   type CardType,
@@ -41,13 +45,13 @@ import {
 import { availableLocales, t, useLocale } from '../i18n';
 import { useDebouncedSearchQuery } from '../hooks/useDebouncedSearchQuery';
 import { useKnowledgeSearchIds } from '../hooks/useKnowledgeSearch';
-import { compareCardIds, sortCardsById } from '../lib/cardOrder';
+import { sortCardsById } from '../lib/cardOrder';
 import { Alert, AppHeader, Badge, Button, EmptyState, LoadingState, PageShell, SearchInput, Select } from '../ui';
 
 const ELEMENTS: Array<Element | ''> = ['', '闇', '炎', '電気', '風', 'カオス'];
 const TYPES: Array<CardType | ''> = ['', 'Character', 'Enchant', 'Area Enchant'];
-const RARITIES = ['N', 'R', 'SR', 'UR', 'SE'] as const;
 const CATALOG_PAGE_SIZE = 48;
+const OFFICIAL_FLOOR_RULES_URL = 'https://d12oj0i0pu43cb.cloudfront.net/zutomayocard.net/rule/floorrule_260721.pdf';
 
 const REASON_KEYS: Record<string, string> = {
   named_card_reference: 'cardCatalog.reason.namedCard',
@@ -68,6 +72,10 @@ const REASON_KEYS: Record<string, string> = {
 
 function distributionLabel(value: CardDistributionType | undefined): string {
   return t(`cardCatalog.distribution.${value || 'standard'}` as Parameters<typeof t>[0]);
+}
+
+function isTournamentRestricted(rarity: string): boolean {
+  return CARD_TOURNAMENT_RESTRICTED_RARITIES.includes(rarity as (typeof CARD_TOURNAMENT_RESTRICTED_RARITIES)[number]);
 }
 
 function elementLabel(value: Element): string {
@@ -178,13 +186,14 @@ export function CardCatalogPage() {
   const query = searchParams.get('q') || '';
   const rawElement = searchParams.get('element') || '';
   const rawType = searchParams.get('type') || '';
-  const pack = searchParams.get('pack') || '';
+  const rawPack = searchParams.get('pack') || '';
   const rawRarity = searchParams.get('rarity') || '';
   const rawOwnership = searchParams.get('ownership') || '';
   const rawDistribution = searchParams.get('distribution') || '';
   const element = ELEMENTS.includes(rawElement as Element | '') ? (rawElement as Element | '') : '';
   const type = TYPES.includes(rawType as CardType | '') ? (rawType as CardType | '') : '';
-  const rarity = RARITIES.includes(rawRarity as (typeof RARITIES)[number]) ? rawRarity : '';
+  const pack = CARD_PACKS.includes(rawPack as (typeof CARD_PACKS)[number]) ? rawPack : '';
+  const rarity = CARD_RARITIES.includes(rawRarity as (typeof CARD_RARITIES)[number]) ? rawRarity : '';
   const ownership = rawOwnership === 'owned' || rawOwnership === 'unowned' ? rawOwnership : '';
   const distribution = CARD_DISTRIBUTION_TYPES.includes(rawDistribution as CardDistributionType)
     ? (rawDistribution as CardDistributionType | '')
@@ -269,10 +278,7 @@ export function CardCatalogPage() {
     };
   }, []);
 
-  const packs = useMemo(
-    () => [...new Set(cards.map((card) => card.pack).filter(Boolean))].sort(compareCardIds),
-    [cards],
-  );
+  const packs = CARD_PACKS;
   const distributions = useMemo(
     () =>
       CARD_DISTRIBUTION_TYPES.filter((value) => cards.some((card) => (card.distributionType || 'standard') === value)),
@@ -493,6 +499,9 @@ export function CardCatalogPage() {
                       <Badge>{cardTypeLabel(selectedCard.type)}</Badge>
                       <Badge>{selectedCard.rarity}</Badge>
                       <Badge>{distributionLabel(selectedCard.distributionType)}</Badge>
+                      {isTournamentRestricted(selectedCard.rarity) && (
+                        <Badge tone="vermilion">{t('cardCatalog.tournamentRestricted')}</Badge>
+                      )}
                       {selectedCard.playStatus === 'display_only' && (
                         <Badge tone="vermilion">{t('cardCatalog.displayOnly')}</Badge>
                       )}
@@ -510,6 +519,20 @@ export function CardCatalogPage() {
                   {selectedCard.playStatus === 'display_only' && (
                     <Alert className="mt-6" tone="warning">
                       {t('cardCatalog.notPlayable')}
+                    </Alert>
+                  )}
+
+                  {isTournamentRestricted(selectedCard.rarity) && (
+                    <Alert className="mt-6" tone="warning" title={t('cardCatalog.tournamentRestricted')}>
+                      {t('cardCatalog.tournamentRestrictionDetail')}{' '}
+                      <a
+                        className="font-semibold underline underline-offset-4"
+                        href={OFFICIAL_FLOOR_RULES_URL}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {t('cardCatalog.tournamentRulesLink')}
+                      </a>
                     </Alert>
                   )}
 
@@ -555,7 +578,10 @@ export function CardCatalogPage() {
                     <h2 id="card-meta-title" className="sr-only">
                       {t('cardCatalog.cardDetails')}
                     </h2>
-                    <DetailMetric label={t('cardCatalog.pack')} value={selectedCard.pack || '—'} />
+                    <DetailMetric
+                      label={t('cardCatalog.pack')}
+                      value={selectedCard.pack || (isPacklessCard(selectedCard.id) ? t('cardCatalog.noPack') : '—')}
+                    />
                     <DetailMetric label={t('cardCatalog.illustrator')} value={selectedCard.illustrator || '—'} />
                     <DetailMetric
                       label={t('cardCatalog.distribution')}
@@ -753,6 +779,18 @@ export function CardCatalogPage() {
           />
         </header>
 
+        <Alert tone="warning" title={t('cardCatalog.tournamentNoticeTitle')}>
+          {t('cardCatalog.tournamentNotice')}{' '}
+          <a
+            className="font-semibold underline underline-offset-4"
+            href={OFFICIAL_FLOOR_RULES_URL}
+            target="_blank"
+            rel="noreferrer"
+          >
+            {t('cardCatalog.tournamentRulesLink')}
+          </a>
+        </Alert>
+
         <section className="grid gap-4" aria-label={t('cardCatalog.filters')}>
           <div className="flex items-center justify-between gap-3">
             <h2 className="inline-flex items-center gap-2 font-mono text-caption uppercase text-content-dim">
@@ -790,7 +828,7 @@ export function CardCatalogPage() {
             </Select>
             <Select value={rarity} onChange={(event) => updateCatalogParam('rarity', event.target.value)}>
               <option value="">{t('cardCatalog.allRarities')}</option>
-              {RARITIES.map((value) => (
+              {CARD_RARITIES.map((value) => (
                 <option key={value} value={value}>
                   {value}
                 </option>
@@ -891,6 +929,9 @@ export function CardCatalogPage() {
                           </Badge>
                         )}
                         {card.playStatus === 'display_only' && <Badge>{t('cardCatalog.displayOnly')}</Badge>}
+                        {isTournamentRestricted(card.rarity) && (
+                          <Badge tone="vermilion">{t('cardCatalog.tournamentRestricted')}</Badge>
+                        )}
                       </span>
                     </span>
                     <strong className="line-clamp-2 min-h-10 text-body-sm leading-snug text-content-primary">

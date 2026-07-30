@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { parseEffect } from '../src/game/effects/parser';
 import { rulesTerminologySourceViolations, rulesTerminologyViolations } from '../src/rulesTerminology';
-import { CARD_DISTRIBUTION_TYPES, type CardDef } from '../src/game/types';
+import { CARD_DISTRIBUTION_TYPES, CARD_PACKS, CARD_RARITIES, isPacklessCard, type CardDef } from '../src/game/types';
 
 export const REVIEWED_UNLISTED_SOURCE_NOTE = 'reviewed-unlisted-release:v2';
 export const REVIEWED_UNLISTED_LANGS = ['zh-TW', 'zh-CN', 'zh-HK', 'ko'] as const;
@@ -99,6 +99,8 @@ const SUPPORTED_RELEASE_ACTIONS = new Set([
 const ELEMENTS = new Set(['闇', '炎', '電気', '風', 'カオス']);
 const CARD_TYPES = new Set(['Character', 'Enchant', 'Area Enchant']);
 const DISTRIBUTION_TYPES = new Set<string>(CARD_DISTRIBUTION_TYPES);
+const PACKS = new Set<string>(CARD_PACKS);
+const RARITIES = new Set<string>(CARD_RARITIES);
 const CARD_TEXT_PROPER_NAMES: ReadonlyArray<{
   source: string;
   translations: Record<ReviewedLang, string>;
@@ -226,8 +228,13 @@ export function buildReviewedUnlistedRelease(
     }
     if (review.element && !ELEMENTS.has(review.element))
       throw new Error(`${cardId}: unsupported element ${review.element}`);
-    for (const field of ['nameJa', 'nameEnOfficial', 'rarity', 'pack'] as const) {
+    for (const field of ['nameJa', 'nameEnOfficial', 'rarity'] as const) {
       assertNonempty(review[field], `${cardId}.${field}`);
+    }
+    if (!RARITIES.has(review.rarity)) throw new Error(`${cardId}: unsupported rarity ${review.rarity}`);
+    if (isPacklessCard(cardId) && review.pack) throw new Error(`${cardId}: pack must be empty`);
+    if (!isPacklessCard(cardId) && !PACKS.has(review.pack)) {
+      throw new Error(`${cardId}: unsupported pack ${review.pack}`);
     }
     if (review.printedEffectStatus === 'present') {
       assertNonempty(review.effectJa, `${cardId}.effectJa`);
