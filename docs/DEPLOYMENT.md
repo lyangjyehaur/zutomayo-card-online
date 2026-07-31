@@ -385,7 +385,7 @@ Migrations `000039_official_rulings`, `000040_official_rulings_releases`, and `0
 
 ```bash
 cat data/official-rulings-translations.json | npm run release:official-rulings -- \
-  --translations=- --app-version=0.2.5 --build-id="$(git rev-parse HEAD)"
+  --translations=- --app-version=0.2.6 --build-id="$(git rev-parse HEAD)"
 
 OFFICIAL_RULE_DOCUMENTS_FILE=data/official-rule-documents-20260721.json \
   npm run release:official-rule-documents

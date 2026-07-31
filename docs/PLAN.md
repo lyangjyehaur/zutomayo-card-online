@@ -1,7 +1,7 @@
 # Implementation Plan
 
 Baseline status: 0.2.0 architecture complete
-Current release: 0.2.5
+Current release: 0.2.6
 Last reviewed: 2026-07-31
 Live-service status: Running with a small real user base (operator-confirmed 2026-07-30)
 

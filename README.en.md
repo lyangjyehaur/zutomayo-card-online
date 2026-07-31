@@ -2,7 +2,7 @@
 
 **Languages:** [繁體中文](README.md) | [日本語](README.ja.md) | [English](README.en.md) | [한국어](README.ko.md)
 
-Current version: **0.2.5**
+Current version: **0.2.6**
 
 > An unofficial digital battle platform for ZUTOMAYO CARD, the official TCG from ZUTOMAYO.
 > Supports local two-player games, AI practice, an interactive tutorial, and real-time online play.
@@ -11,7 +11,7 @@ Current version: **0.2.5**
 
 Version 0.2.0 expands the project from a standalone battle app into a multiplayer platform. `boardgame.io` remains authoritative for card state, Colyseus owns lobby, matchmaking, room, invite, and spectator presence flows, and ChatService owns durable chat, unread state, translation, reports, and moderation.
 
-Version 0.2.5 expands the reviewed incremental-card pipeline and adds 54 playable limited cards plus 7 catalog-only cards. Card images are published as aspect-preserving JPEGs, while collectible cards without printed elements or costs no longer display invented gameplay values.
+Version 0.2.6 establishes a live-service stabilization baseline and durable anonymous match analytics, archiving authoritative results, decks, and allowlisted rule events before runtime state is removed. It also adds deterministic decision traces, privacy-filtered replay summaries restricted to match participants, and deployment, recovery, alerting, and trust-surface acceptance gates.
 
 ### Game and Battle
 

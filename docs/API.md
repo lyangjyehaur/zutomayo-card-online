@@ -512,7 +512,7 @@ Return the completed match's searchable replay summary. The response contains th
 ```json
 {
   "matchId": "m_...",
-  "rulesVersion": "0.2.5",
+  "rulesVersion": "0.2.6",
   "replay": {
     "schemaVersion": 1,
     "traceComplete": true,
