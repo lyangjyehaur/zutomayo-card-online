@@ -216,6 +216,36 @@ groups:
           summary: 'Durable match-result metrics are stale'
           description: 'The game server cannot refresh outbox metrics from PostgreSQL. Queue health is unknown.'
 
+      - alert: MatchAnalyticsTerminalUnarchived
+        expr: match_analytics_unarchived_terminal > 0
+        for: 5m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: 'Terminal matches are missing durable analytics archives'
+          description: '{{ $value }} terminal runtime rows have not reconciled with anonymous analytics for at least 5 minutes. Runtime cleanup is expected to remain blocked.'
+
+      - alert: MatchAnalyticsOldestUnarchived
+        expr: match_analytics_oldest_unarchived_seconds > 300
+        for: 5m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: 'Oldest unarchived terminal match exceeds five minutes'
+          description: 'The oldest terminal row without a reconciled analytics archive is {{ $value | humanizeDuration }} old.'
+
+      - alert: MatchAnalyticsCaptureFailure
+        expr: increase(match_analytics_capture_failures_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: 'Anonymous match analytics capture failed'
+          description: '{{ $value }} analytics capture failures occurred in the last five minutes. Source runtime rows must be retained until reconciliation succeeds.'
+
   - name: zutomayo-relationship-events
     interval: 30s
     rules:

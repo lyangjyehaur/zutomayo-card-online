@@ -1,5 +1,9 @@
 # REST API
 
+> `bjg_match_telemetry` 與三張 `match_analytics*` 表都是內部資料，不提供 public REST endpoint，API
+> runtime role 無權讀取。前者由 platform server 短期保存可信來源與每席連線計數；後者由 game server
+> 在權威終局 transaction 或 stale cleanup 的 abandoned 流程永久保存去識別投影。
+
 The API service runs from [api/server.cjs](../api/server.cjs). In Docker, the game server proxies `/api/*` to the `api` service; the API is also exposed directly on port `3001`.
 
 Base URLs:

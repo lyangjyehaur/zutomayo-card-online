@@ -1,0 +1,34 @@
+day,environment,traffic_class,match_mode,seat_classes,app_version,rules_version,dataset_sha256,sessions,completed_sessions,abandoned_sessions,completion_rate,abandonment_rate
+2026-07-31 00:00:00+00,test,operator,direct,"{registered,registered}",fixture-app,fixture-rules,fixture-dataset-a,1,1,0,1,0
+2026-07-31 00:00:00+00,test,production,custom_room,"{guest,registered}",fixture-app,fixture-rules,fixture-dataset-b,1,1,0,1,0
+2026-07-31 00:00:00+00,test,production,quick_match,"{registered,unknown}",fixture-app,fixture-rules,fixture-dataset-a,1,0,1,0,1
+2026-07-31 00:00:00+00,test,production,quick_match,"{registered,registered}",fixture-app,fixture-rules,fixture-dataset-a,101,101,0,1,0
+app_version,rules_version,dataset_sha256,match_mode,connection_class,step,actor_seat,matches,timeout_affected_matches,timeout_affected_rate,timeout_events,affected_matches
+fixture-app,fixture-rules,fixture-dataset-a,quick_match,disconnected,effectOrder,0,6,6,1,5,3
+fixture-app,fixture-rules,fixture-dataset-a,quick_match,disconnected,effectOrder,1,6,6,1,3,3
+fixture-app,fixture-rules,fixture-dataset-a,quick_match,no_disconnect_observed,,,90,0,0,,
+fixture-app,fixture-rules,fixture-dataset-a,quick_match,reconnected,effectOrder,0,5,5,1,3,3
+fixture-app,fixture-rules,fixture-dataset-a,quick_match,reconnected,effectOrder,1,5,5,1,2,2
+fixture-app,fixture-rules,fixture-dataset-b,custom_room,no_disconnect_observed,,,1,0,0,,
+app_version,rules_version,dataset_sha256,metric,sample_size,wins,win_rate,wilson_lower_95,wilson_upper_95
+fixture-app,fixture-rules,fixture-dataset-a,janken_winner_win,100,90,0.9,0.8256326956323347,0.9447714583868638
+fixture-app,fixture-rules,fixture-dataset-a,seat_0_win,100,60,0.6,0.5020007846184025,0.6906002538863971
+fixture-app,fixture-rules,fixture-dataset-b,janken_winner_win,1,0,0,0,0.7934567085261071
+fixture-app,fixture-rules,fixture-dataset-b,seat_0_win,1,0,0,0,0.7934567085261071
+app_version,rules_version,dataset_sha256,card_id,included_decks,winning_decks,inclusion_win_rate,wilson_lower_95,wilson_upper_95,sample_status
+fixture-app,fixture-rules,fixture-dataset-a,fixture-card-a,100,60,0.6,0.5020007846184025,0.6906002538863971,publishable
+fixture-app,fixture-rules,fixture-dataset-a,fixture-card-b,100,40,0.4,0.3093997461136029,0.4979992153815976,publishable
+fixture-app,fixture-rules,fixture-dataset-b,fixture-card-d,1,1,1,0.20654329147389294,1,insufficient_sample
+fixture-app,fixture-rules,fixture-dataset-b,fixture-card-c,1,0,0,0,0.7934567085261071,insufficient_sample
+app_version,rules_version,dataset_sha256,deck_hash,appearances,wins,win_rate,wilson_lower_95,wilson_upper_95,sample_status
+fixture-app,fixture-rules,fixture-dataset-a,1111111111111111111111111111111111111111111111111111111111111111,100,60,0.6,0.5020007846184025,0.6906002538863971,publishable
+fixture-app,fixture-rules,fixture-dataset-a,2222222222222222222222222222222222222222222222222222222222222222,100,40,0.4,0.3093997461136029,0.4979992153815976,publishable
+fixture-app,fixture-rules,fixture-dataset-b,4444444444444444444444444444444444444444444444444444444444444444,1,1,1,0.20654329147389294,1,insufficient_sample
+fixture-app,fixture-rules,fixture-dataset-b,3333333333333333333333333333333333333333333333333333333333333333,1,0,0,0,0.7934567085261071,insufficient_sample
+app_version,rules_version,dataset_sha256,outcome,gameover_reason_code,matches,duration_seconds_p10_p50_p90,turns_p10_p50_p90,under_one_minute,both_full_hp
+fixture-app,fixture-rules,fixture-dataset-a,abandoned,inactive-room,1,"{600,600,600}","{2,2,2}",0,1
+fixture-app,fixture-rules,fixture-dataset-a,completed,rules_terminal,101,"{70,110,150}","{4,6,9}",1,1
+fixture-app,fixture-rules,fixture-dataset-b,completed,rules_terminal,1,"{120,120,120}","{4,4,4}",0,0
+app_version,rules_version,dataset_sha256,deck_a_hash,deck_b_hash,matches,deck_a_wins,deck_a_win_rate,wilson_lower_95,wilson_upper_95,sample_status
+fixture-app,fixture-rules,fixture-dataset-a,1111111111111111111111111111111111111111111111111111111111111111,2222222222222222222222222222222222222222222222222222222222222222,100,60,0.6,0.5020007846184025,0.6906002538863971,publishable
+fixture-app,fixture-rules,fixture-dataset-b,3333333333333333333333333333333333333333333333333333333333333333,4444444444444444444444444444444444444444444444444444444444444444,1,0,0,0,0.7934567085261071,insufficient_sample

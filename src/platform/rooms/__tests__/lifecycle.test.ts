@@ -73,10 +73,16 @@ describe('platform room lifecycle', () => {
     process.env.JWT_SECRET = originalJwtSecret;
     CustomRoom.configureParticipantStore(createEmptyPlatformMatchParticipantStore());
     QuickMatchRoom.configureBlockStore(createEmptyPlatformBlockStore());
+    QuickMatchRoom.configureParticipantStore(createEmptyPlatformMatchParticipantStore());
     QuickMatchRoom.clearActiveRoomsForTests();
   });
 
   it('quick match pairs two players and only the host can relay the boardgame match id', async () => {
+    const recordMatchProvenance = vi.fn(async () => undefined);
+    QuickMatchRoom.configureParticipantStore({
+      ...createEmptyPlatformMatchParticipantStore(),
+      recordMatchProvenance,
+    });
     const room = new QuickMatchRoom();
     const handlers = new Map<string, BoardgameMatchReadyHandler>();
     const setMatchmaking = vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
@@ -124,11 +130,15 @@ describe('platform room lifecycle', () => {
 
     const relay = handlers.get('boardgameMatchReady');
     expect(relay).toBeDefined();
-    relay?.(guest, { boardgameMatchID: 'bgio-match-ignored' });
+    await relay?.(guest, { boardgameMatchID: 'bgio-match-ignored' });
     expect(broadcast).not.toHaveBeenCalledWith('boardgameMatchReady', expect.anything());
 
-    relay?.(host, { boardgameMatchID: ' bgio-match-1 ' });
+    await relay?.(host, { boardgameMatchID: ' bgio-match-1 ' });
     expect(broadcast).toHaveBeenCalledWith('boardgameMatchReady', { boardgameMatchID: 'bgio-match-1' });
+    expect(recordMatchProvenance).toHaveBeenCalledWith({
+      boardgameMatchID: 'bgio-match-1',
+      matchMode: 'quick_match',
+    });
     expect(setMatchmaking).toHaveBeenLastCalledWith({
       metadata: expect.objectContaining({
         status: 'finished',
@@ -250,7 +260,7 @@ describe('platform room lifecycle', () => {
       metadata: expect.objectContaining({ status: 'cancelled' }),
     });
 
-    handlers.get('boardgameMatchReady')?.(host, { boardgameMatchID: 'bgio-match-2' });
+    await handlers.get('boardgameMatchReady')?.(host, { boardgameMatchID: 'bgio-match-2' });
 
     expect(broadcast).toHaveBeenCalledWith('boardgameMatchReady', { boardgameMatchID: 'bgio-match-2' });
     expect(setMatchmaking).toHaveBeenLastCalledWith({
@@ -409,6 +419,11 @@ describe('platform room lifecycle', () => {
   });
 
   it('custom room lets only the host relay the boardgame match id once', async () => {
+    const recordMatchProvenance = vi.fn(async () => undefined);
+    CustomRoom.configureParticipantStore({
+      ...createEmptyPlatformMatchParticipantStore(),
+      recordMatchProvenance,
+    });
     const room = new CustomRoom();
     const handlers = new Map<string, BoardgameMatchReadyHandler>();
     const setMatchmaking = vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
@@ -440,11 +455,15 @@ describe('platform room lifecycle', () => {
 
     const relay = handlers.get('boardgameMatchReady');
     expect(relay).toBeDefined();
-    relay?.(guest, { boardgameMatchID: 'bgio-match-ignored' });
+    await relay?.(guest, { boardgameMatchID: 'bgio-match-ignored' });
     expect(broadcast).not.toHaveBeenCalledWith('boardgameMatchReady', expect.anything());
 
-    relay?.(host, { boardgameMatchID: 'bgio-match-2' });
+    await relay?.(host, { boardgameMatchID: 'bgio-match-2' });
     expect(broadcast).toHaveBeenCalledWith('boardgameMatchReady', { boardgameMatchID: 'bgio-match-2' });
+    expect(recordMatchProvenance).toHaveBeenCalledWith({
+      boardgameMatchID: 'bgio-match-2',
+      matchMode: 'custom_room',
+    });
     expect(setMatchmaking).toHaveBeenLastCalledWith({
       metadata: expect.objectContaining({
         kind: 'custom-room',
@@ -457,7 +476,7 @@ describe('platform room lifecycle', () => {
 
     broadcast.mockClear();
     setMatchmaking.mockClear();
-    relay?.(host, { boardgameMatchID: 'bgio-match-3' });
+    await relay?.(host, { boardgameMatchID: 'bgio-match-3' });
     expect(broadcast).not.toHaveBeenCalledWith('boardgameMatchReady', expect.anything());
     expect(setMatchmaking).not.toHaveBeenCalled();
   });
@@ -734,7 +753,7 @@ describe('platform room lifecycle', () => {
 
     broadcast.mockClear();
     setMatchmaking.mockClear();
-    handlers.get('boardgameMatchReady')?.(spectator, { boardgameMatchID: 'bgio-spectator-ignored' });
+    await handlers.get('boardgameMatchReady')?.(spectator, { boardgameMatchID: 'bgio-spectator-ignored' });
 
     expect(broadcast).not.toHaveBeenCalledWith('boardgameMatchReady', expect.anything());
     expect(setMatchmaking).not.toHaveBeenCalledWith({
@@ -752,7 +771,7 @@ describe('platform room lifecycle', () => {
       }),
     });
 
-    handlers.get('boardgameMatchReady')?.(host, { boardgameMatchID: 'bgio-match-2' });
+    await handlers.get('boardgameMatchReady')?.(host, { boardgameMatchID: 'bgio-match-2' });
     expect(broadcast).toHaveBeenCalledWith('boardgameMatchReady', { boardgameMatchID: 'bgio-match-2' });
   });
 
@@ -854,7 +873,7 @@ describe('platform room lifecycle', () => {
     await room.onJoin(host);
     room.clients.push(guest);
     await room.onJoin(guest);
-    handlers.get('boardgameMatchReady')?.(host, { boardgameMatchID: 'bgio-match-ready' });
+    await handlers.get('boardgameMatchReady')?.(host, { boardgameMatchID: 'bgio-match-ready' });
 
     const spectatorAuth = await room.onAuth(
       {} as PlatformClient,
@@ -1189,7 +1208,7 @@ describe('platform room lifecycle', () => {
     setMatchmaking.mockClear();
 
     handlers.get('cancelCustomRoom')?.(oldHost);
-    handlers.get('boardgameMatchReady')?.(oldHost, { boardgameMatchID: 'bgio-old-host-ignored' });
+    await handlers.get('boardgameMatchReady')?.(oldHost, { boardgameMatchID: 'bgio-old-host-ignored' });
 
     expect(broadcast).not.toHaveBeenCalledWith('customRoomCancelled', expect.anything());
     expect(broadcast).not.toHaveBeenCalledWith('boardgameMatchReady', expect.anything());
@@ -1197,7 +1216,7 @@ describe('platform room lifecycle', () => {
       metadata: expect.objectContaining({ status: 'cancelled' }),
     });
 
-    handlers.get('boardgameMatchReady')?.(newHost, { boardgameMatchID: ' bgio-match-1 ' });
+    await handlers.get('boardgameMatchReady')?.(newHost, { boardgameMatchID: ' bgio-match-1 ' });
 
     expect(broadcast).toHaveBeenCalledWith('boardgameMatchReady', { boardgameMatchID: 'bgio-match-1' });
     expect(setMatchmaking).toHaveBeenLastCalledWith({

@@ -83,6 +83,55 @@ describe('production schema gate', () => {
     expect(REQUIRED_RUNTIME_COLUMNS.account_deletion_requests).not.toContain('poison_count');
   });
 
+  it('requires the permanent anonymous match analytics contract', () => {
+    expect(REQUIRED_RUNTIME_TABLES).toEqual(
+      expect.arrayContaining([
+        'bjg_match_telemetry',
+        'match_analytics',
+        'match_analytics_decks',
+        'match_analytics_events',
+      ]),
+    );
+    expect(REQUIRED_RUNTIME_COLUMNS.bjg_match_seats).toContain('resume_count');
+    expect(REQUIRED_RUNTIME_COLUMNS.bjg_match_telemetry).toEqual(
+      expect.arrayContaining(['match_mode', 'traffic_class', 'player0_disconnect_count', 'player1_reconnect_count']),
+    );
+    expect(REQUIRED_RUNTIME_COLUMNS.match_analytics).toEqual(
+      expect.arrayContaining([
+        'source_match_digest',
+        'integrity_sha256',
+        'disconnect_counts',
+        'reconnect_counts',
+        'seat_resume_counts',
+        'deck_count',
+        'event_count',
+      ]),
+    );
+    expect(REQUIRED_RUNTIME_COLUMNS.match_analytics_decks).toContain('card_ids');
+    expect(REQUIRED_RUNTIME_COLUMNS.match_analytics_events).toContain('payload');
+    expect(REQUIRED_RUNTIME_CONSTRAINTS).toContainEqual(
+      expect.objectContaining({
+        tableName: 'match_analytics',
+        constraintName: 'match_analytics_digest_check',
+      }),
+    );
+    expect(REQUIRED_RUNTIME_INDEXES).toContainEqual(
+      expect.objectContaining({ tableName: 'match_analytics', indexName: 'idx_match_analytics_completed_at' }),
+    );
+    expect(REQUIRED_RUNTIME_CONSTRAINTS).toContainEqual(
+      expect.objectContaining({
+        tableName: 'bjg_match_telemetry',
+        constraintName: 'bjg_match_telemetry_classification_check',
+      }),
+    );
+    expect(REQUIRED_RUNTIME_INDEXES).toContainEqual(
+      expect.objectContaining({
+        tableName: 'bjg_match_telemetry',
+        indexName: 'idx_bjg_match_telemetry_classification',
+      }),
+    );
+  });
+
   it('requires official and localized card text schema', () => {
     expect(REQUIRED_RUNTIME_TABLES).not.toContain('card_effects_i18n');
     expect(REQUIRED_RUNTIME_TABLES).toContain('card_texts_i18n');
