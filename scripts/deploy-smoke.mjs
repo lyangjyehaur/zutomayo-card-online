@@ -21,17 +21,20 @@ const ports = {
   platform: args.get('platform-port') || process.env.PLATFORM_PORT || '3002',
 };
 const expectedBuildId = args.get('expected-build-id') || process.env.EXPECTED_BUILD_ID || '';
+const expectedDatasetSha256 = args.get('expected-dataset-sha256') || process.env.EXPECTED_CARD_DATASET_SHA256 || '';
 const checkBattleAssets = (args.get('check-battle-assets') || process.env.CHECK_BATTLE_ASSETS || 'false') === 'true';
 const reportPath = args.get('report-path') || process.env.DEPLOY_SMOKE_REPORT_PATH || '';
 const smokeStartedAt = new Date().toISOString();
 const smokeChecks = {
   healthReady: false,
   buildIdentityVerified: false,
+  datasetIdentityVerified: false,
   applicationSmokePassed: false,
   battleAssetsVerified: false,
   smokePassed: false,
 };
 let observedBuildId = '';
+let observedDatasetSha256 = '';
 
 if (reportPath) {
   process.once('exit', (exitCode) => {
@@ -46,6 +49,8 @@ if (reportPath) {
           finishedAt: new Date().toISOString(),
           expectedBuildId,
           observedBuildId,
+          expectedDatasetSha256,
+          observedDatasetSha256,
           checks: smokeChecks,
         },
         null,
@@ -74,6 +79,9 @@ const retryDelayMs = Number(args.get('retry-delay-ms') || process.env.SMOKE_RETR
 if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new Error('timeout must be a positive number');
 if (!Number.isInteger(attempts) || attempts <= 0) throw new Error('attempts must be a positive integer');
 if (!Number.isFinite(retryDelayMs) || retryDelayMs < 0) throw new Error('retry delay must be non-negative');
+if (expectedDatasetSha256 && !/^[a-f0-9]{64}$/.test(expectedDatasetSha256)) {
+  throw new Error('expected dataset SHA-256 must be a lowercase digest');
+}
 
 function endpoint(service, pathname) {
   return `${scheme}://${host}:${ports[service]}${pathname}`;
@@ -284,6 +292,16 @@ if (expectedBuildId && buildIds[0] !== expectedBuildId) {
 }
 console.log(`smoke ok: buildId=${buildIds[0]}`);
 smokeChecks.buildIdentityVerified = true;
+observedDatasetSha256 = String(versions[0]?.datasetSha256 || '');
+if (expectedDatasetSha256 && observedDatasetSha256 !== expectedDatasetSha256) {
+  throw new Error(
+    `game runtime dataset SHA-256 ${observedDatasetSha256 || '(missing)'} does not match release ${expectedDatasetSha256}`,
+  );
+}
+if (expectedDatasetSha256) {
+  console.log(`smoke ok: datasetSha256=${observedDatasetSha256}`);
+  smokeChecks.datasetIdentityVerified = true;
+}
 
 const officialRelease = await requestWithRetry('api', '/api/official/status');
 if (

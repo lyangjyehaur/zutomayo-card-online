@@ -136,6 +136,8 @@ services:
     environment:
       - PORT=3000
       - NODE_ENV=production
+      - DEPLOYMENT_ENV=${DEPLOYMENT_ENV:-development}
+      - CARD_DATASET_SHA256=${VITE_CARD_DATASET_SHA256:-unknown}
       - UMAMI_UPSTREAM_URL=${UMAMI_UPSTREAM_URL:-}
       - PG_HOST=${PG_HOST:-postgres}
       - PG_PORT=${PG_PORT:-5432}
@@ -276,6 +278,8 @@ services:
     environment:
       - PLATFORM_PORT=3002
       - NODE_ENV=production
+      - DEPLOYMENT_ENV=${DEPLOYMENT_ENV:-development}
+      - MATCH_ANALYTICS_TRAFFIC_CLASS=${MATCH_ANALYTICS_TRAFFIC_CLASS:-synthetic}
       - PG_HOST=${PG_HOST:-postgres}
       - PG_PORT=${PG_PORT:-5432}
       - PG_USER=${PG_PLATFORM_USER:-${PG_APP_USER:-zutomayo_app}}

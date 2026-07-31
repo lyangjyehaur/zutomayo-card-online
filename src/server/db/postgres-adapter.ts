@@ -10,6 +10,7 @@ import { APP_VERSION_INFO } from '../../version';
 import {
   projectAbandonedMatchAnalytics,
   projectMatchAnalytics,
+  resolveMatchAnalyticsRuntimeMetadata,
   sourceMatchDigest,
   type MatchAnalyticsProjection,
   type TrustedMatchTelemetry,
@@ -1196,8 +1197,7 @@ export class PostgresAdapter {
             rulesVersion: metadataRulesVersion(match.metadata),
             version: APP_VERSION_INFO,
             abandonedAt: new Date(match.updated_at).toISOString(),
-            datasetSha256: process.env.CARD_DATASET_SHA256 ?? process.env.VITE_CARD_DATASET_SHA256,
-            environment: process.env.DEPLOYMENT_ENV ?? process.env.NODE_ENV,
+            ...resolveMatchAnalyticsRuntimeMetadata(),
             telemetry: trustedMatchTelemetry(telemetry.rows[0]),
           });
         } catch (error) {
@@ -1554,8 +1554,7 @@ export class PostgresAdapter {
         unratedReason: status === 'pending' ? null : unratedReason,
         rulesVersion,
         version: APP_VERSION_INFO,
-        datasetSha256: process.env.CARD_DATASET_SHA256 ?? process.env.VITE_CARD_DATASET_SHA256,
-        environment: process.env.DEPLOYMENT_ENV ?? process.env.NODE_ENV,
+        ...resolveMatchAnalyticsRuntimeMetadata(),
         telemetry: trustedMatchTelemetry(telemetry.rows[0]),
       });
     } catch (error) {

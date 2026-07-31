@@ -246,6 +246,16 @@ groups:
           summary: 'Anonymous match analytics capture failed'
           description: '{{ $value }} analytics capture failures occurred in the last five minutes. Source runtime rows must be retained until reconciliation succeeds.'
 
+      - alert: MatchAnalyticsMissingMetadata
+        expr: match_analytics_recent_missing_metadata > 0
+        for: 1m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: 'Recent anonymous match facts are missing release metadata'
+          description: '{{ $value }} analytics facts captured in the last 24 hours have an invalid app, build, rules, or dataset identity. Balance reports must exclude them.'
+
   - name: zutomayo-relationship-events
     interval: 30s
     rules:

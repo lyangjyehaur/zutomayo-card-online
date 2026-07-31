@@ -20,6 +20,7 @@ import { Pool } from 'pg';
 import { MatchSeatReservationError, PostgresAdapter } from './server/db/postgres-adapter';
 import { RedisPubSub } from './server/transport/redis-pubsub';
 import { startMatchResultOutboxWorker } from './server/matchResultOutbox';
+import { resolveMatchAnalyticsRuntimeMetadata } from './server/matchAnalytics';
 import * as Sentry from '@sentry/node';
 import helmet from 'koa-helmet';
 import { logger, requestLoggingMiddleware } from './server/observability/logger';
@@ -617,7 +618,10 @@ server.app.use(async (ctx: KoaContext, next: Next) => {
 server.app.use(async (ctx: KoaContext, next: Next) => {
   if (ctx.path === '/api/app-version') {
     ctx.set('Cache-Control', 'no-store');
-    ctx.body = APP_VERSION_INFO;
+    ctx.body = {
+      ...APP_VERSION_INFO,
+      datasetSha256: resolveMatchAnalyticsRuntimeMetadata().datasetSha256,
+    };
     return;
   }
   if (ctx.path === '/api/admin/cards/reload' && ctx.method === 'POST') {
@@ -1197,6 +1201,7 @@ process.on('SIGINT', () => void shutdown('SIGINT'));
 // PG 不可用時重試 5 次（間隔 2 秒），仍失敗則退出 — 卡牌未載入時 createMatch 會崩潰。
 async function bootstrap(): Promise<void> {
   validateSecurityConfig();
+  resolveMatchAnalyticsRuntimeMetadata();
 
   for (let attempt = 1; attempt <= 5; attempt++) {
     try {

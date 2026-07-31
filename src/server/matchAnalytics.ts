@@ -3,6 +3,7 @@ import type { State } from 'boardgame.io';
 import type { AppVersionInfo } from '../version';
 
 export const MATCH_ANALYTICS_SCHEMA_VERSION = 1;
+const DATASET_SHA256_PATTERN = /^[a-f0-9]{64}$/;
 
 const GAME_STEPS = new Set(['janken', 'mulligan', 'initialSet', 'turnSet', 'effectOrder', 'gameOver']);
 const EVENT_TYPES = new Set([
@@ -198,6 +199,24 @@ function environment(value: string | undefined): MatchAnalyticsFact['environment
     return normalized;
   }
   return 'unknown';
+}
+
+export function resolveMatchAnalyticsRuntimeMetadata(env: NodeJS.ProcessEnv = process.env): {
+  environment: MatchAnalyticsFact['environment'];
+  datasetSha256: string;
+} {
+  const deploymentEnvironment = environment(env.DEPLOYMENT_ENV ?? env.NODE_ENV);
+  const configuredDataset = (env.CARD_DATASET_SHA256 ?? env.VITE_CARD_DATASET_SHA256)?.trim().toLowerCase();
+  if (configuredDataset && !DATASET_SHA256_PATTERN.test(configuredDataset)) {
+    throw new Error('CARD_DATASET_SHA256 must be a lowercase SHA-256 digest');
+  }
+  if ((deploymentEnvironment === 'production' || deploymentEnvironment === 'staging') && !configuredDataset) {
+    throw new Error(`${deploymentEnvironment} match analytics require CARD_DATASET_SHA256`);
+  }
+  return {
+    environment: deploymentEnvironment,
+    datasetSha256: configuredDataset || 'unknown',
+  };
 }
 
 function boundedCount(value: unknown): number {

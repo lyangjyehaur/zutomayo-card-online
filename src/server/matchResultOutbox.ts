@@ -4,6 +4,7 @@ import type { Pool, PoolClient, QueryResultRow } from 'pg';
 import {
   gameMatchCompletionsTotal,
   matchAnalyticsOldestUnarchivedSeconds,
+  matchAnalyticsRecentMissingMetadata,
   matchAnalyticsUnarchivedTerminal,
   matchResultOutboxMetricsLastSuccess,
   matchResultOutboxMetricsRefreshSuccess,
@@ -93,7 +94,7 @@ const OUTBOX_STATUSES = ['pending', 'processing', 'delivered', 'unrated'] as con
  */
 export async function refreshMatchResultOutboxMetrics(pool: Pick<Pool, 'query'>): Promise<void> {
   try {
-    const [summary, counts, terminalRows] = await Promise.all([
+    const [summary, counts, terminalRows, missingMetadata] = await Promise.all([
       pool.query<{ pending_count: string; oldest_age_seconds: string }>(
         `SELECT
            COUNT(*) FILTER (WHERE status IN ('pending', 'processing'))::text AS pending_count,
@@ -111,6 +112,17 @@ export async function refreshMatchResultOutboxMetrics(pool: Pick<Pool, 'query'>)
       pool.query<{ source_match_id: string; completed_at: Date | string }>(
         `SELECT source_match_id, completed_at
            FROM bjg_match_result_outbox`,
+      ),
+      pool.query<{ missing_count: string }>(
+        `SELECT COUNT(*)::text AS missing_count
+           FROM match_analytics
+          WHERE completed_at >= NOW() - INTERVAL '24 hours'
+            AND (
+              app_version = '' OR app_version = 'unknown'
+              OR build_id = '' OR build_id = 'unknown'
+              OR rules_version = '' OR rules_version = 'unknown'
+              OR dataset_sha256 !~ '^[a-f0-9]{64}$'
+            )`,
       ),
     ]);
     const row = summary.rows[0] ?? { pending_count: '0', oldest_age_seconds: '0' };
@@ -171,6 +183,7 @@ export async function refreshMatchResultOutboxMetrics(pool: Pick<Pool, 'query'>)
         ? Math.max(0, (Date.now() - oldestUnarchivedMilliseconds) / 1000)
         : 0,
     );
+    matchAnalyticsRecentMissingMetadata.set(Math.max(0, Number(missingMetadata.rows[0]?.missing_count) || 0));
     matchResultOutboxMetricsRefreshSuccess.set(1);
     matchResultOutboxMetricsLastSuccess.set(Date.now() / 1000);
   } catch (error) {

@@ -47,6 +47,9 @@ describe('match result outbox worker', () => {
             rowCount: 2,
           };
         }
+        if (sql.includes('AS missing_count')) {
+          return { rows: [{ missing_count: '3' }], rowCount: 1 };
+        }
         if (sql.includes('FROM match_analytics analytics')) {
           return {
             rows: [
@@ -80,6 +83,7 @@ describe('match result outbox worker', () => {
     expect(metrics).toContain('match_result_outbox_rows{status="delivered"} 8');
     expect(metrics).toContain('match_analytics_unarchived_terminal 1');
     expect(metrics).toMatch(/match_analytics_oldest_unarchived_seconds 3\d{2}/);
+    expect(metrics).toContain('match_analytics_recent_missing_metadata 3');
     expect(metrics).toContain('match_result_outbox_metrics_refresh_success 1');
   });
 

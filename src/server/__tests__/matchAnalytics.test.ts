@@ -1,6 +1,11 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { projectAbandonedMatchAnalytics, projectMatchAnalytics, sourceMatchDigest } from '../matchAnalytics';
+import {
+  projectAbandonedMatchAnalytics,
+  projectMatchAnalytics,
+  resolveMatchAnalyticsRuntimeMetadata,
+  sourceMatchDigest,
+} from '../matchAnalytics';
 
 function card(defId: string, instanceId: string) {
   return { defId, instanceId, faceUp: false };
@@ -111,6 +116,26 @@ function project(initial = initialState()) {
 }
 
 describe('match analytics projection', () => {
+  it('requires an exact dataset digest for production and staging runtimes', () => {
+    const digest = 'a'.repeat(64);
+    expect(resolveMatchAnalyticsRuntimeMetadata({ DEPLOYMENT_ENV: 'production', CARD_DATASET_SHA256: digest })).toEqual(
+      { environment: 'production', datasetSha256: digest },
+    );
+    expect(
+      resolveMatchAnalyticsRuntimeMetadata({ DEPLOYMENT_ENV: 'staging', VITE_CARD_DATASET_SHA256: digest }),
+    ).toEqual({ environment: 'staging', datasetSha256: digest });
+    expect(() => resolveMatchAnalyticsRuntimeMetadata({ NODE_ENV: 'production' })).toThrow(
+      'production match analytics require CARD_DATASET_SHA256',
+    );
+    expect(() =>
+      resolveMatchAnalyticsRuntimeMetadata({ DEPLOYMENT_ENV: 'staging', CARD_DATASET_SHA256: 'invalid' }),
+    ).toThrow('CARD_DATASET_SHA256 must be a lowercase SHA-256 digest');
+    expect(resolveMatchAnalyticsRuntimeMetadata({ NODE_ENV: 'test' })).toEqual({
+      environment: 'test',
+      datasetSha256: 'unknown',
+    });
+  });
+
   it('creates stable anonymous facts and unordered 20-card deck snapshots', () => {
     const analytics = project();
     const reordered = project(initialState(true));

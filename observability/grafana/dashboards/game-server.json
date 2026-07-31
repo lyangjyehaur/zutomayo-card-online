@@ -242,7 +242,7 @@
     },
     {
       "title": "Match Analytics Archive Health",
-      "description": "Terminal runtime rows that have not reconciled with durable anonymous analytics. Both values should remain zero.",
+      "description": "Terminal runtime rows that have not reconciled with durable anonymous analytics, plus recent facts with incomplete release metadata. All values should remain zero.",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 32 },
@@ -264,6 +264,11 @@
           "expr": "match_analytics_oldest_unarchived_seconds{job=\"zutomayo-game\"}",
           "legendFormat": "oldest unarchived seconds",
           "refId": "B"
+        },
+        {
+          "expr": "match_analytics_recent_missing_metadata{job=\"zutomayo-game\"}",
+          "legendFormat": "missing release metadata (24h)",
+          "refId": "C"
         }
       ]
     }
