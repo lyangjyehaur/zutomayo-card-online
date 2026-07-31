@@ -1,6 +1,6 @@
 # 隱私政策
 
-生效與更新日期：2026-07-30
+生效與更新日期：2026-07-31
 
 營運者：ZUTOMAYO CARD ONLINE Community
 
@@ -23,7 +23,7 @@
 
 正式環境可能依實際啟用功能使用主機與 CDN、Postgres/Redis、OAuth 或 Logto、郵件服務、Umami、Cloudflare Web Analytics，以及 Sentry 相容錯誤追蹤。Cloudflare Web Analytics 用於彙總流量與 Web Vitals；只有玩家選擇或正式環境實際啟用的服務會接收提供功能所需的最少資料。
 
-分析事件採明確 allowlist，不得包含聊天內容、卡牌內容或不必要的原始玩家識別碼。事件契約與查詢方式見 [funnel-analytics.md](./funnel-analytics.md)。
+分析事件採明確 allowlist，不得包含聊天內容、卡牌文字、帳號資料或不必要的原始玩家識別碼。完成對局另保存去識別的終局、版本、牌組卡牌定義 ID、規則事件、配對來源與每席斷線／重連／座位恢復次數；不保存原始 match ID、room/invite/session/socket/user ID、IP、牌庫順序、卡牌 instance ID 或自由文字。事件契約與查詢方式見 [funnel-analytics.md](./funnel-analytics.md)，對局資料契約見 [MATCH_ANALYTICS_RETENTION_PLAN.md](./MATCH_ANALYTICS_RETENTION_PLAN.md)。
 
 ## 玩家權利
 
@@ -36,8 +36,9 @@
 詳細期限與執行方式見 [DATA_RETENTION.md](./DATA_RETENTION.md)：
 
 - 帳號與牌組：帳號有效期間；刪除請求確認後 30 天內刪除或匿名化。
-- 完成對局與排名異動：365 天。
-- Action log、replay 與聊天：通常 180 天。
+- 可連結帳號的完成對局與排名異動：365 天。
+- 可連結帳號的 action log、replay 與聊天：通常 180 天。
+- 去識別的對局終局、牌組組成與 allowlisted 規則事件：無固定到期日，用於版本、平衡、逾時與可靠性分析。
 - 舉報、制裁與管理稽核：通常 365 天。
 - 應用程式日誌 30 天、metrics 90 天、加密備份 35 天。
 

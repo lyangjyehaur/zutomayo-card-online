@@ -1,6 +1,7 @@
 import { Room, type AuthContext } from '@colyseus/core';
 import { createEmptyPlatformFriendStore, type PlatformFriendStore } from '../friendStore';
 import { platformLogger as logger } from '../logger';
+import { createEmptyPlatformMatchParticipantStore, type PlatformMatchParticipantStore } from '../matchParticipantStore';
 import { recordPlatformReconnect } from '../metrics';
 import { assertPlatformAuthCurrent, authenticatePlatformClientCurrent } from './auth';
 import type {
@@ -39,6 +40,7 @@ export function parseFriendInviteId(inviteId: string): { inviterUserId: string; 
 export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: PlatformClient }> {
   static friendStore: PlatformFriendStore = createEmptyPlatformFriendStore();
   static enforceFriendship = false;
+  private static participantStore: PlatformMatchParticipantStore = createEmptyPlatformMatchParticipantStore();
   private static readonly activeRooms = new Set<InviteRoom>();
 
   maxClients = 8;
@@ -57,6 +59,10 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
   static configureFriendStore(friendStore: PlatformFriendStore, options: { enforceFriendship?: boolean } = {}): void {
     InviteRoom.friendStore = friendStore;
     InviteRoom.enforceFriendship = options.enforceFriendship === true;
+  }
+
+  static configureParticipantStore(store: PlatformMatchParticipantStore | null): void {
+    InviteRoom.participantStore = store ?? createEmptyPlatformMatchParticipantStore();
   }
 
   static async handleRelationshipChange(change: PlatformRelationshipChange): Promise<void> {
@@ -114,7 +120,7 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
       void this.cancel(optionalText(message.reason, 80) ?? 'cancelled');
     });
 
-    this.onMessage<BoardgameMatchReadyMessage>('boardgameMatchReady', (client, message) => {
+    this.onMessage<BoardgameMatchReadyMessage>('boardgameMatchReady', async (client, message) => {
       if (!this.inviter || client.sessionId !== this.inviter.sessionId) return;
       if (this.status !== 'accepted') return;
       const boardgameMatchID = optionalText(message.boardgameMatchID, 128);
@@ -122,13 +128,23 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
       this.boardgameMatchID = boardgameMatchID;
       this.roomCode = this.roomCode ?? boardgameMatchID;
       this.status = 'finished';
-      void this.refreshMetadata();
+      await this.recordMatchProvenance(boardgameMatchID);
+      await this.refreshMetadata();
       this.broadcast('boardgameMatchReady', { boardgameMatchID });
       this.broadcastSnapshot();
     });
 
     await this.refreshMetadata();
+    if (this.boardgameMatchID) void this.recordMatchProvenance(this.boardgameMatchID);
     InviteRoom.activeRooms.add(this);
+  }
+
+  private async recordMatchProvenance(boardgameMatchID: string): Promise<void> {
+    try {
+      await InviteRoom.participantStore.recordMatchProvenance({ boardgameMatchID, matchMode: 'invite' });
+    } catch (err) {
+      logger.warn({ err, matchMode: 'invite' }, 'failed to record match provenance');
+    }
   }
 
   onDispose(): void {

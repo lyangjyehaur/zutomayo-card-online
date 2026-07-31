@@ -205,7 +205,9 @@ export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}
   LobbyRoom.configureFriendStore(friendStore);
   InviteRoom.configureFriendStore(friendStore, { enforceFriendship: friendStoreMode === 'postgres' });
   QuickMatchRoom.configureBlockStore(blockStore);
+  QuickMatchRoom.configureParticipantStore(matchParticipantStore);
   CustomRoom.configureParticipantStore(matchParticipantStore);
+  InviteRoom.configureParticipantStore(matchParticipantStore);
   MatchShellRoom.configureParticipantStore(matchParticipantStore);
   MatchShellRoom.configureChatPreviewStore(chatPreviewStore);
 
@@ -349,6 +351,10 @@ export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}
     configurePlatformJwtRevocationStore(null);
     configurePlatformJwtAccountStore(null);
     QuickMatchRoom.configureBlockStore(null);
+    QuickMatchRoom.configureParticipantStore(null);
+    CustomRoom.configureParticipantStore(null);
+    InviteRoom.configureParticipantStore(null);
+    MatchShellRoom.configureParticipantStore(null);
     LobbyRoom.clearActiveRoomsForTests();
     QuickMatchRoom.clearActiveRoomsForTests();
     InviteRoom.clearActiveRoomsForTests();

@@ -1035,7 +1035,9 @@ server.app.use(async (ctx: KoaContext, next: Next) => {
 });
 
 const PORT = Number(process.env.PORT) || 3000;
-const STALE_MATCH_TTL_MS = Number(process.env.STALE_MATCH_TTL_MS) || 30 * 60 * 1000; // 30 minutes
+const LEGACY_STALE_MATCH_TTL_MS = Number(process.env.STALE_MATCH_TTL_MS) || 30 * 60 * 1000;
+const TERMINAL_MATCH_TTL_MS = Number(process.env.TERMINAL_MATCH_TTL_MS) || LEGACY_STALE_MATCH_TTL_MS;
+const INACTIVE_MATCH_TTL_MS = Number(process.env.INACTIVE_MATCH_TTL_MS) || LEGACY_STALE_MATCH_TTL_MS;
 const CLEANUP_INTERVAL_MS = Number(process.env.CLEANUP_INTERVAL_MS) || 5 * 60 * 1000; // every 5 min
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -1062,22 +1064,26 @@ function validateSecurityConfig(): void {
 // Stale room cleanup — 直接使用 PostgresAdapter instance（server.db 型別因斷言後不夠精確）。
 async function cleanupStaleMatches() {
   try {
-    const matchIDs = await db.listMatches({});
-    if (!matchIDs || !Array.isArray(matchIDs)) return;
     let cleaned = 0;
-    for (const matchID of matchIDs) {
-      try {
-        const { metadata } = await db.fetch(matchID, { metadata: true });
-        if (!metadata) continue;
-        const updatedAt = metadata.updatedAt ? new Date(metadata.updatedAt).getTime() : 0;
-        const createdAt = metadata.createdAt ? new Date(metadata.createdAt).getTime() : 0;
-        const age = Date.now() - Math.max(createdAt, updatedAt);
-        if (age > STALE_MATCH_TTL_MS) {
-          await db.wipe(matchID);
-          cleaned++;
+    for (const classification of [
+      { isGameover: true, ttlMs: TERMINAL_MATCH_TTL_MS },
+      { isGameover: false, ttlMs: INACTIVE_MATCH_TTL_MS },
+    ]) {
+      const matchIDs = await db.listMatches({ where: { isGameover: classification.isGameover } });
+      if (!matchIDs || !Array.isArray(matchIDs)) continue;
+      for (const matchID of matchIDs) {
+        try {
+          const { metadata } = await db.fetch(matchID, { metadata: true });
+          if (!metadata) continue;
+          const updatedAt = metadata.updatedAt ? new Date(metadata.updatedAt).getTime() : 0;
+          const createdAt = metadata.createdAt ? new Date(metadata.createdAt).getTime() : 0;
+          const age = Date.now() - Math.max(createdAt, updatedAt);
+          if (age > classification.ttlMs && (await db.wipe(matchID))) {
+            cleaned++;
+          }
+        } catch {
+          /* skip */
         }
-      } catch {
-        /* skip */
       }
     }
     if (cleaned > 0) logger.info({ count: cleaned }, 'removed stale matches');
@@ -1089,7 +1095,11 @@ async function cleanupStaleMatches() {
 
 const cleanupTimer = setInterval(cleanupStaleMatches, CLEANUP_INTERVAL_MS);
 logger.info(
-  { ttlMin: STALE_MATCH_TTL_MS / 60000, intervalMin: CLEANUP_INTERVAL_MS / 60000 },
+  {
+    terminalTtlMin: TERMINAL_MATCH_TTL_MS / 60000,
+    inactiveTtlMin: INACTIVE_MATCH_TTL_MS / 60000,
+    intervalMin: CLEANUP_INTERVAL_MS / 60000,
+  },
   'stale match cleanup configured',
 );
 

@@ -4,6 +4,7 @@ import {
   processMatchResultOutboxBatch,
   refreshMatchResultOutboxMetrics,
 } from '../matchResultOutbox';
+import { sourceMatchDigest } from '../matchAnalytics';
 import { register } from '../observability/metrics';
 
 function outboxRow() {
@@ -33,9 +34,33 @@ describe('match result outbox worker', () => {
 
   it('refreshes durable queue and row-count gauges from PostgreSQL', async () => {
     const pool = {
-      query: vi.fn(async (sql: string) => {
+      query: vi.fn(async (sql: string, _params?: unknown[]) => {
         if (sql.includes('COUNT(*) FILTER')) {
           return { rows: [{ pending_count: '2', oldest_age_seconds: '301.5' }], rowCount: 1 };
+        }
+        if (sql.includes('SELECT source_match_id, completed_at')) {
+          return {
+            rows: [
+              { source_match_id: 'match_1', completed_at: new Date(Date.now() - 600_000) },
+              { source_match_id: 'match_2', completed_at: new Date(Date.now() - 300_000) },
+            ],
+            rowCount: 2,
+          };
+        }
+        if (sql.includes('FROM match_analytics analytics')) {
+          return {
+            rows: [
+              {
+                source_match_digest: sourceMatchDigest('match_1'),
+                integrity_sha256: 'a'.repeat(64),
+                deck_count: 2,
+                event_count: 4,
+                archived_deck_count: '2',
+                archived_event_count: '4',
+              },
+            ],
+            rowCount: 1,
+          };
         }
         return {
           rows: [
@@ -53,6 +78,8 @@ describe('match result outbox worker', () => {
     expect(metrics).toContain('match_result_outbox_pending 2');
     expect(metrics).toContain('match_result_outbox_oldest_age_seconds 301.5');
     expect(metrics).toContain('match_result_outbox_rows{status="delivered"} 8');
+    expect(metrics).toContain('match_analytics_unarchived_terminal 1');
+    expect(metrics).toMatch(/match_analytics_oldest_unarchived_seconds 3\d{2}/);
     expect(metrics).toContain('match_result_outbox_metrics_refresh_success 1');
   });
 

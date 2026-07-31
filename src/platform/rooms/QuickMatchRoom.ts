@@ -1,5 +1,7 @@
 import { Room, type AuthContext } from '@colyseus/core';
 import { createEmptyPlatformBlockStore, type PlatformBlockStore } from '../blockStore';
+import { platformLogger as logger } from '../logger';
+import { createEmptyPlatformMatchParticipantStore, type PlatformMatchParticipantStore } from '../matchParticipantStore';
 import { assertPlatformAuthCurrent, authenticatePlatformClientCurrent } from './auth';
 import type {
   BoardgameMatchReadyMessage,
@@ -41,10 +43,15 @@ function quickMatchDeckName(value: unknown): string | undefined {
 
 export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; client: PlatformClient }> {
   private static blockStore: PlatformBlockStore = createEmptyPlatformBlockStore();
+  private static participantStore: PlatformMatchParticipantStore = createEmptyPlatformMatchParticipantStore();
   private static readonly activeRooms = new Set<QuickMatchRoom>();
 
   static configureBlockStore(store: PlatformBlockStore | null): void {
     QuickMatchRoom.blockStore = store ?? createEmptyPlatformBlockStore();
+  }
+
+  static configureParticipantStore(store: PlatformMatchParticipantStore | null): void {
+    QuickMatchRoom.participantStore = store ?? createEmptyPlatformMatchParticipantStore();
   }
 
   static async handleRelationshipChange(change: PlatformRelationshipChange): Promise<void> {
@@ -78,13 +85,14 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
     this.autoDispose = true;
     this.maxMessagesPerSecond = 4;
 
-    this.onMessage<BoardgameMatchReadyMessage>('boardgameMatchReady', (client, message) => {
+    this.onMessage<BoardgameMatchReadyMessage>('boardgameMatchReady', async (client, message) => {
       if (client.sessionId !== this.hostSessionId) return;
       const boardgameMatchID = optionalText(message.boardgameMatchID, 128);
       if (!boardgameMatchID || this.status !== 'matched') return;
       this.boardgameMatchID = boardgameMatchID;
       this.status = 'finished';
-      void this.refreshMetadata();
+      await this.recordMatchProvenance(boardgameMatchID);
+      await this.refreshMetadata();
       this.broadcast('boardgameMatchReady', { boardgameMatchID });
       this.broadcastSnapshot();
     });
@@ -100,6 +108,14 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
       if (this.status === 'waiting') void this.cancel('timeout');
     }, QUICK_MATCH_WAIT_TIMEOUT_MS);
     QuickMatchRoom.activeRooms.add(this);
+  }
+
+  private async recordMatchProvenance(boardgameMatchID: string): Promise<void> {
+    try {
+      await QuickMatchRoom.participantStore.recordMatchProvenance({ boardgameMatchID, matchMode: 'quick_match' });
+    } catch (err) {
+      logger.warn({ err, matchMode: 'quick_match' }, 'failed to record match provenance');
+    }
   }
 
   onDispose(): void {
