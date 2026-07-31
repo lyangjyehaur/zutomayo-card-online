@@ -5,6 +5,7 @@ import {
   getAuthenticatedMatchHistory,
   openAuthenticatedOnlineLobby,
   registerAuthenticatedOnlineAccount,
+  type AuthenticatedMatchHistoryEntry,
 } from './helpers/online';
 import { QUICK_MATCH_ENABLED } from '../src/featureFlags';
 
@@ -21,6 +22,60 @@ const EVIDENCE_FLAG = 'E2E_AUTHENTICATED_EVIDENCE';
 
 function recordLs05Evidence(testInfo: TestInfo, description: string): void {
   testInfo.annotations.push({ type: 'ls05', description });
+}
+
+const FORBIDDEN_REPLAY_KEYS = new Set([
+  'state',
+  'initialstate',
+  'deck',
+  'decks',
+  'deckdefids',
+  'rng',
+  'rngstate',
+  'rngseed',
+  'seed',
+  'replaymanifest',
+  'hand',
+  'hands',
+  'handcardids',
+]);
+
+function assertSanitizedReplayPayload(payload: unknown): void {
+  let revealedHandsSeen = false;
+  const visit = (value: unknown, path: string): void => {
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => visit(item, `${path}[${index}]`));
+      return;
+    }
+    if (!value || typeof value !== 'object') return;
+    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+      const normalizedKey = key.toLowerCase().replace(/[_-]/g, '');
+      const childPath = `${path}.${key}`;
+      if (normalizedKey === 'revealedhands') {
+        revealedHandsSeen = true;
+      } else if (
+        FORBIDDEN_REPLAY_KEYS.has(normalizedKey) ||
+        normalizedKey.startsWith('rng') ||
+        normalizedKey.endsWith('manifest')
+      ) {
+        throw new Error(`Replay payload exposes forbidden field ${childPath}`);
+      }
+      visit(child, childPath);
+    }
+  };
+
+  expect(payload).toMatchObject({
+    matchId: expect.any(String),
+    replay: {
+      schemaVersion: 1,
+      result: expect.any(Object),
+      decisions: expect.any(Array),
+      effects: expect.any(Array),
+      timeline: expect.any(Array),
+    },
+  });
+  visit(payload, 'response');
+  expect(revealedHandsSeen).toBe(true);
 }
 
 function enabled(name: string): boolean {
@@ -172,7 +227,7 @@ test.describe('Authenticated 雙瀏覽器線上流程 @requires-backend @staging
     page,
   }, testInfo) => {
     test.skip(!QUICK_MATCH_ENABLED, 'Quick Match UI is temporarily disabled');
-    test.setTimeout(150_000);
+    test.setTimeout(180_000);
     const baseURL = process.env.E2E_BASE_URL ?? 'http://localhost:3000';
     skipWhenBlocked(testInfo, baseURL, true);
 
@@ -184,6 +239,7 @@ test.describe('Authenticated 雙瀏覽器線上流程 @requires-backend @staging
       baseURL,
       recordVideo: { dir: testInfo.outputPath('spectator-video') },
     });
+    const nonParticipantContext = await browser.newContext({ baseURL });
     const websocketUrls: string[] = [];
     page.on('websocket', (socket) => websocketUrls.push(socket.url()));
     let failed = false;
@@ -191,6 +247,7 @@ test.describe('Authenticated 雙瀏覽器線上流程 @requires-backend @staging
       const [hostAccount, guestAccount] = await Promise.all([
         registerAuthenticatedOnlineAccount(context, 'E2E Ranked Host'),
         registerAuthenticatedOnlineAccount(guestContext, 'E2E Ranked Guest'),
+        registerAuthenticatedOnlineAccount(nonParticipantContext, 'E2E Replay Outsider'),
       ]);
       recordLs05Evidence(testInfo, 'authenticated-sessions');
       await Promise.all([
@@ -251,6 +308,8 @@ test.describe('Authenticated 雙瀏覽器線上流程 @requires-backend @staging
       expect(spectatorMatchSubmissions).toEqual([]);
       recordLs05Evidence(testInfo, 'spectator-hidden-information');
 
+      let hostMatch: AuthenticatedMatchHistoryEntry | undefined;
+      let guestMatch: AuthenticatedMatchHistoryEntry | undefined;
       await expect
         .poll(
           async () => {
@@ -258,23 +317,63 @@ test.describe('Authenticated 雙瀏覽器線上流程 @requires-backend @staging
               getAuthenticatedMatchHistory(context),
               getAuthenticatedMatchHistory(guestContext),
             ]);
+            hostMatch = hostHistory.find((entry) => entry.sourceMatchId === matchID);
+            guestMatch = guestHistory.find((entry) => entry.sourceMatchId === matchID);
             return {
-              host: hostHistory.find((entry) => entry.sourceMatchId === matchID),
-              guest: guestHistory.find((entry) => entry.sourceMatchId === matchID),
+              host: hostMatch,
+              guest: guestMatch,
             };
           },
           { timeout: 30_000, intervals: [500, 1_000, 2_000] },
         )
         .toEqual({
-          host: expect.objectContaining({ winnerId: guestAccount.id, loserId: hostAccount.id }),
-          guest: expect.objectContaining({ winnerId: guestAccount.id, loserId: hostAccount.id }),
+          host: expect.objectContaining({
+            winnerId: guestAccount.id,
+            loserId: hostAccount.id,
+            replayAvailable: true,
+          }),
+          guest: expect.objectContaining({
+            winnerId: guestAccount.id,
+            loserId: hostAccount.id,
+            replayAvailable: true,
+          }),
         });
       recordLs05Evidence(testInfo, 'result-submission');
+
+      expect(hostMatch?.id).toBeTruthy();
+      expect(guestMatch?.id).toBe(hostMatch?.id);
+      const replayPath = `/api/matches/${encodeURIComponent(hostMatch!.id)}/replay`;
+      const [hostReplayResponse, guestReplayResponse, outsiderReplayResponse] = await Promise.all([
+        context.request.get(replayPath),
+        guestContext.request.get(replayPath),
+        nonParticipantContext.request.get(replayPath),
+      ]);
+      expect(hostReplayResponse.status()).toBe(200);
+      expect(guestReplayResponse.status()).toBe(200);
+      expect(outsiderReplayResponse.status()).toBe(403);
+      const [hostReplay, guestReplay] = await Promise.all([hostReplayResponse.json(), guestReplayResponse.json()]);
+      assertSanitizedReplayPayload(hostReplay);
+      assertSanitizedReplayPayload(guestReplay);
+      expect(guestReplay).toEqual(hostReplay);
+      recordLs05Evidence(testInfo, 'replay-privacy');
 
       await Promise.all([page.goto('/history'), guestPage.goto('/history')]);
       await Promise.all([
         expect(page.getByRole('article').filter({ hasText: '敗北' }).first()).toBeVisible({ timeout: 20_000 }),
         expect(guestPage.getByRole('article').filter({ hasText: '勝利' }).first()).toBeVisible({ timeout: 20_000 }),
+      ]);
+      await Promise.all([
+        page.getByRole('article').filter({ hasText: '敗北' }).first().getByRole('button', { name: '查看軌跡' }).click(),
+        guestPage
+          .getByRole('article')
+          .filter({ hasText: '勝利' })
+          .first()
+          .getByRole('button', { name: '查看軌跡' })
+          .click(),
+      ]);
+      await Promise.all([
+        expect(page.getByText('完整決策紀錄')).toBeVisible({ timeout: 20_000 }),
+        expect(guestPage.getByText('完整決策紀錄')).toBeVisible({ timeout: 20_000 }),
       ]);
       recordLs05Evidence(testInfo, 'match-history');
     } catch (error) {
@@ -282,7 +381,11 @@ test.describe('Authenticated 雙瀏覽器線上流程 @requires-backend @staging
       throw error;
     } finally {
       await context.setOffline(false).catch(() => undefined);
-      await Promise.all([closeGuestContext(guestContext, failed), closeGuestContext(spectatorContext, failed)]);
+      await Promise.all([
+        closeGuestContext(guestContext, failed),
+        closeGuestContext(spectatorContext, failed),
+        closeGuestContext(nonParticipantContext, failed),
+      ]);
     }
   });
 
