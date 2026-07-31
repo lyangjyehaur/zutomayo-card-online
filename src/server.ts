@@ -45,6 +45,7 @@ import {
 } from './runtimeSecurityConfig';
 import { createServiceReadiness } from './operational/serviceLifecycle';
 import { drainNetwork } from './operational/networkDrain';
+import { resolveSocketIoRuntime, type SocketNamespaceRuntime } from './operational/socketIoRuntime';
 import { replayJsonRequestBody } from './server/requestBodyReplay';
 import { createOnlineRematchSetupData } from './server/onlineRematch';
 import { CACHE_CONTROL, frontendCacheControl } from './server/cachePolicy';
@@ -1115,16 +1116,6 @@ type SocketLike = {
   on: (event: string, cb: (err?: Error) => void) => void;
   disconnect: (close?: boolean) => void;
 };
-type SocketNamespaceLike = {
-  on: (event: string, cb: (socket: SocketLike) => void) => void;
-  emit: (event: string, payload: unknown) => void;
-  disconnectSockets: (close?: boolean) => void;
-};
-type SocketIoLike = {
-  of: (namespace: string) => SocketNamespaceLike;
-  close: () => Promise<void>;
-};
-
 const configuredDrainGraceMs = Number(process.env.GAME_DRAIN_GRACE_MS);
 const GAME_DRAIN_GRACE_MS = Number.isFinite(configuredDrainGraceMs) ? Math.max(0, configuredDrainGraceMs) : 5_000;
 const configuredShutdownTimeoutMs = Number(process.env.SHUTDOWN_TIMEOUT_MS);
@@ -1134,8 +1125,8 @@ const SHUTDOWN_TIMEOUT_MS = Number.isFinite(configuredShutdownTimeoutMs)
 let runningServers: RunningServers | undefined;
 let shutdownPromise: Promise<void> | undefined;
 
-function socketIoRuntime(): SocketIoLike | undefined {
-  return (server.app.context as unknown as { io?: SocketIoLike }).io;
+function socketIoRuntime() {
+  return resolveSocketIoRuntime(server.app);
 }
 
 async function performShutdown(signal: string): Promise<void> {
@@ -1234,11 +1225,12 @@ async function bootstrap(): Promise<void> {
     // boardgame.io transport structure is not part of the public API; access defensively.
     try {
       const io = socketIoRuntime();
-      const namespace = io?.of(`/${ZutomayoOnlineCard.name}`);
+      const namespace = io?.of(`/${ZutomayoOnlineCard.name}`) as SocketNamespaceRuntime | undefined;
       if (namespace) {
         const MAX_CONN_PER_IP = Number(process.env.MAX_CONN_PER_IP) || 10;
         const connectionsPerIp = new Map<string, number>();
-        namespace.on('connection', (socket: SocketLike) => {
+        namespace.on('connection', (runtimeSocket) => {
+          const socket = runtimeSocket as SocketLike;
           const ip = socket.handshake.address;
           const current = connectionsPerIp.get(ip) ?? 0;
           if (current >= MAX_CONN_PER_IP) {
