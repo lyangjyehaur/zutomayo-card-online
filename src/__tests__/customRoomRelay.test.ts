@@ -120,8 +120,10 @@ describe('custom room platform relay', () => {
 
     const disconnected = resolvePlatformCustomRoomMatchID(resolverInput(joinPlatformCustomRoom));
     const observedDisconnect = disconnected.catch((err: unknown) => err);
-    handlers?.onDisconnect?.();
-    await expect(observedDisconnect).resolves.toEqual(new CustomRoomRelayError('disconnected'));
+    handlers?.onDisconnect?.(new Error('socket closed (code 1006)'));
+    await expect(observedDisconnect).resolves.toEqual(
+      new CustomRoomRelayError('disconnected', new Error('socket closed (code 1006)')),
+    );
   });
 
   it('rejects join failures as retryable room join errors', async () => {
@@ -133,7 +135,7 @@ describe('custom room platform relay', () => {
       (err: unknown) => err,
     );
 
-    await expect(observed).resolves.toEqual(new CustomRoomRelayError('join_failed'));
+    await expect(observed).resolves.toEqual(new CustomRoomRelayError('join_failed', new Error('platform unavailable')));
   });
 
   it('maps relay failures to retryable lobby error keys', () => {

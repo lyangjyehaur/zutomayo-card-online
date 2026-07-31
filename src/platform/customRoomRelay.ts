@@ -4,11 +4,14 @@ export type CustomRoomRelayFailureReason = 'timeout' | 'cancelled' | 'disconnect
 
 export class CustomRoomRelayError extends Error {
   reason: CustomRoomRelayFailureReason;
+  detail?: string;
 
-  constructor(reason: CustomRoomRelayFailureReason) {
-    super(`Platform custom room relay failed: ${reason}`);
+  constructor(reason: CustomRoomRelayFailureReason, cause?: unknown) {
+    const detail = cause instanceof Error ? cause.message : typeof cause === 'string' ? cause : undefined;
+    super(`Platform custom room relay failed: ${reason}${detail ? `: ${detail}` : ''}`);
     this.name = 'CustomRoomRelayError';
     this.reason = reason;
+    this.detail = detail;
   }
 }
 
@@ -59,12 +62,12 @@ export function resolvePlatformCustomRoomMatchID({
       resolve(cleanMatchID);
     };
 
-    const fail = (reason: CustomRoomRelayFailureReason) => {
+    const fail = (reason: CustomRoomRelayFailureReason, cause?: unknown) => {
       if (settled) return;
       settled = true;
       globalThis.clearTimeout(timer);
       closeRoom();
-      reject(new CustomRoomRelayError(reason));
+      reject(new CustomRoomRelayError(reason, cause));
     };
 
     void joinPlatformCustomRoom(
@@ -80,7 +83,7 @@ export function resolvePlatformCustomRoomMatchID({
         },
         onBoardgameMatchReady: (message) => finish(message.boardgameMatchID),
         onCancelled: () => fail('cancelled'),
-        onDisconnect: () => fail('disconnected'),
+        onDisconnect: (error) => fail('disconnected', error),
       },
     ).then(
       (nextRoom) => {
@@ -90,7 +93,7 @@ export function resolvePlatformCustomRoomMatchID({
         }
         room = nextRoom;
       },
-      () => fail('join_failed'),
+      (error) => fail('join_failed', error),
     );
   });
 }

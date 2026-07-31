@@ -11,7 +11,7 @@ export interface PlatformLobbyJoinOptions {
 export interface PlatformLobbyHandlers {
   onOnlineCount: (onlineCount: number) => void;
   onFriendPresence?: (presence: PlatformFriendPresence) => void;
-  onDisconnect?: () => void;
+  onDisconnect?: (error?: Error) => void;
 }
 
 export interface PlatformMatchShellJoinOptions {
@@ -135,7 +135,7 @@ export interface PlatformCustomRoomHandlers {
   onSnapshot?: (snapshot: PlatformCustomRoomSnapshot) => void;
   onBoardgameMatchReady?: (message: PlatformBoardgameMatchReady) => void;
   onCancelled?: (reason: string) => void;
-  onDisconnect?: () => void;
+  onDisconnect?: (error?: Error) => void;
 }
 
 export interface PlatformInviteSnapshot {
@@ -174,7 +174,7 @@ export interface PlatformInviteHandlers {
   onBoardgameMatchReady?: (message: PlatformBoardgameMatchReady) => void;
   onDeclined?: (message: PlatformInviteDeclined) => void;
   onCancelled?: (message: PlatformInviteCancelled) => void;
-  onDisconnect?: () => void;
+  onDisconnect?: (error?: Error) => void;
 }
 
 export interface PlatformInviteJoinOptions {
@@ -186,14 +186,14 @@ export interface PlatformQuickMatchHandlers {
   onMatched?: (match: PlatformQuickMatchMatched) => void;
   onBoardgameMatchReady?: (message: PlatformBoardgameMatchReady) => void;
   onCancelled?: (reason: string) => void;
-  onDisconnect?: () => void;
+  onDisconnect?: (error?: Error) => void;
 }
 
 export interface PlatformMatchShellHandlers {
   onSnapshot?: (snapshot: PlatformMatchShellSnapshot) => void;
   onPresence?: (presence: PlatformMatchShellPresence) => void;
   onChatPreview?: (message: PlatformChatPreview) => void;
-  onDisconnect?: () => void;
+  onDisconnect?: (error?: Error) => void;
 }
 
 interface LocationLike {
@@ -207,6 +207,41 @@ export type PlatformCustomRoom = Room<unknown>;
 export type PlatformInviteRoom = Room<unknown>;
 export type PlatformMatchShellRoom = Room<unknown>;
 export type PlatformQuickMatchRoom = Room<unknown>;
+
+export class PlatformConnectionError extends Error {
+  readonly code: number;
+
+  constructor(message: string, code: number) {
+    super(`${message} (code ${code})`);
+    this.name = 'PlatformConnectionError';
+    this.code = code;
+  }
+}
+
+export function isMissingPlatformRoomError(error: unknown): boolean {
+  return error instanceof Error && /no rooms found with provided criteria/i.test(error.message);
+}
+
+function retryMissingPlatformRoom<T>(error: unknown, retry: () => Promise<T>): Promise<T> {
+  if (!isMissingPlatformRoomError(error)) throw error;
+  return retry();
+}
+
+function bindPlatformDisconnect(room: Room<unknown>, onDisconnect?: (error?: Error) => void): void {
+  let errorReported = false;
+  room.onError?.((code, message) => {
+    errorReported = true;
+    onDisconnect?.(new PlatformConnectionError(message?.trim() || 'Platform room error', code));
+  });
+  room.onLeave((code, reason) => {
+    if (errorReported) return;
+    const error =
+      typeof code === 'number' && code !== 4000
+        ? new PlatformConnectionError(reason?.trim() || 'Platform connection closed', code)
+        : undefined;
+    onDisconnect?.(error);
+  });
+}
 
 interface FlatSeatReservation {
   name: string;
@@ -385,7 +420,7 @@ export async function connectPlatformLobby(
     const presence = platformFriendPresenceFromMessage(message);
     if (presence) handlers.onFriendPresence?.(presence);
   });
-  room.onLeave(() => handlers.onDisconnect?.());
+  bindPlatformDisconnect(room, handlers.onDisconnect);
 
   return room;
 }
@@ -664,7 +699,7 @@ function bindPlatformCustomRoomHandlers(room: Room<unknown>, handlers: PlatformC
         : 'cancelled';
     handlers.onCancelled?.(reason);
   });
-  room.onLeave(() => handlers.onDisconnect?.());
+  bindPlatformDisconnect(room, handlers.onDisconnect);
   return room;
 }
 
@@ -680,8 +715,8 @@ export async function createPlatformCustomRoom(
     role: 'player',
     status,
   });
-  const room = await joinPlatformRoom('custom_room', roomOptions('ready'), 'join').catch(() =>
-    joinPlatformRoom('custom_room', roomOptions('waiting'), 'joinOrCreate'),
+  const room = await joinPlatformRoom('custom_room', roomOptions('ready'), 'join').catch((error) =>
+    retryMissingPlatformRoom(error, () => joinPlatformRoom('custom_room', roomOptions('waiting'), 'joinOrCreate')),
   );
   return bindPlatformCustomRoomHandlers(room, handlers);
 }
@@ -702,7 +737,9 @@ export async function joinPlatformCustomRoom(
       },
       'join',
     );
-  const room = await joinWithStatus('waiting').catch(() => joinWithStatus('ready'));
+  const room = await joinWithStatus('waiting').catch((error) =>
+    retryMissingPlatformRoom(error, () => joinWithStatus('ready')),
+  );
   return bindPlatformCustomRoomHandlers(room, handlers);
 }
 
@@ -798,7 +835,7 @@ function bindPlatformInviteHandlers(room: Room<unknown>, handlers: PlatformInvit
     const ready = platformBoardgameMatchReadyFromMessage(message);
     if (ready) handlers.onBoardgameMatchReady?.(ready);
   });
-  room.onLeave(() => handlers.onDisconnect?.());
+  bindPlatformDisconnect(room, handlers.onDisconnect);
   return room;
 }
 
@@ -821,8 +858,12 @@ export async function createPlatformInvite(
     status,
   });
   const room = await joinPlatformRoom('invite', roomOptions('pending'), 'join')
-    .catch(() => joinPlatformRoom('invite', roomOptions('accepted'), 'join'))
-    .catch(() => joinPlatformRoom('invite', roomOptions('pending'), 'create'));
+    .catch((error) =>
+      retryMissingPlatformRoom(error, () => joinPlatformRoom('invite', roomOptions('accepted'), 'join')),
+    )
+    .catch((error) =>
+      retryMissingPlatformRoom(error, () => joinPlatformRoom('invite', roomOptions('pending'), 'create')),
+    );
   return bindPlatformInviteHandlers(room, handlers);
 }
 
@@ -845,10 +886,12 @@ export async function joinPlatformInvite(
       'join',
     );
   const room = await joinWithStatus('pending')
-    .catch(() => joinWithStatus('accepted'))
-    .catch((err) => {
-      if (joinOptions.includeFinished) return joinWithStatus('finished');
-      throw err;
+    .catch((error) => retryMissingPlatformRoom(error, () => joinWithStatus('accepted')))
+    .catch((error) => {
+      if (joinOptions.includeFinished) {
+        return retryMissingPlatformRoom(error, () => joinWithStatus('finished'));
+      }
+      throw error;
     });
   return bindPlatformInviteHandlers(room, handlers);
 }
@@ -891,7 +934,7 @@ export async function connectPlatformQuickMatch(
         : 'cancelled';
     handlers.onCancelled?.(reason);
   });
-  room.onLeave(() => handlers.onDisconnect?.());
+  bindPlatformDisconnect(room, handlers.onDisconnect);
 
   return room;
 }
@@ -929,7 +972,7 @@ export async function connectPlatformMatchShell(
     if (preview) handlers.onChatPreview?.(preview);
   });
   room.onMessage('boardgameMatchLinked', () => undefined);
-  room.onLeave(() => handlers.onDisconnect?.());
+  bindPlatformDisconnect(room, handlers.onDisconnect);
   if (shouldLinkPlatformMatchShell(options)) {
     room.send('linkBoardgameMatch', { boardgameMatchID: options.boardgameMatchID });
   }

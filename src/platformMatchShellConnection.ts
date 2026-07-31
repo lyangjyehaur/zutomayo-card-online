@@ -78,12 +78,13 @@ export function connectPlatformMatchShellWithRetry(
         onChatPreview: (message) => {
           if (isCurrent(candidate)) handlers.onChatPreview?.(message);
         },
-        onDisconnect: () => {
+        onDisconnect: (error) => {
           if (!isCurrent(candidate)) return;
           generation += 1;
           activeRoom = null;
           handlers.onRoomChange?.(null);
-          handlers.onDisconnect?.();
+          handlers.onDisconnect?.(error);
+          if (error) handlers.onError?.(error);
           scheduleReconnect();
         },
       });

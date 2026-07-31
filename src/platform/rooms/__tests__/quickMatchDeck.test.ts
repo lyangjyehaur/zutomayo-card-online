@@ -4,6 +4,7 @@ import type { AuthContext } from '@colyseus/core';
 import { QuickMatchRoom } from '../QuickMatchRoom';
 import { configurePlatformJwtRevocationStore } from '../jwt';
 import type { PlatformClient } from '../types';
+import { QUICK_MATCH_LOCAL_DECK_NAME } from '../../quickMatchDeck';
 
 const originalJwtSecret = process.env.JWT_SECRET;
 
@@ -81,6 +82,46 @@ describe('quick-match deck reservations', () => {
           context('u_host'),
         ),
       ).rejects.toThrow('server-supported deck');
+    } finally {
+      process.env.NODE_ENV = previous;
+    }
+  });
+
+  it('accepts the opaque local-deck marker without relaying local identifiers or card IDs', async () => {
+    const previous = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      const room = new QuickMatchRoom();
+      configurePlatformJwtRevocationStore({ get: vi.fn(async () => null) });
+      vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
+      vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
+      vi.spyOn(room, 'lock').mockImplementation(() => undefined as never);
+      vi.spyOn(room, 'onMessage').mockImplementation((() => room) as never);
+      vi.spyOn(room.clock, 'setTimeout').mockReturnValue({ clear: vi.fn() } as never);
+
+      await room.onCreate();
+      const hostAuth = await room.onAuth(
+        {} as never,
+        { userId: 'u_host', displayName: 'Host', deckName: QUICK_MATCH_LOCAL_DECK_NAME },
+        context('u_host'),
+      );
+      const guestAuth = await room.onAuth(
+        {} as never,
+        { userId: 'u_guest', displayName: 'Guest', deckName: 'dark' },
+        context('u_guest'),
+      );
+      const host = client('host', hostAuth);
+      const guest = client('guest', guestAuth);
+      room.clients.push(host);
+      await room.onJoin(host, { deckName: QUICK_MATCH_LOCAL_DECK_NAME });
+      room.clients.push(guest);
+      await room.onJoin(guest, { deckName: 'dark' });
+
+      expect(host.userData?.deckName).toBe(QUICK_MATCH_LOCAL_DECK_NAME);
+      const relayed = JSON.stringify([host.send.mock.calls, guest.send.mock.calls]);
+      expect(relayed).toContain(QUICK_MATCH_LOCAL_DECK_NAME);
+      expect(relayed).not.toContain('custom:local-deck-id');
+      expect(relayed).not.toContain('card-id');
     } finally {
       process.env.NODE_ENV = previous;
     }

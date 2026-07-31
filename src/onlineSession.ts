@@ -1,5 +1,6 @@
 import { APP_VERSION_INFO } from './version';
 import { Sentry } from './sentry';
+import { onlineHttpError } from './onlineHttpError';
 
 export interface OnlineSession {
   matchID: string;
@@ -10,9 +11,11 @@ export interface OnlineSession {
   platformDisplayName?: string;
 }
 
-export type OnlineSessionValidationReason = 'network' | 'roomGone' | 'seatTaken' | 'versionMismatch';
+export type OnlineSessionValidationReason = 'network' | 'roomGone' | 'seatTaken' | 'versionMismatch' | 'invalidSession';
 
-export type OnlineSessionValidationResult = { ok: true } | { ok: false; reason: OnlineSessionValidationReason };
+export type OnlineSessionValidationResult =
+  | { ok: true }
+  | { ok: false; reason: OnlineSessionValidationReason; error: Error };
 
 export const ONLINE_SESSION_STORAGE_KEY = 'zutomayo_online_session';
 
@@ -102,7 +105,7 @@ export async function requestOnlineRematch(session: OnlineSession): Promise<stri
       unlisted: true,
     }),
   });
-  if (!response.ok) throw new Error(`Online rematch failed: HTTP ${response.status}`);
+  if (!response.ok) throw await onlineHttpError(response, 'requestOnlineRematch');
   const data = (await response.json()) as { nextMatchID?: unknown };
   if (typeof data.nextMatchID !== 'string' || !data.nextMatchID) {
     throw new Error('Online rematch did not return a match ID');
@@ -133,10 +136,20 @@ export async function validateOnlineSession(session: OnlineSession): Promise<Onl
       saveOnlineSession(session);
       return { ok: true };
     }
-    if (response.status === 426) return { ok: false, reason: 'versionMismatch' };
-    if (response.status === 404) return { ok: false, reason: 'roomGone' };
-    if (response.status === 403 || response.status === 409) return { ok: false, reason: 'seatTaken' };
-    return { ok: false, reason: 'network' };
+    const error = await onlineHttpError(response, 'validateOnlineSession');
+    if (response.status === 426) return { ok: false, reason: 'versionMismatch', error };
+    if (response.status === 404) return { ok: false, reason: 'roomGone', error };
+    if (response.status === 403) return { ok: false, reason: 'invalidSession', error };
+    if (response.status === 409) {
+      const reason =
+        /player (?:not reserved|not available)|no available seats|seat (?:is )?(?:taken|unavailable)/i.test(
+          error.message,
+        )
+          ? 'seatTaken'
+          : 'invalidSession';
+      return { ok: false, reason, error };
+    }
+    return { ok: false, reason: 'network', error };
   } catch (err) {
     Sentry.addBreadcrumb({
       category: 'online-session',
@@ -144,6 +157,10 @@ export async function validateOnlineSession(session: OnlineSession): Promise<Onl
       level: 'warning',
       data: { match_id: session.matchID, error: err instanceof Error ? err.message : String(err) },
     });
-    return { ok: false, reason: 'network' };
+    return {
+      ok: false,
+      reason: 'network',
+      error: err instanceof Error ? err : new Error(String(err)),
+    };
   }
 }

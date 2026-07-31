@@ -43,6 +43,7 @@ import {
   StatCard,
   StatsGrid,
 } from '../ui';
+import { onlineErrorDetail } from '../onlineHttpError';
 
 interface MatchHistoryProps {
   onBack: () => void;
@@ -233,6 +234,7 @@ function MatchChatDialog({ record, onClose }: { record: MatchRecord; onClose: ()
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [reportedMessageIds, setReportedMessageIds] = useState<Set<string>>(() => new Set());
   const [translations, setTranslations] = useState<Record<string, HistoryTranslationState>>({});
+  const [actionError, setActionError] = useState('');
   const sourceMatchId = historyChatSubjectId(record);
 
   useEffect(() => {
@@ -242,6 +244,7 @@ function MatchChatDialog({ record, onClose }: { record: MatchRecord; onClose: ()
     setMessages([]);
     setReportedMessageIds(new Set());
     setTranslations({});
+    setActionError('');
 
     void fetchChatMessages({ conversationType: 'match', subjectId: sourceMatchId, limit: 100 }).then(
       (nextMessages) => {
@@ -249,9 +252,13 @@ function MatchChatDialog({ record, onClose }: { record: MatchRecord; onClose: ()
         const visibleMessages = nextMessages.filter(canShowChatMessage);
         setMessages(visibleMessages);
         setStatus('ready');
+        setActionError('');
       },
-      () => {
-        if (!cancelled) setStatus('unavailable');
+      (err) => {
+        if (!cancelled) {
+          setStatus('unavailable');
+          setActionError(onlineErrorDetail(err, t('chat.historyUnavailable')));
+        }
       },
     );
 
@@ -287,11 +294,16 @@ function MatchChatDialog({ record, onClose }: { record: MatchRecord; onClose: ()
           content: result.translation.translatedContent || undefined,
         },
       }));
-    } catch {
+    } catch (err) {
       setTranslations((state) => ({
         ...state,
         [message.id]: { status: 'unavailable', targetLanguage },
       }));
+      showToast({
+        title: t('chat.translationOffline'),
+        body: onlineErrorDetail(err, t('chat.translationOffline')),
+        kind: 'error',
+      });
     }
   };
 
@@ -301,13 +313,17 @@ function MatchChatDialog({ record, onClose }: { record: MatchRecord; onClose: ()
     try {
       await reportChatMessage(message.id, { reason: 'post_match_history' });
       showToast({ title: t('chat.reported'), kind: 'success' });
-    } catch {
+    } catch (err) {
       setReportedMessageIds((ids) => {
         const next = new Set(ids);
         next.delete(message.id);
         return next;
       });
-      showToast({ title: t('chat.reportFailed'), kind: 'error' });
+      showToast({
+        title: t('chat.reportFailed'),
+        body: onlineErrorDetail(err, t('chat.reportFailed')),
+        kind: 'error',
+      });
     }
   };
 
@@ -334,7 +350,7 @@ function MatchChatDialog({ record, onClose }: { record: MatchRecord; onClose: ()
         ) : status === 'loading' || status === 'idle' ? (
           <Panel className="text-sm text-content-primary/60">{t('history.chatLoading')}</Panel>
         ) : status === 'unavailable' ? (
-          <Panel className="text-sm text-content-primary/60">{t('chat.historyUnavailable')}</Panel>
+          <Panel className="text-sm text-content-primary/60">{actionError || t('chat.historyUnavailable')}</Panel>
         ) : messages.length === 0 ? (
           <Panel className="text-sm text-content-primary/60">{t('chat.empty')}</Panel>
         ) : (
@@ -495,8 +511,12 @@ export function MatchHistory({ initialChatSourceMatchId }: MatchHistoryProps) {
       const nextRecord = { ...record, actionLog, detailsAvailable: true };
       updateRecord(nextRecord);
       setSelectedRecord(nextRecord);
-    } catch {
-      showToast({ title: t('history.traceUnavailable'), kind: 'warning' });
+    } catch (err) {
+      showToast({
+        title: t('history.traceUnavailable'),
+        body: onlineErrorDetail(err, t('history.traceUnavailable')),
+        kind: 'warning',
+      });
     } finally {
       setLoadingTraceId(null);
     }

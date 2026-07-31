@@ -1,7 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { COUNTER_DECK_NAME, RANDOM_DECK_NAME } from '../../../game/cards/deckBuilder';
 import { CUSTOM_DECK_LIBRARY_STORAGE_KEY, customDeckOptionId } from '../../../game/cards/customDeck';
-import { aiOpponentDeckName, aiOpponentDeckSetup, canStartAI, onlineDeckName, serverDeckOptionId } from '../shared';
+import { QUICK_MATCH_LOCAL_DECK_NAME } from '../../../platform/quickMatchDeck';
+import {
+  aiOpponentDeckName,
+  aiOpponentDeckSetup,
+  canStartAI,
+  onlineDeckName,
+  platformQuickMatchDeckName,
+  serverDeckOptionId,
+} from '../shared';
 
 describe('AI lobby deck flow', () => {
   afterEach(() => {
@@ -46,5 +54,11 @@ describe('AI lobby deck flow', () => {
     });
 
     expect(aiOpponentDeckSetup(customDeckOptionId('practice'), [])).toEqual({ deck1Ids: cardIds });
+  });
+
+  it('replaces local deck identifiers with an opaque quick-match marker', () => {
+    expect(platformQuickMatchDeckName(customDeckOptionId('private-deck-id'))).toBe(QUICK_MATCH_LOCAL_DECK_NAME);
+    expect(platformQuickMatchDeckName('dark')).toBe('dark');
+    expect(platformQuickMatchDeckName(serverDeckOptionId('reviewed-deck'))).toBe('server:reviewed-deck');
   });
 });

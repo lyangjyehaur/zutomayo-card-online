@@ -4,6 +4,7 @@ import { platformLogger as logger } from '../logger';
 import { createEmptyPlatformMatchParticipantStore, type PlatformMatchParticipantStore } from '../matchParticipantStore';
 import { recordPlatformQuickMatchOutcome } from '../metrics';
 import { assertPlatformAuthCurrent, authenticatePlatformClientCurrent } from './auth';
+import { QUICK_MATCH_LOCAL_DECK_NAME } from '../quickMatchDeck';
 import type {
   BoardgameMatchReadyMessage,
   PlatformAuth,
@@ -39,7 +40,9 @@ const QUICK_MATCH_DECK_NAMES = new Set(
 
 function quickMatchDeckName(value: unknown): string | undefined {
   const deckName = optionalText(value, 60);
-  return deckName && QUICK_MATCH_DECK_NAMES.has(deckName) ? deckName : undefined;
+  return deckName && (deckName === QUICK_MATCH_LOCAL_DECK_NAME || QUICK_MATCH_DECK_NAMES.has(deckName))
+    ? deckName
+    : undefined;
 }
 
 export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; client: PlatformClient }> {

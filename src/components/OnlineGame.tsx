@@ -47,6 +47,7 @@ import {
 import { trackFirstWinOnce, trackFunnelEvent } from '../funnelAnalytics';
 import { hasOnlineOpponent } from '../onlineRoomStatus';
 import { createMatchConnectionTelemetry } from '../matchConnectionTelemetry';
+import { onlineErrorDetail } from '../onlineHttpError';
 
 interface OnlineGameProps {
   matchID: string;
@@ -318,6 +319,7 @@ export function OnlineGame({
   const [chatStatus, setChatStatus] = useState<ChatStatus>('loading');
   const [chatMessages, setChatMessages] = useState<OnlineChatEntry[]>([]);
   const [chatDraft, setChatDraft] = useState('');
+  const [chatActionError, setChatActionError] = useState('');
   const [reportedMessageIds, setReportedMessageIds] = useState<Set<string>>(() => new Set());
   const [chatAccount, setChatAccount] = useState<ProfileResponse | null>(null);
   const [chatAccountLoaded, setChatAccountLoaded] = useState(false);
@@ -372,6 +374,7 @@ export function OnlineGame({
     initialResumeTrackedRef.current = false;
     chatShouldStickToBottomRef.current = true;
     setChatUnreadCount(0);
+    setChatActionError('');
   }, [matchID]);
 
   useEffect(() => {
@@ -405,6 +408,7 @@ export function OnlineGame({
         if (cancelled) return;
         setChatAccount(profile);
         setChatAccountLoaded(true);
+        setChatActionError('');
       },
       (err) => {
         Sentry.addBreadcrumb({
@@ -416,6 +420,7 @@ export function OnlineGame({
         if (cancelled) return;
         setChatAccount(null);
         setChatAccountLoaded(true);
+        setChatActionError(onlineErrorDetail(err, t('chat.historyUnavailable')));
       },
     );
 
@@ -474,6 +479,7 @@ export function OnlineGame({
         if (cancelled) return;
         setChatMessages(entries);
         setChatStatus('ready');
+        setChatActionError('');
       },
       (err) => {
         Sentry.addBreadcrumb({
@@ -482,7 +488,10 @@ export function OnlineGame({
           level: 'warning',
           data: { match_id: matchID, status: err instanceof ApiError ? err.status : undefined },
         });
-        if (!cancelled) setChatStatus(matchChatFailureStatus(err instanceof ApiError ? err.status : undefined));
+        if (!cancelled) {
+          setChatStatus(matchChatFailureStatus(err instanceof ApiError ? err.status : undefined));
+          setChatActionError(onlineErrorDetail(err, t('chat.historyUnavailable')));
+        }
       },
     );
 
@@ -593,6 +602,7 @@ export function OnlineGame({
             level: 'warning',
             data: { match_id: matchID, error: err instanceof Error ? err.message : String(err) },
           });
+          if (!cancelled) setChatActionError(onlineErrorDetail(err, t('online.connectionFailed')));
         },
       },
     );
@@ -760,6 +770,7 @@ export function OnlineGame({
           });
         }
         setChatStatus('ready');
+        setChatActionError('');
       } catch (err) {
         Sentry.addBreadcrumb({
           category: 'chat',
@@ -772,6 +783,7 @@ export function OnlineGame({
             ? matchChatFailureStatus(err.status)
             : 'ready',
         );
+        setChatActionError(onlineErrorDetail(err, t('chat.sendFailed')));
       }
     },
     [
@@ -806,6 +818,7 @@ export function OnlineGame({
           level: 'warning',
           data: { match_id: matchID, status: err instanceof ApiError ? err.status : undefined },
         });
+        setChatActionError(onlineErrorDetail(err, t('chat.reportFailed')));
       }
     },
     [matchID, reportedMessageIds],
@@ -831,6 +844,7 @@ export function OnlineGame({
           level: 'warning',
           data: { match_id: matchID, status: err instanceof ApiError ? err.status : undefined },
         });
+        setChatActionError(onlineErrorDetail(err, t('chat.translationOffline')));
       }
     },
     [applyChatTranslation, locale, matchAccess, matchID],
@@ -1064,6 +1078,11 @@ export function OnlineGame({
                 ))
               )}
             </div>
+            {chatActionError && (
+              <Alert className="mx-3 mb-2" tone="danger" role="alert">
+                {chatActionError}
+              </Alert>
+            )}
             <form className="online-chat-form" onSubmit={handleChatSubmit}>
               <input
                 value={chatDraft}

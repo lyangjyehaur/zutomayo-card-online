@@ -41,6 +41,12 @@ export function isOnlineRoomErrorKey(value: string): value is OnlineRoomErrorKey
   );
 }
 
+export function onlineRoomErrorDetail(error: unknown): string | undefined {
+  if (!(error instanceof Error) || !('detail' in error)) return undefined;
+  const detail = (error as Error & { detail?: unknown }).detail;
+  return typeof detail === 'string' && detail.trim() ? detail.trim() : undefined;
+}
+
 export function onlineErrorStatus(error: unknown): OnlineRoomStatus {
   if (error instanceof Error && isOnlineRoomErrorKey(error.message)) {
     if (error.message === 'online.roomFull') return 'roomFull';
