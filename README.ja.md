@@ -187,6 +187,7 @@ docs/                 architecture、API、deployment、multiplayer、UI/UX 文�
 
 ## ドキュメント
 
+- [ライブサービス安定化計画](docs/LIVE_SERVICE_STABILIZATION_PLAN.md)
 - [完全なアーキテクチャ](docs/ARCHITECTURE.md)
 - [REST API](docs/API.md)
 - [カードテキスト i18n メンテナンスガイド（繁体字中国語）](docs/card-text-i18n.md)

@@ -3,6 +3,7 @@
 ZUTOMAYO CARD Online 的系統架構文檔。本文說明前端 SPA、boardgame.io 遊戲伺服器、獨立 API 伺服器、Colyseus platform 伺服器之間的職責劃分與互動方式，並涵蓋遊戲邏輯、資料層、線上對戰流程、可觀測性與部署。
 
 > 部署細節請參見 [DEPLOYMENT.md](./DEPLOYMENT.md)，REST API 端點請參見 [API.md](./API.md)，遊戲規則請參見 [rules.md](../rules.md)。
+> 線上拓撲的成本評估與暫緩合併決策請參見 [ADR 0001](./adr/0001-defer-live-runtime-consolidation.md)。
 
 ---
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 
 const args = new Map();
 for (let index = 2; index < process.argv.length; index += 1) {
@@ -22,6 +22,39 @@ const ports = {
 };
 const expectedBuildId = args.get('expected-build-id') || process.env.EXPECTED_BUILD_ID || '';
 const checkBattleAssets = (args.get('check-battle-assets') || process.env.CHECK_BATTLE_ASSETS || 'false') === 'true';
+const reportPath = args.get('report-path') || process.env.DEPLOY_SMOKE_REPORT_PATH || '';
+const smokeStartedAt = new Date().toISOString();
+const smokeChecks = {
+  healthReady: false,
+  buildIdentityVerified: false,
+  applicationSmokePassed: false,
+  battleAssetsVerified: false,
+  smokePassed: false,
+};
+let observedBuildId = '';
+
+if (reportPath) {
+  process.once('exit', (exitCode) => {
+    const passed = exitCode === 0 && smokeChecks.smokePassed;
+    writeFileSync(
+      reportPath,
+      `${JSON.stringify(
+        {
+          schemaVersion: 1,
+          status: passed ? 'passed' : 'failed',
+          startedAt: smokeStartedAt,
+          finishedAt: new Date().toISOString(),
+          expectedBuildId,
+          observedBuildId,
+          checks: smokeChecks,
+        },
+        null,
+        2,
+      )}\n`,
+      { mode: 0o600 },
+    );
+  });
+}
 const publicBaseUrlValue = args.get('public-base-url') || process.env.SMOKE_PUBLIC_BASE_URL || '';
 const publicBaseUrl = publicBaseUrlValue ? new URL(publicBaseUrlValue).toString() : '';
 if (publicBaseUrl && !['http:', 'https:'].includes(new URL(publicBaseUrl).protocol)) {
@@ -234,6 +267,7 @@ for (const [service, pathname] of checks) {
   assertHealthy(service, pathname, body);
   console.log(`smoke ok: ${service}${pathname}`);
 }
+smokeChecks.healthReady = true;
 
 const versions = await Promise.all([
   requestWithRetry('game', '/api/app-version').catch(() => requestWithRetry('game', '/api/version')),
@@ -241,6 +275,7 @@ const versions = await Promise.all([
   requestWithRetry('platform', '/api/version'),
 ]);
 const buildIds = versions.map((body) => String(body?.buildId || ''));
+observedBuildId = buildIds[0] || '';
 if (buildIds.some((value) => !value) || new Set(buildIds).size !== 1) {
   throw new Error(`runtime build IDs are inconsistent: ${JSON.stringify(buildIds)}`);
 }
@@ -248,6 +283,7 @@ if (expectedBuildId && buildIds[0] !== expectedBuildId) {
   throw new Error(`runtime build ID ${buildIds[0]} does not match release ${expectedBuildId}`);
 }
 console.log(`smoke ok: buildId=${buildIds[0]}`);
+smokeChecks.buildIdentityVerified = true;
 
 const officialRelease = await requestWithRetry('api', '/api/official/status');
 if (
@@ -323,6 +359,7 @@ for (const [suffix, contentType, format] of [
   const result = await requestImgproxyWithRetry(pathname, contentType, format);
   console.log(`smoke ok: imgproxy ${format} (${result.width}x${result.height}, ${result.bytes} bytes)`);
 }
+smokeChecks.applicationSmokePassed = true;
 
 if (checkBattleAssets) {
   const assetVersion = encodeURIComponent(expectedBuildId || buildIds[0]);
@@ -337,4 +374,7 @@ if (checkBattleAssets) {
       console.log(`smoke ok: public${pathname} (${publicBytes} bytes)`);
     }
   }
+  smokeChecks.battleAssetsVerified = true;
 }
+smokeChecks.smokePassed =
+  smokeChecks.applicationSmokePassed && (!checkBattleAssets || smokeChecks.battleAssetsVerified);

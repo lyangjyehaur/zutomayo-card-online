@@ -188,6 +188,7 @@ docs/                 架構、API、部署、多人平台與 UI/UX 文檔
 
 ## 文檔
 
+- [線上服務穩定化計劃](docs/LIVE_SERVICE_STABILIZATION_PLAN.md)
 - [完整架構](docs/ARCHITECTURE.md)
 - [REST API](docs/API.md)
 - [卡牌文本 i18n 維護指南](docs/card-text-i18n.md)

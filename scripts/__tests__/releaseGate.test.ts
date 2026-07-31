@@ -15,6 +15,7 @@ type GateModule = {
       maxEvidenceAgeHours?: number;
       nowMs?: number;
       imageDigests?: Record<string, string>;
+      migration?: { name: string; sha256: string };
       evidenceRunId?: string;
       profile?: 'beta' | 'production-hardening';
     },
@@ -37,6 +38,12 @@ function authenticatedEvidence(directory: string) {
   const artifactPath = 'staging/authenticated-e2e-report.json';
   const artifactContents = JSON.stringify({ journey: 'passed', history: 'verified' });
   writeFileSync(join(directory, artifactPath), artifactContents);
+  const migration = {
+    name: '000047_knowledge_search_zero_results',
+    sha256: 'b'.repeat(64),
+  };
+  const datasetSha256 = 'c'.repeat(64);
+  writeFileSync(join(directory, 'staging', 'card-dataset.json'), JSON.stringify({ migration, datasetSha256 }));
   return {
     schemaVersion: 1,
     status: 'passed',
@@ -49,6 +56,8 @@ function authenticatedEvidence(directory: string) {
         `ghcr.io/example/${name}@sha256:${'0'.repeat(64)}`,
       ]),
     ),
+    migration,
+    datasetSha256,
     startedAt: '2026-07-12T23:30:00.000Z',
     finishedAt: '2026-07-12T23:50:00.000Z',
     durationMs: 20 * 60 * 1000,
@@ -67,6 +76,12 @@ function authenticatedEvidence(directory: string) {
       friendInviteVerified: true,
       spectatorHiddenInformationVerified: true,
       secureCookieVerified: true,
+      serverBackedDecksVerified: true,
+      quickMatchVerified: true,
+      sameOriginWebSocketVerified: true,
+      chatAuthorizationVerified: true,
+      disconnectReconnectVerified: true,
+      resultSubmissionVerified: true,
       httpsTopologyVerified: true,
       zeroConditionalSkips: true,
     },
@@ -82,6 +97,29 @@ function authenticatedEvidence(directory: string) {
       runUrl: 'https://github.com/example/repository/actions/runs/123',
     },
     source: 'https://ci.example.test/runs/123',
+  };
+}
+
+function trustSurfaceEvidence(directory: string) {
+  const evidence = authenticatedEvidence(directory);
+  return {
+    ...evidence,
+    evidenceType: 'trust-surface',
+    metrics: { completedJourneys: 1, skippedTests: 0, failedTests: 0, flakyTests: 0 },
+    thresholds: { minCompletedJourneys: 1, maxSkippedTests: 0, maxFailedTests: 0, maxFlakyTests: 0 },
+    results: {
+      publicPoliciesReachable: true,
+      operatorContactReachable: true,
+      retentionDeletionPublished: true,
+      moderationAppealPublished: true,
+      rightsholderTakedownPublished: true,
+      authenticatedPolicyEntryReachable: true,
+      accountExportVerified: true,
+      accountDeletionRehearsed: true,
+      deletedSessionRevoked: true,
+      deletedAccountRejected: true,
+      zeroConditionalSkips: true,
+    },
   };
 }
 
@@ -105,15 +143,40 @@ describe('single release gate evidence model', () => {
       'staging-card-dataset',
       'staging-authenticated-e2e',
       'staging-restore',
+      'staging-trust-surface',
     ]);
     expect(betaChecks.every((check) => check.category === 'staging' && check.status === 'blocked')).toBe(true);
     expect(betaChecks[0].reason).toContain('staging-only gate requires external evidence');
 
     const hardeningChecks = inspectStagingGates(undefined, { profile: 'production-hardening' });
-    expect(hardeningChecks).toHaveLength(10);
+    expect(hardeningChecks).toHaveLength(11);
     expect(hardeningChecks.some((check) => check.id === 'staging-chaos')).toBe(true);
     expect(hardeningChecks.some((check) => check.id === 'staging-provider-account')).toBe(true);
     expect(() => inspectStagingGates(undefined, { profile: 'unknown' as 'beta' })).toThrow('release profile');
+  });
+
+  it('requires complete release-bound trust-surface evidence', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'release-gate-trust-'));
+    mkdirSync(join(directory, 'staging'));
+    const evidence = trustSurfaceEvidence(directory);
+    writeFileSync(join(directory, 'staging', 'trust-surface.json'), JSON.stringify(evidence));
+    const checks = inspectStagingGates(directory, {
+      releaseSha: evidence.releaseSha,
+      migration: evidence.migration,
+      imageDigests: evidence.imageDigests,
+      nowMs: Date.parse('2026-07-13T01:00:00.000Z'),
+    });
+    expect(checks.find((check) => check.id === 'staging-trust-surface')?.status).toBe('passed');
+
+    evidence.results.deletedSessionRevoked = false;
+    writeFileSync(join(directory, 'staging', 'trust-surface.json'), JSON.stringify(evidence));
+    const failed = inspectStagingGates(directory, {
+      releaseSha: evidence.releaseSha,
+      nowMs: Date.parse('2026-07-13T01:00:00.000Z'),
+    });
+    expect(failed.find((check) => check.id === 'staging-trust-surface')?.reason).toContain(
+      'results.deletedSessionRevoked: true',
+    );
   });
 
   it('accepts only an explicit, attributable staging evidence contract', () => {
@@ -147,6 +210,8 @@ describe('single release gate evidence model', () => {
         evidenceType: 'authenticated-e2e',
         releaseSha: 'a'.repeat(40),
         imageDigests: completeEvidence.imageDigests,
+        migration: completeEvidence.migration,
+        datasetSha256: completeEvidence.datasetSha256,
         checkedAt: '2026-07-13T00:00:00.000Z',
         source: 'https://ci.example.test/runs/123',
       }),
@@ -167,12 +232,36 @@ describe('single release gate evidence model', () => {
       releaseSha: 'a'.repeat(40),
       nowMs: Date.parse('2026-07-13T01:00:00.000Z'),
       imageDigests: completeEvidence.imageDigests,
+      migration: completeEvidence.migration,
       evidenceRunId: '123',
     });
     const authenticatedCheck = checks.find((check) => check.id === 'staging-authenticated-e2e');
     expect(authenticatedCheck?.status).toBe('passed');
     expect(authenticatedCheck?.reason).toContain('validated staging evidence contract');
     expect(checks.find((check) => check.id === 'staging-card-dataset')?.status).toBe('blocked');
+
+    const mismatchedDataset = authenticatedEvidence(directory);
+    mismatchedDataset.datasetSha256 = 'd'.repeat(64);
+    writeFileSync(evidencePath, JSON.stringify(mismatchedDataset));
+    const datasetChecks = inspectStagingGates(directory, {
+      releaseSha: 'a'.repeat(40),
+      nowMs: Date.parse('2026-07-13T01:00:00.000Z'),
+    });
+    expect(datasetChecks.find((check) => check.id === 'staging-authenticated-e2e')?.reason).toContain(
+      'datasetSha256 matching staging/card-dataset.json',
+    );
+
+    const mismatchedMigration = authenticatedEvidence(directory);
+    mismatchedMigration.migration.sha256 = 'e'.repeat(64);
+    writeFileSync(evidencePath, JSON.stringify(mismatchedMigration));
+    const migrationChecks = inspectStagingGates(directory, {
+      releaseSha: 'a'.repeat(40),
+      migration: { name: mismatchedMigration.migration.name, sha256: 'b'.repeat(64) },
+      nowMs: Date.parse('2026-07-13T01:00:00.000Z'),
+    });
+    expect(migrationChecks.find((check) => check.id === 'staging-authenticated-e2e')?.reason).toContain(
+      'migration.sha256 matching the release manifest',
+    );
 
     const insufficientRuns = authenticatedEvidence(directory);
     insufficientRuns.metrics.completedJourneys = 2;
@@ -326,6 +415,7 @@ describe('single release gate evidence model', () => {
           schemaGatePassed: true,
           fixtureRoundTripPassed: true,
           legalHoldInvariantPassed: true,
+          boardgameStateInvariantPassed: true,
           deploymentRecoveryPassed: true,
         },
         artifacts: [artifactEntry(restoreRawPath, 'restore'), artifactEntry(deploymentRawPath, 'deployment')],

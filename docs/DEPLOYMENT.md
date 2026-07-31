@@ -699,12 +699,13 @@ export RELEASE_ENVIRONMENT=staging
 export E2E_BASE_URL=https://staging.example.com/
 export E2E_API_URL=https://staging.example.com/api
 export E2E_PLATFORM_URL=wss://staging.example.com/colyseus
+export EXPECTED_CARD_DATASET_SHA256="$(node -p "require('./.release-evidence/staging/card-dataset.json').datasetSha256")"
 # Outside GitHub Actions, identify the accountable evidence signer with HTTPS.
 export E2E_EVIDENCE_SIGNER_URL=https://ops.example.com/release-approvers/your-name
 npm run e2e:authenticated-staging -- --output .release-evidence/staging/authenticated-e2e.json
 ```
 
-The Beta command performs one complete Chromium run with retries disabled. It must contain both RR-05 critical tests and zero skipped, unexpected, or flaky tests. The journeys create two independent accounts, clear the registration cookies, log in again, select decks, verify Secure/HttpOnly cookies, Quick Match, same-origin WSS, chat, disconnect/reconnect, spectator hidden information and read-only controls, surrender/result delivery, both server histories, and authenticated friend invite. It writes the raw Playwright JSON report and log, hashes every artifact, and binds the evidence to the full commit SHA and five immutable image digests. A local conditional skip can never become passing staging evidence.
+The Beta command performs one complete Chromium run with retries disabled. It must contain both RR-05 critical tests, all 11 independently recorded journey markers, and zero skipped, unexpected, or flaky tests. The journeys create two independent accounts, clear the registration cookies, log in again, select decks, verify Secure/HttpOnly cookies, Quick Match, same-origin WSS, chat, disconnect/reconnect, spectator hidden information and read-only controls, surrender/result delivery, both server histories, and authenticated friend invite. It writes the raw Playwright JSON report and log, hashes every artifact, and binds the evidence to the full commit SHA, five immutable image digests, migration basename/checksum, and card dataset SHA-256. The release gate cross-checks that migration against `.release.env` and the dataset identity against `staging/card-dataset.json`. A local conditional skip or aggregate pass without every marker can never become passing staging evidence.
 
 Five consecutive retry-free runs are production-hardening evidence, not a Public Beta prerequisite:
 
@@ -715,7 +716,18 @@ npm run release:gate:hardening -- --staging-evidence-dir .release-evidence
 
 The hardening runner waits 65 seconds between successful runs because each run makes eight legitimate auth requests and the production limiter allows ten per IP per minute.
 
-The CD staging deployment runs this command after deployment when the staging environment variables `STAGING_E2E_BASE_URL`, `STAGING_E2E_API_URL`, and `STAGING_E2E_PLATFORM_URL` are configured. Its uploaded artifact is named `authenticated-staging-evidence-<release SHA>`. This is only the RR-05 artifact; production remains blocked until it is combined with the other current staging evidence required by `release:gate`.
+### Trust-surface and account-deletion staging gate
+
+Run the trust gate only against staging. It refuses `battle.zutomayocard.online` and the configured `PRODUCTION_HOSTNAME`. The journey verifies all public policy/contact routes, authenticated Profile policy links, account export, and deletion of a newly created synthetic account. It then verifies that the old session is revoked and the deleted identity cannot log in again.
+
+```bash
+export PRODUCTION_HOSTNAME=battle.zutomayocard.online
+npm run e2e:trust-staging -- --output .release-evidence/staging/trust-surface.json
+```
+
+The same release, image, migration, dataset, topology, signer, and credential variables used by the authenticated multiplayer gate are required. Never supply an existing player account: the runner creates and deletes its own account. A live mailbox delivery/acknowledgment rehearsal remains a separate operator step under [`rightsholder-request.md`](./runbooks/rightsholder-request.md).
+
+The CD staging deployment runs both player and trust commands after deployment when the staging environment variables `STAGING_E2E_BASE_URL`, `STAGING_E2E_API_URL`, and `STAGING_E2E_PLATFORM_URL` are configured. Its uploaded artifact is named `staging-player-trust-evidence-<release SHA>`. Production remains blocked until it is combined with the other current staging evidence required by `release:gate`.
 
 ### RR-07 operational recovery evidence
 
@@ -732,7 +744,7 @@ npm run release:operational-evidence -- \
   --output-dir .release-evidence/staging
 ```
 
-The Beta profile requires RPO <= 15 minutes, restore RTO <= 30 minutes, and verified account/deck/history/leaderboard round-trip data. Source deployment recovery <= 30 minutes and firing/resolved delivery for all six alert scenarios remain available through `npm run release:gate:hardening`; they do not block the current Public Beta. The evidence generator still retains and hashes the complete raw reports so the same artifacts can later satisfy hardening without weakening provenance.
+The Beta profile requires RPO <= 15 minutes, restore RTO <= 30 minutes, verified account/deck/history/leaderboard/chat/feedback/boardgame round-trip data, and valid restored boardgame state. Source deployment recovery <= 30 minutes and firing/resolved delivery for all six alert scenarios remain available through `npm run release:gate:hardening`; they do not block the current Public Beta. Deployment recovery evidence must identify the exact release and card dataset, reverify its pre-deploy backup and schema, retain structured health/build/asset smoke, and account for every controlled active match after the graceful stop. The evidence generator retains and hashes the complete raw reports so the same artifacts can later satisfy hardening without weakening provenance.
 
 `npm run release:gate` defaults to the `beta` profile. Use `npm run release:gate:hardening` only when validating chaos recovery, 2x load/soak, canary rollback, complete alert delivery, provider lifecycle, five-run multiplayer stability, and deployment recovery.
 
@@ -865,4 +877,6 @@ gateway、ops）、staging、Cosign/provenance、release 與 immutable rollback 
 再經明確審查後合併。
 
 目前 `master`／server4 beta 部署器明確不支援 `--manifest`、`--sha` 或 `--rollback`；
-只部署已推送且與 `origin/master` 完全一致的目前版本。
+只部署已推送且與 `origin/master` 完全一致的目前版本。staging recovery drill 因此只證明
+同一已知 release 的重建能力；在舊版 runtime 對目前 forward-only schema 的相容性另行驗證前，
+不得把該回執描述為任意上一版回滾證明。

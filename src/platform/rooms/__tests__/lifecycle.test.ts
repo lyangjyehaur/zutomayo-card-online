@@ -1,8 +1,9 @@
 import crypto from 'node:crypto';
 import type { AuthContext } from '@colyseus/core';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEmptyPlatformBlockStore } from '../../blockStore';
 import { createEmptyPlatformMatchParticipantStore } from '../../matchParticipantStore';
+import { platformMetricsRegister, platformMetricsText } from '../../metrics';
 import { CustomRoom } from '../CustomRoom';
 import { QUICK_MATCH_WAIT_TIMEOUT_MS, QuickMatchRoom } from '../QuickMatchRoom';
 import type { BoardgameMatchReadyMessage, PlatformAuth, PlatformClient, PlatformClientProfile } from '../types';
@@ -64,6 +65,10 @@ function profile(client: PlatformClient): PlatformClientProfile {
 }
 
 describe('platform room lifecycle', () => {
+  beforeEach(() => {
+    platformMetricsRegister.resetMetrics();
+  });
+
   afterEach(() => {
     process.env.JWT_SECRET = originalJwtSecret;
     CustomRoom.configureParticipantStore(createEmptyPlatformMatchParticipantStore());
@@ -290,6 +295,9 @@ describe('platform room lifecycle', () => {
     });
 
     expect(broadcast).toHaveBeenCalledWith('quickMatchCancelled', { reason: 'relationship_changed' });
+    const metrics = await platformMetricsText();
+    expect(metrics.body).toContain('platform_quick_match_outcomes_total{outcome="matched"} 1');
+    expect(metrics.body).not.toContain('platform_quick_match_outcomes_total{outcome="relationship_changed"}');
   });
 
   it('rolls back a failed matched metadata commit without cancelling the host room', async () => {

@@ -93,6 +93,8 @@
     "release:operational-evidence:hardening": "node --import tsx scripts/operationalRecoveryGate.ts --profile production-hardening",
     "e2e:authenticated-staging": "node --import tsx scripts/authenticated-multiplayer-gate.ts",
     "e2e:authenticated-staging:hardening": "node --import tsx scripts/authenticated-multiplayer-gate.ts --profile production-hardening",
+    "e2e:trust-staging": "node --import tsx scripts/trust-surface-gate.ts",
+    "evidence:player-product": "node --import tsx scripts/playerProductEvidenceGate.ts",
     "ops:config": "node scripts/verify-operational-config.mjs",
     "version:check": "node scripts/check-version-sync.mjs",
     "i18n:check": "tsx scripts/check-i18n.ts",

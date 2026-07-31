@@ -33,6 +33,8 @@ SMOKE_LOCAL_API_PORT="${SMOKE_LOCAL_API_PORT:-13001}"
 SMOKE_LOCAL_PLATFORM_PORT="${SMOKE_LOCAL_PLATFORM_PORT:-13002}"
 PUBLIC_SMOKE_BASE_URL="${PUBLIC_SMOKE_BASE_URL:-https://battle.zutomayocard.online}"
 DIRECT_SMOKE_ADDRESS="${DIRECT_SMOKE_ADDRESS:-$SERVER_HOST}"
+DEPLOY_SMOKE_REPORT_PATH="${DEPLOY_SMOKE_REPORT_PATH:-}"
+CARD_DATASET_SHA256="${VITE_CARD_DATASET_SHA256:-}"
 CLOUDFLARE_CACHE_RULES_REQUIRED="${CLOUDFLARE_CACHE_RULES_REQUIRED:-false}"
 OFFICIAL_TRANSLATIONS_SOURCE="${OFFICIAL_TRANSLATIONS_SOURCE:-$PROJECT_DIR/data/official-rulings-translations.json}"
 OFFICIAL_RULE_DOCUMENTS_SOURCE="${OFFICIAL_RULE_DOCUMENTS_SOURCE:-$PROJECT_DIR/data/official-rule-documents-20260721.json}"
@@ -89,6 +91,8 @@ ssh_run() { ssh -p "$SERVER_PORT" "$SERVER_USER@$SERVER_HOST" "$@"; }
 [[ "$MEILI_EXPECTED_IMAGE" =~ ^[A-Za-z0-9._/:@-]+$ ]] || die 'MEILI_EXPECTED_IMAGE is invalid'
 [[ "$MEILI_APP_DIR" =~ ^/[A-Za-z0-9._/-]+$ ]] || die 'MEILI_APP_DIR contains unsupported characters'
 [[ "$DEPLOY_WAIT_SECONDS" =~ ^[0-9]+$ ]] || die 'DEPLOY_WAIT_SECONDS must be an integer'
+[[ -z "$CARD_DATASET_SHA256" || "$CARD_DATASET_SHA256" =~ ^[a-f0-9]{64}$ ]] || \
+  die 'VITE_CARD_DATASET_SHA256 must be a lowercase SHA-256 digest'
 [[ -z "$PUBLIC_SMOKE_BASE_URL" || "$PUBLIC_SMOKE_BASE_URL" =~ ^https?://[A-Za-z0-9._:-]+/?$ ]] || \
   die 'PUBLIC_SMOKE_BASE_URL must be an HTTP(S) origin URL'
 
@@ -316,7 +320,10 @@ remote_sync_master_and_env() {
     upsert_env GAME_RULES_VERSION '$PACKAGE_VERSION'
     upsert_env EXPECTED_SCHEMA_MIGRATION '$EXPECTED_SCHEMA_MIGRATION'
     upsert_env EXPECTED_SCHEMA_CHECKSUM '$EXPECTED_SCHEMA_CHECKSUM'
-    grep -E '^(APP_BUILD_ID|APP_VERSION|GAME_RULES_VERSION|EXPECTED_SCHEMA_MIGRATION|EXPECTED_SCHEMA_CHECKSUM)=' .env"
+    if test -n '$CARD_DATASET_SHA256'; then
+      upsert_env VITE_CARD_DATASET_SHA256 '$CARD_DATASET_SHA256'
+    fi
+    grep -E '^(APP_BUILD_ID|APP_VERSION|GAME_RULES_VERSION|EXPECTED_SCHEMA_MIGRATION|EXPECTED_SCHEMA_CHECKSUM|VITE_CARD_DATASET_SHA256)=' .env"
 }
 
 sync_battle_assets() {
@@ -485,6 +492,9 @@ run_smoke() {
   )
   if [[ -n "$PUBLIC_SMOKE_BASE_URL" ]]; then
     smoke_args+=(--public-base-url "$PUBLIC_SMOKE_BASE_URL")
+  fi
+  if [[ -n "$DEPLOY_SMOKE_REPORT_PATH" ]]; then
+    smoke_args+=(--report-path "$DEPLOY_SMOKE_REPORT_PATH")
   fi
   ssh -p "$SERVER_PORT" -o ExitOnForwardFailure=yes -N -T \
     -L "${SMOKE_LOCAL_GAME_PORT}:127.0.0.1:${GAME_PORT}" \

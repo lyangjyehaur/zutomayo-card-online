@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url';
 const RELEASE_SHA_PATTERN = /^[a-f0-9]{40}$/i;
 const IMAGE_DIGEST_PATTERN = /^\S+@sha256:[a-f0-9]{64}$/i;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/i;
+const MIGRATION_PATTERN = /^\d{6,}_[a-z0-9_]+$/i;
 const REQUIRED_ALERT_SCENARIOS = [
   'api-failure',
   'platform-failure',
@@ -13,6 +14,26 @@ const REQUIRED_ALERT_SCENARIOS = [
   'resource-pressure',
   'outbox-backlog',
 ] as const;
+type AlertScenario = (typeof REQUIRED_ALERT_SCENARIOS)[number];
+const ALERT_RULES_BY_SCENARIO: Record<AlertScenario, readonly string[]> = {
+  'api-failure': ['ServiceDown', 'ReadinessProbeFailed', 'HighErrorRate5xx'],
+  'platform-failure': ['ServiceDown', 'PlatformHealthProbeFailed', 'ReadinessProbeFailed', 'PlatformHighErrorRate5xx'],
+  'reconnect-spike': ['PlatformReconnectSpike', 'WebSocketConnectionsHigh'],
+  'database-outage': [
+    'ReadinessProbeFailed',
+    'PostgresExporterDown',
+    'MatchResultOutboxMetricsStale',
+    'RelationshipChangeOutboxMetricsStale',
+  ],
+  'resource-pressure': ['HighEventLoopLag'],
+  'outbox-backlog': [
+    'MatchResultOutboxBacklog',
+    'MatchResultOutboxOldestRow',
+    'RelationshipChangeOutboxBacklog',
+    'RelationshipChangeOutboxOldestRow',
+    'RelationshipChangeOutboxDeadLetter',
+  ],
+};
 const IMAGE_NAMES = ['game', 'api', 'platform', 'migrate', 'retention'] as const;
 
 interface RestoreReport {
@@ -23,34 +44,72 @@ interface RestoreReport {
   backup?: { artifact?: unknown; sha256?: unknown; completedAt?: unknown };
   incidentAt?: unknown;
   restore?: { startedAt?: unknown; finishedAt?: unknown; imageDigest?: unknown };
-  fixtures?: { account?: unknown; deck?: unknown; matchHistory?: unknown; leaderboard?: unknown };
-  checks?: { schemaGatePassed?: unknown; legalHoldInvariantPassed?: unknown };
+  fixtures?: {
+    account?: unknown;
+    deck?: unknown;
+    matchHistory?: unknown;
+    leaderboard?: unknown;
+    chatMessage?: unknown;
+    feedbackPost?: unknown;
+    boardgameMatch?: unknown;
+  };
+  checks?: {
+    schemaGatePassed?: unknown;
+    legalHoldInvariantPassed?: unknown;
+    boardgameStateInvariantPassed?: unknown;
+  };
 }
 
 interface DeploymentRecoveryReport {
   schemaVersion?: unknown;
   status?: unknown;
   environment?: unknown;
+  recoveryMode?: unknown;
   releaseSha?: unknown;
   targetSha?: unknown;
+  datasetSha256?: unknown;
   startedAt?: unknown;
   finishedAt?: unknown;
+  backup?: { artifact?: unknown; sha256?: unknown };
+  schema?: { migration?: unknown; sha256?: unknown };
+  impact?: {
+    activeMatchesAtStop?: unknown;
+    completedMatches?: unknown;
+    reconnectedMatches?: unknown;
+    failedMatches?: unknown;
+    manualInterventions?: unknown;
+    receiptUrl?: unknown;
+  };
+  artifacts?: unknown;
   checks?: {
+    servicesStopped?: unknown;
+    deployCommandPassed?: unknown;
+    preDeployBackupVerified?: unknown;
     sourceCheckoutVerified?: unknown;
+    datasetIdentityVerified?: unknown;
     schemaCompatible?: unknown;
     healthReady?: unknown;
+    buildIdentityVerified?: unknown;
+    battleAssetsVerified?: unknown;
+    websocketOutcomeVerified?: unknown;
     smokePassed?: unknown;
   };
 }
 
 interface AlertScenarioReceipt {
   scenario?: unknown;
+  alertName?: unknown;
+  injection?: unknown;
   firingInjectedAt?: unknown;
   firingReceivedAt?: unknown;
   resolvedInjectedAt?: unknown;
   resolvedReceivedAt?: unknown;
   recipient?: unknown;
   receiptUrl?: unknown;
+}
+
+function isAlertScenario(value: unknown): value is AlertScenario {
+  return REQUIRED_ALERT_SCENARIOS.includes(value as AlertScenario);
 }
 
 interface AlertDeliveryReceipt {
@@ -85,6 +144,11 @@ function httpsUrl(value: unknown, label: string): string {
   return value;
 }
 
+function nonNegativeInteger(value: unknown, label: string): number {
+  if (!Number.isSafeInteger(value) || Number(value) < 0) throw new Error(`${label} must be a non-negative integer`);
+  return Number(value);
+}
+
 function assertBaseReport(
   report: { schemaVersion?: unknown; status?: unknown; environment?: unknown; releaseSha?: unknown },
   releaseSha: string,
@@ -116,11 +180,19 @@ export function evaluateRestore(restore: RestoreReport, releaseSha: string, thre
     restore.fixtures?.account === true &&
     restore.fixtures.deck === true &&
     restore.fixtures.matchHistory === true &&
-    restore.fixtures.leaderboard === true;
+    restore.fixtures.leaderboard === true &&
+    restore.fixtures.chatMessage === true &&
+    restore.fixtures.feedbackPost === true &&
+    restore.fixtures.boardgameMatch === true;
   if (!fixtureRoundTripPassed)
-    throw new Error('restore must verify account, deck, matchHistory, and leaderboard fixtures');
+    throw new Error(
+      'restore must verify account, deck, matchHistory, leaderboard, chatMessage, feedbackPost, and boardgameMatch fixtures',
+    );
   if (restore.checks?.schemaGatePassed !== true) throw new Error('restore schema gate did not pass');
   if (restore.checks?.legalHoldInvariantPassed !== true) throw new Error('restore legal-hold invariant did not pass');
+  if (restore.checks?.boardgameStateInvariantPassed !== true) {
+    throw new Error('restore boardgame-state invariant did not pass');
+  }
 
   const rpoMinutes = (incidentAt - backupCompletedAt) / 60_000;
   const rtoMinutes = (restoreFinishedAt - restoreStartedAt) / 60_000;
@@ -130,6 +202,7 @@ export function evaluateRestore(restore: RestoreReport, releaseSha: string, thre
       schemaGatePassed: true,
       fixtureRoundTripPassed,
       legalHoldInvariantPassed: true,
+      boardgameStateInvariantPassed: true,
     },
     passed: rpoMinutes <= thresholds.maxRpoMinutes && rtoMinutes <= thresholds.maxRtoMinutes,
   };
@@ -143,16 +216,75 @@ export function evaluateRestoreAndDeployment(
 ) {
   const restoreResult = evaluateRestore(restore, releaseSha, thresholds);
   assertBaseReport(deployment, releaseSha, 'deployment');
+  if (deployment.recoveryMode !== 'exact-release-reconstruction') {
+    throw new Error('deployment.recoveryMode must be exact-release-reconstruction');
+  }
   if (!RELEASE_SHA_PATTERN.test(String(deployment.targetSha ?? '')) || deployment.targetSha !== releaseSha) {
     throw new Error('deployment.targetSha must match the release candidate');
+  }
+  if (!SHA256_PATTERN.test(String(deployment.datasetSha256 ?? ''))) {
+    throw new Error('deployment.datasetSha256 is invalid');
+  }
+  if (!deployment.backup || typeof deployment.backup.artifact !== 'string' || !deployment.backup.artifact.trim()) {
+    throw new Error('deployment.backup.artifact is required');
+  }
+  if (!SHA256_PATTERN.test(String(deployment.backup.sha256 ?? ''))) {
+    throw new Error('deployment.backup.sha256 is invalid');
+  }
+  if (!MIGRATION_PATTERN.test(String(deployment.schema?.migration ?? ''))) {
+    throw new Error('deployment.schema.migration is invalid');
+  }
+  if (!SHA256_PATTERN.test(String(deployment.schema?.sha256 ?? ''))) {
+    throw new Error('deployment.schema.sha256 is invalid');
+  }
+  if (!Array.isArray(deployment.artifacts) || deployment.artifacts.length !== 3) {
+    throw new Error('deployment.artifacts must contain the log, smoke, and match-impact receipts');
+  }
+  const artifactPaths = new Set<string>();
+  for (const [index, artifact] of deployment.artifacts.entries()) {
+    const entry = artifact as { path?: unknown; sha256?: unknown };
+    if (typeof entry.path !== 'string' || !entry.path.trim()) {
+      throw new Error(`deployment.artifacts[${index}].path is required`);
+    }
+    if (artifactPaths.has(entry.path)) throw new Error(`deployment artifact path is duplicated: ${entry.path}`);
+    artifactPaths.add(entry.path);
+    if (!SHA256_PATTERN.test(String(entry.sha256 ?? ''))) {
+      throw new Error(`deployment.artifacts[${index}].sha256 is invalid`);
+    }
   }
   const deploymentStartedAt = isoMs(deployment.startedAt, 'deployment.startedAt');
   const deploymentFinishedAt = isoMs(deployment.finishedAt, 'deployment.finishedAt');
   if (deploymentFinishedAt <= deploymentStartedAt) throw new Error('deployment.finishedAt must follow startedAt');
+  const activeMatchesAtStop = nonNegativeInteger(
+    deployment.impact?.activeMatchesAtStop,
+    'deployment.impact.activeMatchesAtStop',
+  );
+  const completedMatches = nonNegativeInteger(
+    deployment.impact?.completedMatches,
+    'deployment.impact.completedMatches',
+  );
+  const reconnectedMatches = nonNegativeInteger(
+    deployment.impact?.reconnectedMatches,
+    'deployment.impact.reconnectedMatches',
+  );
+  const failedMatches = nonNegativeInteger(deployment.impact?.failedMatches, 'deployment.impact.failedMatches');
+  nonNegativeInteger(deployment.impact?.manualInterventions, 'deployment.impact.manualInterventions');
+  httpsUrl(deployment.impact?.receiptUrl, 'deployment.impact.receiptUrl');
+  if (activeMatchesAtStop === 0) throw new Error('deployment recovery must exercise at least one controlled match');
+  if (completedMatches + reconnectedMatches + failedMatches !== activeMatchesAtStop) {
+    throw new Error('deployment match outcomes must account for every active match');
+  }
   const deploymentRecoveryPassed =
-    deployment.checks?.sourceCheckoutVerified === true &&
+    deployment.checks?.servicesStopped === true &&
+    deployment.checks.deployCommandPassed === true &&
+    deployment.checks.preDeployBackupVerified === true &&
+    deployment.checks.sourceCheckoutVerified === true &&
+    deployment.checks.datasetIdentityVerified === true &&
     deployment.checks.schemaCompatible === true &&
     deployment.checks.healthReady === true &&
+    deployment.checks.buildIdentityVerified === true &&
+    deployment.checks.battleAssetsVerified === true &&
+    deployment.checks.websocketOutcomeVerified === true &&
     deployment.checks.smokePassed === true;
   if (!deploymentRecoveryPassed) throw new Error('deployment recovery checks did not all pass');
   const deploymentRecoverySeconds = (deploymentFinishedAt - deploymentStartedAt) / 1_000;
@@ -172,6 +304,15 @@ export function evaluateAlertDelivery(
   httpsUrl(receipt.alertmanagerUrl, 'alerts.alertmanagerUrl');
   if (!Array.isArray(receipt.scenarios)) throw new Error('alerts.scenarios must be an array');
   const scenarios = receipt.scenarios as AlertScenarioReceipt[];
+  if (scenarios.length !== REQUIRED_ALERT_SCENARIOS.length) {
+    throw new Error(`alerts.scenarios must contain exactly ${REQUIRED_ALERT_SCENARIOS.length} entries`);
+  }
+  const seenScenarios = new Set<AlertScenario>();
+  for (const entry of scenarios) {
+    if (!isAlertScenario(entry.scenario)) throw new Error(`unknown alert delivery scenario: ${String(entry.scenario)}`);
+    if (seenScenarios.has(entry.scenario)) throw new Error(`duplicate alert delivery scenario: ${entry.scenario}`);
+    seenScenarios.add(entry.scenario);
+  }
   const byScenario = new Map(scenarios.map((entry) => [entry.scenario, entry]));
   const firingLatencies: number[] = [];
   const resolvedLatencies: number[] = [];
@@ -181,6 +322,12 @@ export function evaluateAlertDelivery(
     if (!entry) throw new Error(`missing alert delivery scenario: ${scenario}`);
     if (typeof entry.recipient !== 'string' || !entry.recipient.trim()) {
       throw new Error(`${scenario}.recipient is required`);
+    }
+    if (typeof entry.alertName !== 'string' || !ALERT_RULES_BY_SCENARIO[scenario].includes(entry.alertName)) {
+      throw new Error(`${scenario}.alertName must identify an approved alert rule`);
+    }
+    if (typeof entry.injection !== 'string' || !entry.injection.trim()) {
+      throw new Error(`${scenario}.injection is required`);
     }
     httpsUrl(entry.receiptUrl, `${scenario}.receiptUrl`);
     const firingInjectedAt = isoMs(entry.firingInjectedAt, `${scenario}.firingInjectedAt`);

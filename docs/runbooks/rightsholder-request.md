@@ -43,12 +43,12 @@ Do not delete audit or request evidence that is subject to an active dispute or 
 3. Update the policy decision if the request changes the accepted use boundary.
 4. Create a private incident/release record for any production change and verify the site after deployment.
 
-## Release Rehearsal
+## Stabilization Rehearsal
 
-Before Public Beta:
+During each stabilization review cycle:
 
 1. Send one controlled message to `contact@mail.zutomayocard.online` from an unrelated mailbox.
 2. Confirm delivery to the assigned operator and record received UTC.
 3. Walk through a fictional single-card image request without changing production.
 4. Record acknowledgment, triage, proposed mitigation, responder, and completion time.
-5. Attach the redacted rehearsal record to RR-01 release evidence.
+5. Attach the redacted rehearsal record to `LS-10` evidence. The automated account-deletion rehearsal may prove the deletion path, but it does not replace this mailbox delivery check.

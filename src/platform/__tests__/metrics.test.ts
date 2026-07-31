@@ -5,6 +5,7 @@ import {
   platformMetricsMiddleware,
   platformMetricsRegister,
   platformMetricsText,
+  recordPlatformQuickMatchOutcome,
   recordPlatformReconnect,
   recordPlatformDependencyFailure,
   setPlatformRuntimeMetrics,
@@ -58,5 +59,15 @@ describe('platform metrics', () => {
     recordPlatformReconnect('match_shell');
     const metrics = await platformMetricsText();
     expect(metrics.body).toContain('platform_reconnects_total{room_type="match_shell"} 1');
+  });
+
+  it('records quick-match outcomes and wait duration with bounded labels', async () => {
+    recordPlatformQuickMatchOutcome('matched', 1_250);
+    recordPlatformQuickMatchOutcome('untrusted-reason', -1);
+    const metrics = await platformMetricsText();
+    expect(metrics.body).toContain('platform_quick_match_outcomes_total{outcome="matched"} 1');
+    expect(metrics.body).toContain('platform_quick_match_outcomes_total{outcome="other"} 1');
+    expect(metrics.body).toContain('platform_quick_match_wait_duration_seconds_sum{outcome="matched"} 1.25');
+    expect(metrics.body).toContain('platform_quick_match_wait_duration_seconds_sum{outcome="other"} 0');
   });
 });

@@ -1,5 +1,6 @@
 import { Room, type AuthContext } from '@colyseus/core';
 import { createEmptyPlatformBlockStore, type PlatformBlockStore } from '../blockStore';
+import { recordPlatformQuickMatchOutcome } from '../metrics';
 import { assertPlatformAuthCurrent, authenticatePlatformClientCurrent } from './auth';
 import type {
   BoardgameMatchReadyMessage,
@@ -73,10 +74,13 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
   private failedTransitionSessionIds = new Set<string>();
   private authAdmissionTail: Promise<void> = Promise.resolve();
   private waitingTimeout?: { clear: () => void };
+  private waitingStartedAt = 0;
+  private queueOutcomeRecorded = false;
 
   async onCreate(): Promise<void> {
     this.autoDispose = true;
     this.maxMessagesPerSecond = 4;
+    this.waitingStartedAt = Date.now();
 
     this.onMessage<BoardgameMatchReadyMessage>('boardgameMatchReady', (client, message) => {
       if (client.sessionId !== this.hostSessionId) return;
@@ -211,6 +215,7 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
         this.sendMatchedMessages();
         this.broadcastSnapshot();
         this.clearWaitingTimeout();
+        this.recordQueueOutcome('matched');
       } catch (error) {
         this.failedTransitionSessionIds.add(client.sessionId);
         this.status = 'waiting';
@@ -322,6 +327,7 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
     if (this.status === 'cancelled' || this.status === 'finished') return;
     this.clearWaitingTimeout();
     this.status = 'cancelled';
+    this.recordQueueOutcome(reason);
     await this.refreshMetadata(ignoredSessionId);
     this.broadcast('quickMatchCancelled', { reason });
     this.broadcastSnapshot(ignoredSessionId);
@@ -330,6 +336,12 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
   private clearWaitingTimeout(): void {
     this.waitingTimeout?.clear();
     this.waitingTimeout = undefined;
+  }
+
+  private recordQueueOutcome(outcome: string): void {
+    if (this.queueOutcomeRecorded) return;
+    this.queueOutcomeRecorded = true;
+    recordPlatformQuickMatchOutcome(outcome, Date.now() - this.waitingStartedAt);
   }
 
   private roomUserIds(): Set<string> {

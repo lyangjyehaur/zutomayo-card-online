@@ -94,18 +94,8 @@ const { buildSignedImgproxyUrl, parseAllowedSources } = require('./imgproxySigne
 
 const PUBLIC_EDGE_CACHE_SHORT = 'public, max-age=0, must-revalidate, s-maxage=60, stale-while-revalidate=300';
 const PUBLIC_EDGE_CACHE_STANDARD = 'public, max-age=0, must-revalidate, s-maxage=300, stale-while-revalidate=1800';
-const {
-  getAllCardTextsI18n,
-  getAdminCards,
-  getCardRecommendations,
-  getCatalogCards,
-  getCardOfficialErrata,
-  getCardTextsI18n,
-  getGameConfig,
-  getPresetDecks,
-  getPublicCard,
-  getPublicCards,
-} = require('./cardDataService.cjs');
+const { getAdminCards, getCardOfficialErrata } = require('./cardDataService.cjs');
+const { handlePublicCardRoute } = require('./publicCardRoutes.cjs');
 const {
   createChatUserSanction,
   defaultChatModerationRules,
@@ -5962,64 +5952,17 @@ function handleRequest(req, res) {
       return;
     }
 
-    // ===== Card Data Routes =====
-
-    // Public: list card definitions from PostgreSQL.
-    if (pathname === '/api/cards' && method === 'GET') {
-      res.setHeader('Cache-Control', 'no-store');
-      json(await getPublicCards(pool, url.searchParams));
-      return;
-    }
-
-    if (pathname === '/api/catalog/cards' && method === 'GET') {
-      res.setHeader('Cache-Control', 'no-store');
-      json(await getCatalogCards(pool, url.searchParams));
-      return;
-    }
-
-    const catalogRecommendationsRoute = pathname.match(/^\/api\/catalog\/cards\/([^/]+)\/recommendations$/);
-    if (catalogRecommendationsRoute && method === 'GET') {
-      const cardId = decodeURIComponent(catalogRecommendationsRoute[1]);
-      res.setHeader('Cache-Control', 'no-store');
-      const result = await getCardRecommendations(pool, cardId, url.searchParams.get('limit'));
-      if (!result.ok) return json({ error: result.error }, result.status);
-      json(result.body);
-      return;
-    }
-
-    if (pathname === '/api/cards/texts' && method === 'GET') {
-      res.setHeader('Cache-Control', 'no-store');
-      json(await getAllCardTextsI18n(pool));
-      return;
-    }
-
-    const publicCardTextsRoute = pathname.match(/^\/api\/cards\/([^/]+)\/texts$/);
-    if (publicCardTextsRoute && method === 'GET') {
-      const cardId = decodeURIComponent(publicCardTextsRoute[1]);
-      res.setHeader('Cache-Control', 'no-store');
-      json(await getCardTextsI18n(pool, cardId));
-      return;
-    }
-
-    const publicCardRoute = pathname.match(/^\/api\/cards\/([^/]+)$/);
-    if (publicCardRoute && method === 'GET') {
-      const cardId = decodeURIComponent(publicCardRoute[1]);
-      const result = await getPublicCard(pool, cardId);
-      if (!result.ok) return json({ error: result.error }, result.status);
-      res.setHeader('Cache-Control', 'no-store');
-      json(result.body);
-      return;
-    }
-
-    if (pathname === '/api/config' && method === 'GET') {
-      res.setHeader('Cache-Control', 'no-store');
-      json({ ...(await getGameConfig(pool)), deck_sharing_enabled: DECK_SHARING_ENABLED });
-      return;
-    }
-
-    if (pathname === '/api/preset-decks' && method === 'GET') {
-      res.setHeader('Cache-Control', 'no-store');
-      json(await getPresetDecks(pool));
+    if (
+      await handlePublicCardRoute({
+        pathname,
+        method,
+        url,
+        res,
+        json,
+        pool,
+        deckSharingEnabled: DECK_SHARING_ENABLED,
+      })
+    ) {
       return;
     }
 

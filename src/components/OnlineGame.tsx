@@ -46,6 +46,7 @@ import {
 } from '../platformMatchShellConnection';
 import { trackFirstWinOnce, trackFunnelEvent } from '../funnelAnalytics';
 import { hasOnlineOpponent } from '../onlineRoomStatus';
+import { createMatchConnectionTelemetry } from '../matchConnectionTelemetry';
 
 interface OnlineGameProps {
   matchID: string;
@@ -283,6 +284,10 @@ export function OnlineGame({
 }: OnlineGameProps) {
   const locale = useLocale();
   const connectedOnce = useRef(false);
+  const matchConnectionTelemetryRef = useRef({ matchID, telemetry: createMatchConnectionTelemetry() });
+  if (matchConnectionTelemetryRef.current.matchID !== matchID) {
+    matchConnectionTelemetryRef.current = { matchID, telemetry: createMatchConnectionTelemetry() };
+  }
   const matchStartedRef = useRef(false);
   const initialResumeTrackedRef = useRef(false);
   const statusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -633,6 +638,9 @@ export function OnlineGame({
 
   const handleConnectionStatusChange = useCallback(
     (isConnected: boolean) => {
+      for (const event of matchConnectionTelemetryRef.current.telemetry.transition(isConnected)) {
+        trackFunnelEvent(event.name, event.data);
+      }
       if (isConnected) {
         const isReconnect = connectedOnce.current;
         connectedOnce.current = true;

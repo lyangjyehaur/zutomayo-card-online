@@ -4,9 +4,11 @@ Last updated: 2026-07-20
 
 Owner: Tech Lead
 
-Status: Active
+Status: Historical pre-launch remediation record; active live-service work moved to [`LIVE_SERVICE_STABILIZATION_PLAN.md`](LIVE_SERVICE_STABILIZATION_PLAN.md)
 
 Target: Public Beta go/no-go review after all P0 gates are closed
+
+> Operating-status correction (2026-07-30): the service is already running with a small real user base. This document is retained as an append-only record of the earlier release-readiness review and its unresolved acceptance criteria. It is no longer the source of truth for whether the service is online or for current stabilization priority. Use [`LIVE_SERVICE_STABILIZATION_PLAN.md`](LIVE_SERVICE_STABILIZATION_PLAN.md) for current status, evidence, risks, and decisions.
 
 ## Purpose
 
@@ -35,18 +37,18 @@ Public Beta remains **No-Go** until every P0 item below is either complete with 
 
 ## P0 Tracker
 
-| ID    | Workstream                                             | Status               | Primary owner                  | Estimate       | Dependency                     | Required evidence                                                                    |
-| ----- | ------------------------------------------------------ | -------------------- | ------------------------------ | -------------- | ------------------------------ | ------------------------------------------------------------------------------------ |
-| RR-01 | IP policy, Privacy, Terms, operator identity, contact  | Verification pending | Product / Operations           | 1 day evidence | Public mailbox delivery        | Policy record, route checks, deletion/contact rehearsal                              |
-| RR-02 | Tutorial phase correctness                             | Complete             | Frontend / Game UX             | 1-2 days       | None                           | Unit regression, tutorial E2E, desktop/mobile screenshots                            |
-| RR-03 | Tutorial first-action flow and completion coverage     | In progress          | Frontend / Game UX / QA        | 7-10 eng days  | RR-02                          | Visible copy, synchronized display state, decoded images, full-flow E2E, step funnel |
-| RR-04 | Quick Match bounded wait and fallback                  | Verification pending | Frontend / Platform            | 3-4 days       | Funnel event contract          | Timeout/fallback E2E, stale queue cleanup tests                                      |
-| RR-05 | Authenticated production-like multiplayer gate         | Verification pending | Backend / DevOps / QA          | 5-6 days       | Staging reverse-proxy topology | Zero skipped critical journeys, traces and server logs                               |
-| RR-06 | Exact-release card dataset audit and smoke gate        | Verification pending | Rules / Backend                | 2-3 days       | Release database snapshot      | Dataset hash, card/effect counts, audit and 20-card smoke output                     |
-| RR-07 | Release backup restore rehearsal                       | Verification pending | DevOps / Backend               | 1 day          | Release backup                 | RPO/RTO record and restored account/deck/history/leaderboard data                    |
-| RR-08 | First-session, tutorial, queue, and match funnel       | Verification pending | Product / Frontend / Backend   | 2-3 days       | Privacy-approved event schema  | Event contract tests and usable funnel dashboard/query                               |
-| RR-09 | Targeted mobile, performance, and battle feedback pass | Verification pending | Frontend / Game UX / QA        | 3-4 days       | Stable release candidate       | Low-end device results, responsive checks, performance measurements                  |
-| RR-10 | Release candidate rehearsal and go/no-go               | Not started          | QA / Tech Lead / Product / Ops | 2 days         | RR-01 through RR-09            | Signed checklist tied to exact release commit and dataset                            |
+| ID    | Workstream                                             | Status               | Primary owner                  | Estimate       | Dependency                     | Required evidence                                                                         |
+| ----- | ------------------------------------------------------ | -------------------- | ------------------------------ | -------------- | ------------------------------ | ----------------------------------------------------------------------------------------- |
+| RR-01 | IP policy, Privacy, Terms, operator identity, contact  | Verification pending | Product / Operations           | 1 day evidence | Public mailbox delivery        | Policy record, route checks, deletion/contact rehearsal                                   |
+| RR-02 | Tutorial phase correctness                             | Complete             | Frontend / Game UX             | 1-2 days       | None                           | Unit regression, tutorial E2E, desktop/mobile screenshots                                 |
+| RR-03 | Tutorial first-action flow and completion coverage     | In progress          | Frontend / Game UX / QA        | 7-10 eng days  | RR-02                          | Visible copy, synchronized display state, decoded images, full-flow E2E, step funnel      |
+| RR-04 | Quick Match bounded wait and fallback                  | Verification pending | Frontend / Platform            | 3-4 days       | Funnel event contract          | Timeout/fallback E2E, stale queue cleanup tests                                           |
+| RR-05 | Authenticated production-like multiplayer gate         | Verification pending | Backend / DevOps / QA          | 5-6 days       | Staging reverse-proxy topology | Zero skipped critical journeys, traces and server logs                                    |
+| RR-06 | Exact-release card dataset audit and smoke gate        | Verification pending | Rules / Backend                | 2-3 days       | Release database snapshot      | Dataset hash, card/effect counts, audit and 20-card smoke output                          |
+| RR-07 | Release backup restore rehearsal                       | Verification pending | DevOps / Backend               | 1 day          | Release backup                 | RPO/RTO record and restored account/deck/history/leaderboard/chat/feedback/boardgame data |
+| RR-08 | First-session, tutorial, queue, and match funnel       | Verification pending | Product / Frontend / Backend   | 2-3 days       | Privacy-approved event schema  | Event contract tests and usable funnel dashboard/query                                    |
+| RR-09 | Targeted mobile, performance, and battle feedback pass | Verification pending | Frontend / Game UX / QA        | 3-4 days       | Stable release candidate       | Low-end device results, responsive checks, performance measurements                       |
+| RR-10 | Release candidate rehearsal and go/no-go               | Not started          | QA / Tech Lead / Product / Ops | 2 days         | RR-01 through RR-09            | Signed checklist tied to exact release commit and dataset                                 |
 
 ## Critical Path
 
@@ -109,7 +111,7 @@ Public Beta remains **No-Go** until every P0 item below is either complete with 
 
 ### RR-07: Operational Recovery
 
-- A staging backup is restored and account, deck, match history, and leaderboard data are verified.
+- A staging backup is restored and account, deck, match history, leaderboard, chat, feedback, and boardgame state are verified.
 - Actual RPO and RTO are recorded against the Beta targets.
 - Full alert-delivery, chaos, and source-deployment recovery rehearsals remain documented and executable but do not block the current Beta.
 
@@ -136,17 +138,17 @@ Public Beta remains **No-Go** until every P0 item below is either complete with 
 
 ## Verification Matrix
 
-| Gate                      | Command or procedure                                   | Pass condition                                                     | Evidence location                                        |
-| ------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------ | -------------------------------------------------------- |
-| Repository CI mirror      | `npm run verify`                                       | All formatting, lint, typecheck, unit, and build stages pass       | Passed for current worktree through `release:gate`       |
-| Tutorial regression       | Targeted Vitest command plus `e2e/tutorial.spec.ts`    | Correct copy and full flow pass at desktop/mobile                  | Pending RR-02/RR-03                                      |
-| Responsive UI             | Player responsive smoke suites plus device check       | No blocked controls, overflow, or overlap                          | Automated player surfaces pass; physical Android pending |
-| Low-end web performance   | `npm run smoke:performance` against production preview | Initial load and warm battle entry remain within synthetic budgets | Automated profile passes; field Web Vitals pending       |
-| Authenticated multiplayer | `npm run e2e:authenticated-staging`                    | One full two-player run with zero critical skips/failures/flakes   | Runner complete; external staging evidence pending       |
-| Card rules                | Release DB rule audit and smoke commands               | Exact dataset passes with recorded hash/counts                     | Pending RR-06                                            |
-| Security dependencies     | `npm audit --omit=dev`                                 | No unresolved production vulnerability beyond accepted policy      | Pending release candidate                                |
-| Recovery                  | Release restore drill                                  | RPO/RTO met; account/deck/history/leaderboard round-trip passes    | Runner complete; external staging rehearsal pending      |
-| Production hardening      | `npm run release:gate:hardening`                       | Chaos/load/canary/alerts/provider/recovery and five-run E2E pass   | Deferred until after Beta                                |
+| Gate                      | Command or procedure                                   | Pass condition                                                                          | Evidence location                                        |
+| ------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| Repository CI mirror      | `npm run verify`                                       | All formatting, lint, typecheck, unit, and build stages pass                            | Passed for current worktree through `release:gate`       |
+| Tutorial regression       | Targeted Vitest command plus `e2e/tutorial.spec.ts`    | Correct copy and full flow pass at desktop/mobile                                       | Pending RR-02/RR-03                                      |
+| Responsive UI             | Player responsive smoke suites plus device check       | No blocked controls, overflow, or overlap                                               | Automated player surfaces pass; physical Android pending |
+| Low-end web performance   | `npm run smoke:performance` against production preview | Initial load and warm battle entry remain within synthetic budgets                      | Automated profile passes; field Web Vitals pending       |
+| Authenticated multiplayer | `npm run e2e:authenticated-staging`                    | One full two-player run with zero critical skips/failures/flakes                        | Runner complete; external staging evidence pending       |
+| Card rules                | Release DB rule audit and smoke commands               | Exact dataset passes with recorded hash/counts                                          | Pending RR-06                                            |
+| Security dependencies     | `npm audit --omit=dev`                                 | No unresolved production vulnerability beyond accepted policy                           | Pending release candidate                                |
+| Recovery                  | Release restore drill                                  | RPO/RTO met; account/deck/history/leaderboard/chat/feedback/boardgame round-trip passes | Runner complete; external staging rehearsal pending      |
+| Production hardening      | `npm run release:gate:hardening`                       | Chaos/load/canary/alerts/provider/recovery and five-run E2E pass                        | Deferred until after Beta                                |
 
 ## Current Baseline
 
@@ -192,7 +194,7 @@ RR-03 still has local implementation work defined in [`docs/tutorial-v2-remediat
 | RR-04 | Authenticated staging sessions for timeout, refresh, cancellation, and duplicate-tab queue cleanup evidence.                                                                            |
 | RR-05 | Production-like staging URL and credentials/topology variables for one complete retry-free authenticated two-player run.                                                                |
 | RR-06 | The clean 422-card release database snapshot and release provenance variables.                                                                                                          |
-| RR-07 | Supply one release backup and an isolated restore target; verify account, deck, match history, leaderboard, RPO, and RTO.                                                               |
+| RR-07 | Supply one release backup and an isolated restore target; verify account, deck, match history, leaderboard, chat, feedback, boardgame state, RPO, and RTO.                              |
 | RR-08 | Production Umami access to confirm allowlisted receipts and save the documented funnel query.                                                                                           |
 | RR-09 | A physical low-end Android device and a complete human-played match.                                                                                                                    |
 | RR-10 | 10-20 controlled players plus Product, Legal, QA, Tech Lead, and Operations sign-off against one immutable release candidate.                                                           |

@@ -37,6 +37,16 @@ groups:
   - name: zutomayo-postgres
     interval: 30s
     rules:
+      - alert: PostgresExporterDown
+        expr: up{job="postgres-exporter"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: 'PostgreSQL monitoring target is down'
+          description: 'The PostgreSQL exporter has been unreachable for 1 minute. Database health and capacity are unknown.'
+
       # PG connections > 80% of max for 5 minutes -> critical
       - alert: PgConnectionsNearMax
         expr: |
@@ -55,6 +65,16 @@ groups:
   - name: zutomayo-redis
     interval: 30s
     rules:
+      - alert: RedisExporterDown
+        expr: up{job="redis-exporter"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: 'Redis monitoring target is down'
+          description: 'The Redis exporter has been unreachable for 1 minute. Queue and session dependency health are unknown.'
+
       # Redis memory > 80% of maxmemory -> warning
       - alert: RedisMemoryNearMax
         expr: |
@@ -83,12 +103,22 @@ groups:
           summary: 'WebSocket connections high'
           description: 'Process-wide active Socket.IO connections ({{ $value }}) exceeded 80. Investigate capacity or connection flooding.'
 
+      - alert: PlatformReconnectSpike
+        expr: sum(increase(platform_reconnects_total[5m])) >= 5
+        for: 1m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: 'Platform reconnect spike'
+          description: 'At least five accepted platform reconnects occurred within five minutes. Check readiness, network errors, and room stability.'
+
   - name: zutomayo-runtime
     interval: 30s
     rules:
       # Node.js event loop lag > 100ms for 1 minute -> warning
       - alert: HighEventLoopLag
-        expr: nodejs_eventloop_lag_seconds > 0.1
+        expr: nodejs_eventloop_lag_seconds > 0.1 or platform_nodejs_eventloop_lag_seconds > 0.1
         for: 1m
         labels:
           severity: warning

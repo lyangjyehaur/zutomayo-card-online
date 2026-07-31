@@ -188,6 +188,7 @@ Primary pages include `/online`, `/ai`, `/tutorial`, `/deck-builder`, `/deck-sha
 
 ## Documentation
 
+- [Live service stabilization plan](docs/LIVE_SERVICE_STABILIZATION_PLAN.md)
 - [Full architecture](docs/ARCHITECTURE.md)
 - [REST API](docs/API.md)
 - [Card-text i18n maintenance guide (Traditional Chinese)](docs/card-text-i18n.md)
