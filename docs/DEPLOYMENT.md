@@ -98,6 +98,7 @@ cp .env.example .env
 | `APP_VERSION`         | `package.json` version              | App release version exposed by `/api/app-version` and baked into the frontend bundle. Leave empty to use the root package version.                                                                        |
 | `APP_BUILD_ID`        | `APP_VERSION`                       | Build identifier used for client/server version checks. Set this to a git SHA, image tag, or release number and change it on every deploy.                                                                |
 | `GAME_RULES_VERSION`  | `APP_VERSION`                       | Rules/calculation compatibility version. Bump when online matches must not mix old and new game logic.                                                                                                    |
+| `CARD_DATASET_SHA256` | `unknown` in development            | Exact 64-character card dataset digest stored with permanent match analytics and returned by `/api/app-version`. Production/staging require it; Compose maps it from `VITE_CARD_DATASET_SHA256`.          |
 | `LOG_LEVEL`           | `info`                              | pino log level (`trace`/`debug`/`info`/`warn`/`error`/`fatal`). Lower for debugging, raise in production to reduce noise.                                                                                 |
 | `MAX_CONN_PER_IP`     | `10`                                | Max concurrent Socket.IO connections per client IP on the game server. Excess connections are rejected to prevent resource exhaustion.                                                                    |
 | `GAME_DRAIN_GRACE_MS` | `5000`                              | On SIGTERM, stop readiness/new HTTP connections and allow existing Socket.IO clients this grace period before disconnect.                                                                                 |
@@ -106,17 +107,17 @@ cp .env.example .env
 
 Frontend build-time variables (baked into the bundle at `vite build`):
 
-| Variable                          | Default              | Notes                                                                                                                                                     |
-| --------------------------------- | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `VITE_API_URL`                    | `/api`               | API base used by [src/api/client.ts](../src/api/client.ts).                                                                                               |
-| `VITE_PLATFORM_URL`               | derived              | Optional Colyseus endpoint. Leave empty for same-host production or set an explicit `ws://`/`wss://` URL when the platform service is exposed separately. |
-| `VITE_APP_VERSION`                | `APP_VERSION`        | Usually set automatically from `APP_VERSION` by the Docker build.                                                                                         |
-| `VITE_APP_BUILD_ID`               | `APP_BUILD_ID`       | Must match the `game` runtime `APP_BUILD_ID`, otherwise clients are asked to reload before online play.                                                   |
-| `VITE_GAME_RULES_VERSION`         | `GAME_RULES_VERSION` | Must match the `game` runtime `GAME_RULES_VERSION`.                                                                                                       |
-| `VITE_CARD_DATASET_SHA256`        | empty                | Exact release dataset hash emitted by `release:card-dataset`; included in funnel events and permanent match analytics. Production releases must set it.   |
-| `VITE_UMAMI_WEBSITE_ID`           | empty                | Umami website ID. Analytics is disabled when empty; falls back to `VITE_UMAMI_SECONDARY_WEBSITE_ID` for gallery config compatibility.                     |
-| `VITE_UMAMI_TELEMETRY_SCRIPT_URL` | empty                | Optional same-origin replay / telemetry script URL. Leave empty for standard Umami analytics only.                                                        |
-| `VITE_UMAMI_SECONDARY_WEBSITE_ID` | empty                | Backward-compatible alias used by `zutumayo-gallery`.                                                                                                     |
+| Variable                          | Default              | Notes                                                                                                                                                                     |
+| --------------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `VITE_API_URL`                    | `/api`               | API base used by [src/api/client.ts](../src/api/client.ts).                                                                                                               |
+| `VITE_PLATFORM_URL`               | derived              | Optional Colyseus endpoint. Leave empty for same-host production or set an explicit `ws://`/`wss://` URL when the platform service is exposed separately.                 |
+| `VITE_APP_VERSION`                | `APP_VERSION`        | Usually set automatically from `APP_VERSION` by the Docker build.                                                                                                         |
+| `VITE_APP_BUILD_ID`               | `APP_BUILD_ID`       | Must match the `game` runtime `APP_BUILD_ID`, otherwise clients are asked to reload before online play.                                                                   |
+| `VITE_GAME_RULES_VERSION`         | `GAME_RULES_VERSION` | Must match the `game` runtime `GAME_RULES_VERSION`.                                                                                                                       |
+| `VITE_CARD_DATASET_SHA256`        | empty                | Exact release dataset hash emitted by `release:card-dataset`; included in funnel events and mapped to game runtime `CARD_DATASET_SHA256`. Production/staging must set it. |
+| `VITE_UMAMI_WEBSITE_ID`           | empty                | Umami website ID. Analytics is disabled when empty; falls back to `VITE_UMAMI_SECONDARY_WEBSITE_ID` for gallery config compatibility.                                     |
+| `VITE_UMAMI_TELEMETRY_SCRIPT_URL` | empty                | Optional same-origin replay / telemetry script URL. Leave empty for standard Umami analytics only.                                                                        |
+| `VITE_UMAMI_SECONDARY_WEBSITE_ID` | empty                | Backward-compatible alias used by `zutumayo-gallery`.                                                                                                                     |
 
 > 管理權限應綁定既有使用者帳號。套用 migration 後執行
 > `npm run admin:link -- --email=user@example.com --role=admin`；該使用者以一般帳號登入後，管理頁會透過
@@ -707,7 +708,7 @@ export E2E_EVIDENCE_SIGNER_URL=https://ops.example.com/release-approvers/your-na
 npm run e2e:authenticated-staging -- --output .release-evidence/staging/authenticated-e2e.json
 ```
 
-The Beta command performs one complete Chromium run with retries disabled. It must contain both RR-05 critical tests, all 11 independently recorded journey markers, and zero skipped, unexpected, or flaky tests. The journeys create two independent accounts, clear the registration cookies, log in again, select decks, verify Secure/HttpOnly cookies, Quick Match, same-origin WSS, chat, disconnect/reconnect, spectator hidden information and read-only controls, surrender/result delivery, both server histories, and authenticated friend invite. It writes the raw Playwright JSON report and log, hashes every artifact, and binds the evidence to the full commit SHA, five immutable image digests, migration basename/checksum, and card dataset SHA-256. The release gate cross-checks that migration against `.release.env` and the dataset identity against `staging/card-dataset.json`. A local conditional skip or aggregate pass without every marker can never become passing staging evidence.
+The Beta command performs one complete Chromium run with retries disabled. It must contain both RR-05 critical tests, all 12 independently recorded journey markers, and zero skipped, unexpected, or flaky tests. The journeys create independent participant and non-participant accounts, clear the registration cookies, log in again, select decks, verify Secure/HttpOnly cookies, Quick Match, same-origin WSS, chat, disconnect/reconnect, spectator hidden information and read-only controls, surrender/result delivery, both server histories and replay views, participant-only replay authorization, replay payload privacy, and authenticated friend invite. It writes the raw Playwright JSON report and log, hashes every artifact, and binds the evidence to the full commit SHA, five immutable image digests, migration basename/checksum, and card dataset SHA-256. The release gate cross-checks that migration against `.release.env` and the dataset identity against `staging/card-dataset.json`. A local conditional skip or aggregate pass without every marker can never become passing staging evidence.
 
 Five consecutive retry-free runs are production-hardening evidence, not a Public Beta prerequisite:
 
@@ -768,6 +769,8 @@ Server4 現階段由 `master` 原始碼在主機上建置，不使用下方延�
 Cosign、attestation、retention worker 或七角色矩陣。部署入口只有：
 
 ```bash
+npm run release:card-dataset -- --output .release-evidence/production/card-dataset.json
+export VITE_CARD_DATASET_SHA256="$(node -p "require('./.release-evidence/production/card-dataset.json').datasetSha256")"
 ./scripts/deploy-server4.sh --confirm
 ```
 
@@ -782,6 +785,7 @@ server4 最終 checkout 三者完全一致；不支援 `--sha` 或 `--manifest`�
 - `REDIS_URL`、三個 runtime 共用的 `REDIS_DB`，以及外部 Redis 的
   `REDIS_PASSWORD`（若 Redis 啟用密碼）。
 - 現有 runtime 所需的 `JWT_SECRET`、`METRICS_TOKEN` 與其他功能設定。
+- `VITE_CARD_DATASET_SHA256`：必須來自本次 release 經驗證的 `card-dataset.json` receipt；部署器會寫入遠端 `.env`，Compose 再映射為 game runtime 的 `CARD_DATASET_SHA256`。
 - `MEILI_MASTER_KEY`（至少 16 字元）；部署器會從 1Panel 管理的既有 `meilisearch` 容器安全同步到應用 `.env`，不在日誌輸出。`MEILI_HOST` 由 Compose 固定為 `http://meilisearch:7700`，不得把 7700 port 發布到公網。
 
 Server4 的 Meilisearch 不由應用 Compose 建立。預設容器名稱為 `meilisearch`、1Panel 應用目錄為
@@ -807,7 +811,7 @@ PostgreSQL 重建。
 並寫入 SHA-256 → checkout `origin/master` → 同步 `APP_BUILD_ID`、`APP_VERSION`、
 `GAME_RULES_VERSION`、`EXPECTED_SCHEMA_MIGRATION=000049_match_replay_summaries`
 及 migration checksum → 備份、設定並驗證 1Panel Meilisearch → 實際檢查三服務 `REDIS_DB` 一致且 Redis
-`maxmemory-policy=noeviction` → 同步並校驗私有 battle 素材 → build／migration → 發布卡牌、Q&A、勘誤與規則文件 → `npm run search:reindex` 原子重建及 `search:check` → `docker compose up --wait` → 透過 SSH tunnel 驗證三服務 `/health`、`/ready`、build ID、卡牌／Q&A／規則搜尋及所有 battle 素材 → 視憑證設定同步 Cloudflare Cache Rules → 透過正常 DNS 與香港直連驗證快取。Cache smoke 涵蓋 PWA 控制檔、公開／私人 API Header、battle 素材版本、真實 MIME、內容與缺失素材 404。
+`maxmemory-policy=noeviction` → 同步並校驗私有 battle 素材 → build／migration → 發布卡牌、Q&A、勘誤與規則文件 → `npm run search:reindex` 原子重建及 `search:check` → `docker compose up --wait` → 透過 SSH tunnel 驗證三服務 `/health`、`/ready`、build ID、dataset SHA、卡牌／Q&A／規則搜尋及所有 battle 素材 → 視憑證設定同步 Cloudflare Cache Rules → 透過正常 DNS 與香港直連驗證快取。`/api/app-version` 的 `datasetSha256` 必須與 receipt 完全一致；不一致時 deployment smoke 失敗。Cache smoke 涵蓋 PWA 控制檔、公開／私人 API Header、battle 素材版本、真實 MIME、內容與缺失素材 404。
 
 本地完整重建與唯讀狀態檢查分別使用：
 

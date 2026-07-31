@@ -93,6 +93,12 @@ export const matchAnalyticsOldestUnarchivedSeconds = new Gauge({
   registers: [register],
 });
 
+export const matchAnalyticsRecentMissingMetadata = new Gauge({
+  name: 'match_analytics_recent_missing_metadata',
+  help: 'Anonymous match facts captured in the last 24 hours without complete release metadata',
+  registers: [register],
+});
+
 export const matchResultOutboxMetricsRefreshSuccess = new Gauge({
   name: 'match_result_outbox_metrics_refresh_success',
   help: 'Whether the most recent durable outbox metrics refresh succeeded',

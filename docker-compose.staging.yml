@@ -66,6 +66,8 @@ services:
       - APP_VERSION=${APP_VERSION:?Set APP_VERSION from the verified release manifest}
       - APP_BUILD_ID=${RELEASE_SHA:?Set RELEASE_SHA from the verified release manifest}
       - GAME_RULES_VERSION=${GAME_RULES_VERSION:?Set GAME_RULES_VERSION from the verified release manifest}
+      - DEPLOYMENT_ENV=staging
+      - CARD_DATASET_SHA256=${VITE_CARD_DATASET_SHA256:?Set VITE_CARD_DATASET_SHA256 from card-dataset evidence}
       - PG_HOST=${PG_HOST:?Set external staging PostgreSQL PG_HOST}
       - PG_PORT=${PG_PORT:-5432}
       - PG_USER=${PG_GAME_USER:?Set PG_GAME_USER in your environment or .env file}
@@ -133,6 +135,7 @@ services:
       - APP_VERSION=${APP_VERSION:?Set APP_VERSION from the verified release manifest}
       - APP_BUILD_ID=${RELEASE_SHA:?Set RELEASE_SHA from the verified release manifest}
       - GAME_RULES_VERSION=${GAME_RULES_VERSION:?Set GAME_RULES_VERSION from the verified release manifest}
+      - DEPLOYMENT_ENV=staging
       - PG_HOST=${PG_HOST:?Set external staging PostgreSQL PG_HOST}
       - PG_PORT=${PG_PORT:-5432}
       - PG_USER=${PG_API_USER:?Set PG_API_USER in your environment or .env file}
@@ -244,6 +247,8 @@ services:
     environment:
       - PLATFORM_PORT=3002
       - NODE_ENV=production
+      - DEPLOYMENT_ENV=staging
+      - MATCH_ANALYTICS_TRAFFIC_CLASS=synthetic
       - APP_VERSION=${APP_VERSION:?Set APP_VERSION from the verified release manifest}
       - APP_BUILD_ID=${RELEASE_SHA:?Set RELEASE_SHA from the verified release manifest}
       - GAME_RULES_VERSION=${GAME_RULES_VERSION:?Set GAME_RULES_VERSION from the verified release manifest}

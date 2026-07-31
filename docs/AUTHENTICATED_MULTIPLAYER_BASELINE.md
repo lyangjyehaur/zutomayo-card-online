@@ -63,6 +63,6 @@ The release gate requires the authenticated evidence migration to match the rele
 1. Generate `staging/card-dataset.json` for the exact staging release and retain its dataset SHA-256.
 2. Deploy the same immutable release manifest to the production-like staging topology.
 3. Set `EXPECTED_CARD_DATASET_SHA256` to the dataset receipt value and run `npm run e2e:authenticated-staging` through the public HTTPS/WSS gateway.
-4. Confirm both critical tests, all 11 markers, zero skips/failures/flakes, migration identity, dataset identity, and artifact hashes pass.
+4. Confirm both critical tests, all 12 markers (including participant-only replay access and payload privacy), zero skips/failures/flakes, migration identity, dataset identity, and artifact hashes pass.
 5. Run `npm run release:gate` with the release manifest and the combined staging evidence directory.
 6. Archive the evidence artifact in access-controlled operational storage and obtain Backend/QA review.

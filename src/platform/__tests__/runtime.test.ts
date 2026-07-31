@@ -3,6 +3,7 @@ import { matchMaker } from '@colyseus/core';
 import { createRequire } from 'node:module';
 import { assertPlatformRuntimeSchema, createPlatformRuntime } from '../runtime';
 import { CustomRoom, InviteRoom, LobbyRoom, MatchShellRoom, QuickMatchRoom } from '../rooms';
+import { platformMetricsRegister, platformMetricsText } from '../metrics';
 
 const require = createRequire(import.meta.url);
 const {
@@ -39,6 +40,7 @@ const PLATFORM_ENV_KEYS = [
   'PLATFORM_MATCH_PARTICIPANT_STORE',
   'PLATFORM_CHAT_PREVIEW_STORE',
   'PLATFORM_DRAIN_GRACE_MS',
+  'ALLOWED_ORIGINS',
   'APP_VERSION',
   'APP_BUILD_ID',
   'GAME_RULES_VERSION',
@@ -174,6 +176,98 @@ describe('platform runtime', () => {
     expect(query).toHaveBeenNthCalledWith(1, 'SELECT 1 FROM public.schema_migrations WHERE name = $1 LIMIT 1', [
       '000020_schema_checksums',
     ]);
+  });
+
+  it('applies admission, metrics, request IDs, and error remapping on real matchmaking HTTP requests', async () => {
+    setLocalPlatformEnv();
+    process.env.ALLOWED_ORIGINS = 'https://cards.example.test';
+    platformMetricsRegister.resetMetrics();
+    const limiter = { check: vi.fn(async () => true) };
+    const verifyAdmissionUserId = vi.fn(async () => '');
+    const platform = createPlatformRuntime({
+      gracefullyShutdown: false,
+      admissionLimiter: limiter,
+      verifyAdmissionUserId,
+    });
+
+    await platform.listen(0);
+    const address = platform.httpServer.address();
+    expect(address).not.toBeNull();
+    const baseUrl = `http://127.0.0.1:${typeof address === 'object' && address ? address.port : 0}`;
+    const post = (path: string, init: RequestInit = {}) =>
+      fetch(`${baseUrl}${path}`, {
+        ...init,
+        method: 'POST',
+        headers: { 'content-type': 'application/json', origin: 'https://cards.example.test', ...init.headers },
+        body: init.body ?? '{}',
+      });
+
+    try {
+      const revoked = await post('/matchmake/join/lobby', {
+        headers: { cookie: 'zutomayo_session=revoked-token' },
+      });
+      expect(revoked.status).toBe(401);
+      expect(await revoked.json()).toMatchObject({ error: 'Invalid or revoked authentication' });
+      expect(revoked.headers.get('x-request-id')).toBeTruthy();
+      expect(limiter.check).not.toHaveBeenCalled();
+
+      limiter.check.mockResolvedValueOnce(false);
+      const roomCountBeforeRejection = matchMaker.stats.local.roomCount;
+      const exhausted = await post('/matchmake/create/custom_room');
+      expect(exhausted.status).toBe(429);
+      expect(exhausted.headers.get('retry-after')).toBe('60');
+      expect(matchMaker.stats.local.roomCount).toBe(roomCountBeforeRejection);
+
+      const created = await post('/matchmake/joinOrCreate/lobby', {
+        body: JSON.stringify({ userId: 'guest:http-integration', displayName: 'HTTP integration', role: 'spectator' }),
+      });
+      expect(created.status).toBe(200);
+      const reservation = (await created.json()) as { roomId?: string };
+      expect(reservation.roomId).toBeTruthy();
+      if (reservation.roomId) await matchMaker.getLocalRoomById(reservation.roomId)?.disconnect();
+
+      const cases = [
+        ['/matchmake/notAMethod/custom_room', 520, 'invalid method'],
+        ['/matchmake/join/custom_room', 521, 'no rooms found with provided criteria'],
+        ['/matchmake/joinById/not-a-real-room-id', 522, 'room'],
+      ] as const;
+      for (const [path, platformCode, detail] of cases) {
+        const response = await post(path, { headers: { 'x-request-id': `req_${platformCode}` } });
+        expect(response.status).toBe(404);
+        expect(response.headers.get('x-platform-error-code')).toBe(String(platformCode));
+        expect(response.headers.get('x-request-id')).toBe(`req_${platformCode}`);
+        expect(response.headers.get('access-control-allow-origin')).toBe('https://cards.example.test');
+        expect(await response.json()).toMatchObject({
+          code: platformCode,
+          platformCode,
+          requestId: `req_${platformCode}`,
+          error: expect.stringContaining(detail),
+        });
+      }
+
+      expect(limiter.check).toHaveBeenCalledWith({ ip: '127.0.0.1' });
+      const preflight = await fetch(`${baseUrl}/matchmake/join/custom_room`, {
+        method: 'OPTIONS',
+        headers: { origin: 'https://not-allowed.example.test' },
+      });
+      expect(preflight.status).toBe(204);
+      expect(preflight.headers.get('access-control-allow-origin')).toBe('null');
+      const metrics = await platformMetricsText();
+      expect(metrics.body).toContain(
+        'platform_http_requests_total{method="POST",path="/matchmake/:operation/:room",status="404"} 3',
+      );
+      expect(metrics.body).toContain(
+        'platform_http_requests_total{method="POST",path="/matchmake/:operation/:room",status="429"} 1',
+      );
+      expect(metrics.body).toContain(
+        'platform_http_requests_total{method="POST",path="/matchmake/:operation/:room",status="200"} 1',
+      );
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        platform.httpServer.close((error) => (error ? reject(error) : resolve())),
+      );
+      await platform.closeStores();
+    }
   });
 
   it('fails closed when production has no PostgreSQL schema authority', async () => {

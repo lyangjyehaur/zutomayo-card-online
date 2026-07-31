@@ -201,6 +201,7 @@ export function validateOperationalConfig() {
     'RelationshipChangeOutboxOldestRow',
     'RelationshipChangeOutboxDeadLetter',
     'RelationshipChangeOutboxMetricsStale',
+    'MatchAnalyticsMissingMetadata',
   ]);
   requireFragments('observability/prometheus/alertmanager.yml', ['api_url_file: /etc/alertmanager/slack_webhook']);
   if (read('docker-compose.monitoring.yml').includes("content: '${SLACK_ALERT_WEBHOOK:-")) {

@@ -111,9 +111,12 @@ describe('authenticated multiplayer staging gate', () => {
     );
 
     const missingEvidence = passingReport();
-    missingEvidence.suites[0].specs[0].tests[0].results[0].annotations.pop();
+    missingEvidence.suites[0].specs[0].tests[0].results[0].annotations =
+      missingEvidence.suites[0].specs[0].tests[0].results[0].annotations.filter(
+        (annotation) => annotation.description !== 'replay-privacy',
+      );
     expect(summarizePlaywrightReport(missingEvidence).failures).toContain(
-      'required LS-05 evidence match-history is missing from the report',
+      'required LS-05 evidence replay-privacy is missing from the report',
     );
   });
 

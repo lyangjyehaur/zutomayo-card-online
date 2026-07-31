@@ -40,6 +40,7 @@ export interface AuthenticatedMatchHistoryEntry {
   sourceMatchId?: string | null;
   winnerNickname?: string | null;
   loserNickname?: string | null;
+  replayAvailable?: boolean;
 }
 
 async function responseError(response: APIResponse): Promise<Error> {

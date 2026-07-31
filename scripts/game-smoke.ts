@@ -127,7 +127,7 @@ const lethalPendingDamage: ParsedEffect = {
 };
 
 function preparedState(): GameState {
-  const G = setupGame();
+  const G = setupGame({ rngSeed: 'release-game-smoke-v1' });
   resolveJanken(G, 'rock', 'scissors');
   finishMulligan(G, 0, []);
   finishMulligan(G, 1, []);

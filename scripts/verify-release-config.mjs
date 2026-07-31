@@ -135,8 +135,19 @@ function assertRuntimeEnvironmentInventory() {
   }
 
   const game = serviceBlock(SERVER4_COMPOSE, 'game');
+  for (const fragment of ['DEPLOYMENT_ENV=production', 'CARD_DATASET_SHA256=${VITE_CARD_DATASET_SHA256:?']) {
+    if (!game.includes(fragment)) {
+      throw new Error(`${SERVER4_COMPOSE} game runtime is missing ${fragment}`);
+    }
+  }
   if (!game.includes('${BATTLE_ASSET_DIR:-./public/battle}:/app/dist/battle:ro')) {
     throw new Error(`${SERVER4_COMPOSE} game must mount private battle assets read-only`);
+  }
+  const platform = serviceBlock(SERVER4_COMPOSE, 'platform');
+  for (const fragment of ['DEPLOYMENT_ENV=production', 'MATCH_ANALYTICS_TRAFFIC_CLASS=production']) {
+    if (!platform.includes(fragment)) {
+      throw new Error(`${SERVER4_COMPOSE} platform runtime is missing ${fragment}`);
+    }
   }
 }
 
@@ -242,6 +253,8 @@ function assertServer4DeployScript() {
     'APP_BUILD_ID',
     'APP_VERSION',
     'GAME_RULES_VERSION',
+    'VITE_CARD_DATASET_SHA256:?',
+    '--expected-dataset-sha256',
     'EXPECTED_SCHEMA_MIGRATION',
     'EXPECTED_SCHEMA_CHECKSUM',
     'pg_dump',

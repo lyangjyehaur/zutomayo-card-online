@@ -11,6 +11,7 @@ import {
   isPlatformBoardgameRelayAcknowledged,
   joinPlatformInvite,
   joinPlatformCustomRoom,
+  normalizePlatformRequestError,
   normalizeSeatReservation,
   platformBoardgameMatchReadyFromMessage,
   platformAvailableRoomsFromMessage,
@@ -37,8 +38,49 @@ afterEach(() => {
 describe('platform client helpers', () => {
   it('retries only the Colyseus no-room result', () => {
     expect(isMissingPlatformRoomError(new Error('no rooms found with provided criteria'))).toBe(true);
+    expect(isMissingPlatformRoomError({ code: 521 })).toBe(true);
+    expect(isMissingPlatformRoomError({ code: 4211 })).toBe(true);
     expect(isMissingPlatformRoomError(new Error('Authentication required'))).toBe(false);
     expect(isMissingPlatformRoomError(new Error('Invite access denied'))).toBe(false);
+  });
+
+  it('preserves platform request details and supplies a message for empty Colyseus errors', () => {
+    expect(normalizePlatformRequestError({ code: 521 })).toMatchObject({
+      name: 'PlatformConnectionError',
+      message: 'no rooms found with provided criteria (code 521)',
+      code: 521,
+    });
+    expect(normalizePlatformRequestError(Object.assign(new Error('<none>'), { code: 521 }))).toMatchObject({
+      name: 'PlatformConnectionError',
+      message: 'no rooms found with provided criteria (code 521)',
+      code: 521,
+    });
+    expect(
+      normalizePlatformRequestError(Object.assign(new Error('Authentication required'), { code: 525 })),
+    ).toMatchObject({
+      name: 'PlatformConnectionError',
+      message: 'Authentication required (code 525)',
+      code: 525,
+    });
+    expect(normalizePlatformRequestError({ code: 523, message: 'Room crashed' })).toMatchObject({
+      name: 'PlatformConnectionError',
+      message: 'Room crashed (code 523)',
+      code: 523,
+    });
+    expect(
+      normalizePlatformRequestError(
+        Object.assign(
+          new Error('no rooms found with provided criteria (platform code 521, HTTP 404, request req_521)'),
+          { code: 404 },
+        ),
+      ),
+    ).toMatchObject({
+      name: 'PlatformConnectionError',
+      message: 'no rooms found with provided criteria (platform code 521, HTTP 404, request req_521)',
+      code: 521,
+      status: 404,
+      requestId: 'req_521',
+    });
   });
 
   it('uses explicit platform endpoint when configured', () => {
@@ -797,7 +839,7 @@ describe('platform client helpers', () => {
     };
     const post = vi
       .fn()
-      .mockRejectedValueOnce(new Error('no rooms found with provided criteria'))
+      .mockRejectedValueOnce({ code: 521 })
       .mockResolvedValueOnce({
         data: {
           name: 'custom_room',
@@ -859,6 +901,30 @@ describe('platform client helpers', () => {
         }),
       }),
     );
+  });
+
+  it('reports the Colyseus code when no custom room matches either status', async () => {
+    const post = vi.fn().mockRejectedValue({ code: 521 });
+    vi.doMock('colyseus.js', () => ({
+      Client: vi.fn(
+        class {
+          http = { post };
+        },
+      ),
+    }));
+
+    await expect(
+      joinPlatformCustomRoom({
+        roomCode: 'MISSING',
+        userId: 'u_guest',
+        displayName: 'Guest',
+      }),
+    ).rejects.toMatchObject({
+      name: 'PlatformConnectionError',
+      message: 'no rooms found with provided criteria (code 521)',
+      code: 521,
+    });
+    expect(post).toHaveBeenCalledTimes(2);
   });
 
   it('joins an existing ready custom room before creating a waiting custom room', async () => {
@@ -970,7 +1036,7 @@ describe('platform client helpers', () => {
     };
     const post = vi
       .fn()
-      .mockRejectedValueOnce(new Error('no rooms found with provided criteria'))
+      .mockRejectedValueOnce({ code: 521 })
       .mockResolvedValueOnce({
         data: {
           name: 'custom_room',

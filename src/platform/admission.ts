@@ -45,6 +45,13 @@ export interface PlatformAdmissionLimiter {
   check(identity: PlatformAdmissionIdentity, nowMs?: number): Promise<boolean>;
 }
 
+export interface PlatformAdmissionDecision {
+  allowed: boolean;
+  status?: 401 | 429 | 503;
+  error?: string;
+  retryAfter?: string;
+}
+
 function boundedInteger(value: string | undefined, fallback: number, min: number, max: number): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.min(max, Math.max(min, Math.floor(parsed))) : fallback;
@@ -139,11 +146,13 @@ export function createPlatformAdmissionLimiter(
 }
 
 function normalizeIp(value: string): string {
-  return value
+  const normalized = value
     .trim()
     .replace(/^\[|\]$/g, '')
     .split('%', 1)[0]
     .toLowerCase();
+  const ipv4Mapped = normalized.match(/^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/);
+  return ipv4Mapped && isIP(ipv4Mapped[1]) === 4 ? ipv4Mapped[1] : normalized;
 }
 
 function ipv6Bytes(value: string): Uint8Array | null {
@@ -226,10 +235,55 @@ export function platformAdmissionClientIp(
   return chain[0] || remoteIp;
 }
 
-function isMatchmakeRequest(method: string, path: string): boolean {
+export function isPlatformMatchmakeRequest(method: string, path: string): boolean {
   // Limit the whole namespace so URL-encoded room names or invalid methods
   // cannot bypass admission and still reach Colyseus route parsing.
   return method === 'POST' && path.startsWith('/matchmake/');
+}
+
+export async function checkPlatformAdmission(options: {
+  limiter: PlatformAdmissionLimiter;
+  ip: string;
+  cookieHeader?: string;
+  verifyUserId?: (token: string) => Promise<string>;
+}): Promise<PlatformAdmissionDecision> {
+  if (!options.ip) {
+    return {
+      allowed: false,
+      status: 429,
+      error: 'Platform admission capacity is unavailable',
+      retryAfter: '60',
+    };
+  }
+
+  const verifyUserId = options.verifyUserId ?? ((token: string) => verifyPlatformJwtUserIdAsync(token));
+  const hasAuthCookie = /(?:^|;\s*)zutomayo_session=/.test(options.cookieHeader || '');
+  const token = platformAuthTokenFromCookieHeader(options.cookieHeader);
+  let userId = '';
+  try {
+    if (token) userId = await verifyUserId(token);
+  } catch (err) {
+    logger.error({ err }, 'platform admission authentication unavailable; failing closed');
+    return { allowed: false, status: 503, error: 'Platform authentication is temporarily unavailable' };
+  }
+  if (hasAuthCookie && (!token || !userId)) {
+    return { allowed: false, status: 401, error: 'Invalid or revoked authentication' };
+  }
+
+  let admitted = false;
+  try {
+    admitted = await options.limiter.check({ ip: options.ip, ...(userId ? { userId } : {}) });
+  } catch (err) {
+    logger.error({ err }, 'platform admission check failed; failing closed');
+  }
+  return admitted
+    ? { allowed: true }
+    : {
+        allowed: false,
+        status: 429,
+        error: 'Platform admission capacity is unavailable',
+        retryAfter: '60',
+      };
 }
 
 export function createPlatformAdmissionMiddleware(options: {
@@ -237,9 +291,8 @@ export function createPlatformAdmissionMiddleware(options: {
   trustedProxy?: string;
   verifyUserId?: (token: string) => Promise<string>;
 }): RequestHandler {
-  const verifyUserId = options.verifyUserId ?? ((token) => verifyPlatformJwtUserIdAsync(token));
   return async (req, res, next) => {
-    if (!isMatchmakeRequest(req.method, req.path)) {
+    if (!isPlatformMatchmakeRequest(req.method, req.path)) {
       next();
       return;
     }
@@ -248,36 +301,17 @@ export function createPlatformAdmissionMiddleware(options: {
       req.headers['x-forwarded-for'] ?? req.headers['x-real-ip'] ?? req.headers['x-client-ip'],
       options.trustedProxy,
     );
-    if (!ip) {
-      res.status(429).set('Retry-After', '60').json({ error: 'Platform admission capacity is unavailable' });
-      return;
-    }
-
     // Colyseus otherwise trusts X-Forwarded-For verbatim when building AuthContext.
-    req.headers['x-forwarded-for'] = ip;
-    const cookieHeader = req.headers.cookie;
-    const hasAuthCookie = /(?:^|;\s*)zutomayo_session=/.test(cookieHeader || '');
-    const token = platformAuthTokenFromCookieHeader(cookieHeader);
-    let userId = '';
-    try {
-      if (token) userId = await verifyUserId(token);
-    } catch (err) {
-      logger.error({ err }, 'platform admission authentication unavailable; failing closed');
-      res.status(503).json({ error: 'Platform authentication is temporarily unavailable' });
-      return;
-    }
-    if (hasAuthCookie && (!token || !userId)) {
-      res.status(401).json({ error: 'Invalid or revoked authentication' });
-      return;
-    }
-    let admitted = false;
-    try {
-      admitted = await options.limiter.check({ ip, ...(userId ? { userId } : {}) });
-    } catch (err) {
-      logger.error({ err }, 'platform admission check failed; failing closed');
-    }
-    if (!admitted) {
-      res.status(429).set('Retry-After', '60').json({ error: 'Platform admission capacity is unavailable' });
+    if (ip) req.headers['x-forwarded-for'] = ip;
+    const decision = await checkPlatformAdmission({
+      limiter: options.limiter,
+      ip,
+      cookieHeader: req.headers.cookie,
+      verifyUserId: options.verifyUserId,
+    });
+    if (!decision.allowed) {
+      if (decision.retryAfter) res.set('Retry-After', decision.retryAfter);
+      res.status(decision.status ?? 503).json({ error: decision.error });
       return;
     }
     next();

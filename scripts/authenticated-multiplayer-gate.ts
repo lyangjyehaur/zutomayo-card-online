@@ -23,6 +23,7 @@ export const REQUIRED_LS05_EVIDENCE = [
   'disconnect-reconnect',
   'spectator-hidden-information',
   'result-submission',
+  'replay-privacy',
   'match-history',
   'friend-invite',
 ] as const;
@@ -432,6 +433,7 @@ async function main(): Promise<void> {
       chatAuthorizationVerified: everyRunContains('chat-authorization'),
       disconnectReconnectVerified: everyRunContains('disconnect-reconnect'),
       resultSubmissionVerified: everyRunContains('result-submission'),
+      replayPrivacyVerified: everyRunContains('replay-privacy'),
       httpsTopologyVerified: true,
       zeroConditionalSkips: passed && skippedTests === 0,
     },

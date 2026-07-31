@@ -133,6 +133,7 @@ describe('operational shell scripts', () => {
       checks: {
         healthReady: false,
         buildIdentityVerified: false,
+        datasetIdentityVerified: false,
         applicationSmokePassed: false,
         battleAssetsVerified: false,
         smokePassed: false,
@@ -199,6 +200,15 @@ describe('operational shell scripts', () => {
     expect(deploy).toContain('cache-policy-smoke.ts');
     expect(deploy).toContain('DIRECT_SMOKE_ADDRESS');
     expect(deploy).toContain('DEPLOY_SMOKE_REPORT_PATH');
+    expect(deploy).toContain('VITE_CARD_DATASET_SHA256:?');
+    expect(deploy).toContain('--expected-dataset-sha256');
+    expect(compose).toContain('CARD_DATASET_SHA256=${VITE_CARD_DATASET_SHA256:?');
+    expect(compose).toContain('MATCH_ANALYTICS_TRAFFIC_CLASS=production');
+    const stagingCompose = readFileSync(resolve('docker-compose.staging.yml'), 'utf8');
+    expect(stagingCompose).toContain('CARD_DATASET_SHA256=${VITE_CARD_DATASET_SHA256:?');
+    expect(stagingCompose).toContain('MATCH_ANALYTICS_TRAFFIC_CLASS=synthetic');
+    expect(smoke).toContain("args.get('expected-dataset-sha256')");
+    expect(smoke).toContain('datasetIdentityVerified');
     expect(deploy).not.toContain('--rollback');
     expect(deploy).not.toContain('rollback_and_smoke');
     expect(deploy).not.toContain('.env.previous');

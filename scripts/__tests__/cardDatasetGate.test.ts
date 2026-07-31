@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { CardDef } from '../../src/game/types';
 import {
@@ -47,6 +49,21 @@ function snapshot(): CardDatasetSnapshot {
 }
 
 describe('release card dataset gate', () => {
+  it('scopes database translations to the same playable release pool as cards', () => {
+    const releaseGate = readFileSync(resolve('scripts/release-card-dataset-gate.ts'), 'utf8');
+    const cardSource = readFileSync(resolve('scripts/cardSource.ts'), 'utf8');
+
+    expect(releaseGate).toContain('JOIN cards ON cards.id = texts.card_id');
+    expect(releaseGate).toContain("cards.publication_status = 'published' AND cards.play_status = 'playable'");
+    expect(releaseGate).toContain('deck_sharing_enabled: deckSharingEnabled()');
+    expect(releaseGate).toContain('IMAGE_DIGEST_PATTERN.test(imageDigests[name])');
+    expect(releaseGate).toContain('effectDispatchCoveragePassed: gate.checks.effectDispatchCoveragePassed');
+    expect(cardSource).toContain("hasElement: typeof row.element === 'string'");
+    expect(cardSource).toContain('hasClock: row.clock !== null');
+    expect(cardSource).toContain('hasPowerCost: row.power_cost !== null');
+    expect(cardSource).toContain('hasSendToPower: row.send_to_power !== null');
+  });
+
   it('accepts a complete deterministic dataset', () => {
     const report = evaluateCardDataset(snapshot(), { expectedCardCount: 20, gameSmokePassed: true });
 

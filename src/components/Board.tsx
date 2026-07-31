@@ -70,6 +70,7 @@ import {
 import { getChoiceInstruction, getPhaseInstruction } from './board/phaseInstruction';
 import { shouldRevealCardsInOpponentHand } from './board/revealedHandPresentation';
 import { battleCardBlockReason, deriveBattleActionAvailability } from './board/actionAvailability';
+import { shouldRunBoardTurnTimer } from './board/turnTimer';
 
 export type PopoverPlacement = 'right' | 'left' | 'top' | 'bottom';
 
@@ -2133,6 +2134,7 @@ function BattleBoard({
   onResolutionIngestion?: (maxNoticeId: number, hasPlayback: boolean) => void;
 }) {
   const meIndex = Number(playerID ?? '0') as PlayerIndex;
+  const runsTurnTimer = shouldRunBoardTurnTimer({ spectator, useServerTimer, playerID });
   const opponentIndex = (1 - meIndex) as PlayerIndex;
   const me = G.players[meIndex];
   const opponent = G.players[opponentIndex];
@@ -2291,7 +2293,7 @@ function BattleBoard({
     : undefined;
 
   useEffect(() => {
-    if (spectator) {
+    if (!runsTurnTimer) {
       setTimeLeft(TURN_TIMER_SECONDS);
       return;
     }
@@ -2347,11 +2349,11 @@ function BattleBoard({
     meIndex,
     useServerTimer,
     awaitingPlayersKey,
-    spectator,
+    runsTurnTimer,
   ]);
 
   useEffect(() => {
-    if (spectator) return;
+    if (!runsTurnTimer) return;
     if (timeLeft > 0) {
       timeoutExpiredAtRef.current = null;
       return;
@@ -2390,7 +2392,7 @@ function BattleBoard({
     useServerTimer,
     awaitingPlayersKey,
     _stateID,
-    spectator,
+    runsTurnTimer,
   ]);
 
   useEffect(() => {
