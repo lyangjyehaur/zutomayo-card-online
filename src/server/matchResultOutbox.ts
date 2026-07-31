@@ -33,6 +33,13 @@ const { applyCanonicalSeasonResult } = require('../../api/seasonResultService.cj
     loserId: string;
   }) => Promise<{ applied: boolean; reason?: string; seasonId?: string; seasonStatus?: string }>;
 };
+const { createReplaySummary } = require('../../api/replaySummary.cjs') as {
+  createReplaySummary: (
+    G: Record<string, unknown>,
+    rulesVersion: string,
+    actionLog: unknown[],
+  ) => Record<string, unknown>;
+};
 
 export interface MatchResultOutboxRow extends QueryResultRow {
   source_match_id: string;
@@ -416,6 +423,18 @@ async function deliverOutboxRow(
     const winnerDelta = winnerNewElo - Number(winner.elo);
     const loserDelta = loserNewElo - Number(loser.elo);
     const matchId = generateMatchId();
+    const sanitizedActionLog = sanitizeCanonicalActionLog(current.action_log);
+    const replayState = (
+      await client.query<{ replay_state: Record<string, unknown> | null }>(
+        `SELECT state->'G' AS replay_state
+           FROM bjg_matches
+          WHERE match_id = $1`,
+        [current.source_match_id],
+      )
+    ).rows[0]?.replay_state;
+    const replaySummary = replayState
+      ? createReplaySummary(replayState, current.rules_version || 'legacy', sanitizedActionLog)
+      : null;
     const inserted = await client.query<{ id: string }>(
       `INSERT INTO matches (
          id,
@@ -447,7 +466,7 @@ async function deliverOutboxRow(
         current.turns,
         current.duration_seconds,
         current.rules_version || 'legacy',
-        JSON.stringify(sanitizeCanonicalActionLog(current.action_log)),
+        JSON.stringify(sanitizedActionLog),
         current.completed_at,
       ],
     );
@@ -473,6 +492,15 @@ async function deliverOutboxRow(
         ])
       ).rows[0]?.id;
       if (!deliveredMatchId) throw new Error('Idempotent match result could not be resolved');
+    }
+
+    if (replaySummary) {
+      await client.query(
+        `UPDATE matches
+            SET replay_summary = COALESCE(replay_summary, $2::jsonb)
+          WHERE id = $1`,
+        [deliveredMatchId, JSON.stringify(replaySummary)],
+      );
     }
 
     const seasonResult = await applyCanonicalSeasonResult({

@@ -276,6 +276,90 @@ describe('match result outbox worker', () => {
     ]);
   });
 
+  it('persists a replay summary when the outbox wins the canonical match race', async () => {
+    const row = {
+      ...outboxRow(),
+      action_log: [
+        {
+          turn: 4,
+          step: 'gameOver',
+          player: 0,
+          action: 'gameOver',
+          payload: { winner: 0, hiddenDeckOrder: ['hidden-card'] },
+        },
+      ],
+    };
+    const claim = vi.fn(async () => ({ rows: [row] }));
+    const client = {
+      query: vi.fn(async (sql: string, _params?: unknown[]) => {
+        if (sql.startsWith('SELECT *')) return { rows: [row], rowCount: 1 };
+        if (sql.startsWith('SELECT id, elo')) {
+          return {
+            rows: [
+              { id: 'u_alice', elo: 1000 },
+              { id: 'u_bob', elo: 1000 },
+            ],
+            rowCount: 2,
+          };
+        }
+        if (sql.includes("SELECT state->'G' AS replay_state")) {
+          return {
+            rows: [
+              {
+                replay_state: {
+                  winner: 0,
+                  gameoverReason: 'hp',
+                  turnNumber: 4,
+                  players: [
+                    { hp: 20, hand: [{ defId: 'hidden-card' }] },
+                    { hp: 0, deck: [{ defId: 'hidden-deck-card' }] },
+                  ],
+                  chronos: { position: 6 },
+                  replayManifest: { schemaVersion: 1, seed: 123 },
+                  decisionTrace: [
+                    {
+                      sequence: 1,
+                      player: 0,
+                      move: 'surrender',
+                      args: [],
+                      requestFingerprint: 'before',
+                      stateFingerprintAfter: 'after',
+                    },
+                  ],
+                },
+              },
+            ],
+            rowCount: 1,
+          };
+        }
+        if (sql.startsWith('INSERT INTO matches')) return { rows: [{ id: 'm_result' }], rowCount: 1 };
+        return { rows: [], rowCount: 1 };
+      }),
+      release: vi.fn(),
+    };
+    const pool = { query: claim, connect: vi.fn(async () => client) } as never;
+
+    await expect(processMatchResultOutboxBatch({ pool, generateMatchId: () => 'm_result' })).resolves.toEqual({
+      claimed: 1,
+      delivered: 1,
+      retried: 0,
+    });
+
+    const replayUpdate = client.query.mock.calls.find(([sql]) => sql.includes('SET replay_summary = COALESCE'));
+    expect(replayUpdate?.[1]?.[0]).toBe('m_result');
+    const summary = JSON.parse(String(replayUpdate?.[1]?.[1]));
+    expect(summary).toMatchObject({
+      schemaVersion: 1,
+      traceComplete: true,
+      rulesVersion: 'rules-2026-07',
+      result: { winner: 0, turns: 4, finalHp: [20, 0], finalChronos: 6 },
+      decisions: [{ move: 'surrender' }],
+    });
+    expect(JSON.stringify(summary)).not.toContain('hidden-card');
+    expect(JSON.stringify(summary)).not.toContain('hidden-deck-card');
+    expect(JSON.stringify(summary)).not.toContain('"seed"');
+  });
+
   it('updates the active season before marking the outbox row delivered', async () => {
     const row = outboxRow();
     const claim = vi.fn(async () => ({ rows: [row] }));
