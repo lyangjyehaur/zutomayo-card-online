@@ -1023,7 +1023,7 @@ export class PostgresAdapter {
       deckDefIds[Number(input.playerID) as 0 | 1] = [...(cardIds as string[])];
       gameState.replayManifest = {
         ...manifest,
-        rulesVersion: reservation.rules_version,
+        rulesVersion: input.rulesVersion,
         deckDefIds,
       };
       rebuildOpeningStateFromManifest(gameState);
