@@ -52,11 +52,9 @@ import {
 import {
   getChronosTime,
   getEffectiveAttack,
-  getMinimumSetCount,
   getPlayerPower,
   getPlayersAwaitingAction,
   getResolvablePendingEffectIndexes,
-  getRequiredSetCount,
   isAttackPowerInsufficient,
 } from '../game/GameLogic';
 import { getLocale, t, useLocale } from '../i18n';
@@ -71,6 +69,7 @@ import {
 } from './board/useOnlineMatchSubmission';
 import { getChoiceInstruction, getPhaseInstruction } from './board/phaseInstruction';
 import { shouldRevealCardsInOpponentHand } from './board/revealedHandPresentation';
+import { battleCardBlockReason, deriveBattleActionAvailability } from './board/actionAvailability';
 
 export type PopoverPlacement = 'right' | 'left' | 'top' | 'bottom';
 
@@ -2175,8 +2174,6 @@ function BattleBoard({
       selfLabelOverride = null;
     };
   }, [opponentLabel, selfLabel]);
-  const minimum = getMinimumSetCount(G, meIndex);
-  const required = getRequiredSetCount(G, meIndex);
   const viewport = useViewportMode();
   // 觸控互動模式：coarse pointer 或非桌面佈局。手牌 tap=選中、詳情走 sheet。
   const touchLike = viewport.isTouch || viewport.mode !== 'desktop';
@@ -2220,10 +2217,6 @@ function BattleBoard({
   const awaitingPlayers = getPlayersAwaitingAction(G);
   const awaitingPlayersKey = awaitingPlayers.join(',');
   const meReady = G.ready[meIndex];
-  const hasRequiredTutorialCards =
-    !tutorialRequiredSetCardDefIds ||
-    tutorialRequiredSetCardDefIds.every((defId) => G.setCardsThisTurn[meIndex].some((card) => card.defId === defId));
-
   useEffect(() => {
     if (!reviewingRevealedOpponentHand) {
       setDesktopHandRevealReady(false);
@@ -2411,24 +2404,20 @@ function BattleBoard({
   }, [focusedCard, me.hand, meIndex]);
 
   const time = getChronosTime(G);
+  const { minimum, required, canAct, canConfirm, playableCardDefIds } = deriveBattleActionAvailability(G, meIndex, {
+    spectator,
+    tutorialSetInteractionEnabled,
+    tutorialAllowedSetCardDefIds,
+    tutorialRequiredSetCardDefIds,
+  });
   const currentInstruction = getPhaseInstruction(G, meIndex, required, minimum, playerName);
-  const canAct =
-    !spectator &&
-    tutorialSetInteractionEnabled &&
-    (G.step === 'initialSet' || G.step === 'turnSet') &&
-    !G.ready[meIndex] &&
-    me.cardsSetThisTurn < required;
   const cardBlockReason = (card: CardInstance): string => {
-    if (tutorialAllowedSetCardDefIds && !tutorialAllowedSetCardDefIds.includes(card.defId)) {
-      return currentInstruction.body;
-    }
-    if (getCardDef(card.defId)?.type === 'Area Enchant' && G.areaEnchantSetLocked?.[meIndex]) {
-      return t('board.areaEnchantLocked');
-    }
-    if (G.step === 'turnSet' && me.setZoneA && me.setZoneB) return t('board.noSetSlotAvailable');
+    const reason = battleCardBlockReason(G, meIndex, card, tutorialAllowedSetCardDefIds);
+    if (reason === 'tutorial-restricted') return currentInstruction.body;
+    if (reason === 'area-enchant-locked') return t('board.areaEnchantLocked');
+    if (reason === 'no-set-slot-available') return t('board.noSetSlotAvailable');
     return '';
   };
-  const playableCardDefIds = canAct ? me.hand.filter((card) => !cardBlockReason(card)).map((card) => card.defId) : [];
   const setFromHand = (handIndex: number) => {
     const card = me.hand[handIndex];
     if (!card || !canAct) return;
@@ -2443,13 +2432,6 @@ function BattleBoard({
     setSelectedHandIndex(null);
     onTutorialAction?.('set-play', card.defId);
   };
-  const canConfirm =
-    !spectator &&
-    tutorialSetInteractionEnabled &&
-    !G.ready[meIndex] &&
-    me.cardsSetThisTurn >= minimum &&
-    me.cardsSetThisTurn <= required &&
-    hasRequiredTutorialCards;
   const selectedHandCard =
     selectedHandIndex !== null && selectedHandIndex < me.hand.length ? me.hand[selectedHandIndex] : null;
   const canSetSelected = Boolean(selectedHandCard) && canAct && !cardBlockReason(selectedHandCard as CardInstance);

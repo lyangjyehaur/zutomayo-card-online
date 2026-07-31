@@ -245,7 +245,7 @@ describe('submitMatchResult', () => {
       [984, 'u_loser'],
     );
     expect(client.query).toHaveBeenCalledWith(
-      'INSERT INTO matches (id, source_match_id, player0_id, player1_id, winner_id, loser_id, winner_elo_change, loser_elo_change, turns, duration_seconds, rules_version, action_log, completed_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13)',
+      'INSERT INTO matches (id, source_match_id, player0_id, player1_id, winner_id, loser_id, winner_elo_change, loser_elo_change, turns, duration_seconds, rules_version, action_log, replay_summary, completed_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13::jsonb, $14)',
       [
         'm_fixed',
         'bg_match_1',
@@ -259,6 +259,7 @@ describe('submitMatchResult', () => {
         42,
         'rules-2026-07',
         JSON.stringify([{ action: 'clean' }]),
+        expect.any(String),
         '1970-01-01T00:00:43.000Z',
       ],
     );

@@ -10,6 +10,7 @@ import {
 import { PRESET_DECKS } from '../../game/cards/presetDecks';
 import { COUNTER_DECK_NAME, isValidConstructedDeck, RANDOM_DECK_NAME } from '../../game/cards/deckBuilder';
 import { t } from '../../i18n';
+import { QUICK_MATCH_LOCAL_DECK_NAME } from '../../platform/quickMatchDeck';
 
 export type DeckOption = {
   id: string;
@@ -40,6 +41,10 @@ export function serverDeckOptionId(deckId: string): string {
 
 export function serverDeckIdFromOption(optionId: string): string | null {
   return optionId.startsWith(SERVER_DECK_PREFIX) ? optionId.slice(SERVER_DECK_PREFIX.length) : null;
+}
+
+export function platformQuickMatchDeckName(optionId: string): string {
+  return optionId === CUSTOM_DECK_NAME || customDeckIdFromOption(optionId) ? QUICK_MATCH_LOCAL_DECK_NAME : optionId;
 }
 
 /**

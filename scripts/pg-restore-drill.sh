@@ -22,6 +22,9 @@ expected_account_id="${PG_RESTORE_EXPECT_ACCOUNT_ID:-}"
 expected_deck_id="${PG_RESTORE_EXPECT_DECK_ID:-}"
 expected_match_id="${PG_RESTORE_EXPECT_MATCH_ID:-}"
 expected_leaderboard_user_id="${PG_RESTORE_EXPECT_LEADERBOARD_USER_ID:-}"
+expected_chat_message_id="${PG_RESTORE_EXPECT_CHAT_MESSAGE_ID:-}"
+expected_feedback_post_id="${PG_RESTORE_EXPECT_FEEDBACK_POST_ID:-}"
+expected_boardgame_match_id="${PG_RESTORE_EXPECT_BOARDGAME_MATCH_ID:-}"
 expected_schema_migration="${EXPECTED_SCHEMA_MIGRATION:-}"
 expected_schema_checksum="${EXPECTED_SCHEMA_CHECKSUM:-}"
 
@@ -61,12 +64,12 @@ for command_name in docker awk; do
 done
 if [[ "$release_evidence" == 'true' ]]; then
   command -v node >/dev/null 2>&1 || fail 'node is required for release evidence output'
-  for required_value in evidence_output release_sha backup_completed_at incident_at expected_account_id expected_deck_id expected_match_id expected_leaderboard_user_id expected_schema_migration expected_schema_checksum; do
+  for required_value in evidence_output release_sha backup_completed_at incident_at expected_account_id expected_deck_id expected_match_id expected_leaderboard_user_id expected_chat_message_id expected_feedback_post_id expected_boardgame_match_id expected_schema_migration expected_schema_checksum; do
     [[ -n "${!required_value}" ]] || fail "$required_value is required when PG_RESTORE_RELEASE_EVIDENCE=true"
   done
   [[ "$release_sha" =~ ^[a-f0-9]{40}$ ]] || fail 'RELEASE_SHA must be a full lowercase commit SHA'
   [[ "$expected_schema_checksum" =~ ^[a-f0-9]{64}$ ]] || fail 'EXPECTED_SCHEMA_CHECKSUM must be a SHA-256 digest'
-  for fixture_id in "$expected_account_id" "$expected_deck_id" "$expected_match_id" "$expected_leaderboard_user_id" "$expected_schema_migration"; do
+  for fixture_id in "$expected_account_id" "$expected_deck_id" "$expected_match_id" "$expected_leaderboard_user_id" "$expected_chat_message_id" "$expected_feedback_post_id" "$expected_boardgame_match_id" "$expected_schema_migration"; do
     [[ "$fixture_id" =~ ^[A-Za-z0-9._:-]+$ ]] || fail "release fixture identifier contains unsupported characters: $fixture_id"
   done
 fi
@@ -155,8 +158,12 @@ counts="$(docker exec "$container_name" psql \
   --command "
     SELECT 'schema_migrations=' || COUNT(*) FROM schema_migrations
     UNION ALL SELECT 'users=' || COUNT(*) FROM users
+    UNION ALL SELECT 'decks=' || COUNT(*) FROM decks
     UNION ALL SELECT 'cards=' || COUNT(*) FROM cards
     UNION ALL SELECT 'matches=' || COUNT(*) FROM matches
+    UNION ALL SELECT 'chat_messages=' || COUNT(*) FROM chat_messages
+    UNION ALL SELECT 'feedback_posts=' || COUNT(*) FROM feedback_posts
+    UNION ALL SELECT 'bjg_matches=' || COUNT(*) FROM bjg_matches
     UNION ALL SELECT 'relationship_change_outbox=' || COUNT(*) FROM relationship_change_outbox
     UNION ALL SELECT 'legal_holds=' || COUNT(*) FROM legal_holds
     UNION ALL SELECT 'unvalidated_constraints=' || COUNT(*)
@@ -179,11 +186,19 @@ counts="$(docker exec "$container_name" psql \
          OR EXISTS (SELECT 1 FROM friend_requests r WHERE r.requester_user_id = u.id OR r.recipient_user_id = u.id)
          OR EXISTS (SELECT 1 FROM user_blocks b WHERE b.blocker_user_id = u.id OR b.blocked_user_id = u.id)
        )
+    UNION ALL SELECT 'invalid_bjg_match_payload=' || COUNT(*)
+      FROM bjg_matches
+     WHERE state IS NULL
+        OR jsonb_typeof(state) <> 'object'
+        OR initial_state IS NULL
+        OR jsonb_typeof(initial_state) <> 'object'
+        OR jsonb_typeof(metadata) <> 'object'
+        OR jsonb_typeof(log) <> 'array'
     ORDER BY 1
   ")"
 printf '%s\n' "$counts" | grep -q '^schema_migrations=[1-9][0-9]*$' || fail 'restored schema has no applied migrations'
 printf '%s\n' "$counts" | grep -q '^cards=[1-9][0-9]*$' || fail 'restored card catalog is empty'
-for invariant in unvalidated_constraints invalid_outbox_status deletion_hold_violations deleted_social_violations; do
+for invariant in unvalidated_constraints invalid_outbox_status deletion_hold_violations deleted_social_violations invalid_bjg_match_payload; do
   printf '%s\n' "$counts" | grep -q "^${invariant}=0$" || fail "restored invariant failed: ${invariant}"
 done
 
@@ -198,8 +213,28 @@ if [[ "$release_evidence" == 'true' ]]; then
     --command "
       SELECT 'fixture_account=' || COUNT(*) FROM users WHERE id = '$expected_account_id' AND deleted_at IS NULL
       UNION ALL SELECT 'fixture_deck=' || COUNT(*) FROM decks WHERE id = '$expected_deck_id' AND user_id = '$expected_account_id'
-      UNION ALL SELECT 'fixture_match_history=' || COUNT(*) FROM matches WHERE id = '$expected_match_id' AND (player0_id = '$expected_account_id' OR player1_id = '$expected_account_id')
+      UNION ALL SELECT 'fixture_match_history=' || COUNT(*) FROM matches WHERE id = '$expected_match_id' AND source_match_id = '$expected_boardgame_match_id' AND (player0_id = '$expected_account_id' OR player1_id = '$expected_account_id')
       UNION ALL SELECT 'fixture_leaderboard=' || COUNT(*) FROM users WHERE id = '$expected_leaderboard_user_id' AND deleted_at IS NULL AND match_count > 0
+      UNION ALL SELECT 'fixture_chat_message=' || COUNT(*)
+        FROM chat_messages messages
+        JOIN chat_conversations conversations ON conversations.id = messages.conversation_id
+       WHERE messages.id = '$expected_chat_message_id'
+         AND messages.author_user_id = '$expected_account_id'
+         AND messages.deleted_at IS NULL
+         AND conversations.subject_id = '$expected_boardgame_match_id'
+      UNION ALL SELECT 'fixture_feedback_post=' || COUNT(*) FROM feedback_posts WHERE id = '$expected_feedback_post_id' AND author_user_id = '$expected_account_id'
+      UNION ALL SELECT 'fixture_boardgame_match=' || COUNT(*)
+        FROM bjg_matches matches
+       WHERE matches.match_id = '$expected_boardgame_match_id'
+         AND jsonb_typeof(matches.state) = 'object'
+         AND jsonb_typeof(matches.initial_state) = 'object'
+         AND jsonb_typeof(matches.metadata) = 'object'
+         AND jsonb_typeof(matches.log) = 'array'
+         AND EXISTS (
+           SELECT 1 FROM bjg_match_seats seats
+            WHERE seats.match_id = matches.match_id
+              AND seats.user_id = '$expected_account_id'
+         )
       UNION ALL SELECT 'schema_gate=' || COUNT(*)
         FROM schema_migrations migrations
         JOIN schema_migration_checksums checksums ON checksums.name = migrations.name
@@ -207,7 +242,7 @@ if [[ "$release_evidence" == 'true' ]]; then
          AND checksums.sha256 = '$expected_schema_checksum'
       ORDER BY 1
     ")"
-  for fixture in fixture_account fixture_deck fixture_match_history fixture_leaderboard schema_gate; do
+  for fixture in fixture_account fixture_deck fixture_match_history fixture_leaderboard fixture_chat_message fixture_feedback_post fixture_boardgame_match schema_gate; do
     printf '%s\n' "$fixture_counts" | grep -q "^${fixture}=1$" || fail "restored release fixture failed: $fixture"
   done
 fi
@@ -260,8 +295,20 @@ const report = {
     finishedAt: process.env.RESTORE_FINISHED_AT,
     imageDigest: process.env.RESTORE_IMAGE_DIGEST,
   },
-  fixtures: { account: true, deck: true, matchHistory: true, leaderboard: true },
-  checks: { schemaGatePassed: true, legalHoldInvariantPassed: true },
+  fixtures: {
+    account: true,
+    deck: true,
+    matchHistory: true,
+    leaderboard: true,
+    chatMessage: true,
+    feedbackPost: true,
+    boardgameMatch: true,
+  },
+  checks: {
+    schemaGatePassed: true,
+    legalHoldInvariantPassed: true,
+    boardgameStateInvariantPassed: true,
+  },
 };
 fs.writeFileSync(process.env.RESTORE_EVIDENCE_OUTPUT, `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 });
 NODE

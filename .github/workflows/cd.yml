@@ -662,7 +662,7 @@ jobs:
           ./scripts/deploy-server4.sh --manifest .release.env
 
   authenticated-staging-evidence:
-    name: Authenticated staging evidence
+    name: Player and trust staging evidence
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' && inputs.environment == 'staging'
     needs: [preflight, manual-release, deploy]
@@ -691,27 +691,30 @@ jobs:
         with:
           name: manual-release-manifest-${{ needs.preflight.outputs.release_sha }}
           path: .
-      - name: Run five consecutive authenticated journeys
+      - name: Run authenticated multiplayer evidence journey
         env:
           E2E_BASE_URL: ${{ vars.STAGING_E2E_BASE_URL }}
           E2E_API_URL: ${{ vars.STAGING_E2E_API_URL }}
           E2E_PLATFORM_URL: ${{ vars.STAGING_E2E_PLATFORM_URL }}
           E2E_AUTH_PASSWORD: ${{ secrets.STAGING_E2E_AUTH_PASSWORD }}
+          EXPECTED_CARD_DATASET_SHA256: ${{ vars.VITE_CARD_DATASET_SHA256 }}
         run: |
           set -euo pipefail
           test -n "$E2E_BASE_URL" || { echo 'STAGING_E2E_BASE_URL is required' >&2; exit 1; }
           test -n "$E2E_API_URL" || { echo 'STAGING_E2E_API_URL is required' >&2; exit 1; }
           test -n "$E2E_PLATFORM_URL" || { echo 'STAGING_E2E_PLATFORM_URL is required' >&2; exit 1; }
+          test -n "$EXPECTED_CARD_DATASET_SHA256" || { echo 'VITE_CARD_DATASET_SHA256 is required' >&2; exit 1; }
           set -a
           source .release.env
           set +a
           export RELEASE_ENVIRONMENT=staging
           npm run e2e:authenticated-staging -- --output .release-evidence/staging/authenticated-e2e.json
-      - name: Upload hashed authenticated evidence
+          npm run e2e:trust-staging -- --output .release-evidence/staging/trust-surface.json
+      - name: Upload hashed player and trust evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: authenticated-staging-evidence-${{ needs.preflight.outputs.release_sha }}
+          name: staging-player-trust-evidence-${{ needs.preflight.outputs.release_sha }}
           path: .release-evidence/
           if-no-files-found: error
           retention-days: 30

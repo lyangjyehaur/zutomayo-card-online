@@ -474,7 +474,8 @@ describe('server routes', () => {
           },
         ],
       });
-      expect(res.headers['cache-control']).toContain('max-age=300');
+      expect(res.headers['cache-control']).toContain('max-age=0');
+      expect(res.headers['cache-control']).toContain('s-maxage=300');
       expect(res.headers.etag).toMatch(/^"[A-Za-z0-9_-]+"$/);
 
       const cached = await sendRequest('GET', '/api/official/qa?lang=zh-TW', undefined, {
@@ -600,7 +601,8 @@ describe('server routes', () => {
           sections: [{ localized: { title: '遊戲概要' } }],
         },
       });
-      expect(res.headers['cache-control']).toContain('max-age=300');
+      expect(res.headers['cache-control']).toContain('max-age=0');
+      expect(res.headers['cache-control']).toContain('s-maxage=300');
     });
 
     it('reports the active official-rulings release bound to its build', async () => {
@@ -915,6 +917,7 @@ describe('server routes', () => {
       mockRedisPing.mockResolvedValue('PONG');
       const res = await sendRequest('GET', '/health');
       expect(res.statusCode).toBe(200);
+      expect(res.headers['cache-control']).toContain('no-store');
       const body = parseBody(res) as Record<string, unknown>;
       expect(body.status).toBe('ok');
       expect(body.checks).toEqual({ postgres: 'up', redis: 'up' });
@@ -1221,6 +1224,7 @@ describe('server routes', () => {
     it('returns 404 for unknown API path', async () => {
       const res = await sendRequest('GET', '/api/nonexistent');
       expect(res.statusCode).toBe(404);
+      expect(res.headers['cache-control']).toBe('private, no-store');
     });
 
     it.each([
@@ -1454,6 +1458,24 @@ describe('server routes', () => {
     it('GET /api/matches returns 401 without auth', async () => {
       const res = await sendRequest('GET', '/api/matches');
       expect(res.statusCode).toBe(401);
+    });
+
+    it('GET /api/matches/:id/replay requires auth and returns an authorized completed summary', async () => {
+      const unauthorized = await sendRequest('GET', '/api/matches/m_1/replay');
+      expect(unauthorized.statusCode).toBe(401);
+
+      const replay = { schemaVersion: 1, traceComplete: true, decisions: [], effects: [], timeline: [] };
+      mockQuery.mockResolvedValueOnce({
+        rows: [{ id: 'm_1', rules_version: 'rules-1', replay_summary: replay }],
+        rowCount: 1,
+      });
+      const authorized = await sendRequest('GET', '/api/matches/m_1/replay', null, userUnsafeHeaders('u_test'));
+      expect(authorized.statusCode).toBe(200);
+      expect(parseBody(authorized)).toEqual({ matchId: 'm_1', rulesVersion: 'rules-1', replay });
+      expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('player0_id = $2 OR player1_id = $2'), [
+        'm_1',
+        'u_test',
+      ]);
     });
 
     it('GET /api/chat/messages returns 401 without auth', async () => {
@@ -3415,6 +3437,7 @@ describe('server routes', () => {
       mockRedisZcount.mockResolvedValue(5);
       const res = await sendRequest('GET', '/api/presence');
       expect(res.statusCode).toBe(200);
+      expect(res.headers['cache-control']).toBe('private, no-store');
       const body = parseBody(res) as Record<string, unknown>;
       expect(body.onlineCount).toBe(5);
     });

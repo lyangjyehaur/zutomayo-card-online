@@ -124,7 +124,7 @@ describe('online inactivity recovery', () => {
       .slice(0, 20)
       .map((card) => card.id);
     const G = setupGame(
-      { deck0Ids: ids, deck1Ids: ids, skipShuffle: true },
+      { deck0Ids: ids, deck1Ids: ids, skipShuffle: true, rngSeed: 0 },
       { allowBrowserCustomDeckName: true, allowSkipShuffle: true },
     );
     const parsedEffects = parseAllEffects([]);
@@ -134,13 +134,39 @@ describe('online inactivity recovery', () => {
     expect(Date.now() - G.interactionStartTime).toBeLessThan(1_000);
     expect(timeoutAdvance(G, 1, parsedEffects)).toBe(false);
     expireInteraction(G);
-    const random = vi.spyOn(Math, 'random').mockReturnValueOnce(0);
+    const random = vi.spyOn(Math, 'random').mockImplementation(() => {
+      throw new Error('timeout recovery must not use global Math.random');
+    });
 
     expect(timeoutAdvance(G, 1, parsedEffects)).toBe(true);
     random.mockRestore();
 
     expect(G.step).toBe('mulligan');
     expect(G.actionLog.some((entry) => entry.action === 'timeoutAdvance' && entry.player === 1)).toBe(true);
+  });
+
+  it('replays timeout janken from the same persisted RNG state', () => {
+    const ids = getAllCardDefs()
+      .slice(0, 20)
+      .map((card) => card.id);
+    const makeState = () => {
+      const G = setupGame(
+        { deck0Ids: ids, deck1Ids: ids, skipShuffle: true, rngSeed: 'timeout-replay' },
+        { allowBrowserCustomDeckName: true, allowSkipShuffle: true },
+      );
+      chooseJanken(G, 0, 'paper');
+      expireInteraction(G);
+      return G;
+    };
+    const first = makeState();
+    const second = JSON.parse(JSON.stringify(first)) as GameState;
+    const effects = parseAllEffects([]);
+
+    expect(timeoutAdvance(first, 1, effects)).toBe(true);
+    expect(timeoutAdvance(second, 1, effects)).toBe(true);
+    expect(second.jankenChoices).toEqual(first.jankenChoices);
+    expect(second.rng).toEqual(first.rng);
+    expect(second.step).toBe(first.step);
   });
 
   it('keeps the hand and advances when a player times out during mulligan', () => {

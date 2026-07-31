@@ -56,10 +56,19 @@ function stateWithWinner(): State {
       turnNumber: 4,
       matchStartedAt: 1_000,
       matchEndedAt: 6_000,
+      players: [{ hp: 80 }, { hp: 0 }],
       actionLog: [{ action: 'finish' }],
     },
     ctx: { gameover: { winner: 0 } },
   } as never;
+}
+
+function initialStateForAnalytics(): State {
+  const player = (seat: number) => ({
+    deck: Array.from({ length: 15 }, (_, index) => ({ defId: `card-${seat}-${index}` })),
+    hand: Array.from({ length: 5 }, (_, index) => ({ defId: `card-${seat}-${index + 15}` })),
+  });
+  return { G: { players: [player(0), player(1)] } } as never;
 }
 
 function stateBeforeDeckBind() {
@@ -73,6 +82,17 @@ function stateBeforeDeckBind() {
     _stateID: 0,
     G: {
       players: [makePlayer(), makePlayer()],
+      rng: { algorithm: 'mulberry32-v1', seed: 123, counter: 38 },
+      replayManifest: {
+        schemaVersion: 1,
+        rngAlgorithm: 'mulberry32-v1',
+        seed: 123,
+        rulesVersion: 'rules-v1',
+        deckDefIds: [
+          Array.from({ length: 20 }, (_, index) => `host-card-${index}`),
+          Array.from({ length: 20 }, (_, index) => `placeholder-card-${index}`),
+        ],
+      },
       step: 'janken',
       turnNumber: 1,
     },
@@ -141,7 +161,9 @@ describe('PostgresAdapter trust-chain transactions', () => {
     });
     const pool = mockPool([schemaClient, transactionClient]);
     const adapter = new PostgresAdapter({ pool: pool as never, createIndexes: false });
-    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0);
+    const randomSpy = vi.spyOn(Math, 'random').mockImplementation(() => {
+      throw new Error('deck binding must not use global Math.random');
+    });
 
     try {
       await adapter.bindDeckReservation({
@@ -172,6 +194,11 @@ describe('PostgresAdapter trust-chain transactions', () => {
     ).not.toEqual(Array.from({ length: 20 }, (_, index) => `card-${index}`));
     expect(initialPlayer.hand).toEqual(player.hand);
     expect(initialPlayer.deck).toEqual(player.deck);
+    expect(persistedState.G.replayManifest.deckDefIds[1]).toEqual(
+      Array.from({ length: 20 }, (_, index) => `card-${index}`),
+    );
+    expect(persistedInitial.G.replayManifest).toEqual(persistedState.G.replayManifest);
+    expect(persistedInitial.G.rng).toEqual(persistedState.G.rng);
     expect(transactionClient.query).toHaveBeenLastCalledWith('COMMIT');
   });
 
@@ -463,21 +490,47 @@ describe('PostgresAdapter trust-chain transactions', () => {
       'match_1',
       '0',
     ]);
+    expect(
+      transactionClient.query.mock.calls.find(([sql]) => String(sql).includes('UPDATE bjg_match_seats'))?.[0],
+    ).toContain('resume_count = resume_count + 1');
   });
 
   it('writes terminal state and canonical outbox row in the same transaction', async () => {
     const schemaClient = mockClient();
     const transactionClient = mockClient(async (sql) => {
-      if (sql.startsWith('SELECT metadata FROM bjg_matches')) {
-        return { rows: [{ metadata: { setupData: { rulesVersion: 'legacy' } } }], rowCount: 1 };
+      if (sql.startsWith('SELECT metadata, initial_state FROM bjg_matches')) {
+        return {
+          rows: [
+            {
+              metadata: { setupData: { rulesVersion: 'legacy' } },
+              initial_state: initialStateForAnalytics(),
+            },
+          ],
+          rowCount: 1,
+        };
       }
       if (sql.includes('FROM bjg_match_seats')) {
         return {
           rows: [
-            { match_id: 'match_1', player_id: '0', user_id: 'u_alice', ranked_eligible: true },
-            { match_id: 'match_1', player_id: '1', user_id: 'u_bob', ranked_eligible: true },
+            { match_id: 'match_1', player_id: '0', user_id: 'u_alice', ranked_eligible: true, resume_count: 3 },
+            { match_id: 'match_1', player_id: '1', user_id: 'u_bob', ranked_eligible: true, resume_count: 4 },
           ],
           rowCount: 2,
+        };
+      }
+      if (sql.includes('FROM bjg_match_telemetry')) {
+        return {
+          rows: [
+            {
+              match_mode: 'quick_match',
+              traffic_class: 'operator',
+              player0_disconnect_count: 2,
+              player1_disconnect_count: 1,
+              player0_reconnect_count: 1,
+              player1_reconnect_count: 1,
+            },
+          ],
+          rowCount: 1,
         };
       }
       if (sql.startsWith('UPDATE bjg_matches')) return { rows: [], rowCount: 1 };
@@ -510,11 +563,21 @@ describe('PostgresAdapter trust-chain transactions', () => {
       ],
     );
     expect(transactionClient.query).toHaveBeenLastCalledWith('COMMIT');
+    expect(transactionClient.query).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO match_analytics ('),
+      expect.arrayContaining(['operator', 'quick_match', [2, 1], [1, 1], [3, 4]]),
+    );
   });
 
   it('marks eligible results unrated when ranked delivery is disabled', async () => {
     const schemaClient = mockClient();
     const transactionClient = mockClient(async (sql) => {
+      if (sql.startsWith('SELECT metadata, initial_state FROM bjg_matches')) {
+        return {
+          rows: [{ metadata: { setupData: { rulesVersion: 'legacy' } }, initial_state: initialStateForAnalytics() }],
+          rowCount: 1,
+        };
+      }
       if (sql.includes('FROM bjg_match_seats')) {
         return {
           rows: [
@@ -536,5 +599,59 @@ describe('PostgresAdapter trust-chain transactions', () => {
       expect.stringContaining('INSERT INTO bjg_match_result_outbox'),
       expect.arrayContaining(['unrated', 'ranked_disabled']),
     );
+  });
+
+  it('treats a duplicate terminal callback with the same integrity digest as idempotent', async () => {
+    let integritySha256 = '';
+    const schemaClient = mockClient();
+    const transactionClient = mockClient(async (sql, params) => {
+      if (sql.startsWith('SELECT metadata, initial_state FROM bjg_matches')) {
+        return {
+          rows: [{ metadata: { setupData: { rulesVersion: 'legacy' } }, initial_state: initialStateForAnalytics() }],
+          rowCount: 1,
+        };
+      }
+      if (sql.includes('FROM bjg_match_seats')) return { rows: [], rowCount: 0 };
+      if (sql.startsWith('INSERT INTO match_analytics (')) {
+        integritySha256 = String(params?.[29]);
+        return { rows: [], rowCount: 0 };
+      }
+      if (sql.startsWith('SELECT integrity_sha256 FROM match_analytics')) {
+        return { rows: [{ integrity_sha256: integritySha256 }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+    const pool = mockPool([schemaClient, transactionClient]);
+    const adapter = new PostgresAdapter({ pool: pool as never, createIndexes: false });
+
+    await expect(adapter.setState('match_1', stateWithWinner())).resolves.toBeUndefined();
+
+    expect(transactionClient.query).toHaveBeenCalledWith(
+      'SELECT integrity_sha256 FROM match_analytics WHERE source_match_digest = $1',
+      [expect.stringMatching(/^[0-9a-f]{64}$/)],
+    );
+    expect(transactionClient.query).toHaveBeenLastCalledWith('COMMIT');
+  });
+
+  it('rolls back terminal state when anonymous analytics capture fails', async () => {
+    const schemaClient = mockClient();
+    const transactionClient = mockClient(async (sql) => {
+      if (sql.startsWith('SELECT metadata, initial_state FROM bjg_matches')) {
+        return {
+          rows: [{ metadata: { setupData: { rulesVersion: 'legacy' } }, initial_state: initialStateForAnalytics() }],
+          rowCount: 1,
+        };
+      }
+      if (sql.includes('FROM bjg_match_seats')) return { rows: [], rowCount: 0 };
+      if (sql.startsWith('INSERT INTO match_analytics (')) throw new Error('analytics unavailable');
+      return { rows: [], rowCount: 1 };
+    });
+    const pool = mockPool([schemaClient, transactionClient]);
+    const adapter = new PostgresAdapter({ pool: pool as never, createIndexes: false });
+
+    await expect(adapter.setState('match_1', stateWithWinner())).rejects.toThrow('analytics unavailable');
+
+    expect(transactionClient.query).toHaveBeenCalledWith('ROLLBACK');
+    expect(transactionClient.query).not.toHaveBeenCalledWith('COMMIT');
   });
 });

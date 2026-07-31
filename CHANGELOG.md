@@ -4,6 +4,25 @@
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-07-31
+
+### Added
+
+- **永久對戰分析**：在 boardgame.io runtime state 清理前，以權威終局建立去識別的對局、牌組與 allowlisted 規則事件封存；加入完整性雜湊、補償匯入、保存期監控與正式環境驗收工具。
+- **確定性重播**：加入版本化 replay manifest、可重現 RNG、server decision trace、golden transcript 與參賽者授權的重播 API；公開摘要只包含已揭露手牌與淨化後的 action timeline。
+- **線上服務穩定化基線**：建立生產盤點、流量與可靠性指標、備份復原、告警送達、精確版本回復、認證多人旅程、信任面與產品證據的可追溯文件及 fail-closed 驗收閘門。
+
+### Changed
+
+- **正式環境可觀測性**：補上配對、連線、outbox、分析封存與部署身分指標，並以雙路徑快取策略區分 PWA 控制檔、公開 API、私人 API 與 battle 素材。
+- **快速配對牌組來源**：線上快速配對可使用玩家目前選取的本地牌組，並保留平台轉交與權威遊戲服務之間的版本與座位驗證。
+
+### Fixed
+
+- **線上連線錯誤**：保留底層可診斷錯誤，不再以通用訊息覆蓋實際失敗原因。
+- **權威結果重播**：outbox 先建立 canonical match 時也會補上隱私過濾的重播摘要，並以冪等更新處理 API／outbox 競態。
+- **遊戲容器依賴**：production game image 明確包含重播摘要 helper，避免啟用權威結果處理後因 runtime 模組缺失而無法啟動。
+
 ## [0.2.5] - 2026-07-30
 
 ### Added
@@ -247,6 +266,7 @@ Logto OAuth 整合與生產強化（phase 1/2）：導入帳號體系、錯誤�
 - **PWA**：可安裝至桌面/手機，支援離線可用與手動檢查更新。
 - **i18n**：支援 6 種語言（含 250 張效果卡翻譯）。
 
+[0.2.6]: https://github.com/lyangjyehaur/zutomayo-card-online/releases/tag/v0.2.6
 [0.2.5]: https://github.com/lyangjyehaur/zutomayo-card-online/releases/tag/v0.2.5
 [0.2.4]: https://github.com/lyangjyehaur/zutomayo-card-online/releases/tag/v0.2.4
 [0.2.3]: https://github.com/lyangjyehaur/zutomayo-card-online/releases/tag/v0.2.3

@@ -43,13 +43,18 @@ import { copyText } from '../clipboard';
 import { buildOnlineRoomUrl } from '../components/OnlineRoomInfo';
 import { useToast } from '../components/ToastProvider';
 import { OnlinePresenceBadge } from '../components/OnlinePresenceBadge';
-import { customRoomRelayErrorKey, resolvePlatformCustomRoomMatchID } from '../platform/customRoomRelay';
+import {
+  CustomRoomRelayError,
+  customRoomRelayErrorKey,
+  resolvePlatformCustomRoomMatchID,
+} from '../platform/customRoomRelay';
 import { AuthSection } from '../components/lobby/AuthSection';
 import { DeckSelector } from '../components/lobby/DeckSelector';
 import { RoomDetails, RoomPanel } from '../components/lobby/RoomPanel';
 import {
   buildDeckOptions,
   buildServerDeckOptions,
+  platformQuickMatchDeckName,
   serverDeckIdFromOption,
   type DeckOptionGroup,
 } from '../components/lobby/shared';
@@ -73,7 +78,7 @@ import {
 import { Sentry } from '../sentry';
 import { t, translate, useLocale } from '../i18n';
 import type { OnlineSession } from '../onlineSession';
-import { isOnlineRoomErrorKey } from '../onlineRoomStatus';
+import { isOnlineRoomErrorKey, onlineRoomErrorDetail } from '../onlineRoomStatus';
 import { formatQuickMatchWait, quickMatchWaitSeconds, shouldOfferQuickMatchFallback } from '../matchmakingWait';
 import { trackFunnelEvent } from '../funnelAnalytics';
 import { QUICK_MATCH_ENABLED } from '../featureFlags';
@@ -130,8 +135,14 @@ function resolveDeckLabel(deckId: string, groups: DeckOptionGroup[]): string {
 
 function onlineErrorMessage(error: unknown): string {
   const customRoomRelayKey = customRoomRelayErrorKey(error);
-  if (customRoomRelayKey) return t(customRoomRelayKey);
-  if (error instanceof Error && isOnlineRoomErrorKey(error.message)) return t(error.message);
+  if (customRoomRelayKey) {
+    const detail = error instanceof CustomRoomRelayError ? error.detail : undefined;
+    return detail ? `${t(customRoomRelayKey)}: ${detail}` : t(customRoomRelayKey);
+  }
+  if (error instanceof Error && isOnlineRoomErrorKey(error.message)) {
+    const detail = onlineRoomErrorDetail(error);
+    return detail ? `${t(error.message)}: ${detail}` : t(error.message);
+  }
   if (error instanceof Error && error.message.trim()) return error.message;
   return t('online.connectionFailed');
 }
@@ -189,8 +200,11 @@ export function OnlineLobbyPage({
 
   // 帳號資料：用於 Header 與段位顯示。
   const [profile, setProfile] = useState<ProfileResponse | null>(null);
+  const [profileError, setProfileError] = useState('');
+  const [error, setError] = useState('');
   const [friends, setFriends] = useState<FriendProfile[]>([]);
   const [friendStatus, setFriendStatus] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>('idle');
+  const [friendError, setFriendError] = useState('');
   const [friendInviteActionId, setFriendInviteActionId] = useState<string | null>(null);
   const [friendInvitePeerId, setFriendInvitePeerId] = useState<string | null>(null);
   const [friendInviteMode, setFriendInviteMode] = useState<'incoming' | 'outgoing' | null>(null);
@@ -205,6 +219,7 @@ export function OnlineLobbyPage({
   const [roomChatMessages, setRoomChatMessages] = useState<RoomChatEntry[]>([]);
   const [roomChatDraft, setRoomChatDraft] = useState('');
   const [roomChatStatus, setRoomChatStatus] = useState<DirectChatStatus>('idle');
+  const [roomChatError, setRoomChatError] = useState('');
   const [roomChatOpen, setRoomChatOpen] = useState(true);
   const [roomChatUnreadCount, setRoomChatUnreadCount] = useState(0);
   const [pageVisible, setPageVisible] = useState(() =>
@@ -231,8 +246,10 @@ export function OnlineLobbyPage({
   const refreshProfile = useCallback(async () => {
     if (!isLoggedIn()) {
       setProfile(null);
+      setProfileError('');
       setFriends([]);
       setFriendStatus('idle');
+      setFriendError('');
       setRoomChatMessages([]);
       setRoomChatStatus('idle');
       setFriendInviteActionId(null);
@@ -246,10 +263,15 @@ export function OnlineLobbyPage({
     }
     try {
       setProfile(await getProfile());
-    } catch {
+      setProfileError('');
+    } catch (err) {
+      const detail = onlineErrorMessage(err);
+      setError(detail);
+      setProfileError(detail);
       setProfile(null);
       setFriends([]);
       setFriendStatus('idle');
+      setFriendError('');
       setRoomChatMessages([]);
       setRoomChatStatus('idle');
       setFriendInviteActionId(null);
@@ -266,9 +288,11 @@ export function OnlineLobbyPage({
     if (!isLoggedIn()) {
       setFriends([]);
       setFriendStatus('idle');
+      setFriendError('');
       return;
     }
     setFriendStatus('loading');
+    setFriendError('');
     try {
       const nextFriends = await getFriends();
       setFriends(nextFriends);
@@ -282,6 +306,7 @@ export function OnlineLobbyPage({
       });
       setFriends([]);
       setFriendStatus('unavailable');
+      setFriendError(onlineErrorMessage(err));
     }
   }, []);
 
@@ -301,10 +326,10 @@ export function OnlineLobbyPage({
   }, [profile, refreshFriends]);
 
   const handleAuthChanged = useCallback(async () => {
+    setError('');
     await onAuthChanged();
     await refreshProfile();
     await refreshFriends();
-    setError('');
   }, [onAuthChanged, refreshFriends, refreshProfile]);
 
   const applyRoomChatTranslation = useCallback((messageId: string, translation: DirectChatTranslationState) => {
@@ -380,7 +405,6 @@ export function OnlineLobbyPage({
   // Matchmaking 狀態（原 OnlinePanel 邏輯移入，以便拆分到左右兩欄）。
   const [matchID, setMatchID] = useState('');
   const [createdMatchID, setCreatedMatchID] = useState('');
-  const [error, setError] = useState('');
   const [matchmakingActive, setMatchmakingActive] = useState(false);
   const [matchmakingCancellable, setMatchmakingCancellable] = useState(false);
   const [matchmakingElapsedSeconds, setMatchmakingElapsedSeconds] = useState(0);
@@ -388,6 +412,7 @@ export function OnlineLobbyPage({
   const [copied, setCopied] = useState(false);
   const [availableRooms, setAvailableRooms] = useState<PlatformAvailableRoom[]>([]);
   const [roomListStatus, setRoomListStatus] = useState<'loading' | 'ready' | 'unavailable'>('loading');
+  const [roomListError, setRoomListError] = useState('');
   const [customRoomStarting, setCustomRoomStarting] = useState(false);
   const [customRoomCancelling, setCustomRoomCancelling] = useState(false);
   const roomListRequestRef = useRef<Promise<void> | null>(null);
@@ -405,9 +430,11 @@ export function OnlineLobbyPage({
       .then((rooms) => {
         setAvailableRooms(rooms);
         setRoomListStatus('ready');
+        setRoomListError('');
       })
       .catch((err) => {
         setRoomListStatus('unavailable');
+        setRoomListError(onlineErrorMessage(err));
         Sentry.addBreadcrumb({
           category: 'platform',
           message: 'public custom room list unavailable',
@@ -526,6 +553,7 @@ export function OnlineLobbyPage({
     if (!profile || !roomChatSubjectId) {
       setRoomChatMessages([]);
       setRoomChatStatus('idle');
+      setRoomChatError('');
       return;
     }
     let cancelled = false;
@@ -538,6 +566,7 @@ export function OnlineLobbyPage({
         const visibleMessages = messages.filter(canShowChatMessage);
         setRoomChatMessages(visibleMessages);
         setRoomChatStatus('ready');
+        setRoomChatError('');
       },
       (err) => {
         if (cancelled) return;
@@ -548,6 +577,7 @@ export function OnlineLobbyPage({
           data: { room_code: roomChatSubjectId, error: err instanceof Error ? err.message : String(err) },
         });
         setRoomChatStatus('unavailable');
+        setRoomChatError(onlineErrorMessage(err));
       },
     );
     return () => {
@@ -679,12 +709,13 @@ export function OnlineLobbyPage({
               void cancelPendingCustomRoomSession(nextSession);
             }
           },
-          onDisconnect: () => {
+          onDisconnect: (error) => {
             if (platformCustomRoomRef.current === room) {
               platformCustomRoomRef.current = null;
               setCreatedMatchID('');
               void cancelPendingCustomRoomSession(nextSession);
             }
+            if (error) setError(error.message);
           },
           onBoardgameMatchReady: (message) => {
             if (!isPlatformBoardgameRelayAcknowledged(nextSession.matchID, message)) return;
@@ -743,13 +774,15 @@ export function OnlineLobbyPage({
     trackFunnelEvent('F_Queue_Start', { match_mode: 'quick_match' });
 
     try {
-      const serverDeckId = serverDeckIdFromOption(deck0Name);
+      const selectedDeckName = deck0Name;
+      const serverDeckId = serverDeckIdFromOption(selectedDeckName);
       const deckReservation = serverDeckId ? await reserveDeck(serverDeckId) : undefined;
+      const platformDeckName = platformQuickMatchDeckName(selectedDeckName);
       const room = await connectPlatformQuickMatch(
         {
           userId: profile?.id || `anon:${anonymousIdentity.suffix}`,
           displayName: effectivePlayerName,
-          deckName: deck0Name,
+          deckName: platformDeckName,
           deckReservationId: deckReservation?.reservationId,
         },
         {
@@ -760,7 +793,7 @@ export function OnlineLobbyPage({
               phaseRef.current = 'host-starting';
               void onStartOnline(undefined, effectivePlayerName, {
                 navigate: false,
-                playerDeckName: match.deckName ?? deck0Name,
+                playerDeckName: selectedDeckName,
                 playerDeckReservationId: match.deckReservationId,
               })
                 .then((session) => {
@@ -807,6 +840,7 @@ export function OnlineLobbyPage({
             phaseRef.current = 'guest-joining';
             void onStartOnline(message.boardgameMatchID, effectivePlayerName, {
               navigate: false,
+              playerDeckName: selectedDeckName,
               playerDeckReservationId: deckReservation?.reservationId,
             })
               .then((session) => {
@@ -834,7 +868,7 @@ export function OnlineLobbyPage({
             resetMatchmaking();
             setError(t('lobby.matchmakingTimeout'));
           },
-          onDisconnect: () => {
+          onDisconnect: (error) => {
             platformQuickMatchRoomRef.current = null;
             if (
               cancelRef.current ||
@@ -846,10 +880,11 @@ export function OnlineLobbyPage({
               return;
             }
             resetMatchmaking();
-            setError(t('lobby.matchmakingFailed'));
+            const detail = onlineErrorMessage(error);
+            setError(detail);
             showToast({
               title: t('error.matchmakingFailed'),
-              body: t('error.checkConnection'),
+              body: detail,
               kind: 'error',
               durationMs: 6000,
               actionLabel: t('common.retry'),
@@ -875,10 +910,11 @@ export function OnlineLobbyPage({
         data: { error: err instanceof Error ? err.message : String(err) },
       });
       resetMatchmaking();
-      setError(t('lobby.matchmakingFailed'));
+      const detail = onlineErrorMessage(err);
+      setError(detail);
       showToast({
         title: t('error.matchmakingFailed'),
-        body: t('error.checkConnection'),
+        body: detail,
         kind: 'error',
         durationMs: 6000,
         actionLabel: t('common.retry'),
@@ -973,7 +1009,7 @@ export function OnlineLobbyPage({
   const customRoomBusy = customRoomWaiting || customRoomStarting || customRoomCancelling;
   const startDisabledReason = !cardsReady ? t('game.loading') : !deck0Name ? t('lobby.selectDeckFirst') : '';
   const canQuickMatch = canStart && !!profile;
-  const quickMatchDisabledReason = !profile ? t('lobby.loginRequired') : startDisabledReason;
+  const quickMatchDisabledReason = !profile ? profileError || t('lobby.loginRequired') : startDisabledReason;
   const draftPreview = formatAnonymousDisplayName({
     baseName: sanitizeAnonymousBaseName(anonymousNameDraft),
     suffix: anonymousIdentity.suffix,
@@ -1119,12 +1155,13 @@ export function OnlineLobbyPage({
             setFriendInvitePeerId(null);
             leavePlatformInviteRoom();
           },
-          onDisconnect: () => {
+          onDisconnect: (error) => {
             activeOutgoingInviteIdRef.current = null;
             pendingInviteHostSessionRef.current = null;
             setFriendInvitePeerId(null);
             setFriendInviteActionId(null);
             setFriendInviteMode(null);
+            if (error) showToast({ title: t('friend.inviteFailed'), body: error.message, kind: 'error' });
           },
         },
       );
@@ -1149,7 +1186,7 @@ export function OnlineLobbyPage({
       setFriendInviteMode(null);
       activeOutgoingInviteIdRef.current = null;
       pendingInviteHostSessionRef.current = null;
-      showToast({ title: t('friend.inviteFailed'), kind: 'error' });
+      showToast({ title: t('friend.inviteFailed'), body: onlineErrorMessage(err), kind: 'error' });
     }
   };
 
@@ -1217,7 +1254,7 @@ export function OnlineLobbyPage({
       setFriendInviteActionId(null);
       setFriendInvitePeerId(null);
       setFriendInviteMode(null);
-      showToast({ title: t('friend.noInvite'), kind: 'error' });
+      showToast({ title: t('friend.noInvite'), body: onlineErrorMessage(err), kind: 'error' });
     }
   };
 
@@ -1273,7 +1310,7 @@ export function OnlineLobbyPage({
                 platformInviteRoomRef.current = null;
                 showToast({ title: t('friend.inviteCancelled'), kind: 'error' });
               },
-              onDisconnect: () => {
+              onDisconnect: (error) => {
                 if (!settled) {
                   settle(false);
                   return;
@@ -1282,6 +1319,7 @@ export function OnlineLobbyPage({
                 setFriendInvitePeerId(null);
                 setFriendInviteMode(null);
                 platformInviteRoomRef.current = null;
+                if (error) showToast({ title: t('friend.inviteFailed'), body: error.message, kind: 'error' });
               },
             },
           ).then(
@@ -1354,7 +1392,7 @@ export function OnlineLobbyPage({
         data: { room_code: roomChatSubjectId, error: err instanceof Error ? err.message : String(err) },
       });
       setRoomChatStatus('ready');
-      showToast({ title: t('chat.sendFailed'), kind: 'error' });
+      showToast({ title: t('chat.sendFailed'), body: onlineErrorMessage(err), kind: 'error' });
     }
   };
 
@@ -1378,9 +1416,10 @@ export function OnlineLobbyPage({
           level: 'warning',
           data: { message_id: message.id, error: err instanceof Error ? err.message : String(err) },
         });
+        showToast({ title: t('chat.translationOffline'), body: onlineErrorMessage(err), kind: 'error' });
       }
     },
-    [applyRoomChatTranslation, locale],
+    [applyRoomChatTranslation, locale, showToast],
   );
 
   const handleRoomChatReport = useCallback(
@@ -1402,7 +1441,7 @@ export function OnlineLobbyPage({
           level: 'warning',
           data: { message_id: message.id, error: err instanceof Error ? err.message : String(err) },
         });
-        showToast({ title: t('chat.reportFailed'), kind: 'error' });
+        showToast({ title: t('chat.reportFailed'), body: onlineErrorMessage(err), kind: 'error' });
       }
     },
     [profile?.id, reportedRoomMessageIds, showToast],
@@ -1707,7 +1746,7 @@ export function OnlineLobbyPage({
                     {roomListStatus === 'unavailable' && availableRooms.length === 0 ? (
                       <Alert className="mb-3" tone="danger" role="status">
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          <span>{t('lobby.availableRoomsUnavailable')}</span>
+                          <span>{roomListError || t('lobby.availableRoomsUnavailable')}</span>
                           <Button size="sm" variant="ghost" onClick={() => void refreshAvailableRooms(true)}>
                             {t('common.retry')}
                           </Button>
@@ -1865,7 +1904,7 @@ export function OnlineLobbyPage({
                           )}
                           {roomChatStatus === 'unavailable' && (
                             <div className="grid min-h-full place-items-center text-caption text-accent-action">
-                              {t('chat.historyUnavailable')}
+                              {roomChatError || t('chat.historyUnavailable')}
                             </div>
                           )}
                           {roomChatStatus === 'ready' && roomChatMessages.length === 0 && (
@@ -2043,7 +2082,12 @@ export function OnlineLobbyPage({
                             />
                           </div>
                         ))}
-                        {friendStatus !== 'loading' && friends.length === 0 && (
+                        {friendStatus === 'unavailable' && (
+                          <Alert className="my-3" tone="danger" role="alert">
+                            {friendError || t('friend.unavailable')}
+                          </Alert>
+                        )}
+                        {friendStatus !== 'loading' && friendStatus !== 'unavailable' && friends.length === 0 && (
                           <p className="py-5 text-center text-caption text-content-dim">{t('friend.empty')}</p>
                         )}
                       </div>

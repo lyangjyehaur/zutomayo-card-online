@@ -633,7 +633,7 @@ describe('AI difficulty policy contracts', () => {
       ],
     };
 
-    expect(aiSelectPendingChoice(G, 0, 'normal')?.action).toEqual([weak.instanceId]);
+    expect(aiSelectPendingChoice(G, 0, 'normal', { now: () => 0 })?.action).toEqual([weak.instanceId]);
   });
 
   it('declines an optional discard when replacing a strong card has negative value', () => {
@@ -658,7 +658,7 @@ describe('AI difficulty policy contracts', () => {
       options: [{ id: strong.instanceId, label: 'strong', cardDefId: strong.defId }],
     };
 
-    expect(aiSelectPendingChoice(G, 0, 'normal')?.action).toEqual([]);
+    expect(aiSelectPendingChoice(G, 0, 'normal', { now: () => 0 })?.action).toEqual([]);
   });
 
   it('swaps a weak hand card for a stronger Abyss card', () => {
@@ -681,7 +681,7 @@ describe('AI difficulty policy contracts', () => {
       ],
     };
 
-    expect(aiSelectPendingChoice(G, 0, 'normal')?.action).toEqual([
+    expect(aiSelectPendingChoice(G, 0, 'normal', { now: () => 0 })?.action).toEqual([
       `hand:${weak.instanceId}`,
       `abyss:${strong.instanceId}`,
     ]);
@@ -707,7 +707,7 @@ describe('AI difficulty policy contracts', () => {
       ],
     };
 
-    expect(aiSelectPendingChoice(G, 0, 'normal')?.action).toEqual(['strong']);
+    expect(aiSelectPendingChoice(G, 0, 'normal', { now: () => 0 })?.action).toEqual(['strong']);
   });
 
   it('chooses a Chronos position that favors its current Character', () => {
@@ -725,7 +725,7 @@ describe('AI difficulty policy contracts', () => {
       options: Array.from({ length: 18 }, (_, value) => ({ id: `clock-${value}`, label: `${value}`, value })),
     };
 
-    const selected = aiSelectPendingChoice(G, 0, 'normal')?.action[0];
+    const selected = aiSelectPendingChoice(G, 0, 'normal', { now: () => 0 })?.action[0];
     expect(Number(selected?.split('-')[1])).toBeGreaterThanOrEqual(5);
     expect(Number(selected?.split('-')[1])).toBeLessThanOrEqual(13);
   });
@@ -750,7 +750,30 @@ describe('AI difficulty policy contracts', () => {
       ],
     };
 
-    expect(aiSelectPendingChoice(G, 0, 'normal')?.action).toEqual(['weak', 'strong']);
+    expect(aiSelectPendingChoice(G, 0, 'normal', { now: () => 0 })?.action).toEqual(['weak', 'strong']);
+  });
+
+  it('returns a legal pending-choice fallback when its explicit budget is exhausted', () => {
+    const G = setupTestGame();
+    G.step = 'effectOrder';
+    G.pendingChoice = {
+      id: 'budgeted-choice',
+      player: 0,
+      type: 'clockPosition',
+      min: 1,
+      max: 1,
+      payload: {},
+      options: [
+        { id: 'clock-0', label: '0', value: 0 },
+        { id: 'clock-1', label: '1', value: 1 },
+      ],
+    };
+    let time = 0;
+
+    const decision = aiSelectPendingChoice(G, 0, 'normal', { budgetMs: 1, now: () => (time += 2) });
+
+    expect(decision?.action).toEqual(['clock-0']);
+    expect(decision?.fallback).toBe('choice-budget-exhausted');
   });
 
   it('returns a legal normal-policy fallback when hard search exceeds its budget', () => {

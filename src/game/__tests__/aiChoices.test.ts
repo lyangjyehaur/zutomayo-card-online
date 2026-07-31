@@ -55,7 +55,10 @@ function choiceState(choice: PendingChoice): GameState {
 
 function choose(G: GameState): string[] {
   const choice = G.pendingChoice!;
-  const decision = aiSelectPendingChoice(G, choice.player, 'normal', { seed: `fixture:${choice.type}` });
+  const decision = aiSelectPendingChoice(G, choice.player, 'normal', {
+    seed: 'fixture:' + choice.type,
+    now: () => 0,
+  });
   expect(decision).not.toBeNull();
   expect(pendingChoiceSelectionError(choice, decision!.action)).toBeNull();
   expect(decision!.fallback).toBeUndefined();

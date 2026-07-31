@@ -15,6 +15,7 @@ const RELEASE_SHA_PATTERN = /^[a-f0-9]{40}$/i;
 const RUN_ID_PATTERN = /^\d+$/;
 const IMAGE_DIGEST_PATTERN = /^\S+@sha256:[a-f0-9]{64}$/i;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/i;
+const MIGRATION_PATTERN = /^\d{6,}_[a-z0-9_]+$/;
 const REQUIRED_IMAGE_DIGESTS = Object.freeze(['game', 'api', 'platform', 'migrate', 'retention']);
 
 const COMPOSE_FILES = Object.freeze([
@@ -110,6 +111,12 @@ const STAGING_GATES = Object.freeze([
         'friendInviteVerified',
         'spectatorHiddenInformationVerified',
         'secureCookieVerified',
+        'serverBackedDecksVerified',
+        'quickMatchVerified',
+        'sameOriginWebSocketVerified',
+        'chatAuthorizationVerified',
+        'disconnectReconnectVerified',
+        'resultSubmissionVerified',
         'httpsTopologyVerified',
         'zeroConditionalSkips',
       ],
@@ -131,9 +138,44 @@ const STAGING_GATES = Object.freeze([
         ['maxRpoMinutes', 15, 'lte'],
         ['maxRtoMinutes', 30, 'lte'],
       ],
-      results: ['schemaGatePassed', 'fixtureRoundTripPassed', 'legalHoldInvariantPassed'],
+      results: [
+        'schemaGatePassed',
+        'fixtureRoundTripPassed',
+        'legalHoldInvariantPassed',
+        'boardgameStateInvariantPassed',
+      ],
     },
     relativePath: 'staging/restore-drill.json',
+  },
+  {
+    id: 'staging-trust-surface',
+    profiles: RELEASE_PROFILES,
+    phase: 'P5',
+    title: 'Public policies and account deletion rehearsal',
+    evidenceType: 'trust-surface',
+    measurements: {
+      comparisons: [
+        ['completedJourneys', 'minCompletedJourneys', 'gte'],
+        ['skippedTests', 'maxSkippedTests', 'lte'],
+        ['failedTests', 'maxFailedTests', 'lte'],
+        ['flakyTests', 'maxFlakyTests', 'lte'],
+      ],
+      thresholdRequirements: [['minCompletedJourneys', 1, 'gte']],
+      results: [
+        'publicPoliciesReachable',
+        'operatorContactReachable',
+        'retentionDeletionPublished',
+        'moderationAppealPublished',
+        'rightsholderTakedownPublished',
+        'authenticatedPolicyEntryReachable',
+        'accountExportVerified',
+        'accountDeletionRehearsed',
+        'deletedSessionRevoked',
+        'deletedAccountRejected',
+        'zeroConditionalSkips',
+      ],
+    },
+    relativePath: 'staging/trust-surface.json',
   },
   {
     id: 'staging-authenticated-e2e-hardening',
@@ -159,6 +201,12 @@ const STAGING_GATES = Object.freeze([
         'friendInviteVerified',
         'spectatorHiddenInformationVerified',
         'secureCookieVerified',
+        'serverBackedDecksVerified',
+        'quickMatchVerified',
+        'sameOriginWebSocketVerified',
+        'chatAuthorizationVerified',
+        'disconnectReconnectVerified',
+        'resultSubmissionVerified',
         'httpsTopologyVerified',
         'zeroConditionalSkips',
       ],
@@ -591,6 +639,14 @@ function readReleaseManifestImageDigests(manifestPath) {
   if (!RELEASE_SHA_PATTERN.test(releaseSha ?? '')) {
     throw new Error('release manifest is missing a full RELEASE_SHA');
   }
+  const migrationName = contents.match(/^EXPECTED_SCHEMA_MIGRATION=(\S+)$/m)?.[1];
+  const migrationSha256 = contents.match(/^EXPECTED_SCHEMA_CHECKSUM=(\S+)$/m)?.[1];
+  if (!MIGRATION_PATTERN.test(migrationName ?? '')) {
+    throw new Error('release manifest is missing EXPECTED_SCHEMA_MIGRATION');
+  }
+  if (!SHA256_PATTERN.test(migrationSha256 ?? '')) {
+    throw new Error('release manifest is missing EXPECTED_SCHEMA_CHECKSUM');
+  }
   for (const line of contents.split(/\r?\n/)) {
     const match = line.match(/^(GAME|API|PLATFORM|MIGRATE|RETENTION)_IMAGE=(\S+)$/);
     if (match) imageDigests[match[1].toLowerCase()] = match[2];
@@ -600,7 +656,47 @@ function readReleaseManifestImageDigests(manifestPath) {
       throw new Error(`release manifest is missing immutable ${image} image digest`);
     }
   }
-  return { releaseSha: releaseSha.toLowerCase(), imageDigests };
+  return {
+    releaseSha: releaseSha.toLowerCase(),
+    imageDigests,
+    migration: { name: migrationName, sha256: migrationSha256.toLowerCase() },
+  };
+}
+
+function validateReleaseIdentity(evidence, descriptor, stagingEvidenceDir, options, missing) {
+  if (!['card-dataset', 'authenticated-e2e', 'trust-surface'].includes(descriptor.evidenceType)) return;
+  const migration = evidence?.migration;
+  if (!MIGRATION_PATTERN.test(migration?.name ?? '')) {
+    missing.push('migration.name (migration basename)');
+  } else if (options.migration && migration.name !== options.migration.name) {
+    missing.push(`migration.name matching ${options.migration.name}`);
+  }
+  if (!SHA256_PATTERN.test(migration?.sha256 ?? '')) {
+    missing.push('migration.sha256 (SHA-256 digest)');
+  } else if (options.migration && migration.sha256.toLowerCase() !== options.migration.sha256.toLowerCase()) {
+    missing.push('migration.sha256 matching the release manifest');
+  }
+  if (!SHA256_PATTERN.test(evidence?.datasetSha256 ?? '')) {
+    missing.push('datasetSha256 (SHA-256 digest)');
+    return;
+  }
+  if (!['authenticated-e2e', 'trust-surface'].includes(descriptor.evidenceType)) return;
+
+  const datasetEvidencePath = path.join(stagingEvidenceDir, 'staging', 'card-dataset.json');
+  if (!existsSync(datasetEvidencePath)) {
+    missing.push('staging/card-dataset.json for dataset identity cross-check');
+    return;
+  }
+  try {
+    const datasetEvidence = JSON.parse(readFileSync(datasetEvidencePath, 'utf8'));
+    if (!SHA256_PATTERN.test(datasetEvidence?.datasetSha256 ?? '')) {
+      missing.push('staging/card-dataset.json datasetSha256 (SHA-256 digest)');
+    } else if (datasetEvidence.datasetSha256.toLowerCase() !== evidence.datasetSha256.toLowerCase()) {
+      missing.push('datasetSha256 matching staging/card-dataset.json');
+    }
+  } catch {
+    missing.push('staging/card-dataset.json readable identity evidence');
+  }
 }
 
 function validateMeasurements(evidence, descriptor, missing) {
@@ -751,6 +847,7 @@ function inspectStagingEvidence(descriptor, stagingEvidenceDir, options) {
     missing.push('signer as an HTTP(S) URL when provided');
   }
   validateProvenance(evidence, options, missing);
+  validateReleaseIdentity(evidence, descriptor, stagingEvidenceDir, options, missing);
   validateMeasurements(evidence, descriptor, missing);
   validateArtifacts(evidence, stagingEvidenceDir, missing);
   if (missing.length > 0) {
@@ -804,6 +901,7 @@ export function inspectStagingGates(stagingEvidenceDir, options = {}) {
     maxEvidenceAgeHours,
     nowMs: options.nowMs ?? Date.now(),
     imageDigests: options.imageDigests,
+    migration: options.migration,
     evidenceRunId: options.evidenceRunId,
   };
   return STAGING_GATES.filter((descriptor) => descriptor.profiles.includes(profile)).map((descriptor) => {
@@ -950,6 +1048,7 @@ export async function runReleaseGate(options = {}, dependencies = {}) {
     throw new Error(`release manifest RELEASE_SHA ${manifest.releaseSha} does not match requested ${releaseSha}`);
   }
   const imageDigests = manifest?.imageDigests ?? options.imageDigests;
+  const migration = manifest?.migration ?? options.migration;
   const maxEvidenceAgeHours = options.maxEvidenceAgeHours ?? DEFAULT_MAX_EVIDENCE_AGE_HOURS;
   const profile = options.profile ?? DEFAULT_PROFILE;
   const checks = [
@@ -958,6 +1057,7 @@ export async function runReleaseGate(options = {}, dependencies = {}) {
       releaseSha,
       maxEvidenceAgeHours,
       imageDigests,
+      migration,
       evidenceRunId: options.evidenceRunId,
       profile,
     }),

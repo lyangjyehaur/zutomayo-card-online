@@ -493,6 +493,11 @@ describe('match shell room', () => {
   });
 
   it('transfers a boardgame player seat to the same user reconnect session', async () => {
+    const recordMatchConnection = vi.fn(async () => undefined);
+    MatchShellRoom.configureParticipantStore({
+      ...createEmptyPlatformMatchParticipantStore(),
+      recordMatchConnection,
+    });
     const room = new MatchShellRoom();
     const broadcast = vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
     vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
@@ -565,6 +570,16 @@ describe('match shell room', () => {
         hasBoardgameCredentials: true,
       }),
     );
+    expect(recordMatchConnection).toHaveBeenNthCalledWith(1, {
+      boardgameMatchID: 'bgio-match-1',
+      playerID: '0',
+      event: 'join',
+    });
+    expect(recordMatchConnection).toHaveBeenNthCalledWith(2, {
+      boardgameMatchID: 'bgio-match-1',
+      playerID: '0',
+      event: 'reconnect',
+    });
     expect(broadcast).toHaveBeenLastCalledWith(
       'presence',
       expect.objectContaining({
@@ -572,6 +587,12 @@ describe('match shell room', () => {
         spectators: 1,
       }),
     );
+    await room.onLeave(newClient);
+    expect(recordMatchConnection).toHaveBeenNthCalledWith(3, {
+      boardgameMatchID: 'bgio-match-1',
+      playerID: '0',
+      event: 'disconnect',
+    });
   });
 
   it('excludes leaving match-shell sessions from presence and matchmaking counts', async () => {

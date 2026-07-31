@@ -32,6 +32,10 @@ SMOKE_LOCAL_GAME_PORT="${SMOKE_LOCAL_GAME_PORT:-13000}"
 SMOKE_LOCAL_API_PORT="${SMOKE_LOCAL_API_PORT:-13001}"
 SMOKE_LOCAL_PLATFORM_PORT="${SMOKE_LOCAL_PLATFORM_PORT:-13002}"
 PUBLIC_SMOKE_BASE_URL="${PUBLIC_SMOKE_BASE_URL:-https://battle.zutomayocard.online}"
+DIRECT_SMOKE_ADDRESS="${DIRECT_SMOKE_ADDRESS:-$SERVER_HOST}"
+DEPLOY_SMOKE_REPORT_PATH="${DEPLOY_SMOKE_REPORT_PATH:-}"
+CARD_DATASET_SHA256="${VITE_CARD_DATASET_SHA256:-}"
+CLOUDFLARE_CACHE_RULES_REQUIRED="${CLOUDFLARE_CACHE_RULES_REQUIRED:-false}"
 OFFICIAL_TRANSLATIONS_SOURCE="${OFFICIAL_TRANSLATIONS_SOURCE:-$PROJECT_DIR/data/official-rulings-translations.json}"
 OFFICIAL_RULE_DOCUMENTS_SOURCE="${OFFICIAL_RULE_DOCUMENTS_SOURCE:-$PROJECT_DIR/data/official-rule-documents-20260721.json}"
 CARD_DERIVED_EFFECTS_DIR="${CARD_DERIVED_EFFECTS_DIR:-$PROJECT_DIR/data}"
@@ -87,6 +91,8 @@ ssh_run() { ssh -p "$SERVER_PORT" "$SERVER_USER@$SERVER_HOST" "$@"; }
 [[ "$MEILI_EXPECTED_IMAGE" =~ ^[A-Za-z0-9._/:@-]+$ ]] || die 'MEILI_EXPECTED_IMAGE is invalid'
 [[ "$MEILI_APP_DIR" =~ ^/[A-Za-z0-9._/-]+$ ]] || die 'MEILI_APP_DIR contains unsupported characters'
 [[ "$DEPLOY_WAIT_SECONDS" =~ ^[0-9]+$ ]] || die 'DEPLOY_WAIT_SECONDS must be an integer'
+[[ -z "$CARD_DATASET_SHA256" || "$CARD_DATASET_SHA256" =~ ^[a-f0-9]{64}$ ]] || \
+  die 'VITE_CARD_DATASET_SHA256 must be a lowercase SHA-256 digest'
 [[ -z "$PUBLIC_SMOKE_BASE_URL" || "$PUBLIC_SMOKE_BASE_URL" =~ ^https?://[A-Za-z0-9._:-]+/?$ ]] || \
   die 'PUBLIC_SMOKE_BASE_URL must be an HTTP(S) origin URL'
 
@@ -314,7 +320,10 @@ remote_sync_master_and_env() {
     upsert_env GAME_RULES_VERSION '$PACKAGE_VERSION'
     upsert_env EXPECTED_SCHEMA_MIGRATION '$EXPECTED_SCHEMA_MIGRATION'
     upsert_env EXPECTED_SCHEMA_CHECKSUM '$EXPECTED_SCHEMA_CHECKSUM'
-    grep -E '^(APP_BUILD_ID|APP_VERSION|GAME_RULES_VERSION|EXPECTED_SCHEMA_MIGRATION|EXPECTED_SCHEMA_CHECKSUM)=' .env"
+    if test -n '$CARD_DATASET_SHA256'; then
+      upsert_env VITE_CARD_DATASET_SHA256 '$CARD_DATASET_SHA256'
+    fi
+    grep -E '^(APP_BUILD_ID|APP_VERSION|GAME_RULES_VERSION|EXPECTED_SCHEMA_MIGRATION|EXPECTED_SCHEMA_CHECKSUM|VITE_CARD_DATASET_SHA256)=' .env"
 }
 
 sync_battle_assets() {
@@ -484,6 +493,9 @@ run_smoke() {
   if [[ -n "$PUBLIC_SMOKE_BASE_URL" ]]; then
     smoke_args+=(--public-base-url "$PUBLIC_SMOKE_BASE_URL")
   fi
+  if [[ -n "$DEPLOY_SMOKE_REPORT_PATH" ]]; then
+    smoke_args+=(--report-path "$DEPLOY_SMOKE_REPORT_PATH")
+  fi
   ssh -p "$SERVER_PORT" -o ExitOnForwardFailure=yes -N -T \
     -L "${SMOKE_LOCAL_GAME_PORT}:127.0.0.1:${GAME_PORT}" \
     -L "${SMOKE_LOCAL_API_PORT}:127.0.0.1:${API_PORT}" \
@@ -504,6 +516,37 @@ run_smoke() {
   return "$status"
 }
 
+sync_cloudflare_cache_rules() {
+  local token_set=false zone_set=false
+  [[ -n "${CLOUDFLARE_API_TOKEN:-}" ]] && token_set=true
+  [[ -n "${CLOUDFLARE_ZONE_ID:-}" ]] && zone_set=true
+  if [[ "$token_set" != true && "$zone_set" != true ]]; then
+    [[ "$CLOUDFLARE_CACHE_RULES_REQUIRED" == true ]] && \
+      die 'Cloudflare cache rules are required but CLOUDFLARE_API_TOKEN/CLOUDFLARE_ZONE_ID are missing'
+    log 'Cloudflare cache rule sync skipped (operator credentials not configured)'
+    return
+  fi
+  [[ "$token_set" == true && "$zone_set" == true ]] || \
+    die 'CLOUDFLARE_API_TOKEN and CLOUDFLARE_ZONE_ID must be configured together'
+  log 'synchronizing repository-managed Cloudflare cache rules'
+  (cd "$PROJECT_DIR" && npm run cloudflare:cache:apply)
+}
+
+run_cache_policy_smoke() {
+  local args=(
+    --base-url "$PUBLIC_SMOKE_BASE_URL"
+    --expected-build-id "$TARGET_SHA"
+  )
+  if [[ -n "$DIRECT_SMOKE_ADDRESS" ]]; then
+    args+=(--direct-address "$DIRECT_SMOKE_ADDRESS")
+  fi
+  if [[ -n "${CLOUDFLARE_API_TOKEN:-}" && -n "${CLOUDFLARE_ZONE_ID:-}" ]]; then
+    args+=(--expect-cloudflare true)
+  fi
+  log 'verifying cache policy through public DNS and the direct Hong Kong route'
+  node --import tsx "$SCRIPT_DIR/cache-policy-smoke.ts" "${args[@]}"
+}
+
 load_local_release
 confirm_action "deploy origin/master $TARGET_SHORT"
 if [[ "$DRY_RUN" == true ]]; then
@@ -518,6 +561,8 @@ if [[ "$DRY_RUN" == true ]]; then
   log "[dry-run] would atomically rebuild and verify the Meilisearch knowledge index"
   log "[dry-run] would synchronize and verify $BATTLE_ASSET_COUNT private battle assets"
   log "[dry-run] would verify every battle asset through origin and $PUBLIC_SMOKE_BASE_URL"
+  log '[dry-run] would sync Cloudflare cache rules when credentials are configured'
+  log "[dry-run] would verify cache headers through $PUBLIC_SMOKE_BASE_URL and $DIRECT_SMOKE_ADDRESS"
   exit 0
 fi
 
@@ -552,6 +597,8 @@ reindex_knowledge_search || die 'knowledge search reindex failed; the running ap
 remote_start || die 'deployment failed; inspect the server4 Compose logs before retrying'
 
 run_smoke "$TARGET_SHA" || die 'health verification failed; inspect the deployed release before retrying'
+sync_cloudflare_cache_rules || die 'Cloudflare cache rule synchronization failed'
+run_cache_policy_smoke || die 'public/direct cache policy verification failed'
 
 ssh_run "date -u +%Y-%m-%dT%H:%M:%SZ > '$REMOTE_DIR/.release.deployed-at'"
 log "deployment completed: origin/master $TARGET_SHORT"

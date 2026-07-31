@@ -1,6 +1,10 @@
 import { Room, type AuthContext } from '@colyseus/core';
 import { createEmptyPlatformBlockStore, type PlatformBlockStore } from '../blockStore';
+import { platformLogger as logger } from '../logger';
+import { createEmptyPlatformMatchParticipantStore, type PlatformMatchParticipantStore } from '../matchParticipantStore';
+import { recordPlatformQuickMatchOutcome } from '../metrics';
 import { assertPlatformAuthCurrent, authenticatePlatformClientCurrent } from './auth';
+import { QUICK_MATCH_LOCAL_DECK_NAME } from '../quickMatchDeck';
 import type {
   BoardgameMatchReadyMessage,
   PlatformAuth,
@@ -36,15 +40,22 @@ const QUICK_MATCH_DECK_NAMES = new Set(
 
 function quickMatchDeckName(value: unknown): string | undefined {
   const deckName = optionalText(value, 60);
-  return deckName && QUICK_MATCH_DECK_NAMES.has(deckName) ? deckName : undefined;
+  return deckName && (deckName === QUICK_MATCH_LOCAL_DECK_NAME || QUICK_MATCH_DECK_NAMES.has(deckName))
+    ? deckName
+    : undefined;
 }
 
 export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; client: PlatformClient }> {
   private static blockStore: PlatformBlockStore = createEmptyPlatformBlockStore();
+  private static participantStore: PlatformMatchParticipantStore = createEmptyPlatformMatchParticipantStore();
   private static readonly activeRooms = new Set<QuickMatchRoom>();
 
   static configureBlockStore(store: PlatformBlockStore | null): void {
     QuickMatchRoom.blockStore = store ?? createEmptyPlatformBlockStore();
+  }
+
+  static configureParticipantStore(store: PlatformMatchParticipantStore | null): void {
+    QuickMatchRoom.participantStore = store ?? createEmptyPlatformMatchParticipantStore();
   }
 
   static async handleRelationshipChange(change: PlatformRelationshipChange): Promise<void> {
@@ -73,18 +84,22 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
   private failedTransitionSessionIds = new Set<string>();
   private authAdmissionTail: Promise<void> = Promise.resolve();
   private waitingTimeout?: { clear: () => void };
+  private waitingStartedAt = 0;
+  private queueOutcomeRecorded = false;
 
   async onCreate(): Promise<void> {
     this.autoDispose = true;
     this.maxMessagesPerSecond = 4;
+    this.waitingStartedAt = Date.now();
 
-    this.onMessage<BoardgameMatchReadyMessage>('boardgameMatchReady', (client, message) => {
+    this.onMessage<BoardgameMatchReadyMessage>('boardgameMatchReady', async (client, message) => {
       if (client.sessionId !== this.hostSessionId) return;
       const boardgameMatchID = optionalText(message.boardgameMatchID, 128);
       if (!boardgameMatchID || this.status !== 'matched') return;
       this.boardgameMatchID = boardgameMatchID;
       this.status = 'finished';
-      void this.refreshMetadata();
+      await this.recordMatchProvenance(boardgameMatchID);
+      await this.refreshMetadata();
       this.broadcast('boardgameMatchReady', { boardgameMatchID });
       this.broadcastSnapshot();
     });
@@ -100,6 +115,14 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
       if (this.status === 'waiting') void this.cancel('timeout');
     }, QUICK_MATCH_WAIT_TIMEOUT_MS);
     QuickMatchRoom.activeRooms.add(this);
+  }
+
+  private async recordMatchProvenance(boardgameMatchID: string): Promise<void> {
+    try {
+      await QuickMatchRoom.participantStore.recordMatchProvenance({ boardgameMatchID, matchMode: 'quick_match' });
+    } catch (err) {
+      logger.warn({ err, matchMode: 'quick_match' }, 'failed to record match provenance');
+    }
   }
 
   onDispose(): void {
@@ -211,6 +234,7 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
         this.sendMatchedMessages();
         this.broadcastSnapshot();
         this.clearWaitingTimeout();
+        this.recordQueueOutcome('matched');
       } catch (error) {
         this.failedTransitionSessionIds.add(client.sessionId);
         this.status = 'waiting';
@@ -322,6 +346,7 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
     if (this.status === 'cancelled' || this.status === 'finished') return;
     this.clearWaitingTimeout();
     this.status = 'cancelled';
+    this.recordQueueOutcome(reason);
     await this.refreshMetadata(ignoredSessionId);
     this.broadcast('quickMatchCancelled', { reason });
     this.broadcastSnapshot(ignoredSessionId);
@@ -330,6 +355,12 @@ export class QuickMatchRoom extends Room<{ metadata: QuickMatchRoomMetadata; cli
   private clearWaitingTimeout(): void {
     this.waitingTimeout?.clear();
     this.waitingTimeout = undefined;
+  }
+
+  private recordQueueOutcome(outcome: string): void {
+    if (this.queueOutcomeRecorded) return;
+    this.queueOutcomeRecorded = true;
+    recordPlatformQuickMatchOutcome(outcome, Date.now() - this.waitingStartedAt);
   }
 
   private roomUserIds(): Set<string> {

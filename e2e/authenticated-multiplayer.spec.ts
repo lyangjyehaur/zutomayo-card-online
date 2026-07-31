@@ -19,6 +19,10 @@ const AUTHENTICATED_MULTIPLAYER_FLAG = 'E2E_AUTHENTICATED_MULTIPLAYER';
 const RANKED_HISTORY_FLAG = 'E2E_RANKED_MATCHES_ENABLED';
 const EVIDENCE_FLAG = 'E2E_AUTHENTICATED_EVIDENCE';
 
+function recordLs05Evidence(testInfo: TestInfo, description: string): void {
+  testInfo.annotations.push({ type: 'ls05', description });
+}
+
 function enabled(name: string): boolean {
   return ['1', 'true'].includes((process.env[name] || '').toLowerCase());
 }
@@ -188,10 +192,12 @@ test.describe('Authenticated 雙瀏覽器線上流程 @requires-backend @staging
         registerAuthenticatedOnlineAccount(context, 'E2E Ranked Host'),
         registerAuthenticatedOnlineAccount(guestContext, 'E2E Ranked Guest'),
       ]);
+      recordLs05Evidence(testInfo, 'authenticated-sessions');
       await Promise.all([
         assertSecureAuthenticatedCookies(context, baseURL),
         assertSecureAuthenticatedCookies(guestContext, baseURL),
       ]);
+      recordLs05Evidence(testInfo, 'secure-cookies');
       const guestPage = await guestContext.newPage();
       await Promise.all([openAuthenticatedOnlineLobby(page), openAuthenticatedOnlineLobby(guestPage)]);
       await Promise.all([
@@ -199,13 +205,16 @@ test.describe('Authenticated 雙瀏覽器線上流程 @requires-backend @staging
         expectAuthenticatedLobby(guestPage, guestAccount.nickname),
       ]);
       await Promise.all([selectFirstAvailableDeck(page), selectFirstAvailableDeck(guestPage)]);
+      recordLs05Evidence(testInfo, 'server-backed-decks');
 
       await Promise.all([
         page.getByRole('button', { name: '開始匹配' }).click(),
         guestPage.getByRole('button', { name: '開始匹配' }).click(),
       ]);
       const matchID = await expectSharedOnlineMatch(page, guestPage);
+      recordLs05Evidence(testInfo, 'quick-match');
       await expectProductionWebSocket(page, websocketUrls);
+      recordLs05Evidence(testInfo, 'same-origin-websocket');
 
       const spectatorPage = await spectatorContext.newPage();
       const spectatorMatchSubmissions: string[] = [];
@@ -228,16 +237,19 @@ test.describe('Authenticated 雙瀏覽器線上流程 @requires-backend @staging
       await guestPage.locator('.online-chat-toggle').click();
       await expect(guestPage.locator('.online-chat-bubble', { hasText: chatMessage })).toBeVisible({ timeout: 20_000 });
       await expect(guestPage.locator('[data-chat-unread-count]')).toHaveCount(0);
+      recordLs05Evidence(testInfo, 'chat-authorization');
 
       await context.setOffline(true);
       await expect(page.locator('[data-online-connection-status="disconnected"]')).toBeVisible({ timeout: 15_000 });
       await context.setOffline(false);
       await expect(page.locator('[data-online-connection-status="rejoined"]')).toBeVisible({ timeout: 25_000 });
+      recordLs05Evidence(testInfo, 'disconnect-reconnect');
 
       await completeSetupAndSurrender(page, guestPage, spectatorPage);
 
       await expect(spectatorPage.locator('[data-result-outcome="spectator"]')).toBeVisible({ timeout: 20_000 });
       expect(spectatorMatchSubmissions).toEqual([]);
+      recordLs05Evidence(testInfo, 'spectator-hidden-information');
 
       await expect
         .poll(
@@ -257,12 +269,14 @@ test.describe('Authenticated 雙瀏覽器線上流程 @requires-backend @staging
           host: expect.objectContaining({ winnerId: guestAccount.id, loserId: hostAccount.id }),
           guest: expect.objectContaining({ winnerId: guestAccount.id, loserId: hostAccount.id }),
         });
+      recordLs05Evidence(testInfo, 'result-submission');
 
       await Promise.all([page.goto('/history'), guestPage.goto('/history')]);
       await Promise.all([
         expect(page.getByRole('article').filter({ hasText: '敗北' }).first()).toBeVisible({ timeout: 20_000 }),
         expect(guestPage.getByRole('article').filter({ hasText: '勝利' }).first()).toBeVisible({ timeout: 20_000 }),
       ]);
+      recordLs05Evidence(testInfo, 'match-history');
     } catch (error) {
       failed = true;
       throw error;
@@ -321,6 +335,7 @@ test.describe('Authenticated 雙瀏覽器線上流程 @requires-backend @staging
       await acceptInvite.click();
 
       await expectSharedOnlineMatch(page, guestPage);
+      recordLs05Evidence(testInfo, 'friend-invite');
     } catch (error) {
       failed = true;
       throw error;

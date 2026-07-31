@@ -16,21 +16,14 @@ import {
   type OnlineSession,
 } from '../onlineSession';
 import {
-  hasOnlineOpponent,
   isOnlineFailureStatus,
+  onlineRoomErrorDetail,
   onlineStatusPanelCopy,
   type OnlineRoomStatus,
 } from '../onlineRoomStatus';
 import { createPlatformCustomRoom, type PlatformCustomRoom } from '../platformClient';
-
-type MatchPlayer = {
-  id: number;
-  name?: string;
-};
-
-type MatchResponse = {
-  players?: MatchPlayer[];
-};
+import { onlineErrorDetail } from '../onlineHttpError';
+import { fetchOnlineRoom } from '../onlineRoomProbe';
 
 type PlatformSessionIdentity = {
   userId: string;
@@ -42,26 +35,6 @@ interface OnlineGamePageProps {
   onClearSession: () => void;
   onCreateNewRoom: () => Promise<OnlineSession>;
   onRematch: (session: OnlineSession) => Promise<OnlineSession>;
-}
-
-async function fetchRoom(
-  matchID: string,
-  playerID?: '0' | '1',
-): Promise<
-  | { ok: true; opponentJoined: boolean }
-  | { ok: false; reason: Exclude<OnlineRoomStatus, 'reconnecting' | 'retrying' | 'waiting' | 'ready'> }
-> {
-  try {
-    const response = await fetch(`/games/zutomayo-card/${encodeURIComponent(matchID)}`);
-    if (response.status === 404) return { ok: false, reason: 'roomNotFound' };
-    if (!response.ok) return { ok: false, reason: 'connectionFailed' };
-    const data = (await response.json()) as MatchResponse;
-    const opponentJoined = hasOnlineOpponent(data.players, playerID ?? '0');
-    return { ok: true, opponentJoined };
-  } catch (err) {
-    Sentry.captureException(err, { tags: { action: 'fetch-room', match_id: matchID } });
-    return { ok: false, reason: 'connectionFailed' };
-  }
 }
 
 function roomInfoHelper(status: OnlineRoomStatus): string {
@@ -89,6 +62,7 @@ async function resolvePlatformSessionIdentity(session: OnlineSession): Promise<P
         level: 'warning',
         data: { match_id: session.matchID, error: err instanceof Error ? err.message : String(err) },
       });
+      throw err;
     }
   }
 
@@ -199,8 +173,9 @@ export function OnlineGamePage({ session, onClearSession, onCreateNewRoom, onRem
     let cancelled = false;
     setReconnectStatus('reconnecting');
 
-    void fetchRoom(matchID).then((room) => {
+    void fetchOnlineRoom(matchID).then((room) => {
       if (cancelled) return;
+      setActionError(room.ok ? '' : room.error.message);
       setReconnectStatus(room.ok ? 'ready' : room.reason);
     });
 
@@ -224,9 +199,11 @@ export function OnlineGamePage({ session, onClearSession, onCreateNewRoom, onRem
       if (cancelled || opponentJoinedRef.current) return;
 
       if (result.ok) {
-        const room = await fetchRoom(activeSession.matchID, activeSession.playerID);
+        setActionError('');
+        const room = await fetchOnlineRoom(activeSession.matchID, activeSession.playerID);
         if (cancelled || opponentJoinedRef.current) return;
         if (!room.ok) {
+          setActionError(room.error.message);
           if (room.reason === 'roomNotFound' || room.reason === 'roomFull') {
             clearStoredOnlineSession();
           }
@@ -249,6 +226,7 @@ export function OnlineGamePage({ session, onClearSession, onCreateNewRoom, onRem
       }
 
       if (result.reason === 'network') {
+        setActionError(result.error.message);
         setReconnectStatus('retrying');
         retryTimer = setTimeout(() => {
           if (cancelled) return;
@@ -258,6 +236,7 @@ export function OnlineGamePage({ session, onClearSession, onCreateNewRoom, onRem
       }
 
       clearStoredOnlineSession();
+      setActionError(result.error.message);
       setReconnectStatus(
         result.reason === 'roomGone'
           ? 'roomNotFound'
@@ -314,9 +293,10 @@ export function OnlineGamePage({ session, onClearSession, onCreateNewRoom, onRem
             displayName: identity.displayName,
           },
           {
-            onDisconnect: () => {
+            onDisconnect: (error) => {
               platformCustomRoomRef.current = null;
               setPlatformCustomRoomReady(false);
+              if (error) setActionError(error.message);
             },
           },
         ),
@@ -339,6 +319,7 @@ export function OnlineGamePage({ session, onClearSession, onCreateNewRoom, onRem
           });
           if (!cancelled) {
             setPlatformCustomRoomReady(false);
+            setActionError(onlineErrorDetail(err, t('online.connectionFailed')));
             setReconnectStatus('connectionFailed');
           }
         },
@@ -402,7 +383,7 @@ export function OnlineGamePage({ session, onClearSession, onCreateNewRoom, onRem
       Sentry.captureException(err, { tags: { action: 'create-room' } });
       setActionError(
         isVersionMismatchError(err)
-          ? translate(locale, 'online.versionMismatchBody')
+          ? onlineRoomErrorDetail(err) || translate(locale, 'online.versionMismatchBody')
           : err instanceof Error && err.message.trim()
             ? err.message
             : translate(locale, 'online.createRoomFailed'),
@@ -424,7 +405,7 @@ export function OnlineGamePage({ session, onClearSession, onCreateNewRoom, onRem
       await onRematch(activeSession);
     } catch (err) {
       Sentry.captureException(err, { tags: { action: 'rematch', match_id: activeSession.matchID } });
-      setActionError(t('online.rematchFailed'));
+      setActionError(onlineErrorDetail(err, t('online.rematchFailed')));
       if (terminalActionRef.current === 'rematch') terminalActionRef.current = null;
       setRematching(false);
     }

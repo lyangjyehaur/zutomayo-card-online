@@ -89,7 +89,7 @@ cp .env.example .env
 | `PG_PORT`             | `5432`                              | PostgreSQL port.                                                                                                                                                                                          |
 | `PG_USER`             | `PG_GAME_USER` in Compose           | GAME role with match-state and narrowly scoped user rating/auth column privileges.                                                                                                                        |
 | `PG_PASSWORD`         | `PG_GAME_PASSWORD` in Compose       | GAME-only runtime password; never use the migration-owner password here.                                                                                                                                  |
-| `PG_DATABASE`         | `zutomayo`                          | PostgreSQL database name. boardgame.io match state is stored in the `bjg_matches` table.                                                                                                                  |
+| `PG_DATABASE`         | `zutomayo`                          | PostgreSQL database name. Runtime state is stored in `bjg_matches`; terminal matches are transactionally projected into de-identified `match_analytics*` tables before cleanup.                           |
 | `PGSSLMODE`           | `verify-full` in production         | Server4 mounts `PG_CA_FILE`; `PG_SSLROOTCERT` points to `/run/secrets/zutomayo-service-ca.crt`.                                                                                                           |
 | `REDIS_URL`           | Compose-generated authenticated URL | Redis connection URL for `RedisPubSub` and `@socket.io/redis-adapter`. Production/staging require an authenticated TLS URL (`rediss://`); use `redis://localhost:6379` only for passwordless local dev.   |
 | `REDIS_DB`            | `0`                                 | Redis DB index (0-15) for key isolation when sharing a Redis instance with other services. See [Reusing Existing PG/Redis](#reusing-existing-postgresql--redis).                                          |
@@ -113,7 +113,7 @@ Frontend build-time variables (baked into the bundle at `vite build`):
 | `VITE_APP_VERSION`                | `APP_VERSION`        | Usually set automatically from `APP_VERSION` by the Docker build.                                                                                         |
 | `VITE_APP_BUILD_ID`               | `APP_BUILD_ID`       | Must match the `game` runtime `APP_BUILD_ID`, otherwise clients are asked to reload before online play.                                                   |
 | `VITE_GAME_RULES_VERSION`         | `GAME_RULES_VERSION` | Must match the `game` runtime `GAME_RULES_VERSION`.                                                                                                       |
-| `VITE_CARD_DATASET_SHA256`        | empty                | Exact release dataset hash emitted by `release:card-dataset`; included in aggregate funnel events.                                                        |
+| `VITE_CARD_DATASET_SHA256`        | empty                | Exact release dataset hash emitted by `release:card-dataset`; included in funnel events and permanent match analytics. Production releases must set it.   |
 | `VITE_UMAMI_WEBSITE_ID`           | empty                | Umami website ID. Analytics is disabled when empty; falls back to `VITE_UMAMI_SECONDARY_WEBSITE_ID` for gallery config compatibility.                     |
 | `VITE_UMAMI_TELEMETRY_SCRIPT_URL` | empty                | Optional same-origin replay / telemetry script URL. Leave empty for standard Umami analytics only.                                                        |
 | `VITE_UMAMI_SECONDARY_WEBSITE_ID` | empty                | Backward-compatible alias used by `zutumayo-gallery`.                                                                                                     |
@@ -169,33 +169,38 @@ Cloudflare-fronted deployments must include every current CIDR from [Cloudflare 
 
 Cloudflare Web Analytics may inject its browser beacon for aggregate traffic and Web Vitals reporting. Production CSP allows only its documented script origin, `https://static.cloudflareinsights.com`; do not broaden this to a wildcard or enable unrelated script injection products without a separate security review. Umami remains the source of application funnel events through the same-origin `/analytics` proxy. Browser QA must treat any remaining analytics CSP violation as a failure.
 
+正式網域使用 GeoDNS：中國大陸直接解析到香港入口，其他地區經 Cloudflare。兩條路共用源站
+`Cache-Control`，Cloudflare 設定與部署後雙路徑驗證見 [線上快取與 GeoDNS 路由](CACHE_POLICY.md)。
+Cloudflare token 是部署端 secret，不得放入 server4 `.env`。
+
 ### `platform`
 
-| Variable                           | Default                                   | Notes                                                                                                                                                                                          |
-| ---------------------------------- | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PLATFORM_PORT`                    | `3002`                                    | Colyseus platform service port inside the container.                                                                                                                                           |
-| `NODE_ENV`                         | `production` in Compose                   | Runtime mode; also controls the default Redis mode when `PLATFORM_REDIS_MODE` is unset.                                                                                                        |
-| `PG_HOST`                          | `postgres`                                | PostgreSQL host used by platform Postgres stores for friend presence lookup and durable match/room chat participant evidence.                                                                  |
-| `PG_PORT`                          | `5432`                                    | PostgreSQL port.                                                                                                                                                                               |
-| `PG_USER`                          | `PG_PLATFORM_USER` in Compose             | PLATFORM role with participant writes and column-limited account revocation reads.                                                                                                             |
-| `PG_PASSWORD`                      | `PG_PLATFORM_PASSWORD` in Compose         | PLATFORM-only runtime password; never use the migration-owner password here.                                                                                                                   |
-| `PG_DATABASE`                      | `zutomayo`                                | PostgreSQL database name.                                                                                                                                                                      |
-| `REDIS_URL`                        | Compose-generated authenticated URL       | Redis connection URL for Colyseus `RedisPresence` and `RedisDriver`; production/staging require authenticated TLS (`rediss://`). Use `redis://localhost:6379` only for passwordless local dev. |
-| `REDIS_DB`                         | `0`                                       | Redis DB index shared with other online coordination services.                                                                                                                                 |
-| `JWT_SECRET`                       | **required**                              | Shared HMAC secret for validating account session cookies during Colyseus matchmaking/auth. Must match `game` and `api`.                                                                       |
-| `PLATFORM_SEAT_TOKEN_SECRET`       | `JWT_SECRET`                              | Optional independent seat-token signing secret. Production startup fails when neither this nor `JWT_SECRET` is configured.                                                                     |
-| `PLATFORM_REDIS_MODE`              | `redis` in production, `memory` otherwise | `memory` keeps local development dependency-light; `redis` enables multi-instance room discovery and presence in Compose/production.                                                           |
-| `PLATFORM_BLOCK_STORE`             | `postgres` in production                  | PostgreSQL-backed bidirectional block checks for quick-match admission. Platform authentication fails closed if the query fails.                                                               |
-| `PLATFORM_FRIEND_STORE`            | `postgres` in Compose, auto otherwise     | `postgres` resolves friend presence subscriptions from `user_friends`; `none` disables friend lookup for local development.                                                                    |
-| `PLATFORM_MATCH_PARTICIPANT_STORE` | `postgres` in Compose, auto otherwise     | `postgres` records account-backed Colyseus match-shell and custom-room participants so ChatService can enforce match/room chat ACLs; `none` keeps local presence transient.                    |
-| `PLATFORM_CHAT_PREVIEW_STORE`      | `postgres` in Compose, auto otherwise     | `postgres` verifies Colyseus match chat preview sync signals against durable ChatService messages; `none` disables preview broadcasts when no durable verifier is available.                   |
-| `PLATFORM_DRAIN_GRACE_MS`          | `5000`                                    | On Colyseus graceful shutdown, return readiness 503 and let existing rooms drain before disposal.                                                                                              |
-| `PLATFORM_PG_POOL_MAX`             | `PG_POOL_MAX` or `5`                      | Optional pool size override shared by platform Postgres-backed stores.                                                                                                                         |
-| `APP_VERSION`                      | `package.json` version                    | Release version used in platform logs/Sentry release metadata.                                                                                                                                 |
-| `APP_BUILD_ID`                     | `APP_VERSION`                             | Build identifier; keep it aligned with `game` and `api`.                                                                                                                                       |
-| `GAME_RULES_VERSION`               | `APP_VERSION`                             | Rules compatibility version; keep it aligned with `game` and `api`.                                                                                                                            |
-| `SENTRY_DSN`                       | empty                                     | Backend DSN. Leave empty to disable platform error reporting.                                                                                                                                  |
-| `LOG_LEVEL`                        | `info`                                    | pino log level (`trace`/`debug`/`info`/`warn`/`error`/`fatal`).                                                                                                                                |
+| Variable                           | Default                                   | Notes                                                                                                                                                                                                                    |
+| ---------------------------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `PLATFORM_PORT`                    | `3002`                                    | Colyseus platform service port inside the container.                                                                                                                                                                     |
+| `NODE_ENV`                         | `production` in Compose                   | Runtime mode; also controls the default Redis mode when `PLATFORM_REDIS_MODE` is unset.                                                                                                                                  |
+| `PG_HOST`                          | `postgres`                                | PostgreSQL host used by platform Postgres stores for friend presence lookup and durable match/room chat participant evidence.                                                                                            |
+| `PG_PORT`                          | `5432`                                    | PostgreSQL port.                                                                                                                                                                                                         |
+| `PG_USER`                          | `PG_PLATFORM_USER` in Compose             | PLATFORM role with participant writes and column-limited account revocation reads.                                                                                                                                       |
+| `PG_PASSWORD`                      | `PG_PLATFORM_PASSWORD` in Compose         | PLATFORM-only runtime password; never use the migration-owner password here.                                                                                                                                             |
+| `PG_DATABASE`                      | `zutomayo`                                | PostgreSQL database name.                                                                                                                                                                                                |
+| `REDIS_URL`                        | Compose-generated authenticated URL       | Redis connection URL for Colyseus `RedisPresence` and `RedisDriver`; production/staging require authenticated TLS (`rediss://`). Use `redis://localhost:6379` only for passwordless local dev.                           |
+| `REDIS_DB`                         | `0`                                       | Redis DB index shared with other online coordination services.                                                                                                                                                           |
+| `JWT_SECRET`                       | **required**                              | Shared HMAC secret for validating account session cookies during Colyseus matchmaking/auth. Must match `game` and `api`.                                                                                                 |
+| `PLATFORM_SEAT_TOKEN_SECRET`       | `JWT_SECRET`                              | Optional independent seat-token signing secret. Production startup fails when neither this nor `JWT_SECRET` is configured.                                                                                               |
+| `PLATFORM_REDIS_MODE`              | `redis` in production, `memory` otherwise | `memory` keeps local development dependency-light; `redis` enables multi-instance room discovery and presence in Compose/production.                                                                                     |
+| `PLATFORM_BLOCK_STORE`             | `postgres` in production                  | PostgreSQL-backed bidirectional block checks for quick-match admission. Platform authentication fails closed if the query fails.                                                                                         |
+| `PLATFORM_FRIEND_STORE`            | `postgres` in Compose, auto otherwise     | `postgres` resolves friend presence subscriptions from `user_friends`; `none` disables friend lookup for local development.                                                                                              |
+| `PLATFORM_MATCH_PARTICIPANT_STORE` | `postgres` in Compose, auto otherwise     | `postgres` records chat ACL participants plus trusted match provenance and per-seat connection counters; `none` keeps both local/transient.                                                                              |
+| `MATCH_ANALYTICS_TRAFFIC_CLASS`    | derived from deployment                   | Trusted `production`, `operator`, `synthetic`, `ai`, or `unknown` classification written by platform telemetry. Production defaults to `production`; staging/test to `synthetic`. Never source it from a client request. |
+| `PLATFORM_CHAT_PREVIEW_STORE`      | `postgres` in Compose, auto otherwise     | `postgres` verifies Colyseus match chat preview sync signals against durable ChatService messages; `none` disables preview broadcasts when no durable verifier is available.                                             |
+| `PLATFORM_DRAIN_GRACE_MS`          | `5000`                                    | On Colyseus graceful shutdown, return readiness 503 and let existing rooms drain before disposal.                                                                                                                        |
+| `PLATFORM_PG_POOL_MAX`             | `PG_POOL_MAX` or `5`                      | Optional pool size override shared by platform Postgres-backed stores.                                                                                                                                                   |
+| `APP_VERSION`                      | `package.json` version                    | Release version used in platform logs/Sentry release metadata.                                                                                                                                                           |
+| `APP_BUILD_ID`                     | `APP_VERSION`                             | Build identifier; keep it aligned with `game` and `api`.                                                                                                                                                                 |
+| `GAME_RULES_VERSION`               | `APP_VERSION`                             | Rules compatibility version; keep it aligned with `game` and `api`.                                                                                                                                                      |
+| `SENTRY_DSN`                       | empty                                     | Backend DSN. Leave empty to disable platform error reporting.                                                                                                                                                            |
+| `LOG_LEVEL`                        | `info`                                    | pino log level (`trace`/`debug`/`info`/`warn`/`error`/`fatal`).                                                                                                                                                          |
 
 The platform service exposes `/health`, `/ready`, and `/api/version` over HTTP on `PLATFORM_PORT`; Colyseus websocket room traffic uses the same port. `/health` actively checks PostgreSQL and Redis whenever the configured stores/mode use them and returns `503` with dependency errors when degraded. `/ready` also checks dependencies and immediately returns `503` during graceful drain. `/api/version` returns the app/build/rules identifiers used by deployment smoke checks.
 
@@ -228,6 +233,7 @@ Exposed metrics include:
 - `rate_limited_requests_total` (Counter, label: `pathname`) — requests rejected by the rate limiter (api server).
 - `active_socket_connections` (Gauge) — active Socket.IO connections (game server).
 - `match_result_outbox_pending`, `match_result_outbox_oldest_age_seconds`, and `match_result_outbox_rows{status}` — durable ranked-result delivery state from PostgreSQL.
+- `match_analytics_unarchived_terminal` and `match_analytics_oldest_unarchived_seconds` — terminal runtime rows that have not reconciled with the permanent anonymous archive. These gauges continue refreshing when ranked delivery is disabled.
 - `relationship_change_outbox_pending`, `relationship_change_outbox_oldest_age_seconds`, `relationship_change_outbox_dead_letter`, and `relationship_change_outbox_metrics_refresh_success` — durable friend/block/account-revocation delivery health.
 
 Operators can redrive one investigated dead-letter event through the migration/operations image while explicitly using the production API database role:
@@ -274,12 +280,12 @@ A ready-to-use monitoring stack is defined in [docker-compose.monitoring.yml](..
 
 | Dashboard       | UID               | Key panels                                                                                                     |
 | --------------- | ----------------- | -------------------------------------------------------------------------------------------------------------- |
-| Game Server     | `game-server`     | WebSocket connections, HTTP latency P50/P95/P99, 5xx rate, event loop lag, heap, PG pool                       |
+| Game Server     | `game-server`     | WebSocket connections, HTTP latency P50/P95/P99, 5xx rate, event loop lag, heap, PG pool, match archive health |
 | API Server      | `api-server`      | HTTP rate by route, latency quantiles, 5xx rate, auth success/failure, rate limit, Turnstile, DB query latency |
 | Platform Server | `platform-server` | Active rooms, connections, match participants, chat rate, Redis op latency                                     |
 | Infrastructure  | `infrastructure`  | PostgreSQL connections/query rate, Redis memory/ops/connections, Docker CPU/memory                             |
 
-**Alerting rules** (`observability/grafana/alerting/alerts.yml`) cover 5xx error rate, PG pool saturation, Redis memory, WebSocket limits, event loop lag, service availability, the full synthetic player journey, and durable outbox health. Contact points (`contact-points.yml`) route critical alerts to Slack and warnings to email via environment-variable substitution.
+**Alerting rules** (`observability/grafana/alerting/alerts.yml`) cover 5xx error rate, PG pool saturation, Redis memory, WebSocket limits, event loop lag, service availability, the full synthetic player journey, durable outbox health, and anonymous match archive capture/reconciliation. Contact points (`contact-points.yml`) route critical alerts to Slack and warnings to email via environment-variable substitution.
 
 **Starting the monitoring stack**
 
@@ -379,7 +385,7 @@ Migrations `000039_official_rulings`, `000040_official_rulings_releases`, and `0
 
 ```bash
 cat data/official-rulings-translations.json | npm run release:official-rulings -- \
-  --translations=- --app-version=0.2.5 --build-id="$(git rev-parse HEAD)"
+  --translations=- --app-version=0.2.6 --build-id="$(git rev-parse HEAD)"
 
 OFFICIAL_RULE_DOCUMENTS_FILE=data/official-rule-documents-20260721.json \
   npm run release:official-rule-documents
@@ -695,12 +701,13 @@ export RELEASE_ENVIRONMENT=staging
 export E2E_BASE_URL=https://staging.example.com/
 export E2E_API_URL=https://staging.example.com/api
 export E2E_PLATFORM_URL=wss://staging.example.com/colyseus
+export EXPECTED_CARD_DATASET_SHA256="$(node -p "require('./.release-evidence/staging/card-dataset.json').datasetSha256")"
 # Outside GitHub Actions, identify the accountable evidence signer with HTTPS.
 export E2E_EVIDENCE_SIGNER_URL=https://ops.example.com/release-approvers/your-name
 npm run e2e:authenticated-staging -- --output .release-evidence/staging/authenticated-e2e.json
 ```
 
-The Beta command performs one complete Chromium run with retries disabled. It must contain both RR-05 critical tests and zero skipped, unexpected, or flaky tests. The journeys create two independent accounts, clear the registration cookies, log in again, select decks, verify Secure/HttpOnly cookies, Quick Match, same-origin WSS, chat, disconnect/reconnect, spectator hidden information and read-only controls, surrender/result delivery, both server histories, and authenticated friend invite. It writes the raw Playwright JSON report and log, hashes every artifact, and binds the evidence to the full commit SHA and five immutable image digests. A local conditional skip can never become passing staging evidence.
+The Beta command performs one complete Chromium run with retries disabled. It must contain both RR-05 critical tests, all 11 independently recorded journey markers, and zero skipped, unexpected, or flaky tests. The journeys create two independent accounts, clear the registration cookies, log in again, select decks, verify Secure/HttpOnly cookies, Quick Match, same-origin WSS, chat, disconnect/reconnect, spectator hidden information and read-only controls, surrender/result delivery, both server histories, and authenticated friend invite. It writes the raw Playwright JSON report and log, hashes every artifact, and binds the evidence to the full commit SHA, five immutable image digests, migration basename/checksum, and card dataset SHA-256. The release gate cross-checks that migration against `.release.env` and the dataset identity against `staging/card-dataset.json`. A local conditional skip or aggregate pass without every marker can never become passing staging evidence.
 
 Five consecutive retry-free runs are production-hardening evidence, not a Public Beta prerequisite:
 
@@ -711,7 +718,18 @@ npm run release:gate:hardening -- --staging-evidence-dir .release-evidence
 
 The hardening runner waits 65 seconds between successful runs because each run makes eight legitimate auth requests and the production limiter allows ten per IP per minute.
 
-The CD staging deployment runs this command after deployment when the staging environment variables `STAGING_E2E_BASE_URL`, `STAGING_E2E_API_URL`, and `STAGING_E2E_PLATFORM_URL` are configured. Its uploaded artifact is named `authenticated-staging-evidence-<release SHA>`. This is only the RR-05 artifact; production remains blocked until it is combined with the other current staging evidence required by `release:gate`.
+### Trust-surface and account-deletion staging gate
+
+Run the trust gate only against staging. It refuses `battle.zutomayocard.online` and the configured `PRODUCTION_HOSTNAME`. The journey verifies all public policy/contact routes, authenticated Profile policy links, account export, and deletion of a newly created synthetic account. It then verifies that the old session is revoked and the deleted identity cannot log in again.
+
+```bash
+export PRODUCTION_HOSTNAME=battle.zutomayocard.online
+npm run e2e:trust-staging -- --output .release-evidence/staging/trust-surface.json
+```
+
+The same release, image, migration, dataset, topology, signer, and credential variables used by the authenticated multiplayer gate are required. Never supply an existing player account: the runner creates and deletes its own account. A live mailbox delivery/acknowledgment rehearsal remains a separate operator step under [`rightsholder-request.md`](./runbooks/rightsholder-request.md).
+
+The CD staging deployment runs both player and trust commands after deployment when the staging environment variables `STAGING_E2E_BASE_URL`, `STAGING_E2E_API_URL`, and `STAGING_E2E_PLATFORM_URL` are configured. Its uploaded artifact is named `staging-player-trust-evidence-<release SHA>`. Production remains blocked until it is combined with the other current staging evidence required by `release:gate`.
 
 ### RR-07 operational recovery evidence
 
@@ -728,7 +746,7 @@ npm run release:operational-evidence -- \
   --output-dir .release-evidence/staging
 ```
 
-The Beta profile requires RPO <= 15 minutes, restore RTO <= 30 minutes, and verified account/deck/history/leaderboard round-trip data. Source deployment recovery <= 30 minutes and firing/resolved delivery for all six alert scenarios remain available through `npm run release:gate:hardening`; they do not block the current Public Beta. The evidence generator still retains and hashes the complete raw reports so the same artifacts can later satisfy hardening without weakening provenance.
+The Beta profile requires RPO <= 15 minutes, restore RTO <= 30 minutes, verified account/deck/history/leaderboard/chat/feedback/boardgame round-trip data, and valid restored boardgame state. Source deployment recovery <= 30 minutes and firing/resolved delivery for all six alert scenarios remain available through `npm run release:gate:hardening`; they do not block the current Public Beta. Deployment recovery evidence must identify the exact release and card dataset, reverify its pre-deploy backup and schema, retain structured health/build/asset smoke, and account for every controlled active match after the graceful stop. The evidence generator retains and hashes the complete raw reports so the same artifacts can later satisfy hardening without weakening provenance.
 
 `npm run release:gate` defaults to the `beta` profile. Use `npm run release:gate:hardening` only when validating chaos recovery, 2x load/soak, canary rollback, complete alert delivery, provider lifecycle, five-run multiplayer stability, and deployment recovery.
 
@@ -774,6 +792,11 @@ Server4 的 Meilisearch 不由應用 Compose 建立。預設容器名稱為 `mei
 `127.0.0.1`；部署器會從同網路的臨時容器驗證 service DNS 與健康端點，索引仍可完全由
 PostgreSQL 重建。
 
+部署 shell 可另外設定 `CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ZONE_ID`、
+`CLOUDFLARE_CACHE_RULES_REQUIRED=true`、`PUBLIC_SMOKE_BASE_URL` 與
+`DIRECT_SMOKE_ADDRESS`。前兩項只供本機同步 Cache Rules，不會寫入遠端 `.env`；後兩項分別驗證
+正常 GeoDNS／Cloudflare 路徑及同 hostname 強制連線香港 IP 的路徑。
+
 `public/battle` 的 PNG/SVG 是不提交 GitHub 的私有部署素材。執行部署的本機必須保有
 完整素材；受版本控制的 `scripts/battle-assets.sha256` 固定其 22 個檔名與內容雜湊。
 部署器會先驗證本機清單，再將素材串流到 server4、於遠端重新驗證後原子替換
@@ -782,9 +805,9 @@ PostgreSQL 重建。
 
 部署順序固定為：備份 `.env`/Compose → 以 migration role 產生新的 `pg_dump -Fc`
 並寫入 SHA-256 → checkout `origin/master` → 同步 `APP_BUILD_ID`、`APP_VERSION`、
-`GAME_RULES_VERSION`、`EXPECTED_SCHEMA_MIGRATION=000047_knowledge_search_zero_results`
+`GAME_RULES_VERSION`、`EXPECTED_SCHEMA_MIGRATION=000049_match_replay_summaries`
 及 migration checksum → 備份、設定並驗證 1Panel Meilisearch → 實際檢查三服務 `REDIS_DB` 一致且 Redis
-`maxmemory-policy=noeviction` → 同步並校驗私有 battle 素材 → build／migration → 發布卡牌、Q&A、勘誤與規則文件 → `npm run search:reindex` 原子重建及 `search:check` → `docker compose up --wait` → 透過 SSH tunnel 驗證三服務 `/health`、`/ready`、build ID、卡牌／Q&A／規則搜尋，以及 `/battle/chronos.svg`、`/battle/medal.png` 的真實 MIME 與內容。
+`maxmemory-policy=noeviction` → 同步並校驗私有 battle 素材 → build／migration → 發布卡牌、Q&A、勘誤與規則文件 → `npm run search:reindex` 原子重建及 `search:check` → `docker compose up --wait` → 透過 SSH tunnel 驗證三服務 `/health`、`/ready`、build ID、卡牌／Q&A／規則搜尋及所有 battle 素材 → 視憑證設定同步 Cloudflare Cache Rules → 透過正常 DNS 與香港直連驗證快取。Cache smoke 涵蓋 PWA 控制檔、公開／私人 API Header、battle 素材版本、真實 MIME、內容與缺失素材 404。
 
 本地完整重建與唯讀狀態檢查分別使用：
 
@@ -856,4 +879,6 @@ gateway、ops）、staging、Cosign/provenance、release 與 immutable rollback 
 再經明確審查後合併。
 
 目前 `master`／server4 beta 部署器明確不支援 `--manifest`、`--sha` 或 `--rollback`；
-只部署已推送且與 `origin/master` 完全一致的目前版本。
+只部署已推送且與 `origin/master` 完全一致的目前版本。staging recovery drill 因此只證明
+同一已知 release 的重建能力；在舊版 runtime 對目前 forward-only schema 的相容性另行驗證前，
+不得把該回執描述為任意上一版回滾證明。

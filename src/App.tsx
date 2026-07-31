@@ -25,6 +25,7 @@ import {
   type OnlineSession,
   type OnlineSessionValidationReason,
 } from './onlineSession';
+import { onlineErrorDetail, onlineHttpError } from './onlineHttpError';
 import { APP_VERSION_INFO } from './version';
 import { webFontsReady } from './webFonts';
 import './App.css';
@@ -135,24 +136,18 @@ function isFullscreenRoute(pathname: string): boolean {
   );
 }
 
-function onlineRoomError(key: OnlineRoomErrorKey): Error {
-  return new Error(key);
+class OnlineRoomError extends Error {
+  readonly detail?: string;
+
+  constructor(key: OnlineRoomErrorKey, detail?: string) {
+    super(key);
+    this.name = 'OnlineRoomError';
+    this.detail = detail;
+  }
 }
 
-async function onlineRequestError(response: Response, action: string): Promise<Error> {
-  const responseText = (await response.text()).trim();
-  let serverMessage = responseText;
-  if (responseText) {
-    try {
-      const parsed = JSON.parse(responseText) as { error?: unknown };
-      if (typeof parsed.error === 'string') serverMessage = parsed.error;
-    } catch {
-      // Koa lobby errors are plain text; keep the exact server message.
-    }
-  }
-  const requestId = response.headers.get('x-request-id')?.trim();
-  const detail = serverMessage.slice(0, 300) || `${action} failed`;
-  return new Error(`${detail} (HTTP ${response.status}${requestId ? `, request ${requestId}` : ''})`);
+function onlineRoomError(key: OnlineRoomErrorKey, cause?: Error): Error {
+  return new OnlineRoomError(key, cause?.message);
 }
 
 async function createMatch(setupData: ZutomayoSetupData): Promise<string> {
@@ -162,9 +157,9 @@ async function createMatch(setupData: ZutomayoSetupData): Promise<string> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ numPlayers: 2, setupData: { ...setupData, clientVersion: APP_VERSION_INFO } }),
   });
-  if (response.status === 426) throw onlineRoomError('online.versionMismatch');
   if (!response.ok) {
-    const error = await onlineRequestError(response, 'createMatch');
+    const error = await onlineHttpError(response, 'createMatch');
+    if (response.status === 426) throw onlineRoomError('online.versionMismatch', error);
     Sentry.captureException(error, {
       tags: { action: 'create-match', http_status: String(response.status) },
     });
@@ -178,12 +173,8 @@ type OnlineSeatProfile = { data?: { userId: string }; platformUserId: string; pl
 
 async function currentAccountSeatProfile(): Promise<OnlineSeatProfile | undefined> {
   if (!isLoggedIn()) return undefined;
-  try {
-    const profile = await getProfile();
-    return { data: { userId: profile.id }, platformUserId: profile.id, platformDisplayName: profile.nickname };
-  } catch {
-    return undefined;
-  }
+  const profile = await getProfile();
+  return { data: { userId: profile.id }, platformUserId: profile.id, platformDisplayName: profile.nickname };
 }
 
 async function joinMatch(
@@ -220,11 +211,11 @@ async function joinMatch(
     }),
   });
   if (!response.ok) {
-    const error = await onlineRequestError(response, 'joinMatch');
-    if (response.status === 426) throw onlineRoomError('online.versionMismatch');
-    if (response.status === 404) throw onlineRoomError('online.roomNotFound');
+    const error = await onlineHttpError(response, 'joinMatch');
+    if (response.status === 426) throw onlineRoomError('online.versionMismatch', error);
+    if (response.status === 404) throw onlineRoomError('online.roomNotFound', error);
     if (response.status === 409 && /no available seats|player [01] is not available/i.test(error.message)) {
-      throw onlineRoomError('online.roomFull');
+      throw onlineRoomError('online.roomFull', error);
     }
     Sentry.captureException(error, {
       tags: { action: 'join-match', http_status: String(response.status), match_id: matchID },
@@ -250,14 +241,14 @@ async function joinMatch(
 function resumeErrorTitle(reason: OnlineSessionValidationReason): TranslationKey {
   if (reason === 'versionMismatch') return 'online.versionMismatch';
   if (reason === 'roomGone') return 'onlineSession.roomGoneTitle';
-  if (reason === 'seatTaken') return 'onlineSession.seatTakenTitle';
+  if (reason === 'seatTaken' || reason === 'invalidSession') return 'onlineSession.seatTakenTitle';
   return 'onlineSession.resumeErrorTitle';
 }
 
 function resumeErrorBody(reason: OnlineSessionValidationReason): TranslationKey {
   if (reason === 'versionMismatch') return 'online.versionMismatchBody';
   if (reason === 'roomGone') return 'onlineSession.roomGoneBody';
-  if (reason === 'seatTaken') return 'onlineSession.seatTakenBody';
+  if (reason === 'seatTaken' || reason === 'invalidSession') return 'onlineSession.seatTakenBody';
   return 'onlineSession.resumeErrorBody';
 }
 
@@ -265,12 +256,14 @@ function OnlineResumePrompt({
   session,
   status,
   errorReason,
+  errorDetail,
   onResume,
   onDismiss,
 }: {
   session: OnlineSession;
   status: 'idle' | 'reconnecting' | 'error';
   errorReason: OnlineSessionValidationReason | null;
+  errorDetail: string;
   onResume: () => void;
   onDismiss: () => void;
 }) {
@@ -283,7 +276,7 @@ function OnlineResumePrompt({
         <span>{t('game.onlineMode')}</span>
         <strong>{isError ? t(resumeErrorTitle(errorReason)) : t('onlineSession.resumeTitle')}</strong>
         <p>
-          {isError ? t(resumeErrorBody(errorReason)) : t('onlineSession.resumeBody')}
+          {isError ? errorDetail || t(resumeErrorBody(errorReason)) : t('onlineSession.resumeBody')}
           {!isError && (
             <>
               {' '}
@@ -383,6 +376,7 @@ function RouterShell() {
   );
   const [resumePromptStatus, setResumePromptStatus] = useState<'idle' | 'reconnecting' | 'error'>('idle');
   const [resumeErrorReason, setResumeErrorReason] = useState<OnlineSessionValidationReason | null>(null);
+  const [resumeErrorDetail, setResumeErrorDetail] = useState('');
 
   useEffect(() => {
     trackPageView(`${location.pathname}${location.search}`);
@@ -427,9 +421,9 @@ function RouterShell() {
     try {
       setServerDecks(await getDecks());
       setServerDeckError('');
-    } catch {
+    } catch (err) {
       setServerDecks([]);
-      setServerDeckError(translate(locale, 'deck.loadServerError'));
+      setServerDeckError(onlineErrorDetail(err, translate(locale, 'deck.loadServerError')));
     }
   }, [locale]);
 
@@ -572,6 +566,7 @@ function RouterShell() {
     if (!resumePromptSession) return;
     setResumePromptStatus('reconnecting');
     setResumeErrorReason(null);
+    setResumeErrorDetail('');
     const validation = await validateOnlineSession(resumePromptSession);
     if (validation.ok) {
       setOnlineSession(resumePromptSession);
@@ -588,6 +583,7 @@ function RouterShell() {
       clearStoredOnlineSession();
     }
     setResumeErrorReason(validation.reason);
+    setResumeErrorDetail(validation.error.message);
     setResumePromptStatus('error');
   };
 
@@ -595,6 +591,7 @@ function RouterShell() {
     setResumePromptSession(null);
     setResumePromptStatus('idle');
     setResumeErrorReason(null);
+    setResumeErrorDetail('');
     clearOnlineSession();
   };
 
@@ -764,6 +761,7 @@ function RouterShell() {
           session={resumePromptSession}
           status={resumePromptStatus}
           errorReason={resumeErrorReason}
+          errorDetail={resumeErrorDetail}
           onResume={resumeStoredSession}
           onDismiss={dismissResumePrompt}
         />

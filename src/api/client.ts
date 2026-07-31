@@ -1,6 +1,9 @@
-import type { ServerMatchSummary } from '../game/matchHistory';
+import type { MatchReplaySummary, ServerMatchSummary } from '../game/matchHistory';
 import type { ActionLogEntry, CardDef } from '../game/types';
 import { Sentry } from '../sentry';
+import { createKnowledgeClient } from './knowledgeClient';
+
+export * from './knowledgeClient';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 const ADMIN_TOKEN_KEY = 'zutomayo_admin_token';
@@ -772,170 +775,10 @@ export interface CardRecommendation {
   recommendationType: 'synergy' | 'same_song';
 }
 
-export type KnowledgeSearchScope = 'card' | 'qa' | 'rule' | 'errata' | 'deck';
+const knowledgeClient = createKnowledgeClient({ request, adminAuthHeaders });
 
-export interface KnowledgeSearchHighlight {
-  start: number;
-  end: number;
-}
-
-export interface KnowledgeSearchHit {
-  uid: string;
-  type: KnowledgeSearchScope;
-  sourceId: string;
-  title: string;
-  titleHighlights: KnowledgeSearchHighlight[];
-  subtitle: string;
-  snippet: string;
-  snippetHighlights: KnowledgeSearchHighlight[];
-  tags: string[];
-  relatedCardIds: string[];
-  url: string;
-  image: string;
-  pack: string;
-  rarity: string;
-  element: string;
-  cardType: string;
-  distributionType: string;
-  documentId: string;
-  sortNumber: number;
-  publishedAt: number;
-  updatedAt: number;
-}
-
-export interface KnowledgeSearchResult {
-  hits: KnowledgeSearchHit[];
-  estimatedTotalHits: number;
-  limit: number;
-  offset: number;
-  processingTimeMs: number;
-  engine: 'meilisearch' | 'postgres-fallback';
-}
-
-export interface KnowledgeSearchParams {
-  query: string;
-  scopes?: KnowledgeSearchScope[];
-  locale: string;
-  pack?: string;
-  rarity?: string;
-  element?: string;
-  cardType?: string;
-  distributionType?: string;
-  documentId?: 'grand' | 'floor';
-  tag?: string;
-  cardId?: string;
-  limit?: number;
-  offset?: number;
-}
-
-export interface KnowledgeSearchIdsResult {
-  ids: string[];
-  estimatedTotalHits: number;
-  engine: 'meilisearch' | 'postgres-fallback';
-}
-
-export interface KnowledgeSearchSuggestion {
-  uid: string;
-  type: KnowledgeSearchScope;
-  sourceId: string;
-  title: string;
-  titleHighlights: KnowledgeSearchHighlight[];
-  subtitle: string;
-  url: string;
-}
-
-export interface KnowledgeSearchSuggestionsResult {
-  suggestions: KnowledgeSearchSuggestion[];
-  engine: 'meilisearch' | 'postgres-fallback';
-  processingTimeMs: number;
-}
-
-export async function suggestKnowledge(
-  params: Pick<KnowledgeSearchParams, 'query' | 'locale' | 'scopes'> & { limit?: number },
-  options: { signal?: AbortSignal } = {},
-): Promise<KnowledgeSearchSuggestionsResult> {
-  const query = new URLSearchParams({ q: params.query, lang: params.locale });
-  if (params.scopes?.length) query.set('scope', params.scopes.join(','));
-  if (params.limit) query.set('limit', String(params.limit));
-  return request<KnowledgeSearchSuggestionsResult>(`/search/suggest?${query.toString()}`, {
-    signal: options.signal,
-  });
-}
-
-export async function searchKnowledgeIds(
-  params: KnowledgeSearchParams & {
-    scopes: [Exclude<KnowledgeSearchScope, 'deck'>];
-    limit?: number;
-    analytics?: boolean;
-  },
-  options: { signal?: AbortSignal } = {},
-): Promise<KnowledgeSearchIdsResult> {
-  const query = new URLSearchParams({
-    q: params.query,
-    scope: params.scopes[0],
-    lang: params.locale,
-  });
-  for (const [key, value] of Object.entries({
-    pack: params.pack,
-    rarity: params.rarity,
-    element: params.element,
-    cardType: params.cardType,
-    distributionType: params.distributionType,
-    documentId: params.documentId,
-    tag: params.tag,
-    cardId: params.cardId,
-    limit: params.limit,
-    analytics: params.analytics === false ? 0 : undefined,
-  })) {
-    if (value !== undefined && value !== '') query.set(key, String(value));
-  }
-  return request<KnowledgeSearchIdsResult>(`/search/ids?${query.toString()}`, { signal: options.signal });
-}
-
-export async function searchKnowledge(
-  params: KnowledgeSearchParams,
-  options: { signal?: AbortSignal } = {},
-): Promise<KnowledgeSearchResult> {
-  const query = new URLSearchParams({ q: params.query, lang: params.locale });
-  if (params.scopes?.length) query.set('scope', params.scopes.join(','));
-  for (const [key, value] of Object.entries({
-    pack: params.pack,
-    rarity: params.rarity,
-    element: params.element,
-    cardType: params.cardType,
-    distributionType: params.distributionType,
-    documentId: params.documentId,
-    tag: params.tag,
-    cardId: params.cardId,
-    limit: params.limit,
-    offset: params.offset,
-  })) {
-    if (value !== undefined && value !== '') query.set(key, String(value));
-  }
-  return request<KnowledgeSearchResult>(`/search?${query.toString()}`, { signal: options.signal });
-}
-
-export interface AdminKnowledgeSearchZeroResult {
-  query: string;
-  locale: string;
-  scope: 'all' | KnowledgeSearchScope;
-  count: number;
-  firstSeenAt: string;
-  lastSeenAt: string;
-}
-
-export async function adminGetKnowledgeSearchZeroResults(
-  params: { limit?: number; days?: number } = {},
-): Promise<AdminKnowledgeSearchZeroResult[]> {
-  const query = new URLSearchParams();
-  if (params.limit) query.set('limit', String(params.limit));
-  if (params.days) query.set('days', String(params.days));
-  const data = await request<{ items: AdminKnowledgeSearchZeroResult[] }>(
-    `/admin/search/zero-results?${query.toString()}`,
-    { headers: adminAuthHeaders() },
-  );
-  return data.items;
-}
+export const { suggestKnowledge, searchKnowledgeIds, searchKnowledge, adminGetKnowledgeSearchZeroResults } =
+  knowledgeClient;
 
 export async function fetchCatalogCards(
   params: {
@@ -1678,6 +1521,13 @@ export async function getMatches(limit = 50, offset = 0): Promise<ServerMatchSum
 export async function getMatchLog(matchId: string): Promise<ActionLogEntry[]> {
   const data = await request<{ matchId: string; actionLog: ActionLogEntry[] }>(`/matches/${matchId}/log`);
   return data.actionLog;
+}
+
+export async function getMatchReplay(matchId: string): Promise<MatchReplaySummary> {
+  const data = await request<{ matchId: string; replay: MatchReplaySummary }>(
+    `/matches/${encodeURIComponent(matchId)}/replay`,
+  );
+  return data.replay;
 }
 
 // ===== Leaderboard =====

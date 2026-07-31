@@ -5,6 +5,7 @@ import { initCards } from './game/cards/loader';
 import { initCardTextsI18n, type CardTextI18nEntry } from './game/cards/i18n';
 import { getPresetDeck, validateConstructedDeckIds } from './game/cards/deckBuilder';
 import type { CardDef, ZutomayoSetupData } from './game/types';
+import { authoritativeOnlineSetupData } from './server/onlineSetup';
 import { APP_VERSION_INFO, isCompatibleVersion, normalizeVersionInfo, type AppVersionInfo } from './version';
 import path from 'path';
 import fs from 'fs';
@@ -45,6 +46,7 @@ import { createServiceReadiness } from './operational/serviceLifecycle';
 import { drainNetwork } from './operational/networkDrain';
 import { replayJsonRequestBody } from './server/requestBodyReplay';
 import { createOnlineRematchSetupData } from './server/onlineRematch';
+import { CACHE_CONTROL, frontendCacheControl } from './server/cachePolicy';
 import { shouldServeSpaFallback } from './server/staticRouting';
 import { createUmamiProxyMiddleware, UMAMI_SCRIPT_PATH, UMAMI_SEND_PATH } from './server/umamiProxy';
 import {
@@ -446,6 +448,13 @@ server.app.use(
   }),
 );
 
+// Dynamic responses are private by default. Static middleware below replaces
+// this header only for resources whose URL is safe to cache across deployments.
+server.app.use(async (ctx: KoaContext, next: Next) => {
+  ctx.set('Cache-Control', CACHE_CONTROL.noStore);
+  await next();
+});
+
 // Structured request logging + Prometheus metrics (before route handlers).
 server.app.use(requestLoggingMiddleware());
 server.app.use(metricsMiddleware());
@@ -533,8 +542,8 @@ server.app.use(async (ctx: KoaContext, next: Next) => {
     reservation = result.body;
   }
   const nextSetup: ZutomayoSetupData = {
-    ...setup,
-    rulesVersion: APP_VERSION_INFO.rulesVersion,
+    // The seed controls future hidden outcomes, so online clients never choose it.
+    ...authoritativeOnlineSetupData(setup, APP_VERSION_INFO.rulesVersion),
     ...(reservation
       ? {
           deck0Ids: reservation.cardIds,
@@ -801,7 +810,19 @@ server.router.post('/games/zutomayo-card/:id/join', koaBody(), async (ctx: KoaCo
   };
 });
 
-// Serve dist (frontend)
+// Serve dist (frontend). The same origin policy is consumed by direct Hong Kong
+// traffic and by Cloudflare, so both DNS paths share identical cache semantics.
+server.app.use(async (ctx: KoaContext, next: Next) => {
+  await next();
+  const cacheControl = frontendCacheControl({
+    buildId: APP_VERSION_INFO.buildId,
+    method: ctx.method,
+    pathname: ctx.path,
+    searchParams: new URLSearchParams(ctx.querystring),
+    status: ctx.status,
+  });
+  if (cacheControl) ctx.set('Cache-Control', cacheControl);
+});
 server.app.use(serve(path.join(root, 'dist')));
 
 // Serve admin panel assets for the React /admin iframe.
@@ -1015,7 +1036,9 @@ server.app.use(async (ctx: KoaContext, next: Next) => {
 });
 
 const PORT = Number(process.env.PORT) || 3000;
-const STALE_MATCH_TTL_MS = Number(process.env.STALE_MATCH_TTL_MS) || 30 * 60 * 1000; // 30 minutes
+const LEGACY_STALE_MATCH_TTL_MS = Number(process.env.STALE_MATCH_TTL_MS) || 30 * 60 * 1000;
+const TERMINAL_MATCH_TTL_MS = Number(process.env.TERMINAL_MATCH_TTL_MS) || LEGACY_STALE_MATCH_TTL_MS;
+const INACTIVE_MATCH_TTL_MS = Number(process.env.INACTIVE_MATCH_TTL_MS) || LEGACY_STALE_MATCH_TTL_MS;
 const CLEANUP_INTERVAL_MS = Number(process.env.CLEANUP_INTERVAL_MS) || 5 * 60 * 1000; // every 5 min
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -1042,22 +1065,26 @@ function validateSecurityConfig(): void {
 // Stale room cleanup — 直接使用 PostgresAdapter instance（server.db 型別因斷言後不夠精確）。
 async function cleanupStaleMatches() {
   try {
-    const matchIDs = await db.listMatches({});
-    if (!matchIDs || !Array.isArray(matchIDs)) return;
     let cleaned = 0;
-    for (const matchID of matchIDs) {
-      try {
-        const { metadata } = await db.fetch(matchID, { metadata: true });
-        if (!metadata) continue;
-        const updatedAt = metadata.updatedAt ? new Date(metadata.updatedAt).getTime() : 0;
-        const createdAt = metadata.createdAt ? new Date(metadata.createdAt).getTime() : 0;
-        const age = Date.now() - Math.max(createdAt, updatedAt);
-        if (age > STALE_MATCH_TTL_MS) {
-          await db.wipe(matchID);
-          cleaned++;
+    for (const classification of [
+      { isGameover: true, ttlMs: TERMINAL_MATCH_TTL_MS },
+      { isGameover: false, ttlMs: INACTIVE_MATCH_TTL_MS },
+    ]) {
+      const matchIDs = await db.listMatches({ where: { isGameover: classification.isGameover } });
+      if (!matchIDs || !Array.isArray(matchIDs)) continue;
+      for (const matchID of matchIDs) {
+        try {
+          const { metadata } = await db.fetch(matchID, { metadata: true });
+          if (!metadata) continue;
+          const updatedAt = metadata.updatedAt ? new Date(metadata.updatedAt).getTime() : 0;
+          const createdAt = metadata.createdAt ? new Date(metadata.createdAt).getTime() : 0;
+          const age = Date.now() - Math.max(createdAt, updatedAt);
+          if (age > classification.ttlMs && (await db.wipe(matchID))) {
+            cleaned++;
+          }
+        } catch {
+          /* skip */
         }
-      } catch {
-        /* skip */
       }
     }
     if (cleaned > 0) logger.info({ count: cleaned }, 'removed stale matches');
@@ -1069,7 +1096,11 @@ async function cleanupStaleMatches() {
 
 const cleanupTimer = setInterval(cleanupStaleMatches, CLEANUP_INTERVAL_MS);
 logger.info(
-  { ttlMin: STALE_MATCH_TTL_MS / 60000, intervalMin: CLEANUP_INTERVAL_MS / 60000 },
+  {
+    terminalTtlMin: TERMINAL_MATCH_TTL_MS / 60000,
+    inactiveTtlMin: INACTIVE_MATCH_TTL_MS / 60000,
+    intervalMin: CLEANUP_INTERVAL_MS / 60000,
+  },
   'stale match cleanup configured',
 );
 

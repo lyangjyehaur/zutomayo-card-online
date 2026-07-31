@@ -91,18 +91,11 @@ const {
 const { validateBody } = require('./validate.cjs');
 const S = require('./schemas.cjs');
 const { buildSignedImgproxyUrl, parseAllowedSources } = require('./imgproxySigner.cjs');
-const {
-  getAllCardTextsI18n,
-  getAdminCards,
-  getCardRecommendations,
-  getCatalogCards,
-  getCardOfficialErrata,
-  getCardTextsI18n,
-  getGameConfig,
-  getPresetDecks,
-  getPublicCard,
-  getPublicCards,
-} = require('./cardDataService.cjs');
+
+const PUBLIC_EDGE_CACHE_SHORT = 'public, max-age=0, must-revalidate, s-maxage=60, stale-while-revalidate=300';
+const PUBLIC_EDGE_CACHE_STANDARD = 'public, max-age=0, must-revalidate, s-maxage=300, stale-while-revalidate=1800';
+const { getAdminCards, getCardOfficialErrata } = require('./cardDataService.cjs');
+const { handlePublicCardRoute } = require('./publicCardRoutes.cjs');
 const {
   createChatUserSanction,
   defaultChatModerationRules,
@@ -135,7 +128,13 @@ const {
   updateDeckShare,
 } = require('./deckShareService.cjs');
 const { countOnlinePresence, heartbeatOnlinePresence } = require('./presenceService.cjs');
-const { getAdminMatches, getLeaderboard, getMatchActionLog, getUserMatches } = require('./matchQueries.cjs');
+const {
+  getAdminMatches,
+  getLeaderboard,
+  getMatchActionLog,
+  getMatchReplay,
+  getUserMatches,
+} = require('./matchQueries.cjs');
 const { submitMatchResult } = require('./matchSubmission.cjs');
 const {
   listPosts: listFeedbackPosts,
@@ -624,6 +623,7 @@ async function initSchema() {
       duration_seconds INTEGER,
       rules_version TEXT NOT NULL DEFAULT 'legacy',
       action_log JSONB,
+      replay_summary JSONB,
       completed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )`,
@@ -634,6 +634,7 @@ async function initSchema() {
     `CREATE INDEX IF NOT EXISTS idx_matches_created_at ON matches(created_at DESC)`,
     `ALTER TABLE matches ADD COLUMN IF NOT EXISTS source_match_id TEXT`,
     `ALTER TABLE matches ADD COLUMN IF NOT EXISTS rules_version TEXT NOT NULL DEFAULT 'legacy'`,
+    `ALTER TABLE matches ADD COLUMN IF NOT EXISTS replay_summary JSONB`,
     `ALTER TABLE matches ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_matches_source_match_id
       ON matches(source_match_id)
@@ -3830,6 +3831,9 @@ function handleRequest(req, res) {
   res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
+  // Public read routes below explicitly replace this. Everything else remains
+  // uncacheable in browsers and on either side of the GeoDNS split.
+  res.setHeader('Cache-Control', 'private, no-store');
   if (method === 'OPTIONS') {
     res.writeHead(200);
     res.end();
@@ -5077,6 +5081,17 @@ function handleRequest(req, res) {
     // ===== Match Routes =====
 
     // Get match action log
+    const matchReplayRoute = pathname.match(/^\/api\/matches\/([^/]+)\/replay$/);
+    if (matchReplayRoute && method === 'GET') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const result = await getMatchReplay(pool, matchReplayRoute[1], userId);
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
+      return;
+    }
+
+    // Get match action log
     const matchLogRoute = pathname.match(/^\/api\/matches\/([^/]+)\/log$/);
     if (matchLogRoute && method === 'GET') {
       const userId = await getAuthUserId(req);
@@ -5141,13 +5156,13 @@ function handleRequest(req, res) {
         limit: url.searchParams.get('limit'),
         translateText: await translationRuntime.getTranslateText(),
       });
-      res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+      res.setHeader('Cache-Control', PUBLIC_EDGE_CACHE_SHORT);
       serviceJson(result);
       return;
     }
 
     if (pathname === '/api/official/qa' && method === 'GET') {
-      res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=1800');
+      res.setHeader('Cache-Control', PUBLIC_EDGE_CACHE_STANDARD);
       publicServiceJson(
         await listPublicQa({
           pool,
@@ -5161,14 +5176,14 @@ function handleRequest(req, res) {
     }
 
     if (pathname === '/api/official/status' && method === 'GET') {
-      res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+      res.setHeader('Cache-Control', PUBLIC_EDGE_CACHE_SHORT);
       publicServiceJson(await getOfficialRulingsReleaseStatus({ pool }));
       return;
     }
 
     const publicOfficialRuleDocumentRoute = pathname.match(/^\/api\/official\/rules\/(grand|floor)$/);
     if (publicOfficialRuleDocumentRoute && method === 'GET') {
-      res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=1800');
+      res.setHeader('Cache-Control', PUBLIC_EDGE_CACHE_STANDARD);
       publicServiceJson(
         await getPublicRuleDocument({
           pool,
@@ -5181,7 +5196,7 @@ function handleRequest(req, res) {
 
     const publicOfficialQaRoute = pathname.match(/^\/api\/official\/qa\/(\d+)$/);
     if (publicOfficialQaRoute && method === 'GET') {
-      res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=1800');
+      res.setHeader('Cache-Control', PUBLIC_EDGE_CACHE_STANDARD);
       publicServiceJson(
         await getPublicQa({ pool, language: url.searchParams.get('lang'), number: publicOfficialQaRoute[1] }),
       );
@@ -5189,7 +5204,7 @@ function handleRequest(req, res) {
     }
 
     if (pathname === '/api/official/errata' && method === 'GET') {
-      res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=1800');
+      res.setHeader('Cache-Control', PUBLIC_EDGE_CACHE_STANDARD);
       publicServiceJson(
         await listPublicErrata({
           pool,
@@ -5202,7 +5217,7 @@ function handleRequest(req, res) {
 
     const publicOfficialErrataRoute = pathname.match(/^\/api\/official\/errata\/(\d{3})$/);
     if (publicOfficialErrataRoute && method === 'GET') {
-      res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=1800');
+      res.setHeader('Cache-Control', PUBLIC_EDGE_CACHE_STANDARD);
       publicServiceJson(
         await getPublicErrata({
           pool,
@@ -5956,64 +5971,17 @@ function handleRequest(req, res) {
       return;
     }
 
-    // ===== Card Data Routes =====
-
-    // Public: list card definitions from PostgreSQL.
-    if (pathname === '/api/cards' && method === 'GET') {
-      res.setHeader('Cache-Control', 'no-store');
-      json(await getPublicCards(pool, url.searchParams));
-      return;
-    }
-
-    if (pathname === '/api/catalog/cards' && method === 'GET') {
-      res.setHeader('Cache-Control', 'no-store');
-      json(await getCatalogCards(pool, url.searchParams));
-      return;
-    }
-
-    const catalogRecommendationsRoute = pathname.match(/^\/api\/catalog\/cards\/([^/]+)\/recommendations$/);
-    if (catalogRecommendationsRoute && method === 'GET') {
-      const cardId = decodeURIComponent(catalogRecommendationsRoute[1]);
-      res.setHeader('Cache-Control', 'no-store');
-      const result = await getCardRecommendations(pool, cardId, url.searchParams.get('limit'));
-      if (!result.ok) return json({ error: result.error }, result.status);
-      json(result.body);
-      return;
-    }
-
-    if (pathname === '/api/cards/texts' && method === 'GET') {
-      res.setHeader('Cache-Control', 'no-store');
-      json(await getAllCardTextsI18n(pool));
-      return;
-    }
-
-    const publicCardTextsRoute = pathname.match(/^\/api\/cards\/([^/]+)\/texts$/);
-    if (publicCardTextsRoute && method === 'GET') {
-      const cardId = decodeURIComponent(publicCardTextsRoute[1]);
-      res.setHeader('Cache-Control', 'no-store');
-      json(await getCardTextsI18n(pool, cardId));
-      return;
-    }
-
-    const publicCardRoute = pathname.match(/^\/api\/cards\/([^/]+)$/);
-    if (publicCardRoute && method === 'GET') {
-      const cardId = decodeURIComponent(publicCardRoute[1]);
-      const result = await getPublicCard(pool, cardId);
-      if (!result.ok) return json({ error: result.error }, result.status);
-      res.setHeader('Cache-Control', 'no-store');
-      json(result.body);
-      return;
-    }
-
-    if (pathname === '/api/config' && method === 'GET') {
-      res.setHeader('Cache-Control', 'no-store');
-      json({ ...(await getGameConfig(pool)), deck_sharing_enabled: DECK_SHARING_ENABLED });
-      return;
-    }
-
-    if (pathname === '/api/preset-decks' && method === 'GET') {
-      res.setHeader('Cache-Control', 'no-store');
-      json(await getPresetDecks(pool));
+    if (
+      await handlePublicCardRoute({
+        pathname,
+        method,
+        url,
+        res,
+        json,
+        pool,
+        deckSharingEnabled: DECK_SHARING_ENABLED,
+      })
+    ) {
       return;
     }
 

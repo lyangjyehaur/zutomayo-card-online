@@ -60,6 +60,30 @@ describe('operational shell scripts', () => {
     expect(result.stderr).toContain('evidence_output is required');
   });
 
+  it('requires chat, feedback, and boardgame fixtures before a release restore drill can start Docker', () => {
+    const result = spawnSync('bash', [resolve('scripts/pg-restore-drill.sh'), '/tmp/example.dump.age'], {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        PG_RESTORE_DRILL_IMAGE: `postgres@sha256:${'a'.repeat(64)}`,
+        PG_RESTORE_RELEASE_EVIDENCE: 'true',
+        PG_RESTORE_EVIDENCE_OUTPUT: '/tmp/restore-drill.json',
+        RELEASE_SHA: 'b'.repeat(40),
+        PG_RESTORE_BACKUP_COMPLETED_AT: '2026-07-31T00:00:00.000Z',
+        PG_RESTORE_INCIDENT_AT: '2026-07-31T00:01:00.000Z',
+        PG_RESTORE_EXPECT_ACCOUNT_ID: 'u_release_fixture',
+        PG_RESTORE_EXPECT_DECK_ID: 'deck_release_fixture',
+        PG_RESTORE_EXPECT_MATCH_ID: 'match_release_fixture',
+        PG_RESTORE_EXPECT_LEADERBOARD_USER_ID: 'u_release_fixture',
+        EXPECTED_SCHEMA_MIGRATION: '000047_knowledge_search_zero_results',
+        EXPECTED_SCHEMA_CHECKSUM: 'c'.repeat(64),
+      },
+      timeout: 5_000,
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('expected_chat_message_id is required');
+  });
+
   it('routes logical and physical backups through separate PostgreSQL roles', () => {
     expect(readFileSync(resolve('scripts/pg-backup.sh'), 'utf8')).toContain(
       'PG_USER="${PG_BACKUP_USER:-${PG_USER:-zutomayo_backup}}"',
@@ -74,6 +98,46 @@ describe('operational shell scripts', () => {
     expect(smoke).toContain("grep -qx '1'");
     expect(smoke).toContain('migrate npm run relationship:outbox:pg-smoke');
     expect(smoke).toContain('api node social-concurrency-pg-smoke.cjs');
+  });
+
+  it('writes a structured failed deployment-smoke receipt', () => {
+    const directory = mkdtempSync(resolve(tmpdir(), 'zutomayo-deploy-smoke-'));
+    const reportPath = resolve(directory, 'smoke.json');
+    const result = spawnSync(
+      process.execPath,
+      [
+        resolve('scripts/deploy-smoke.mjs'),
+        '--host',
+        '127.0.0.1',
+        '--game-port',
+        '1',
+        '--api-port',
+        '1',
+        '--platform-port',
+        '1',
+        '--attempts',
+        '1',
+        '--timeout-ms',
+        '50',
+        '--retry-delay-ms',
+        '0',
+        '--report-path',
+        reportPath,
+      ],
+      { encoding: 'utf8', timeout: 5_000 },
+    );
+    expect(result.status).not.toBe(0);
+    expect(JSON.parse(readFileSync(reportPath, 'utf8'))).toMatchObject({
+      schemaVersion: 1,
+      status: 'failed',
+      checks: {
+        healthReady: false,
+        buildIdentityVerified: false,
+        applicationSmokePassed: false,
+        battleAssetsVerified: false,
+        smokePassed: false,
+      },
+    });
   });
 
   it('keeps the server4 beta deployment backup, Redis, asset, and health gates', () => {
@@ -130,6 +194,11 @@ describe('operational shell scripts', () => {
     expect(deploy).toContain('--check-battle-assets true');
     expect(deploy).toContain('--public-base-url');
     expect(deploy).toContain('PUBLIC_SMOKE_BASE_URL');
+    expect(deploy).toContain('cloudflare:cache:apply');
+    expect(deploy).toContain('CLOUDFLARE_CACHE_RULES_REQUIRED');
+    expect(deploy).toContain('cache-policy-smoke.ts');
+    expect(deploy).toContain('DIRECT_SMOKE_ADDRESS');
+    expect(deploy).toContain('DEPLOY_SMOKE_REPORT_PATH');
     expect(deploy).not.toContain('--rollback');
     expect(deploy).not.toContain('rollback_and_smoke');
     expect(deploy).not.toContain('.env.previous');
@@ -139,12 +208,26 @@ describe('operational shell scripts', () => {
     expect(smoke).toContain('assertBattleAssetPayload');
     expect(smoke).toContain('publicBaseUrl');
     expect(smoke).toContain('if (checkBattleAssets)');
+    expect(smoke).toContain("args.get('report-path')");
     expect(smoke).toContain('/api/official/status');
     expect(assetChecksums).toHaveLength(22);
     expect(assetChecksums.every((line) => /^[a-f0-9]{64} {2}[A-Za-z0-9._/-]+\.(png|svg)$/.test(line))).toBe(true);
     expect(deploy).not.toContain('--manifest');
     expect(deploy).not.toContain('cosign');
     expect(deploy).not.toContain('attestation');
+  });
+
+  it('manages cache rules without embedding Cloudflare credentials', () => {
+    const rules = readFileSync(resolve('scripts/cloudflare-cache-rules.ts'), 'utf8');
+    const smoke = readFileSync(resolve('scripts/cache-policy-smoke.ts'), 'utf8');
+    expect(rules).toContain('zutomayo-cache-');
+    expect(rules).toContain('http_request_cache_settings');
+    expect(rules).toContain('CLOUDFLARE_API_TOKEN');
+    expect(rules).toContain("mode: 'respect_origin'");
+    expect(rules).not.toMatch(/Bearer [A-Za-z0-9_-]{20,}/);
+    expect(smoke).toContain('direct-address');
+    expect(smoke).toContain('servername: url.hostname');
+    expect(smoke).toContain('CF-Cache-Status'.toLowerCase());
   });
 
   it('keeps source recovery staging-only and reuses the normal deploy path', () => {
@@ -154,7 +237,14 @@ describe('operational shell scripts', () => {
     expect(recovery).toContain("!= '149.104.6.238'");
     expect(recovery).toContain('stop game api platform');
     expect(recovery).toContain('deploy-server4.sh');
+    expect(recovery).toContain('RECOVERY_DATASET_SHA256');
+    expect(recovery).toContain('RECOVERY_MATCH_IMPACT_REPORT');
+    expect(recovery).toContain('preDeployBackupVerified');
     expect(recovery).toContain('sourceCheckoutVerified');
+    expect(recovery).toContain('datasetIdentityVerified');
+    expect(recovery).toContain('buildIdentityVerified');
+    expect(recovery).toContain('battleAssetsVerified');
+    expect(recovery).toContain('websocketOutcomeVerified');
     expect(recovery).toContain('smokePassed');
   });
 

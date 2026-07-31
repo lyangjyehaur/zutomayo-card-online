@@ -6,6 +6,7 @@ import type {
   JankenChoice,
   PlayerIndex,
   PlayerState,
+  ReplayMoveName,
   SetSlot,
   ZutomayoSetupData,
 } from './types';
@@ -26,6 +27,7 @@ import {
   undoSetCard,
   validateZutomayoSetupData,
 } from './GameLogic';
+import { appendReplayDecision, canonicalizeReplayArgs, createReplayRequestFingerprint } from './decisionTrace';
 
 export type { ZutomayoSetupData } from './types';
 
@@ -55,6 +57,21 @@ export function resetParsedEffects(): void {
 
 function playerIndex(playerID: string | null): PlayerIndex | null {
   return playerID === '0' || playerID === '1' ? (Number(playerID) as PlayerIndex) : null;
+}
+
+function applyTrackedDecision(
+  G: GameState,
+  playerID: string | null,
+  move: ReplayMoveName,
+  args: readonly unknown[],
+  apply: (player: PlayerIndex, canonicalArgs: unknown[]) => boolean,
+): typeof INVALID_MOVE | undefined {
+  const player = playerIndex(playerID);
+  if (player === null) return INVALID_MOVE;
+  const canonicalArgs = canonicalizeReplayArgs(args);
+  const requestFingerprint = createReplayRequestFingerprint(G, player, move, canonicalArgs);
+  if (!apply(player, canonicalArgs)) return INVALID_MOVE;
+  appendReplayDecision(G, player, move, canonicalArgs, requestFingerprint);
 }
 
 function concurrentServerMove(move: MoveFn<GameState>): Move<GameState> {
@@ -246,6 +263,11 @@ function playerView({ G, playerID }: { G: GameState; playerID: string | null }):
 
   return {
     ...G,
+    // Seed, counter, and pre-shuffle decks are server-only while play is active.
+    rng: undefined,
+    replayManifest: undefined,
+    decisionTrace: undefined,
+    replayStatus: undefined,
     players: [
       redactPlayerForViewer(G, 0, viewer, hiddenIds, explicitlyRevealedIds),
       redactPlayerForViewer(G, 1, viewer, hiddenIds, explicitlyRevealedIds),
@@ -265,67 +287,76 @@ function playerView({ G, playerID }: { G: GameState; playerID: string | null }):
 
 const moves: Record<string, Move<GameState>> = {
   janken: concurrentServerMove(({ G, playerID }, choice: JankenChoice) => {
-    const player = playerIndex(playerID);
-    if (player === null || !chooseJanken(G, player, choice)) return INVALID_MOVE;
+    return applyTrackedDecision(G, playerID, 'janken', [choice], (player, args) =>
+      chooseJanken(G, player, args[0] as JankenChoice),
+    );
   }),
   mulligan: concurrentServerMove(({ G, playerID }, indices: number[]) => {
-    const player = playerIndex(playerID);
-    if (player === null || !Array.isArray(indices) || !finishMulligan(G, player, indices)) return INVALID_MOVE;
+    return applyTrackedDecision(G, playerID, 'mulligan', [indices], (player, args) => {
+      const replayIndices = args[0];
+      return Array.isArray(replayIndices) && finishMulligan(G, player, replayIndices as number[]);
+    });
   }),
   keepHand: concurrentServerMove(({ G, playerID }) => {
-    const player = playerIndex(playerID);
-    if (player === null || !finishMulligan(G, player, [])) return INVALID_MOVE;
+    return applyTrackedDecision(G, playerID, 'keepHand', [], (player) => finishMulligan(G, player, []));
   }),
   setInitialCard: concurrentServerMove(({ G, playerID }, handIndex: number) => {
-    const player = playerIndex(playerID);
-    if (player === null || !setInitialCard(G, player, handIndex)) return INVALID_MOVE;
+    return applyTrackedDecision(G, playerID, 'setInitialCard', [handIndex], (player, args) =>
+      setInitialCard(G, player, args[0] as number),
+    );
   }),
   setTurnCard: concurrentServerMove(({ G, playerID }, handIndex: number, slot: SetSlot) => {
-    const player = playerIndex(playerID);
-    if (player === null || !setTurnCard(G, player, handIndex, slot)) return INVALID_MOVE;
+    return applyTrackedDecision(G, playerID, 'setTurnCard', [handIndex, slot], (player, args) =>
+      setTurnCard(G, player, args[0] as number, args[1] as SetSlot),
+    );
   }),
   undoSetCard: concurrentServerMove(({ G, playerID }, slot: SetSlot) => {
-    const player = playerIndex(playerID);
-    if (player === null || !undoSetCard(G, player, slot)) return INVALID_MOVE;
+    return applyTrackedDecision(G, playerID, 'undoSetCard', [slot], (player, args) =>
+      undoSetCard(G, player, args[0] as SetSlot),
+    );
   }),
   confirmReady: concurrentServerMove(({ G, playerID }) => {
-    const player = playerIndex(playerID);
-    if (player === null || !confirmReady(G, player, getParsedEffects())) return INVALID_MOVE;
+    return applyTrackedDecision(G, playerID, 'confirmReady', [], (player) =>
+      confirmReady(G, player, getParsedEffects()),
+    );
   }),
   // P3-16：線上回合超時由伺服器權威判斷，強制跳過該玩家回合（避免卡死）。
   timeoutSkip: concurrentServerMove(({ G, playerID }, targetPlayer?: PlayerIndex) => {
-    const caller = playerIndex(playerID);
-    if (caller === null) return INVALID_MOVE;
-    // 權威時間到後，允許仍在線的一方代為跳過斷線／無回應的玩家。
-    // timeoutSkip 本身仍會驗證 turnSet、ready 與伺服器時間，不能提前強制對手結束操作。
-    const target = targetPlayer === 0 || targetPlayer === 1 ? targetPlayer : caller;
-    if (!timeoutSkip(G, target, getParsedEffects())) return INVALID_MOVE;
+    const args = targetPlayer === undefined ? [] : [targetPlayer];
+    return applyTrackedDecision(G, playerID, 'timeoutSkip', args, (caller, replayArgs) => {
+      // 權威時間到後，允許仍在線的一方代為跳過斷線／無回應的玩家。
+      // timeoutSkip 本身仍會驗證 turnSet、ready 與伺服器時間，不能提前強制對手結束操作。
+      const target = replayArgs[0] === 0 || replayArgs[0] === 1 ? replayArgs[0] : caller;
+      return timeoutSkip(G, target, getParsedEffects());
+    });
   }),
   timeoutAdvance: concurrentServerMove(({ G, playerID }, targetPlayer?: PlayerIndex) => {
-    const caller = playerIndex(playerID);
-    if (caller === null) return INVALID_MOVE;
-    const target = targetPlayer === 0 || targetPlayer === 1 ? targetPlayer : caller;
-    if (!timeoutAdvance(G, target, getParsedEffects())) return INVALID_MOVE;
+    const args = targetPlayer === undefined ? [] : [targetPlayer];
+    return applyTrackedDecision(G, playerID, 'timeoutAdvance', args, (caller, replayArgs) => {
+      const target = replayArgs[0] === 0 || replayArgs[0] === 1 ? replayArgs[0] : caller;
+      return timeoutAdvance(G, target, getParsedEffects());
+    });
   }),
   surrender: concurrentServerMove(({ G, playerID }) => {
-    const player = playerIndex(playerID);
-    if (player === null || !surrenderGame(G, player)) return INVALID_MOVE;
+    return applyTrackedDecision(G, playerID, 'surrender', [], (player) => surrenderGame(G, player));
   }),
   resolvePendingEffect: authoritativeServerMove(({ G, playerID }, index: number) => {
-    const player = playerIndex(playerID);
-    if (player === null || !resolvePendingEffectChoice(G, player, index, getParsedEffects())) return INVALID_MOVE;
+    return applyTrackedDecision(G, playerID, 'resolvePendingEffect', [index], (player, args) =>
+      resolvePendingEffectChoice(G, player, args[0] as number, getParsedEffects()),
+    );
   }),
   submitPendingChoice: authoritativeServerMove(({ G, playerID }, optionIds: string[]) => {
-    const player = playerIndex(playerID);
-    if (player === null || !submitPendingChoice(G, player, optionIds, getParsedEffects())) return INVALID_MOVE;
+    return applyTrackedDecision(G, playerID, 'submitPendingChoice', [optionIds], (player, args) =>
+      submitPendingChoice(G, player, args[0] as string[], getParsedEffects()),
+    );
   }),
 };
 
 export const ZutomayoCard: Game<GameState, Record<string, unknown>, ZutomayoSetupData> = {
   name: 'zutomayo-card',
   validateSetupData: (setupData) => validateZutomayoSetupData(setupData),
-  // 防禦深度：即使 validate 被繞過，setup 也強制剝離 skipShuffle，
-  // 確保線上對戰牌序必定隨機、無法被惡意客戶端固定。
+  // Online creation sanitizes rngSeed before boardgame.io reaches setup; this
+  // layer still strips skipShuffle so a client cannot choose its draw order.
   setup: (_context, setupData) => setupGame({ ...setupData, skipShuffle: false }),
   playerView,
   moves,
@@ -365,6 +396,7 @@ export function createZutomayoCard(
           deck1Ids: setupData?.deck1Ids ?? defaultSetupData.deck1Ids,
           clientVersion: setupData?.clientVersion ?? defaultSetupData.clientVersion,
           skipShuffle: setupData?.skipShuffle ?? defaultSetupData.skipShuffle,
+          rngSeed: setupData?.rngSeed ?? defaultSetupData.rngSeed,
         },
         { allowBrowserCustomDeckName: true, requireClientVersion: false, allowSkipShuffle: true },
       ),
@@ -377,6 +409,7 @@ export function createZutomayoCard(
           deck1Ids: setupData?.deck1Ids ?? defaultSetupData.deck1Ids,
           clientVersion: setupData?.clientVersion ?? defaultSetupData.clientVersion,
           skipShuffle: setupData?.skipShuffle ?? defaultSetupData.skipShuffle,
+          rngSeed: setupData?.rngSeed ?? defaultSetupData.rngSeed,
         },
         { allowBrowserCustomDeckName: true },
       ),

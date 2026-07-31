@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Flag, Languages, MessageCircle } from 'lucide-react';
+import { Flag, Languages, MessageCircle, Search } from 'lucide-react';
 import {
+  attachReplaySummary,
   clearMatchRecords,
   downloadMatchActionLog,
+  filterMatchRecords,
   getMatchRecords,
   getMatchStats,
   historyChatSubjectId,
@@ -10,6 +12,7 @@ import {
   replaceMatchRecords,
   resolveInitialHistoryChatRecord,
   type MatchRecord,
+  type MatchHistoryOutcomeFilter,
 } from '../game/matchHistory';
 import { CHRONOS_MAPPING, type ActionLogEntry } from '../game/types';
 import { getLocalizedCardEffect } from '../game/cards/i18n';
@@ -19,6 +22,7 @@ import { useToast } from './ToastProvider';
 import {
   fetchChatMessages,
   getMatchLog,
+  getMatchReplay,
   getMatches,
   getProfile,
   isLoggedIn,
@@ -40,9 +44,12 @@ import {
   LoadingState,
   PageShell,
   Panel,
+  SearchInput,
+  Select,
   StatCard,
   StatsGrid,
 } from '../ui';
+import { onlineErrorDetail } from '../onlineHttpError';
 
 interface MatchHistoryProps {
   onBack: () => void;
@@ -209,6 +216,81 @@ function MatchDetail({
             </Button>
           </ActionBar>
         </div>
+        {record.replay && (
+          <>
+            <section className="grid gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="font-display text-lg font-bold">{t('history.replayPhases')}</h3>
+                <Badge tone={record.replay.traceComplete ? 'jade' : 'neutral'}>
+                  {record.replay.traceComplete ? t('history.replayTraceComplete') : t('history.replayLegacy')}
+                </Badge>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {record.replay.phases.map((phase, index) => (
+                  <Panel key={`${phase.step}-${phase.fromTurn}-${index}`} variant="ghost" className="grid gap-1">
+                    <strong>{phase.step}</strong>
+                    <span className="text-sm text-content-primary/60">
+                      T{phase.fromTurn}–{phase.toTurn} · {phase.actionCount}
+                    </span>
+                  </Panel>
+                ))}
+              </div>
+            </section>
+            <section className="grid gap-3">
+              <h3 className="font-display text-lg font-bold">{t('history.replayDecisions')}</h3>
+              {record.replay.decisions.length === 0 ? (
+                <p className="text-sm text-content-primary/60">{t('history.replayNoDecisions')}</p>
+              ) : (
+                <ol className="grid gap-2">
+                  {record.replay.decisions.map((decision) => (
+                    <li key={decision.sequence} className="grid gap-1 border-b border-border-soft py-2 last:border-0">
+                      <strong>
+                        #{decision.sequence} · P{decision.player === null ? '–' : decision.player + 1} · {decision.move}
+                      </strong>
+                      {decision.args.length > 0 && (
+                        <code className="break-all text-xs text-content-primary/60">
+                          {JSON.stringify(decision.args)}
+                        </code>
+                      )}
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </section>
+            <section className="grid gap-3">
+              <h3 className="font-display text-lg font-bold">{t('history.replayEffects')}</h3>
+              {record.replay.effects.length === 0 ? (
+                <p className="text-sm text-content-primary/60">{t('history.replayNoEffects')}</p>
+              ) : (
+                <ol className="grid gap-2">
+                  {record.replay.effects.map((effect) => (
+                    <li key={effect.order} className="grid gap-1 border-b border-border-soft py-2 last:border-0">
+                      <strong>
+                        #{effect.order} · T{effect.turn} · {effect.cardDefId ?? effect.action}
+                      </strong>
+                      <span className="text-sm text-content-primary/60">
+                        {effect.step}
+                        {effect.choiceType ? ` · ${effect.choiceType}` : ''}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </section>
+            {record.replay.revealedHands.some((hand) => hand.cardDefIds.length > 0) && (
+              <section className="grid gap-3">
+                <h3 className="font-display text-lg font-bold">{t('history.replayRevealedHands')}</h3>
+                {record.replay.revealedHands
+                  .filter((hand) => hand.cardDefIds.length > 0)
+                  .map((hand) => (
+                    <p key={hand.player} className="text-sm text-content-primary/70">
+                      P{hand.player + 1}: {hand.cardDefIds.join(', ')}
+                    </p>
+                  ))}
+              </section>
+            )}
+          </>
+        )}
         <section>
           <h3 className="font-display text-lg font-bold">{t('history.traceTitle')}</h3>
           {trace.length === 0 ? (
@@ -233,6 +315,7 @@ function MatchChatDialog({ record, onClose }: { record: MatchRecord; onClose: ()
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [reportedMessageIds, setReportedMessageIds] = useState<Set<string>>(() => new Set());
   const [translations, setTranslations] = useState<Record<string, HistoryTranslationState>>({});
+  const [actionError, setActionError] = useState('');
   const sourceMatchId = historyChatSubjectId(record);
 
   useEffect(() => {
@@ -242,6 +325,7 @@ function MatchChatDialog({ record, onClose }: { record: MatchRecord; onClose: ()
     setMessages([]);
     setReportedMessageIds(new Set());
     setTranslations({});
+    setActionError('');
 
     void fetchChatMessages({ conversationType: 'match', subjectId: sourceMatchId, limit: 100 }).then(
       (nextMessages) => {
@@ -249,9 +333,13 @@ function MatchChatDialog({ record, onClose }: { record: MatchRecord; onClose: ()
         const visibleMessages = nextMessages.filter(canShowChatMessage);
         setMessages(visibleMessages);
         setStatus('ready');
+        setActionError('');
       },
-      () => {
-        if (!cancelled) setStatus('unavailable');
+      (err) => {
+        if (!cancelled) {
+          setStatus('unavailable');
+          setActionError(onlineErrorDetail(err, t('chat.historyUnavailable')));
+        }
       },
     );
 
@@ -287,11 +375,16 @@ function MatchChatDialog({ record, onClose }: { record: MatchRecord; onClose: ()
           content: result.translation.translatedContent || undefined,
         },
       }));
-    } catch {
+    } catch (err) {
       setTranslations((state) => ({
         ...state,
         [message.id]: { status: 'unavailable', targetLanguage },
       }));
+      showToast({
+        title: t('chat.translationOffline'),
+        body: onlineErrorDetail(err, t('chat.translationOffline')),
+        kind: 'error',
+      });
     }
   };
 
@@ -301,13 +394,17 @@ function MatchChatDialog({ record, onClose }: { record: MatchRecord; onClose: ()
     try {
       await reportChatMessage(message.id, { reason: 'post_match_history' });
       showToast({ title: t('chat.reported'), kind: 'success' });
-    } catch {
+    } catch (err) {
       setReportedMessageIds((ids) => {
         const next = new Set(ids);
         next.delete(message.id);
         return next;
       });
-      showToast({ title: t('chat.reportFailed'), kind: 'error' });
+      showToast({
+        title: t('chat.reportFailed'),
+        body: onlineErrorDetail(err, t('chat.reportFailed')),
+        kind: 'error',
+      });
     }
   };
 
@@ -334,7 +431,7 @@ function MatchChatDialog({ record, onClose }: { record: MatchRecord; onClose: ()
         ) : status === 'loading' || status === 'idle' ? (
           <Panel className="text-sm text-content-primary/60">{t('history.chatLoading')}</Panel>
         ) : status === 'unavailable' ? (
-          <Panel className="text-sm text-content-primary/60">{t('chat.historyUnavailable')}</Panel>
+          <Panel className="text-sm text-content-primary/60">{actionError || t('chat.historyUnavailable')}</Panel>
         ) : messages.length === 0 ? (
           <Panel className="text-sm text-content-primary/60">{t('chat.empty')}</Panel>
         ) : (
@@ -408,11 +505,14 @@ export function MatchHistory({ initialChatSourceMatchId }: MatchHistoryProps) {
   const [selectedRecord, setSelectedRecord] = useState<MatchRecord | null>(null);
   const [chatRecord, setChatRecord] = useState<MatchRecord | null>(null);
   const [loadingTraceId, setLoadingTraceId] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  const [outcomeFilter, setOutcomeFilter] = useState<MatchHistoryOutcomeFilter>('all');
   const locale = useLocale();
   const stats = getMatchStats(records);
-  const totalPages = Math.max(1, Math.ceil(records.length / PAGE_SIZE));
+  const filteredRecords = filterMatchRecords(records, query, outcomeFilter);
+  const totalPages = Math.max(1, Math.ceil(filteredRecords.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages - 1);
-  const visibleRecords = records.slice(currentPage * PAGE_SIZE, currentPage * PAGE_SIZE + PAGE_SIZE);
+  const visibleRecords = filteredRecords.slice(currentPage * PAGE_SIZE, currentPage * PAGE_SIZE + PAGE_SIZE);
 
   useEffect(() => {
     let cancelled = false;
@@ -488,15 +588,21 @@ export function MatchHistory({ initialChatSourceMatchId }: MatchHistoryProps) {
 
   const openMatchDetail = async (record: MatchRecord) => {
     setSelectedRecord(record);
-    if (!record.serverMatchId || (record.actionLog ?? []).length > 0) return;
+    if (!record.serverMatchId || record.replay || (!record.replayAvailable && (record.actionLog ?? []).length > 0))
+      return;
     setLoadingTraceId(record.id);
     try {
-      const actionLog = await getMatchLog(record.serverMatchId);
-      const nextRecord = { ...record, actionLog, detailsAvailable: true };
+      const nextRecord = record.replayAvailable
+        ? attachReplaySummary(record, await getMatchReplay(record.serverMatchId))
+        : { ...record, actionLog: await getMatchLog(record.serverMatchId), detailsAvailable: true };
       updateRecord(nextRecord);
       setSelectedRecord(nextRecord);
-    } catch {
-      showToast({ title: t('history.traceUnavailable'), kind: 'warning' });
+    } catch (err) {
+      showToast({
+        title: t('history.traceUnavailable'),
+        body: onlineErrorDetail(err, t('history.traceUnavailable')),
+        kind: 'warning',
+      });
     } finally {
       setLoadingTraceId(null);
     }
@@ -538,7 +644,7 @@ export function MatchHistory({ initialChatSourceMatchId }: MatchHistoryProps) {
               className="sm:flex-row sm:items-center sm:justify-between"
               primary={<h2>{t('history.title')}</h2>}
               actions={
-                records.length > PAGE_SIZE ? (
+                filteredRecords.length > PAGE_SIZE ? (
                   <ActionBar mobileLayout="pagination">
                     <Button
                       size="sm"
@@ -568,6 +674,34 @@ export function MatchHistory({ initialChatSourceMatchId }: MatchHistoryProps) {
               }
             />
 
+            {records.length > 0 && (
+              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_12rem]">
+                <SearchInput
+                  icon={<Search size={16} aria-hidden="true" />}
+                  value={query}
+                  aria-label={t('history.searchLabel')}
+                  placeholder={t('history.searchPlaceholder')}
+                  onChange={(event) => {
+                    setQuery(event.target.value);
+                    setPage(0);
+                  }}
+                />
+                <Select
+                  value={outcomeFilter}
+                  aria-label={t('history.outcomeFilter')}
+                  onChange={(event) => {
+                    setOutcomeFilter(event.target.value as MatchHistoryOutcomeFilter);
+                    setPage(0);
+                  }}
+                >
+                  <option value="all">{t('history.filterAll')}</option>
+                  <option value="victory">{t('board.result.victory')}</option>
+                  <option value="defeat">{t('board.result.defeat')}</option>
+                  <option value="draw">{t('history.draw')}</option>
+                </Select>
+              </div>
+            )}
+
             {serverStatus === 'loading' && <LoadingState label={t('history.serverLoading')} />}
             {serverStatus === 'unavailable' && (
               <Alert tone="warning" role="alert">
@@ -576,7 +710,9 @@ export function MatchHistory({ initialChatSourceMatchId }: MatchHistoryProps) {
             )}
             {serverStatus !== 'loading' && serverStatus !== 'unavailable' && records.length === 0 ? (
               <Panel className="text-sm text-content-primary/60">{t('history.noRecords')}</Panel>
-            ) : records.length > 0 ? (
+            ) : records.length > 0 && filteredRecords.length === 0 ? (
+              <Panel className="text-sm text-content-primary/60">{t('history.noSearchResults')}</Panel>
+            ) : filteredRecords.length > 0 ? (
               <div className="grid gap-3">
                 {visibleRecords.map((record) => (
                   <Card key={record.id} as="article" className="grid gap-3">

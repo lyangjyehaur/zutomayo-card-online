@@ -131,6 +131,8 @@ describe('game runtime image contract', () => {
     expect(dockerignore).toContain('!api/runtimeSecurityConfig.cjs');
     expect(dockerfile).toContain('COPY --from=builder /app/api/seasonResultService.cjs ./api/seasonResultService.cjs');
     expect(dockerignore).toContain('!api/seasonResultService.cjs');
+    expect(dockerfile).toContain('COPY --from=builder /app/api/replaySummary.cjs ./api/replaySummary.cjs');
+    expect(dockerignore).toContain('!api/replaySummary.cjs');
   });
 });
 

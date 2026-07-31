@@ -37,6 +37,15 @@ describe('online lobby platform boundary', () => {
     expect(apiClientSource).not.toContain('/matchmaking/');
   });
 
+  it('uses an opaque marker for local decks while starting the match with the browser-local selection', () => {
+    const lobbySource = readRepoFile('src/pages/OnlineLobbyPage.tsx');
+
+    expect(lobbySource).toContain('platformQuickMatchDeckName(selectedDeckName)');
+    expect(lobbySource).toContain('deckName: platformDeckName');
+    expect(lobbySource).toContain('playerDeckName: selectedDeckName');
+    expect(lobbySource).not.toContain('playerDeckName: match.deckName');
+  });
+
   it('registers hosted custom rooms in Colyseus before exposing a shareable room code', () => {
     const lobbySource = readRepoFile('src/pages/OnlineLobbyPage.tsx');
     const roomInfoSource = readRepoFile('src/components/OnlineRoomInfo.tsx');

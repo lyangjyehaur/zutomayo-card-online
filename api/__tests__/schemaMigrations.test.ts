@@ -17,6 +17,31 @@ function readMigrations(): string {
 }
 
 describe('schema migrations', () => {
+  it('persists de-identified terminal match analytics independently from runtime state', () => {
+    const migration = readRepoFile('migrations/000048_match_analytics.js');
+    const gameFallback = readRepoFile('src/server/db/postgres-adapter.ts');
+    const schemaGate = readRepoFile('api/schemaGate.cjs');
+    for (const artifact of [
+      'match_analytics',
+      'match_analytics_decks',
+      'match_analytics_events',
+      'bjg_match_telemetry',
+      'resume_count',
+      'disconnect_counts',
+      'reconnect_counts',
+      'seat_resume_counts',
+      'source_match_digest',
+      'integrity_sha256',
+      'idx_match_analytics_completed_at',
+    ]) {
+      expect(migration).toContain(artifact);
+      expect(gameFallback).toContain(artifact);
+      expect(schemaGate).toContain(artifact);
+    }
+    expect(migration).toContain("onDelete: 'RESTRICT'");
+    expect(migration).toContain('export const down = false');
+  });
+
   it('keeps privacy-filtered zero-result analytics aligned with the development fallback', () => {
     const migration = readRepoFile('migrations/000047_knowledge_search_zero_results.js');
     const initSchema = readRepoFile('api/server.cjs');
@@ -36,6 +61,17 @@ describe('schema migrations', () => {
       expect(schemaGate).toContain(artifact);
     }
     expect(migration).toContain('export const down = false');
+  });
+
+  it('stores completed replay summaries without coupling them to live boardgame state', () => {
+    const migration = readRepoFile('migrations/000049_match_replay_summaries.js');
+    const initSchema = readRepoFile('api/server.cjs');
+    const schemaGate = readRepoFile('api/schemaGate.cjs');
+    for (const artifact of ['replay_summary', 'ck_matches_replay_summary_object']) {
+      expect(migration).toContain(artifact);
+    }
+    expect(initSchema).toContain('replay_summary');
+    expect(schemaGate).toContain('replay_summary');
   });
 
   it('persists physical card ownership for signed-in users', () => {

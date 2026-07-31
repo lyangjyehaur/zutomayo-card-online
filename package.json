@@ -1,7 +1,7 @@
 {
   "name": "zutomayo-card-online",
   "private": true,
-  "version": "0.2.5",
+  "version": "0.2.6",
   "type": "module",
   "overrides": {
     "boardgame.io": {
@@ -36,6 +36,9 @@
     "smoke:online": "node --import tsx scripts/online-smoke.ts",
     "smoke:online-consistency": "ONLINE_SMOKE_MODE=consistency node --import tsx scripts/online-smoke.ts",
     "smoke:platform-deployment": "node --import tsx scripts/platform-deployment-smoke.ts",
+    "smoke:cache-policy": "node --import tsx scripts/cache-policy-smoke.ts",
+    "cloudflare:cache:plan": "node --import tsx scripts/cloudflare-cache-rules.ts plan",
+    "cloudflare:cache:apply": "node --import tsx scripts/cloudflare-cache-rules.ts apply",
     "smoke:responsive": "npm run smoke:ui-responsive && npm run smoke:admin-responsive && npm run smoke:battle-responsive && npm run smoke:online-lobby-responsive && npm run smoke:tools-responsive",
     "smoke:ui-responsive": "node scripts/ui-responsive-smoke.mjs",
     "smoke:admin-responsive": "node scripts/admin-responsive-smoke.mjs",
@@ -45,6 +48,8 @@
     "smoke:performance": "node scripts/performance-smoke.mjs",
     "fonts:subset": "node scripts/build-display-font-subsets.mjs",
     "rule:audit": "node --import tsx scripts/rule-audit.ts",
+    "effect:dispatch-coverage": "node --import tsx scripts/effect-dispatch-coverage.ts",
+    "replay:goldens:update": "node --import tsx scripts/generate-replay-goldens.ts",
     "migrate:sqlite-to-pg": "node --import tsx scripts/migrate-sqlite-to-pg.ts",
     "seed:cards": "node --import tsx scripts/seed-cards-pg.ts",
     "generate:e2e-card-seed": "node --import tsx scripts/create-e2e-card-seed.ts",
@@ -90,6 +95,8 @@
     "release:operational-evidence:hardening": "node --import tsx scripts/operationalRecoveryGate.ts --profile production-hardening",
     "e2e:authenticated-staging": "node --import tsx scripts/authenticated-multiplayer-gate.ts",
     "e2e:authenticated-staging:hardening": "node --import tsx scripts/authenticated-multiplayer-gate.ts --profile production-hardening",
+    "e2e:trust-staging": "node --import tsx scripts/trust-surface-gate.ts",
+    "evidence:player-product": "node --import tsx scripts/playerProductEvidenceGate.ts",
     "ops:config": "node scripts/verify-operational-config.mjs",
     "version:check": "node scripts/check-version-sync.mjs",
     "i18n:check": "tsx scripts/check-i18n.ts",

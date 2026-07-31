@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { initCards, isCardsInitialized, getAllCardDefs, createInstance } from '../cards/loader';
 import { parseAllEffects, parseEffect } from '../effects/parser';
 import { collectTurnEffects } from '../effects/executor';
@@ -193,6 +193,78 @@ describe('setupGame', () => {
     const G = setupGame({ deck0Ids: ids });
     expect(G.tutorialSkipShuffle).toBe(false);
   });
+
+  it('reconstructs identical opening state and card identities from the same seed and decks', () => {
+    const ids = Array.from({ length: 20 }, (_, i) => `test-character-${(i % 15) + 1}`);
+    const first = setupGame({ deck0Ids: ids, deck1Ids: [...ids].reverse(), rngSeed: 'same-match' });
+    createInstance('test-enchant-1');
+    const second = setupGame({ deck0Ids: ids, deck1Ids: [...ids].reverse(), rngSeed: 'same-match' });
+
+    expect(second.replayManifest).toEqual(first.replayManifest);
+    expect(second.players).toEqual(first.players);
+    expect(second.rng).toEqual(first.rng);
+  });
+
+  it('uses different opening orders for different seeds', () => {
+    const ids = Array.from({ length: 20 }, (_, i) => `test-character-${(i % 15) + 1}`);
+    const first = setupGame({ deck0Ids: ids, deck1Ids: ids, rngSeed: 1 });
+    const second = setupGame({ deck0Ids: ids, deck1Ids: ids, rngSeed: 2 });
+
+    expect(second.players[0]).not.toEqual(first.players[0]);
+  });
+
+  it('records exact pre-shuffle decks and rules version without global Math.random', () => {
+    const ids = Array.from({ length: 20 }, (_, i) => `test-character-${(i % 15) + 1}`);
+    const random = vi.spyOn(Math, 'random').mockImplementation(() => {
+      throw new Error('rules randomness must not use Math.random');
+    });
+    try {
+      const G = setupGame({ deck0Ids: ids, deck1Ids: [...ids].reverse(), rngSeed: 55, rulesVersion: 'rules-test' });
+      expect(G.replayManifest).toEqual({
+        schemaVersion: 1,
+        rngAlgorithm: 'mulberry32-v1',
+        seed: 55,
+        rulesVersion: 'rules-test',
+        deckDefIds: [ids, [...ids].reverse()],
+      });
+    } finally {
+      random.mockRestore();
+    }
+  });
+
+  it('replays effect-driven card shuffles from persisted RNG state', () => {
+    const makeState = () => {
+      const G = setupGame({ rngSeed: 8080 });
+      G.players[0].deck = [];
+      G.players[0].abyss = Array.from({ length: 8 }, (_, index) => ({
+        instanceId: `payment-${index}`,
+        defId: `test-enchant-${index + 1}`,
+        faceUp: true,
+      }));
+      G.pendingChoice = {
+        id: 'shuffle-payment',
+        player: 0,
+        type: 'abyssToDeckBottomOrLose',
+        min: 8,
+        max: 8,
+        payload: { faceDown: true, shuffle: true },
+        options: G.players[0].abyss.map((card) => ({
+          id: card.instanceId,
+          label: card.defId,
+          cardInstanceId: card.instanceId,
+        })),
+      };
+      return G;
+    };
+    const first = makeState();
+    const second = makeState();
+    const optionIds = first.pendingChoice!.options.map((option) => option.id);
+
+    expect(submitPendingChoice(first, 0, optionIds)).toBe(true);
+    expect(submitPendingChoice(second, 0, optionIds)).toBe(true);
+    expect(second.players[0].deck).toEqual(first.players[0].deck);
+    expect(second.rng).toEqual(first.rng);
+  });
 });
 
 describe('validateZutomayoSetupData', () => {
@@ -225,6 +297,11 @@ describe('validateZutomayoSetupData', () => {
   it('accepts valid custom deck IDs', () => {
     const ids = Array.from({ length: 20 }, (_, i) => `test-character-${(i % 15) + 1}`);
     expect(validateZutomayoSetupData({ deck0Ids: ids, deck1Ids: ids })).toBeUndefined();
+  });
+
+  it('rejects invalid deterministic seeds', () => {
+    expect(validateZutomayoSetupData({ rngSeed: Number.NaN })).toContain('rngSeed');
+    expect(validateZutomayoSetupData({ rngSeed: '' })).toContain('rngSeed');
   });
 });
 
@@ -1697,6 +1774,17 @@ describe('ZutomayoCard.endIf', () => {
 });
 
 describe('playerView', () => {
+  it('does not expose replay inputs or RNG state to players or spectators', () => {
+    const G = setupGame({ rngSeed: 123 });
+    const player = ZutomayoCard.playerView?.({ G, playerID: '0' } as never) as GameState;
+    const spectator = ZutomayoCard.playerView?.({ G, playerID: null } as never) as GameState;
+
+    expect(player.rng).toBeUndefined();
+    expect(player.replayManifest).toBeUndefined();
+    expect(spectator.rng).toBeUndefined();
+    expect(spectator.replayManifest).toBeUndefined();
+  });
+
   it('resolves card-name guesses as declaration, hidden position selection, then acknowledgement', () => {
     const G = setupGame();
     G.step = 'effectOrder';

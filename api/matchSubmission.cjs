@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const { normalizeWinnerPlayer, verifyBoardgameMatchResult } = require('./matchVerification.cjs');
 const { applyCanonicalSeasonResult } = require('./seasonResultService.cjs');
 const { AccountMutationError, acquireAccountMutationLocks } = require('./accountMutationLock.cjs');
+const { createReplaySummary } = require('./replaySummary.cjs');
 
 function calculateElo(ratingA, ratingB, scoreA) {
   const K = 32;
@@ -85,6 +86,9 @@ async function submitMatchResult({
   }
 
   const sanitizedActionLog = sanitizeActionLog(rawActionLog);
+  const replaySummary = sourceVerification
+    ? createReplaySummary(sourceVerification.authoritative.replayState, resolvedRulesVersion, sanitizedActionLog)
+    : null;
   const matchId = generateMatchId();
 
   const client = await pool.connect();
@@ -171,7 +175,7 @@ async function submitMatchResult({
     const player0Id = winner ? resolvedWinnerId : null;
     const player1Id = loser ? resolvedLoserId : null;
     await client.query(
-      'INSERT INTO matches (id, source_match_id, player0_id, player1_id, winner_id, loser_id, winner_elo_change, loser_elo_change, turns, duration_seconds, rules_version, action_log, completed_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13)',
+      'INSERT INTO matches (id, source_match_id, player0_id, player1_id, winner_id, loser_id, winner_elo_change, loser_elo_change, turns, duration_seconds, rules_version, action_log, replay_summary, completed_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13::jsonb, $14)',
       [
         matchId,
         cleanSourceMatchId || null,
@@ -185,6 +189,7 @@ async function submitMatchResult({
         resolvedDuration,
         resolvedRulesVersion,
         JSON.stringify(sanitizedActionLog),
+        replaySummary ? JSON.stringify(replaySummary) : null,
         resolvedCompletedAt,
       ],
     );
