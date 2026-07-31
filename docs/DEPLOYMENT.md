@@ -805,7 +805,7 @@ PostgreSQL 重建。
 
 部署順序固定為：備份 `.env`/Compose → 以 migration role 產生新的 `pg_dump -Fc`
 並寫入 SHA-256 → checkout `origin/master` → 同步 `APP_BUILD_ID`、`APP_VERSION`、
-`GAME_RULES_VERSION`、`EXPECTED_SCHEMA_MIGRATION=000048_match_analytics`
+`GAME_RULES_VERSION`、`EXPECTED_SCHEMA_MIGRATION=000049_match_replay_summaries`
 及 migration checksum → 備份、設定並驗證 1Panel Meilisearch → 實際檢查三服務 `REDIS_DB` 一致且 Redis
 `maxmemory-policy=noeviction` → 同步並校驗私有 battle 素材 → build／migration → 發布卡牌、Q&A、勘誤與規則文件 → `npm run search:reindex` 原子重建及 `search:check` → `docker compose up --wait` → 透過 SSH tunnel 驗證三服務 `/health`、`/ready`、build ID、卡牌／Q&A／規則搜尋及所有 battle 素材 → 視憑證設定同步 Cloudflare Cache Rules → 透過正常 DNS 與香港直連驗證快取。Cache smoke 涵蓋 PWA 控制檔、公開／私人 API Header、battle 素材版本、真實 MIME、內容與缺失素材 404。
 

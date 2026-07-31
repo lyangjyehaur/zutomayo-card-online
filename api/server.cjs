@@ -128,7 +128,13 @@ const {
   updateDeckShare,
 } = require('./deckShareService.cjs');
 const { countOnlinePresence, heartbeatOnlinePresence } = require('./presenceService.cjs');
-const { getAdminMatches, getLeaderboard, getMatchActionLog, getUserMatches } = require('./matchQueries.cjs');
+const {
+  getAdminMatches,
+  getLeaderboard,
+  getMatchActionLog,
+  getMatchReplay,
+  getUserMatches,
+} = require('./matchQueries.cjs');
 const { submitMatchResult } = require('./matchSubmission.cjs');
 const {
   listPosts: listFeedbackPosts,
@@ -617,6 +623,7 @@ async function initSchema() {
       duration_seconds INTEGER,
       rules_version TEXT NOT NULL DEFAULT 'legacy',
       action_log JSONB,
+      replay_summary JSONB,
       completed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )`,
@@ -627,6 +634,7 @@ async function initSchema() {
     `CREATE INDEX IF NOT EXISTS idx_matches_created_at ON matches(created_at DESC)`,
     `ALTER TABLE matches ADD COLUMN IF NOT EXISTS source_match_id TEXT`,
     `ALTER TABLE matches ADD COLUMN IF NOT EXISTS rules_version TEXT NOT NULL DEFAULT 'legacy'`,
+    `ALTER TABLE matches ADD COLUMN IF NOT EXISTS replay_summary JSONB`,
     `ALTER TABLE matches ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_matches_source_match_id
       ON matches(source_match_id)
@@ -5071,6 +5079,17 @@ function handleRequest(req, res) {
     }
 
     // ===== Match Routes =====
+
+    // Get match action log
+    const matchReplayRoute = pathname.match(/^\/api\/matches\/([^/]+)\/replay$/);
+    if (matchReplayRoute && method === 'GET') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const result = await getMatchReplay(pool, matchReplayRoute[1], userId);
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
+      return;
+    }
 
     // Get match action log
     const matchLogRoute = pathname.match(/^\/api\/matches\/([^/]+)\/log$/);

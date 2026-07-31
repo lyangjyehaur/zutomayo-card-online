@@ -23,6 +23,46 @@ export interface MatchRecord {
   turns: number;
   log: string[];
   actionLog: ActionLogEntry[];
+  replayAvailable?: boolean;
+  replaySearchText?: string;
+  replay?: MatchReplaySummary;
+}
+
+export interface MatchReplayDecision {
+  sequence: number;
+  player: 0 | 1 | null;
+  move: string;
+  args: unknown[];
+  requestFingerprint: string;
+  stateFingerprintAfter: string;
+}
+
+export interface MatchReplaySummary {
+  schemaVersion: 1;
+  traceComplete: boolean;
+  rulesVersion: string;
+  result: {
+    winner: 0 | 1 | null;
+    reason: string | null;
+    turns: number;
+    finalHp: [number, number];
+    finalChronos: number;
+  };
+  phases: Array<{ step: string; fromTurn: number; toTurn: number; actionCount: number }>;
+  decisions: MatchReplayDecision[];
+  effects: Array<{
+    order: number;
+    turn: number;
+    step: string;
+    player: 0 | 1 | null;
+    action: string;
+    cardDefId: string | null;
+    choiceType: string | null;
+    result: unknown;
+  }>;
+  revealedHands: Array<{ player: number; cardDefIds: string[] }>;
+  timeline: ActionLogEntry[];
+  searchText: string;
 }
 
 export interface ServerMatchSummary {
@@ -36,6 +76,8 @@ export interface ServerMatchSummary {
   turns?: number | null;
   duration?: number | null;
   createdAt: string;
+  replayAvailable?: boolean;
+  replaySearchText?: string;
 }
 
 type MatchWinnerInput = string | number | null | undefined;
@@ -72,6 +114,53 @@ export function historyChatRecordFromSourceMatchId(sourceMatchId: string): Match
     log: [],
     actionLog: [],
   };
+}
+
+export function attachReplaySummary(record: MatchRecord, replay: MatchReplaySummary): MatchRecord {
+  return {
+    ...record,
+    rulesVersion: replay.rulesVersion || record.rulesVersion,
+    turns: replay.result.turns,
+    winner: replay.result.winner,
+    players: [
+      { ...record.players[0], hp: replay.result.finalHp[0] },
+      { ...record.players[1], hp: replay.result.finalHp[1] },
+    ],
+    chronos: { ...record.chronos, finalPosition: replay.result.finalChronos },
+    detailsAvailable: true,
+    actionLog: replay.timeline,
+    replayAvailable: true,
+    replaySearchText: replay.searchText,
+    replay,
+  };
+}
+
+export type MatchHistoryOutcomeFilter = 'all' | 'victory' | 'defeat' | 'draw';
+
+export function filterMatchRecords(
+  records: MatchRecord[],
+  query: string,
+  outcome: MatchHistoryOutcomeFilter = 'all',
+): MatchRecord[] {
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  return records.filter((record) => {
+    if (outcome !== 'all' && record.outcome !== outcome) return false;
+    if (!normalizedQuery) return true;
+    const searchable = [
+      record.id,
+      record.serverMatchId,
+      record.sourceMatchId,
+      record.rulesVersion,
+      record.outcome,
+      record.replaySearchText,
+      record.replay ? JSON.stringify(record.replay) : '',
+      ...(record.actionLog ?? []).map((entry) => JSON.stringify(entry)),
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLocaleLowerCase();
+    return searchable.includes(normalizedQuery);
+  });
 }
 
 export function resolveInitialHistoryChatRecord(
@@ -172,6 +261,8 @@ export function matchRecordFromServer(match: ServerMatchSummary, accountId: stri
     turns: Math.max(0, Math.round(Number(match.turns) || 0)),
     log: [],
     actionLog: [],
+    replayAvailable: match.replayAvailable === true,
+    replaySearchText: match.replaySearchText || '',
   };
 }
 

@@ -5,6 +5,7 @@ import { initCards } from './game/cards/loader';
 import { initCardTextsI18n, type CardTextI18nEntry } from './game/cards/i18n';
 import { getPresetDeck, validateConstructedDeckIds } from './game/cards/deckBuilder';
 import type { CardDef, ZutomayoSetupData } from './game/types';
+import { authoritativeOnlineSetupData } from './server/onlineSetup';
 import { APP_VERSION_INFO, isCompatibleVersion, normalizeVersionInfo, type AppVersionInfo } from './version';
 import path from 'path';
 import fs from 'fs';
@@ -541,8 +542,8 @@ server.app.use(async (ctx: KoaContext, next: Next) => {
     reservation = result.body;
   }
   const nextSetup: ZutomayoSetupData = {
-    ...setup,
-    rulesVersion: APP_VERSION_INFO.rulesVersion,
+    // The seed controls future hidden outcomes, so online clients never choose it.
+    ...authoritativeOnlineSetupData(setup, APP_VERSION_INFO.rulesVersion),
     ...(reservation
       ? {
           deck0Ids: reservation.cardIds,

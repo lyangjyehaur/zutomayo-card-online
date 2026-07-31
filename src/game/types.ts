@@ -40,6 +40,65 @@ export type JankenChoice = 'rock' | 'paper' | 'scissors';
 export type GameStep = 'janken' | 'mulligan' | 'initialSet' | 'turnSet' | 'effectOrder' | 'gameOver';
 export type PlayerIndex = 0 | 1;
 export type SetSlot = 'A' | 'B' | 'C';
+export type GameRngAlgorithm = 'mulberry32-v1';
+
+export interface GameRngState {
+  algorithm: GameRngAlgorithm;
+  seed: number;
+  counter: number;
+}
+
+export interface ReplayManifest {
+  schemaVersion: 1;
+  rngAlgorithm: GameRngAlgorithm;
+  seed: number;
+  rulesVersion: string;
+  /** Final deck composition before the persisted match RNG shuffles either deck. */
+  deckDefIds: [string[], string[]];
+}
+
+export type ReplayMoveName =
+  | 'janken'
+  | 'mulligan'
+  | 'keepHand'
+  | 'setInitialCard'
+  | 'setTurnCard'
+  | 'undoSetCard'
+  | 'confirmReady'
+  | 'timeoutSkip'
+  | 'timeoutAdvance'
+  | 'surrender'
+  | 'resolvePendingEffect'
+  | 'submitPendingChoice';
+
+export interface ReplayDecisionRecord {
+  schemaVersion: 1;
+  sequence: number;
+  player: PlayerIndex;
+  move: ReplayMoveName;
+  args: unknown[];
+  requestFingerprint: string;
+  stateFingerprintAfter: string;
+}
+
+export type ReplayDivergenceReason =
+  | 'unsupportedManifest'
+  | 'rulesVersion'
+  | 'sequence'
+  | 'requestFingerprint'
+  | 'invalidDecision'
+  | 'stateFingerprint';
+
+export interface ReplayDivergence {
+  sequence: number;
+  reason: ReplayDivergenceReason;
+  expected?: string;
+  actual?: string;
+}
+
+export type ReplayStatus =
+  | { status: 'verified'; decisionsApplied: number }
+  | { status: 'diverged'; decisionsApplied: number; divergence: ReplayDivergence };
 export type TimingEventType =
   | 'turnStart'
   | 'turnEnd'
@@ -218,6 +277,8 @@ export interface ZutomayoSetupData {
   deck0Version?: string;
   deck1Version?: string;
   rulesVersion?: string;
+  /** Deterministic local/test input. Online creation replaces this value server-side. */
+  rngSeed?: string | number;
   clientVersion?: AppVersionInfo;
   /**
    * 教學模式專用：跳過 setupGame 與 finishMulligan 的洗牌，
@@ -523,6 +584,14 @@ export interface CombatModifiers {
 
 export interface GameState {
   players: [PlayerState, PlayerState];
+  /** Server-only deterministic random stream. Optional only for legacy persisted states and redacted player views. */
+  rng?: GameRngState;
+  /** Server-only reconstruction inputs. Optional only for legacy persisted states and redacted player views. */
+  replayManifest?: ReplayManifest;
+  /** Server-only append-only inputs accepted through the authoritative boardgame move boundary. */
+  decisionTrace?: ReplayDecisionRecord[];
+  /** Server-only result attached to states produced by the replay engine. */
+  replayStatus?: ReplayStatus;
   step: GameStep;
   ready: [boolean, boolean];
   chronos: ChronosState;

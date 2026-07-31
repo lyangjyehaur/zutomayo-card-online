@@ -1,5 +1,6 @@
 import type { CardInstance, Element } from '../types';
 import { createInstance, getAllCardDefs, getCardDef, isCardsInitialized } from './loader';
+import { secureRandom } from '../rng';
 import { PRESET_DECKS } from './presetDecks';
 import { CUSTOM_DECK_NAME, customDeckIdFromOption, loadCustomDeckIds, loadCustomDeckIdsForOption } from './customDeck';
 
@@ -24,10 +25,13 @@ export const RANDOM_DECK_NAME = '__random__';
 export const COUNTER_DECK_NAME = '__counter__';
 
 // Fisher-Yates shuffle
-function shuffle<T>(arr: T[]): T[] {
+type RandomSource = () => number;
+type CardInstanceFactory = (defId: string) => CardInstance;
+
+function shuffle<T>(arr: T[], random: RandomSource): T[] {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(random() * (i + 1));
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
@@ -46,29 +50,42 @@ function assertCardsLoaded(): void {
 function buildRandomDeckFromPool(
   pool: ReturnType<typeof getAllCardDefs>,
   desiredCharacterCount: number,
+  random: RandomSource,
+  instanceFactory: CardInstanceFactory,
 ): CardInstance[] {
   if (pool.length < 20) {
     throw new Error(`Card pool must contain at least 20 cards, got ${pool.length}`);
   }
 
-  const characters = shuffle(pool.filter((card) => card.type === 'Character'));
-  const others = shuffle(pool.filter((card) => card.type !== 'Character'));
+  const characters = shuffle(
+    pool.filter((card) => card.type === 'Character'),
+    random,
+  );
+  const others = shuffle(
+    pool.filter((card) => card.type !== 'Character'),
+    random,
+  );
   const selected = [...characters.slice(0, desiredCharacterCount), ...others.slice(0, 20 - desiredCharacterCount)];
 
   if (selected.length < 20) {
     const selectedIds = new Set(selected.map((card) => card.id));
-    selected.push(...shuffle(pool.filter((card) => !selectedIds.has(card.id))).slice(0, 20 - selected.length));
+    selected.push(
+      ...shuffle(
+        pool.filter((card) => !selectedIds.has(card.id)),
+        random,
+      ).slice(0, 20 - selected.length),
+    );
   }
 
-  return shuffle(selected).map((card) => createInstance(card.id));
+  return shuffle(selected, random).map((card) => instanceFactory(card.id));
 }
 
 // Build a deck from a list of card def IDs (must be 20 cards)
-export function buildDeck(defIds: string[]): CardInstance[] {
+export function buildDeck(defIds: string[], instanceFactory: CardInstanceFactory = createInstance): CardInstance[] {
   // 所有牌組建構路徑（custom / preset / randomDeck）統一走驗證，確保不合規牌組無法進入遊戲。
   const validationError = validateConstructedDeckIds(defIds);
   if (validationError) throw new Error(validationError);
-  return defIds.map((id) => createInstance(id));
+  return defIds.map((id) => instanceFactory(id));
 }
 
 export function validateConstructedDeckIds(defIds: unknown): string | null {
@@ -107,19 +124,23 @@ export function hasCustomDeck(): boolean {
 }
 
 // Get a preset deck by name
-export function getPresetDeck(name: string): CardInstance[] {
-  if (name === RANDOM_DECK_NAME) return randomDeck();
+export function getPresetDeck(
+  name: string,
+  random: RandomSource = secureRandom,
+  instanceFactory: CardInstanceFactory = createInstance,
+): CardInstance[] {
+  if (name === RANDOM_DECK_NAME) return randomDeck(random, instanceFactory);
   if (name === CUSTOM_DECK_NAME || customDeckIdFromOption(name)) {
     const ids = loadCustomDeckIdsForOption(name) ?? loadCustomDeckIds();
     if (!ids) throw new Error('No custom deck saved');
     const validationError = validateConstructedDeckIds(ids);
     if (validationError) throw new Error(`Custom deck is invalid: ${validationError}`);
-    return buildDeck(ids);
+    return buildDeck(ids, instanceFactory);
   }
   const preset = PRESET_DECKS[name];
   if (!preset) throw new Error(`Unknown preset deck: ${name}`);
   // 同屬性隨機：從該屬性卡池隨機抽取 20 張，每次開局都不同。
-  return randomElementDeck(preset.element);
+  return randomElementDeck(preset.element, random, instanceFactory);
 }
 
 // Get all preset deck names
@@ -138,12 +159,15 @@ export function getPresetDeckNames(): string[] {
  * 卡池涵蓋全部 479 張卡（Character 245 + Enchant 207 + Area Enchant 27），
  * 每次呼叫都重新隨機，確保每次對戰牌組都不同。
  */
-export function randomDeck(): CardInstance[] {
+export function randomDeck(
+  random: RandomSource = secureRandom,
+  instanceFactory: CardInstanceFactory = createInstance,
+): CardInstance[] {
   assertCardsLoaded();
   const allCards = getAllCardDefs();
   // 官方推薦 Character >= 50%（非強制）；隨機決定 10-15 張角色卡，其餘從非角色卡隨機抽取
-  const charCount = 10 + Math.floor(Math.random() * 6); // 10-15
-  return buildRandomDeckFromPool(allCards, charCount);
+  const charCount = 10 + Math.floor(random() * 6); // 10-15
+  return buildRandomDeckFromPool(allCards, charCount, random, instanceFactory);
 }
 
 /**
@@ -153,12 +177,16 @@ export function randomDeck(): CardInstance[] {
  * 但卡池限制為單一屬性。四個主要屬性（闇/炎/電気/風）各有 104-106 張卡、
  * 59-60 張角色卡，足以隨機抽出合法牌組。カオス 屬性僅 4 張，不支援。
  */
-export function randomElementDeck(element: Element): CardInstance[] {
+export function randomElementDeck(
+  element: Element,
+  random: RandomSource = secureRandom,
+  instanceFactory: CardInstanceFactory = createInstance,
+): CardInstance[] {
   assertCardsLoaded();
   const pool = getAllCardDefs().filter((c) => c.element === element);
   // 官方推薦 Character >= 50%（非強制）；隨機決定 10-15 張角色卡
-  const charCount = 10 + Math.floor(Math.random() * 6); // 10-15
-  return buildRandomDeckFromPool(pool, charCount);
+  const charCount = 10 + Math.floor(random() * 6); // 10-15
+  return buildRandomDeckFromPool(pool, charCount, random, instanceFactory);
 }
 
 /**
@@ -174,7 +202,11 @@ export function randomElementDeck(element: Element): CardInstance[] {
  * 從 unique 卡定義抽，每張最多 1 張，必然符合同卡上限。
  * 最後走 validateConstructedDeckIds 驗證，確保合法。
  */
-export function buildCounterDeck(playerDeck: CardInstance[]): CardInstance[] {
+export function buildCounterDeck(
+  playerDeck: CardInstance[],
+  random: RandomSource = secureRandom,
+  instanceFactory: CardInstanceFactory = createInstance,
+): CardInstance[] {
   const allCards = getAllCardDefs();
   const playerDefs = playerDeck
     .map((c) => getCardDef(c.defId))
@@ -194,17 +226,20 @@ export function buildCounterDeck(playerDeck: CardInstance[]): CardInstance[] {
   // 若強卡不足，放寬到所有角色卡
   const charPool = strongChars.length >= 10 ? strongChars : aiChars;
   const charCount = 14; // 14 張角色卡，確保戰鬥力充足
-  const deckChars = shuffle(charPool).slice(0, charCount);
+  const deckChars = shuffle(charPool, random).slice(0, charCount);
 
   const aiOthers = allCards.filter((c) => c.type !== 'Character');
   // power 優勢：優先 sendToPower > 0 的卡；不足時從其餘非角色卡補齊。
   const powerCards = aiOthers.filter((c) => c.sendToPower > 0);
   const otherCount = 20 - charCount;
-  let deckOthers = shuffle(powerCards).slice(0, otherCount);
+  let deckOthers = shuffle(powerCards, random).slice(0, otherCount);
   if (deckOthers.length < otherCount) {
     // 不足時從剩餘非角色卡補齊，避免牌組少於 20 張
     const usedIds = new Set(deckOthers.map((c) => c.id));
-    const fillers = shuffle(aiOthers.filter((c) => !usedIds.has(c.id))).slice(0, otherCount - deckOthers.length);
+    const fillers = shuffle(
+      aiOthers.filter((c) => !usedIds.has(c.id)),
+      random,
+    ).slice(0, otherCount - deckOthers.length);
     deckOthers = [...deckOthers, ...fillers];
   }
 
@@ -213,12 +248,12 @@ export function buildCounterDeck(playerDeck: CardInstance[]): CardInstance[] {
   const validationError = validateConstructedDeckIds(defIds);
   if (validationError) {
     // 理論上不該發生，但保留 fallback 避免開局崩潰
-    return randomDeck();
+    return randomDeck(random, instanceFactory);
   }
-  return defIds.map((id) => createInstance(id));
+  return defIds.map((id) => instanceFactory(id));
 }
 
 // Shuffle a deck
-export function shuffleDeck(deck: CardInstance[]): CardInstance[] {
-  return shuffle(deck);
+export function shuffleDeck(deck: CardInstance[], random: RandomSource = secureRandom): CardInstance[] {
+  return shuffle(deck, random);
 }

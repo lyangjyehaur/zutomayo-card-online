@@ -1,4 +1,4 @@
-import type { ServerMatchSummary } from '../game/matchHistory';
+import type { MatchReplaySummary, ServerMatchSummary } from '../game/matchHistory';
 import type { ActionLogEntry, CardDef } from '../game/types';
 import { Sentry } from '../sentry';
 import { createKnowledgeClient } from './knowledgeClient';
@@ -1521,6 +1521,13 @@ export async function getMatches(limit = 50, offset = 0): Promise<ServerMatchSum
 export async function getMatchLog(matchId: string): Promise<ActionLogEntry[]> {
   const data = await request<{ matchId: string; actionLog: ActionLogEntry[] }>(`/matches/${matchId}/log`);
   return data.actionLog;
+}
+
+export async function getMatchReplay(matchId: string): Promise<MatchReplaySummary> {
+  const data = await request<{ matchId: string; replay: MatchReplaySummary }>(
+    `/matches/${encodeURIComponent(matchId)}/replay`,
+  );
+  return data.replay;
 }
 
 // ===== Leaderboard =====

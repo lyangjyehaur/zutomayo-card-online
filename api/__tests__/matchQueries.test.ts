@@ -6,26 +6,32 @@ type Queryable = {
 };
 
 const require = createRequire(import.meta.url);
-const { getAdminMatches, getLeaderboard, getMatchActionLog, getUserMatches } = require('../matchQueries.cjs') as {
-  getAdminMatches: (pool: Queryable, limitParam: unknown) => Promise<Record<string, unknown>>;
-  getLeaderboard: (
-    pool: Queryable,
-    limitParam: unknown,
-    sanitizeText: (value: unknown, maxLen?: number) => string,
-  ) => Promise<Record<string, unknown>>;
-  getMatchActionLog: (
-    pool: Queryable,
-    matchId: string,
-    sanitizeActionLog: (value: unknown) => unknown[],
-    userId: string,
-  ) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
-  getUserMatches: (
-    pool: Queryable,
-    userId: string,
-    limitParam: unknown,
-    offsetParam: unknown,
-  ) => Promise<Record<string, unknown>>;
-};
+const { getAdminMatches, getLeaderboard, getMatchActionLog, getMatchReplay, getUserMatches } =
+  require('../matchQueries.cjs') as {
+    getAdminMatches: (pool: Queryable, limitParam: unknown) => Promise<Record<string, unknown>>;
+    getLeaderboard: (
+      pool: Queryable,
+      limitParam: unknown,
+      sanitizeText: (value: unknown, maxLen?: number) => string,
+    ) => Promise<Record<string, unknown>>;
+    getMatchActionLog: (
+      pool: Queryable,
+      matchId: string,
+      sanitizeActionLog: (value: unknown) => unknown[],
+      userId: string,
+    ) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
+    getMatchReplay: (
+      pool: Queryable,
+      matchId: string,
+      userId: string,
+    ) => Promise<{ ok: true; body: Record<string, unknown> } | { ok: false; status: number; error: string }>;
+    getUserMatches: (
+      pool: Queryable,
+      userId: string,
+      limitParam: unknown,
+      offsetParam: unknown,
+    ) => Promise<Record<string, unknown>>;
+  };
 
 function poolWithRows(rows: unknown[]): Queryable {
   return {
@@ -68,6 +74,28 @@ describe('match query services', () => {
     });
   });
 
+  it('returns completed replay summaries only to match participants', async () => {
+    const replay = { schemaVersion: 1, traceComplete: true, decisions: [], timeline: [] };
+    const pool = poolWithRows([{ id: 'm_1', rules_version: 'rules-2026-07', replay_summary: replay }]);
+
+    await expect(getMatchReplay(pool, 'm_1', 'u_winner')).resolves.toEqual({
+      ok: true,
+      body: { matchId: 'm_1', rulesVersion: 'rules-2026-07', replay },
+    });
+    expect(pool.query).toHaveBeenCalledWith(
+      'SELECT id, rules_version, replay_summary FROM matches WHERE id = $1 AND (player0_id = $2 OR player1_id = $2)',
+      ['m_1', 'u_winner'],
+    );
+    await expect(getMatchReplay(poolWithRows([]), 'm_1', 'u_other')).resolves.toEqual({
+      ok: false,
+      status: 403,
+      error: 'Forbidden',
+    });
+    await expect(
+      getMatchReplay(poolWithRows([{ id: 'legacy', rules_version: 'legacy', replay_summary: null }]), 'legacy', 'u_1'),
+    ).resolves.toMatchObject({ ok: false, status: 404 });
+  });
+
   it('maps leaderboard rows and clamps limit to 500', async () => {
     const pool = poolWithRows([{ id: 'u_1', nickname: '<b>Alice</b>', elo: 1100, match_count: 4, wins: 3 }]);
     const sanitizeText = vi.fn((value: unknown) => String(value).replace(/[<>]/g, ''));
@@ -108,6 +136,15 @@ describe('match query services', () => {
       200,
       0,
     ]);
+  });
+
+  it('exposes only replay availability and its bounded search index in history lists', async () => {
+    const pool = poolWithRows([
+      { ...matchRow, replay_summary: { schemaVersion: 1, searchText: 'clockadvance card-1', decisions: ['private'] } },
+    ]);
+    await expect(getUserMatches(pool, 'u_winner', '10', '0')).resolves.toEqual({
+      matches: [expect.objectContaining({ replayAvailable: true, replaySearchText: 'clockadvance card-1' })],
+    });
   });
 
   it('maps admin matches and uses the default limit', async () => {

@@ -1460,6 +1460,24 @@ describe('server routes', () => {
       expect(res.statusCode).toBe(401);
     });
 
+    it('GET /api/matches/:id/replay requires auth and returns an authorized completed summary', async () => {
+      const unauthorized = await sendRequest('GET', '/api/matches/m_1/replay');
+      expect(unauthorized.statusCode).toBe(401);
+
+      const replay = { schemaVersion: 1, traceComplete: true, decisions: [], effects: [], timeline: [] };
+      mockQuery.mockResolvedValueOnce({
+        rows: [{ id: 'm_1', rules_version: 'rules-1', replay_summary: replay }],
+        rowCount: 1,
+      });
+      const authorized = await sendRequest('GET', '/api/matches/m_1/replay', null, userUnsafeHeaders('u_test'));
+      expect(authorized.statusCode).toBe(200);
+      expect(parseBody(authorized)).toEqual({ matchId: 'm_1', rulesVersion: 'rules-1', replay });
+      expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('player0_id = $2 OR player1_id = $2'), [
+        'm_1',
+        'u_test',
+      ]);
+    });
+
     it('GET /api/chat/messages returns 401 without auth', async () => {
       const res = await sendRequest('GET', '/api/chat/messages?type=match&subjectId=bgio-match-1');
       expect(res.statusCode).toBe(401);

@@ -48,6 +48,8 @@
     "smoke:performance": "node scripts/performance-smoke.mjs",
     "fonts:subset": "node scripts/build-display-font-subsets.mjs",
     "rule:audit": "node --import tsx scripts/rule-audit.ts",
+    "effect:dispatch-coverage": "node --import tsx scripts/effect-dispatch-coverage.ts",
+    "replay:goldens:update": "node --import tsx scripts/generate-replay-goldens.ts",
     "migrate:sqlite-to-pg": "node --import tsx scripts/migrate-sqlite-to-pg.ts",
     "seed:cards": "node --import tsx scripts/seed-cards-pg.ts",
     "generate:e2e-card-seed": "node --import tsx scripts/create-e2e-card-seed.ts",

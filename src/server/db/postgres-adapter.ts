@@ -3,7 +3,8 @@ import type { Server, State, LogEntry } from 'boardgame.io';
 import * as Sentry from '@sentry/node';
 import crypto from 'node:crypto';
 import { createRequire } from 'node:module';
-import { shuffleDeck } from '../../game/cards/deckBuilder';
+import { rebuildOpeningStateFromManifest } from '../../game/replay';
+import type { GameState, ReplayManifest } from '../../game/types';
 import { postgresConnectionString, postgresSslConfig } from '../../runtimeSecurityConfig';
 import { APP_VERSION_INFO } from '../../version';
 import {
@@ -1009,24 +1010,23 @@ export class PostgresAdapter {
     if (!stateG || !initialG || stateG.step !== 'janken' || stateG.turnNumber !== 1) {
       throw new MatchSeatReservationError('seat_taken', 'Deck can only be bound before the first move');
     }
-    // Reservations contain validated card definition IDs, but the game
-    // server still owns instance creation and shuffle. Keep this path in
-    // lockstep with setupGame: shuffle before drawing the opening hand.
-    const deck = shuffleDeck(
-      cardIds.map((defId, index) => ({
-        instanceId: `server:${input.matchID}:${input.playerID}:${index}`,
-        defId: defId as string,
-        faceUp: false,
-      })),
-    );
-    const openingHand = deck.slice(0, 5).map((card) => ({ ...card, faceUp: true }));
-    const remainingDeck = deck.slice(5);
     const apply = (targetG: Record<string, unknown>) => {
-      const players = targetG.players as Array<Record<string, unknown>> | undefined;
-      const player = players?.[Number(input.playerID)];
-      if (!player) throw new MatchSeatReservationError('seat_not_found', 'Player seat not found');
-      player.deck = remainingDeck.map((card) => ({ ...card }));
-      player.hand = openingHand.map((card) => ({ ...card }));
+      const gameState = targetG as unknown as GameState;
+      if (!gameState.players?.[Number(input.playerID)]) {
+        throw new MatchSeatReservationError('seat_not_found', 'Player seat not found');
+      }
+      const manifest = gameState.replayManifest;
+      if (!manifest || manifest.schemaVersion !== 1) {
+        throw new MatchSeatReservationError('seat_taken', 'Match does not support deterministic deck binding');
+      }
+      const deckDefIds: ReplayManifest['deckDefIds'] = [[...manifest.deckDefIds[0]], [...manifest.deckDefIds[1]]];
+      deckDefIds[Number(input.playerID) as 0 | 1] = [...(cardIds as string[])];
+      gameState.replayManifest = {
+        ...manifest,
+        rulesVersion: reservation.rules_version,
+        deckDefIds,
+      };
+      rebuildOpeningStateFromManifest(gameState);
     };
     apply(stateG);
     apply(initialG);

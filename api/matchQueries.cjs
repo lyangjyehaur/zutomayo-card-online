@@ -27,6 +27,11 @@ function mapMatchRow(match) {
   // compare exact shapes remain compatible.
   if (match.source_match_id !== undefined) mapped.sourceMatchId = match.source_match_id || null;
   if (match.rules_version !== undefined) mapped.rulesVersion = match.rules_version || 'legacy';
+  if (match.replay_summary !== undefined) {
+    const replay = match.replay_summary && typeof match.replay_summary === 'object' ? match.replay_summary : null;
+    mapped.replayAvailable = Boolean(replay);
+    mapped.replaySearchText = typeof replay?.searchText === 'string' ? replay.searchText : '';
+  }
   return mapped;
 }
 
@@ -42,6 +47,23 @@ async function getMatchActionLog(pool, matchId, sanitizeActionLog, userId) {
   return {
     ok: true,
     body: { matchId: match.id, rulesVersion: match.rules_version || 'legacy', actionLog: sanitizeActionLog(actionLog) },
+  };
+}
+
+async function getMatchReplay(pool, matchId, userId) {
+  const match = (
+    await pool.query(
+      'SELECT id, rules_version, replay_summary FROM matches WHERE id = $1 AND (player0_id = $2 OR player1_id = $2)',
+      [matchId, userId],
+    )
+  ).rows[0];
+  if (!match) return { ok: false, status: 403, error: 'Forbidden' };
+  if (!match.replay_summary || typeof match.replay_summary !== 'object') {
+    return { ok: false, status: 404, error: 'Replay summary not available' };
+  }
+  return {
+    ok: true,
+    body: { matchId: match.id, rulesVersion: match.rules_version || 'legacy', replay: match.replay_summary },
   };
 }
 
@@ -101,5 +123,6 @@ module.exports = {
   getAdminMatches,
   getLeaderboard,
   getMatchActionLog,
+  getMatchReplay,
   getUserMatches,
 };

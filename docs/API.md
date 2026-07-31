@@ -426,6 +426,7 @@ Notes:
 - Safe trace fields are preserved: `id`, `chronosPosition`, `hp`, `pendingEffectCardDefId`, `pendingChoiceType`, `result.ok`, and `result.message`.
 - Supported sanitized payloads include janken, mulligan, set-card actions, effect resolution summaries, pending choice summaries, and game-over reason.
 - The stored trace is an explainable audit log, not a deterministic replay format.
+- Completed authoritative matches also derive a schema-v1 `replay_summary` from server-owned state. It stores ordered decisions, phase/effect summaries, explicitly revealed hand cards, the result, and the sanitized timeline; raw state, unrevealed hands, decks, RNG, and replay manifests are excluded.
 - Guest placeholder IDs such as `guest-player-1` are accepted for match records but do not update ELO or leaderboard stats.
 
 Errors: `400`, `401`, `403`.
@@ -454,6 +455,8 @@ Response:
       "loserEloChange": -16,
       "turns": 12,
       "duration": 420,
+      "replayAvailable": true,
+      "replaySearchText": "battle resolvependingeffect 1st_9 clockadvance",
       "createdAt": "2026-06-26 00:00:00"
     }
   ]
@@ -461,6 +464,8 @@ Response:
 ```
 
 Only matches where the authenticated user is `player0_id` or `player1_id` are returned, newest first.
+
+`replaySearchText` is a bounded, lower-cased token index for the authenticated history UI. Full decisions and timeline entries are not embedded in the list response.
 
 Errors: `401`.
 
@@ -499,6 +504,35 @@ Response:
 ```
 
 Requires authentication and match participation. A non-participant receives `403` even when the match ID exists. Errors: `401`, `403`.
+
+### `GET /api/matches/:id/replay`
+
+Return the completed match's searchable replay summary. The response contains the final result, contiguous phase spans, ordered server decision records, ordered effect resolutions, explicitly revealed hand card definitions, and the sanitized action timeline.
+
+```json
+{
+  "matchId": "m_...",
+  "rulesVersion": "0.2.5",
+  "replay": {
+    "schemaVersion": 1,
+    "traceComplete": true,
+    "result": {
+      "winner": 0,
+      "reason": "hp",
+      "turns": 12,
+      "finalHp": [18, 0],
+      "finalChronos": 6
+    },
+    "phases": [{ "step": "battle", "fromTurn": 1, "toTurn": 1, "actionCount": 4 }],
+    "decisions": [{ "sequence": 1, "player": 0, "move": "janken", "args": ["rock"] }],
+    "effects": [{ "order": 1, "turn": 1, "cardDefId": "1st_9", "choiceType": null }],
+    "revealedHands": [{ "player": 1, "cardDefIds": ["1st_20"] }],
+    "timeline": []
+  }
+}
+```
+
+Requires authentication and match participation. A non-participant receives `403`; a pre-migration or legacy match without a replay summary receives `404`. The endpoint is never used for active match state. Errors: `401`, `403`, `404`.
 
 ## Chat / 聊天
 

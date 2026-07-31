@@ -51,6 +51,15 @@ import { restoreHiddenInformation } from './hiddenInformation';
 import { recordAction } from './actionLog';
 import { APP_VERSION_INFO, isCompatibleVersion } from '../version';
 import { enterAutomaticResolution, type AutomaticResolutionContext } from './automaticLoop';
+import {
+  createGameRngState,
+  createGameSeed,
+  deriveGameSeed,
+  gameRandomInt,
+  nextGameRandom,
+  normalizeGameSeed,
+} from './rng';
+import { createMatchInstanceFactory, rebuildOpeningStateFromManifest } from './replay';
 
 const playerIndexes: PlayerIndex[] = [0, 1];
 
@@ -67,6 +76,17 @@ interface SetupGameOptions {
   /** 允許 setupData.skipShuffle=true。僅本地 AI 對戰/教學模式應啟用；
    *  線上對戰預設不允許，防止惡意客戶端固定牌序作弊。 */
   allowSkipShuffle?: boolean;
+}
+
+function ensureGameRng(G: GameState) {
+  if (!G.rng) {
+    G.rng = createGameRngState(deriveGameSeed(G.matchStartedAt, 'legacy-match-state'));
+  }
+  return G.rng;
+}
+
+function nextMatchRandom(G: GameState): number {
+  return nextGameRandom(ensureGameRng(G));
 }
 
 function validateSetupDeck(
@@ -97,6 +117,15 @@ export function validateZutomayoSetupData(
   if (options.allowSkipShuffle !== true && data.skipShuffle === true) {
     return 'skipShuffle is not allowed in this game mode';
   }
+  if (
+    data.rngSeed !== undefined &&
+    !(
+      (typeof data.rngSeed === 'number' && Number.isFinite(data.rngSeed)) ||
+      (typeof data.rngSeed === 'string' && data.rngSeed.length > 0)
+    )
+  ) {
+    return 'rngSeed must be a finite number or non-empty string';
+  }
   return (
     validateSetupDeck(0, data.deck0Ids, data.deck0Name, options) ??
     validateSetupDeck(1, data.deck1Ids, data.deck1Name, options)
@@ -108,17 +137,19 @@ function setupDeck(
   ids: unknown,
   name: string | undefined,
   allowBrowserCustomDeckName: boolean,
+  random: () => number,
+  instanceFactory: (defId: string) => CardInstance,
 ): CardInstance[] {
   const validationError = validateSetupDeck(player, ids, name, { allowBrowserCustomDeckName });
   if (validationError) throw new Error(validationError);
 
   if (ids !== undefined) {
-    return buildDeck(ids as string[]);
+    return buildDeck(ids as string[], instanceFactory);
   }
   if (name) {
-    return getPresetDeck(name);
+    return getPresetDeck(name, random, instanceFactory);
   }
-  return randomDeck();
+  return randomDeck(random, instanceFactory);
 }
 
 function effectActionSummary(effect: ParsedEffect): { trigger: ParsedEffect['trigger']; actionType: string } {
@@ -197,10 +228,10 @@ function drawUnchecked(player: PlayerState, count: number): void {
   }
 }
 
-function shuffleSelectedCards<T>(cards: T[]): T[] {
+function shuffleSelectedCards<T>(G: GameState, cards: T[]): T[] {
   const result = [...cards];
   for (let i = result.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = gameRandomInt(ensureGameRng(G), i + 1);
     [result[i], result[j]] = [result[j], result[i]];
   }
   return result;
@@ -474,6 +505,12 @@ export function setupGame(
     : setupDataOrDeck0Name || {};
   const options: SetupGameOptions = legacyNames || typeof deck1NameOrOptions === 'string' ? {} : deck1NameOrOptions;
   const allowBrowserCustomDeckName = options.allowBrowserCustomDeckName ?? false;
+  const seed = normalizeGameSeed(setupData.rngSeed ?? createGameSeed());
+  const rng = createGameRngState(seed);
+  const setupRandom = (player: PlayerIndex) => {
+    const setupRng = createGameRngState(deriveGameSeed(seed, `deck-composition:${player}`));
+    return () => nextGameRandom(setupRng);
+  };
   const makePlayer = (): PlayerState => ({
     hp: 100,
     deck: [],
@@ -490,6 +527,14 @@ export function setupGame(
   const matchStartedAt = Date.now();
   const G: GameState = {
     players: [makePlayer(), makePlayer()],
+    rng,
+    replayManifest: {
+      schemaVersion: 1,
+      rngAlgorithm: rng.algorithm,
+      seed,
+      rulesVersion: setupData.rulesVersion ?? APP_VERSION_INFO.rulesVersion,
+      deckDefIds: [[], []],
+    },
     step: 'janken',
     ready: [false, false],
     chronos: { position: 0, nightSidePlayer: 0 },
@@ -530,18 +575,37 @@ export function setupGame(
   };
   // 先組玩家牌組（deck0），再組 AI/對手牌組（deck1）。
   // 若 deck1 指定克制牌組（COUNTER_DECK_NAME），需參考 deck0 內容來組克制牌組。
-  const player0Deck = setupDeck(0, setupData.deck0Ids, setupData.deck0Name, allowBrowserCustomDeckName);
+  const player0Deck = setupDeck(
+    0,
+    setupData.deck0Ids,
+    setupData.deck0Name,
+    allowBrowserCustomDeckName,
+    setupRandom(0),
+    createMatchInstanceFactory(0),
+  );
   // 教學模式：跳過洗牌，讓固定牌組依陣列順序進入牌庫，確保劇本可預測。
   const skipShuffle = setupData.skipShuffle === true;
   G.tutorialSkipShuffle = skipShuffle;
-  G.players[0].deck = skipShuffle ? player0Deck : shuffleDeck(player0Deck);
   const isCounterDeck1 = !setupData.deck1Ids && setupData.deck1Name === COUNTER_DECK_NAME;
   const player1Deck = isCounterDeck1
-    ? buildCounterDeck(player0Deck)
-    : setupDeck(1, setupData.deck1Ids, setupData.deck1Name, allowBrowserCustomDeckName);
-  G.players[1].deck = skipShuffle ? player1Deck : shuffleDeck(player1Deck);
-  drawUnchecked(G.players[0], 5);
-  drawUnchecked(G.players[1], 5);
+    ? buildCounterDeck(player0Deck, setupRandom(1), createMatchInstanceFactory(1))
+    : setupDeck(
+        1,
+        setupData.deck1Ids,
+        setupData.deck1Name,
+        allowBrowserCustomDeckName,
+        setupRandom(1),
+        createMatchInstanceFactory(1),
+      );
+  G.replayManifest!.deckDefIds = [player0Deck.map((card) => card.defId), player1Deck.map((card) => card.defId)];
+  if (skipShuffle) {
+    G.players[0].deck = player0Deck;
+    G.players[1].deck = player1Deck;
+    drawUnchecked(G.players[0], 5);
+    drawUnchecked(G.players[1], 5);
+  } else {
+    rebuildOpeningStateFromManifest(G);
+  }
   return G;
 }
 
@@ -595,7 +659,7 @@ export function finishMulligan(G: GameState, player: PlayerIndex, indices: numbe
   // mulligan 伏示牌回牌庫前重設 faceUp，保持牌庫狀態衛生（官方牌庫為裡向）。
   for (const card of aside) card.faceUp = false;
   const combined = [...state.deck, ...aside];
-  state.deck = G.tutorialSkipShuffle ? combined : shuffleDeck(combined);
+  state.deck = G.tutorialSkipShuffle ? combined : shuffleDeck(combined, () => nextMatchRandom(G));
   G.mulliganUsed[player] = true;
   G.ready[player] = true;
   recordAction(G, player, 'mulligan', { redrawnCount: aside.length });
@@ -786,7 +850,7 @@ export function timeoutAdvance(
   let advanced = false;
   if (G.step === 'janken') {
     const choices: JankenChoice[] = ['rock', 'paper', 'scissors'];
-    advanced = chooseJanken(G, player, choices[Math.floor(Math.random() * choices.length)]);
+    advanced = chooseJanken(G, player, choices[gameRandomInt(ensureGameRng(G), choices.length)]);
   } else if (G.step === 'mulligan') {
     advanced = finishMulligan(G, player, []);
   } else if (G.pendingChoice?.player === player) {
@@ -1856,7 +1920,7 @@ export function submitPendingChoice(
       resolveTimingEvent,
       sendToOwnerZone,
       setChronosPosition,
-      shuffleSelectedCards,
+      shuffleSelectedCards: (cards) => shuffleSelectedCards(G, cards),
       suppressEffectCardForTurn,
     },
   );

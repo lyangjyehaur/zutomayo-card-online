@@ -63,6 +63,17 @@ describe('schema migrations', () => {
     expect(migration).toContain('export const down = false');
   });
 
+  it('stores completed replay summaries without coupling them to live boardgame state', () => {
+    const migration = readRepoFile('migrations/000049_match_replay_summaries.js');
+    const initSchema = readRepoFile('api/server.cjs');
+    const schemaGate = readRepoFile('api/schemaGate.cjs');
+    for (const artifact of ['replay_summary', 'ck_matches_replay_summary_object']) {
+      expect(migration).toContain(artifact);
+    }
+    expect(initSchema).toContain('replay_summary');
+    expect(schemaGate).toContain('replay_summary');
+  });
+
   it('persists physical card ownership for signed-in users', () => {
     const migration = readRepoFile('migrations/000046_user_card_collection.js');
     const initSchema = readRepoFile('api/server.cjs');

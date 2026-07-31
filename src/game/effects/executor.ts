@@ -29,6 +29,8 @@ export interface EffectExecutionContext {
   cardInstanceId?: string;
   cardDefId?: string;
   onTimingEvent?: (event: TimingEvent) => void;
+  /** Optional diagnostics hook invoked immediately before the resolved action handler. */
+  onDispatch?: (actionType: ActionType) => void;
 }
 
 function emitTimingEvent(G: GameState, context: EffectExecutionContext, event: TimingEvent): void {
@@ -1488,7 +1490,9 @@ export function executeEffect(
   }
   const valueParam = effect.action.params.value;
   const value = Number(effect.action.params.value ?? 0);
-  const handler = effectHandlers[effect.action.type];
+  const handler = (effectHandlers as Partial<Record<ActionType, EffectHandler>>)[effect.action.type];
+  if (!handler) return { success: false, message: `Unsupported action type: ${effect.action.type}` };
+  context.onDispatch?.(effect.action.type);
   let result: { success: boolean; message: string };
   try {
     result = handler({ effect, G, player, context, me, opponent, opponentIndex, valueParam, value });

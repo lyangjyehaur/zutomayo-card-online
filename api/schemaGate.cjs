@@ -94,6 +94,7 @@ const REQUIRED_RUNTIME_COLUMNS = Object.freeze({
     'player1_id',
     'rules_version',
     'action_log',
+    'replay_summary',
     'completed_at',
     'action_log_purged_at',
     'anonymized_at',

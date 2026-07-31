@@ -82,6 +82,17 @@ function stateBeforeDeckBind() {
     _stateID: 0,
     G: {
       players: [makePlayer(), makePlayer()],
+      rng: { algorithm: 'mulberry32-v1', seed: 123, counter: 38 },
+      replayManifest: {
+        schemaVersion: 1,
+        rngAlgorithm: 'mulberry32-v1',
+        seed: 123,
+        rulesVersion: 'rules-v1',
+        deckDefIds: [
+          Array.from({ length: 20 }, (_, index) => `host-card-${index}`),
+          Array.from({ length: 20 }, (_, index) => `placeholder-card-${index}`),
+        ],
+      },
       step: 'janken',
       turnNumber: 1,
     },
@@ -150,7 +161,9 @@ describe('PostgresAdapter trust-chain transactions', () => {
     });
     const pool = mockPool([schemaClient, transactionClient]);
     const adapter = new PostgresAdapter({ pool: pool as never, createIndexes: false });
-    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0);
+    const randomSpy = vi.spyOn(Math, 'random').mockImplementation(() => {
+      throw new Error('deck binding must not use global Math.random');
+    });
 
     try {
       await adapter.bindDeckReservation({
@@ -181,6 +194,11 @@ describe('PostgresAdapter trust-chain transactions', () => {
     ).not.toEqual(Array.from({ length: 20 }, (_, index) => `card-${index}`));
     expect(initialPlayer.hand).toEqual(player.hand);
     expect(initialPlayer.deck).toEqual(player.deck);
+    expect(persistedState.G.replayManifest.deckDefIds[1]).toEqual(
+      Array.from({ length: 20 }, (_, index) => `card-${index}`),
+    );
+    expect(persistedInitial.G.replayManifest).toEqual(persistedState.G.replayManifest);
+    expect(persistedInitial.G.rng).toEqual(persistedState.G.rng);
     expect(transactionClient.query).toHaveBeenLastCalledWith('COMMIT');
   });
 
