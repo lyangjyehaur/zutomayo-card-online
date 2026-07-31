@@ -137,7 +137,7 @@ function onlineErrorMessage(error: unknown): string {
   const customRoomRelayKey = customRoomRelayErrorKey(error);
   if (customRoomRelayKey) {
     const detail = error instanceof CustomRoomRelayError ? error.detail : undefined;
-    return detail ? `${t(customRoomRelayKey)}: ${detail}` : t(customRoomRelayKey);
+    return detail || t(customRoomRelayKey);
   }
   if (error instanceof Error && isOnlineRoomErrorKey(error.message)) {
     const detail = onlineRoomErrorDetail(error);

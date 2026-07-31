@@ -73,6 +73,7 @@ describe('platform admission limiter', () => {
 describe('platform admission IP boundary', () => {
   it('ignores spoofed forwarding headers from untrusted peers', () => {
     expect(platformAdmissionClientIp('198.51.100.9', '203.0.113.1', '10.0.0.0/8')).toBe('198.51.100.9');
+    expect(platformAdmissionClientIp('::ffff:127.0.0.1', undefined)).toBe('127.0.0.1');
   });
 
   it('walks trusted IPv4 and IPv6 proxy chains from right to left', () => {

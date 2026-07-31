@@ -210,16 +210,81 @@ export type PlatformQuickMatchRoom = Room<unknown>;
 
 export class PlatformConnectionError extends Error {
   readonly code: number;
+  readonly status?: number;
+  readonly requestId?: string;
 
-  constructor(message: string, code: number) {
-    super(`${message} (code ${code})`);
+  constructor(
+    message: string,
+    code: number,
+    metadata: { status?: number; requestId?: string; preformatted?: boolean } = {},
+  ) {
+    super(metadata.preformatted ? message : `${message} (code ${code})`);
     this.name = 'PlatformConnectionError';
     this.code = code;
+    this.status = metadata.status;
+    this.requestId = metadata.requestId;
   }
 }
 
+function embeddedPlatformErrorMetadata(message: string): {
+  code: number;
+  status?: number;
+  requestId?: string;
+} | null {
+  const code = message.match(/platform code (\d+)/i);
+  if (!code) return null;
+  const status = message.match(/HTTP (\d+)/i);
+  const requestId = message.match(/request ([A-Za-z0-9._:-]+)/i);
+  return {
+    code: Number(code[1]),
+    ...(status ? { status: Number(status[1]) } : {}),
+    ...(requestId ? { requestId: requestId[1] } : {}),
+  };
+}
+
+function platformErrorCode(error: unknown): number | undefined {
+  if (!error || typeof error !== 'object') return undefined;
+  const candidate = error as { code?: unknown; status?: unknown; statusCode?: unknown };
+  for (const value of [candidate.code, candidate.status, candidate.statusCode]) {
+    if (typeof value === 'number' && Number.isFinite(value)) return Math.trunc(value);
+  }
+  return undefined;
+}
+
+export function normalizePlatformRequestError(error: unknown): Error {
+  const transportCode = platformErrorCode(error);
+  const objectMessage =
+    error && typeof error === 'object' && typeof (error as { message?: unknown }).message === 'string'
+      ? (error as { message: string }).message.trim()
+      : '';
+  const rawMessage =
+    error instanceof Error ? error.message.trim() : typeof error === 'string' ? error.trim() : objectMessage;
+  const message = rawMessage === '<none>' ? '' : rawMessage;
+  const embedded = embeddedPlatformErrorMetadata(message);
+  if (embedded) {
+    return new PlatformConnectionError(message, embedded.code, {
+      status: embedded.status ?? transportCode,
+      requestId: embedded.requestId,
+      preformatted: true,
+    });
+  }
+  const code = transportCode;
+  if (code !== undefined) {
+    const detail =
+      message || (code === 521 || code === 4211 ? 'no rooms found with provided criteria' : 'Platform request failed');
+    return new PlatformConnectionError(detail, code);
+  }
+  if (error instanceof Error && message) return error;
+  return new Error(message || 'Platform request failed');
+}
+
 export function isMissingPlatformRoomError(error: unknown): boolean {
-  return error instanceof Error && /no rooms found with provided criteria/i.test(error.message);
+  const code = platformErrorCode(error);
+  return (
+    code === 521 ||
+    code === 4211 ||
+    (error instanceof Error && /no rooms found with provided criteria/i.test(error.message))
+  );
 }
 
 function retryMissingPlatformRoom<T>(error: unknown, retry: () => Promise<T>): Promise<T> {
@@ -381,13 +446,17 @@ async function joinPlatformRoom(
 ): Promise<Room<unknown>> {
   const { Client } = await import('colyseus.js');
   const client = new Client(resolvePlatformEndpoint());
-  const response = await client.http.post(`matchmake/${method}/${roomName}`, {
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(options),
-  });
+  const response = await client.http
+    .post(`matchmake/${method}/${roomName}`, {
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(options),
+    })
+    .catch((error: unknown) => {
+      throw normalizePlatformRequestError(error);
+    });
   return client.consumeSeatReservation(normalizeSeatReservation(response.data as FlatSeatReservation));
 }
 
@@ -671,9 +740,13 @@ export function platformAvailableRoomsFromMessage(message: unknown): PlatformAva
 export async function fetchPlatformAvailableRooms(): Promise<PlatformAvailableRoom[]> {
   const { Client } = await import('colyseus.js');
   const client = new Client(resolvePlatformEndpoint());
-  const response = await client.http.get('api/rooms', {
-    headers: { Accept: 'application/json' },
-  });
+  const response = await client.http
+    .get('api/rooms', {
+      headers: { Accept: 'application/json' },
+    })
+    .catch((error: unknown) => {
+      throw normalizePlatformRequestError(error);
+    });
   const rooms = platformAvailableRoomsFromMessage(response.data);
   if (!rooms) throw new Error('Invalid platform room list');
   return rooms;

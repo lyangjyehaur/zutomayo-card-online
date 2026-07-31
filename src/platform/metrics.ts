@@ -77,14 +77,16 @@ function normalizedPath(path: string): string {
   return '/other';
 }
 
+export function recordPlatformHttpRequest(method: string, path: string, status: number, startedAt: bigint): void {
+  const elapsedSeconds = Number(process.hrtime.bigint() - startedAt) / 1_000_000_000;
+  platformHttpRequestsTotal.labels(method, normalizedPath(path), String(status)).inc();
+  platformHttpDurationSeconds.labels(method, normalizedPath(path), String(status)).observe(elapsedSeconds);
+}
+
 export function platformMetricsMiddleware(req: Request, res: Response, next: NextFunction): void {
   const startedAt = process.hrtime.bigint();
   res.once('finish', () => {
-    const path = normalizedPath(req.path);
-    const status = String(res.statusCode);
-    const elapsedSeconds = Number(process.hrtime.bigint() - startedAt) / 1_000_000_000;
-    platformHttpRequestsTotal.labels(req.method, path, status).inc();
-    platformHttpDurationSeconds.labels(req.method, path, status).observe(elapsedSeconds);
+    recordPlatformHttpRequest(req.method, req.path, res.statusCode, startedAt);
   });
   next();
 }
