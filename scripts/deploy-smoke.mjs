@@ -22,6 +22,8 @@ const ports = {
 };
 const expectedBuildId = args.get('expected-build-id') || process.env.EXPECTED_BUILD_ID || '';
 const expectedDatasetSha256 = args.get('expected-dataset-sha256') || process.env.EXPECTED_CARD_DATASET_SHA256 || '';
+const expectedOfficialBuildId =
+  args.get('expected-official-build-id') || process.env.EXPECTED_OFFICIAL_BUILD_ID || expectedBuildId;
 const checkBattleAssets = (args.get('check-battle-assets') || process.env.CHECK_BATTLE_ASSETS || 'false') === 'true';
 const reportPath = args.get('report-path') || process.env.DEPLOY_SMOKE_REPORT_PATH || '';
 const smokeStartedAt = new Date().toISOString();
@@ -35,6 +37,7 @@ const smokeChecks = {
 };
 let observedBuildId = '';
 let observedDatasetSha256 = '';
+let observedOfficialBuildId = '';
 
 if (reportPath) {
   process.once('exit', (exitCode) => {
@@ -51,6 +54,8 @@ if (reportPath) {
           observedBuildId,
           expectedDatasetSha256,
           observedDatasetSha256,
+          expectedOfficialBuildId,
+          observedOfficialBuildId,
           checks: smokeChecks,
         },
         null,
@@ -81,6 +86,9 @@ if (!Number.isInteger(attempts) || attempts <= 0) throw new Error('attempts must
 if (!Number.isFinite(retryDelayMs) || retryDelayMs < 0) throw new Error('retry delay must be non-negative');
 if (expectedDatasetSha256 && !/^[a-f0-9]{64}$/.test(expectedDatasetSha256)) {
   throw new Error('expected dataset SHA-256 must be a lowercase digest');
+}
+if (expectedOfficialBuildId && !/^[a-f0-9]{40}$/.test(expectedOfficialBuildId)) {
+  throw new Error('expected official-rulings build ID must be a 40-character Git SHA');
 }
 
 function endpoint(service, pathname) {
@@ -304,14 +312,18 @@ if (expectedDatasetSha256) {
 }
 
 const officialRelease = await requestWithRetry('api', '/api/official/status');
+observedOfficialBuildId = String(officialRelease?.buildId || '');
+const requiredOfficialBuildId = expectedOfficialBuildId || buildIds[0];
 if (
-  officialRelease?.buildId !== buildIds[0] ||
+  observedOfficialBuildId !== requiredOfficialBuildId ||
   Number(officialRelease?.qaCount) <= 0 ||
   Number(officialRelease?.errataCount) <= 0 ||
   !Array.isArray(officialRelease?.locales) ||
   officialRelease.locales.length !== 5
 ) {
-  throw new Error(`official-rulings release does not match the deployed build: ${JSON.stringify(officialRelease)}`);
+  throw new Error(
+    `official-rulings release does not match expected build ${requiredOfficialBuildId}: ${JSON.stringify(officialRelease)}`,
+  );
 }
 console.log(`smoke ok: official-rulings release=${officialRelease.releaseId}`);
 
