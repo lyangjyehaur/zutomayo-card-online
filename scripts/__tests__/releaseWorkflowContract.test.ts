@@ -69,7 +69,7 @@ describe('CD release workflow contract', () => {
 });
 
 describe('Compose validation workflow fixtures', () => {
-  const requiredVariables = ['PUBLIC_BASE_URL', 'OAUTH_PUBLIC_BASE_URL', 'PLATFORM_PUBLIC_ADDRESS'];
+  const requiredVariables = ['PUBLIC_BASE_URL', 'OAUTH_PUBLIC_BASE_URL', 'PLATFORM_PUBLIC_ADDRESS', 'MEILI_HOST'];
 
   it.each([
     ['ci.yml', ciWorkflow, 'Validate Compose configuration'],

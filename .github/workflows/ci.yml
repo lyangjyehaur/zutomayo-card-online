@@ -114,6 +114,7 @@ jobs:
           PUBLIC_BASE_URL: https://game.example.invalid
           OAUTH_PUBLIC_BASE_URL: https://game.example.invalid
           REDIS_PASSWORD: e2e-test-redis-password
+          MEILI_HOST: https://search.example.invalid
           MEILI_MASTER_KEY: e2e-test-meilisearch-master-key
           METRICS_TOKEN: e2e-test-metrics-token
           PGSSLMODE: verify-full

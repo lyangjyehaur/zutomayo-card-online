@@ -892,7 +892,7 @@ export function validateComposeValidationFixtureContract(workflow, workflowName,
   if (stepStart < 0) throw new Error(`${workflowName} is missing the ${stepName} step`);
   const nextStep = workflow.indexOf('\n      - name:', stepStart + stepMarker.length);
   const step = workflow.slice(stepStart, nextStep < 0 ? undefined : nextStep);
-  for (const variable of ['PUBLIC_BASE_URL', 'OAUTH_PUBLIC_BASE_URL', 'PLATFORM_PUBLIC_ADDRESS']) {
+  for (const variable of ['PUBLIC_BASE_URL', 'OAUTH_PUBLIC_BASE_URL', 'PLATFORM_PUBLIC_ADDRESS', 'MEILI_HOST']) {
     if (!new RegExp(`^\\s+${variable}:\\s*\\S+`, 'm').test(step)) {
       throw new Error(`${workflowName} ${stepName} fixture must define ${variable}`);
     }
