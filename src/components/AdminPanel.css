@@ -698,6 +698,27 @@
   min-width: 48rem;
 }
 
+.admin-support-inbox-table {
+  min-width: 0;
+  table-layout: fixed;
+}
+
+.admin-support-inbox-table th:nth-child(1) {
+  width: 42%;
+}
+
+.admin-support-inbox-table th:nth-child(2) {
+  width: 18%;
+}
+
+.admin-support-inbox-table th:nth-child(3) {
+  width: 25%;
+}
+
+.admin-support-inbox-table th:nth-child(4) {
+  width: 15%;
+}
+
 .admin-users-table {
   min-width: 68rem;
 }
