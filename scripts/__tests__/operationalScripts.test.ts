@@ -273,6 +273,23 @@ describe('operational shell scripts', () => {
     expect(deploy).toContain('--bootstrap');
   });
 
+  it('hands the knowledge-search lease from the previous API to the immutable release', () => {
+    const deploy = readFileSync(resolve('scripts/deploy-server4.sh'), 'utf8');
+    const orchestrationStart = deploy.indexOf('remote_deploy()');
+    const orchestration = deploy.slice(orchestrationStart, deploy.indexOf('remote_rollback()', orchestrationStart));
+    const roleGate = orchestration.indexOf('postgres-role-tls-$role');
+    const handoff = orchestration.indexOf('DEL search:index:rebuild');
+    const startup = orchestration.indexOf("docker compose -f '$COMPOSE_FILE' up -d --wait");
+
+    expect(deploy).toContain('REDIS_CONTAINER="${REDIS_CONTAINER:-redis}"');
+    expect(deploy).toContain('redis-cli --no-auth-warning -n');
+    expect(deploy).toContain('DEL search:index:rebuild');
+    expect(deploy).toContain("docker compose -f '$COMPOSE_FILE' stop api");
+    expect(deploy).toContain("docker compose -f '$COMPOSE_FILE' start api >/dev/null || true");
+    expect(handoff).toBeGreaterThan(roleGate);
+    expect(startup).toBeGreaterThan(handoff);
+  });
+
   it('publishes reviewed official content with the signed migration image before rollout smoke', () => {
     const deploy = readFileSync(resolve('scripts/deploy-server4.sh'), 'utf8');
     const canary = readFileSync(resolve('scripts/deploy-server4-canary.sh'), 'utf8');

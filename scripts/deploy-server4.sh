@@ -21,6 +21,7 @@ RETENTION_COMPOSE_FILE="${RETENTION_COMPOSE_FILE:-docker-compose.retention.yml}"
 ROLE_TLS_SMOKE_COMPOSE_FILE="${ROLE_TLS_SMOKE_COMPOSE_FILE:-docker-compose.postgres-role-smoke.yml}"
 POSTGRES_OPS_COMPOSE_FILE="${POSTGRES_OPS_COMPOSE_FILE:-docker-compose.postgres-ops.yml}"
 RETENTION_SERVICE_GROUP="${RETENTION_SERVICE_GROUP:-zutomayo-retention}"
+REDIS_CONTAINER="${REDIS_CONTAINER:-redis}"
 BATTLE_ASSET_DIR="${BATTLE_ASSET_DIR:-$PROJECT_DIR/public/battle}"
 BATTLE_ASSET_CHECKSUMS="${BATTLE_ASSET_CHECKSUMS:-$PROJECT_DIR/scripts/battle-assets.sha256}"
 REMOTE_BATTLE_ASSET_DIR="${REMOTE_BATTLE_ASSET_DIR:-$REMOTE_DIR/public/battle}"
@@ -73,6 +74,7 @@ die() { printf '[%s] ERROR: %s\n' "$(date +%H:%M:%S)" "$*" >&2; exit 1; }
 ssh_run() { ssh -p "$SERVER_PORT" "$SERVER_USER@$SERVER_HOST" "$@"; }
 
 [[ "$RETENTION_SERVICE_GROUP" =~ ^[a-z_][a-z0-9_-]*$ ]] || die 'RETENTION_SERVICE_GROUP is invalid'
+[[ "$REDIS_CONTAINER" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$ ]] || die 'REDIS_CONTAINER is invalid'
 [[ "$REMOTE_BATTLE_ASSET_DIR" =~ ^/[A-Za-z0-9._/-]+$ ]] || die 'REMOTE_BATTLE_ASSET_DIR contains unsupported characters'
 [[ "$REMOTE_BATTLE_ASSET_DIR" == "$REMOTE_DIR/"* ]] || die 'REMOTE_BATTLE_ASSET_DIR must be inside REMOTE_DIR'
 
@@ -268,7 +270,7 @@ remote_deploy() {
     rm -rf '$REMOTE_BATTLE_ASSET_DIR';
     mv '$REMOTE_DIR/.battle-assets.incoming' '$REMOTE_BATTLE_ASSET_DIR';
     rm -f .release.env.incoming .compose.incoming .retention-compose.incoming .role-tls-smoke-compose.incoming .postgres-ops-compose.incoming .postgres-init-roles.incoming .role-env-projection.incoming .battle-assets.sha256.incoming;
-    set -a; . ./.release.env; set +a;
+    set -a; . ./.env; . ./.release.env; set +a;
     docker compose -f '$COMPOSE_FILE' -f '$RETENTION_COMPOSE_FILE' config --quiet;
     PG_DEPLOY_GATE_HOST=\$(docker compose -f '$COMPOSE_FILE' config --format json | jq -er '.services.migrate.environment.PG_HOST | select(type == \"string\" and length > 0)');
     PG_DEPLOY_GATE_PORT=\$(docker compose -f '$COMPOSE_FILE' config --format json | jq -er '.services.migrate.environment.PG_PORT | tostring | select(test(\"^[0-9]+$\"))');
@@ -296,6 +298,25 @@ remote_deploy() {
     wal_evidence=\$(printf '%s\n' \"\$wal_report\" | jq -ce --arg releaseSha \"\$RELEASE_SHA\" --arg opsImage \"\$OPS_IMAGE\" 'select(.schemaVersion == 1 and .artifactType == \"zutomayo-pg-wal-operational-smoke\" and .ok == true) | . + {releaseSha:\$releaseSha,opsImage:\$opsImage}');
     printf '%s\n' \"\$wal_evidence\" > .release.wal-operational-smoke.json;
     printf '%s\n' \"\$wal_evidence\";
+    redis_db=\"\${REDIS_DB:-0}\";
+    case \"\$redis_db\" in
+      ''|*[!0-9]*) echo 'REDIS_DB must be an integer from 0 through 15' >&2; exit 1 ;;
+    esac;
+    test \"\$redis_db\" -le 15 || { echo 'REDIS_DB must be an integer from 0 through 15' >&2; exit 1; };
+    docker compose -f '$COMPOSE_FILE' stop api;
+    if ! removed=\$(docker exec -e REDISCLI_AUTH=\"\${REDIS_PASSWORD:-}\" '$REDIS_CONTAINER' \
+      redis-cli --no-auth-warning -n \"\$redis_db\" DEL search:index:rebuild); then
+      docker compose -f '$COMPOSE_FILE' start api >/dev/null || true;
+      echo 'failed to clear the knowledge-search rebuild lease; restored the previous API container' >&2;
+      exit 1;
+    fi;
+    case \"\$removed\" in
+      0|1) ;;
+      *) docker compose -f '$COMPOSE_FILE' start api >/dev/null || true;
+         echo 'unexpected Redis response while clearing the knowledge-search rebuild lease' >&2;
+         exit 1 ;;
+    esac;
+    printf 'knowledge-search rebuild lease handed off (removed=%s, redisDb=%s)\n' \"\$removed\" \"\$redis_db\";
     docker compose -f '$COMPOSE_FILE' up -d --wait --wait-timeout 180;
     date -u +%Y-%m-%dT%H:%M:%SZ > .release.deployed-at;
     docker compose -f '$COMPOSE_FILE' ps;

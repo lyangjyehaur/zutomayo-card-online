@@ -954,27 +954,27 @@ export VITE_CARD_DATASET_SHA256="$(node -p "require('./.release-evidence/product
 ./scripts/deploy-server4.sh --confirm
 ```
 
-腳本只接受目前乾淨且已推送的本機 `master`，並要求本機 `HEAD`、`origin/master` 與
-server4 最終 checkout 三者完全一致；不支援 `--sha` 或 `--manifest`。Server4 的 `.env`
-至少需要：
+腳本只接受包含七個 immutable image digest、完整 release SHA、版本及 migration identity 的
+verified `.release.env`，並在上傳前驗證 Cosign signature 與 GitHub provenance；server4 不會
+checkout source 或現場 build image。Server4 的 `.env` 至少需要：
 
 - `PG_MIGRATION_USER` / `PG_MIGRATION_PASSWORD`：只供 migration 使用。
-- `PG_APP_USER` / `PG_APP_PASSWORD`：由 game、api、platform 共用。
+- `PG_API_USER` / `PG_API_PASSWORD`、`PG_GAME_USER` / `PG_GAME_PASSWORD`、
+  `PG_PLATFORM_USER` / `PG_PLATFORM_PASSWORD`：三個 runtime 各自使用最小權限角色。
 - `PG_DATABASE`、`PGSSLMODE=verify-full`、`PG_CA_FILE`、`PG_SSLROOTCERT` 與
   `NODE_EXTRA_CA_CERTS`。
 - `REDIS_URL`、三個 runtime 共用的 `REDIS_DB`，以及外部 Redis 的
   `REDIS_PASSWORD`（若 Redis 啟用密碼）。
 - 現有 runtime 所需的 `JWT_SECRET`、`METRICS_TOKEN` 與其他功能設定。
 - `VITE_CARD_DATASET_SHA256`：必須來自本次 release 經驗證的 `card-dataset.json` receipt；部署器會寫入遠端 `.env`，Compose 再映射為 game runtime 的 `CARD_DATASET_SHA256`。
-- `MEILI_MASTER_KEY`（至少 16 字元）；部署器會從 1Panel 管理的既有 `meilisearch` 容器安全同步到應用 `.env`，不在日誌輸出。`MEILI_HOST` 由 Compose 固定為 `http://meilisearch:7700`，不得把 7700 port 發布到公網。
+- `MEILI_MASTER_KEY`（至少 16 字元）；`MEILI_HOST` 由 Compose 固定為
+  `http://meilisearch:7700`，不得把 7700 port 發布到公網。
 
 Server4 的 Meilisearch 不由應用 Compose 建立。預設容器名稱為 `meilisearch`、1Panel 應用目錄為
-`/opt/1panel/apps/meilisearch/meilisearch`，兩者可分別以 `MEILI_CONTAINER`、`MEILI_APP_DIR`
-覆寫。部署器會先備份其 `.env`、Compose 與 `config.toml`，要求映像為
-`getmeili/meilisearch:v1.51.0`，再設定 `env = "production"`、`http_addr = "0.0.0.0:7700"`
-及 `no_analytics = true` 後重建該容器。容器必須加入外部 `1panel-network`，主機 port 只能綁定
-`127.0.0.1`；部署器會從同網路的臨時容器驗證 service DNS 與健康端點，索引仍可完全由
-PostgreSQL 重建。
+`/opt/1panel/apps/meilisearch/meilisearch`。Operator 必須在部署前確認映像、master key、
+`env = "production"`、`http_addr = "0.0.0.0:7700"` 與 `no_analytics = true`；容器必須加入外部
+`1panel-network`，主機 port 只能綁定 `127.0.0.1`。搜尋索引是可丟棄的衍生資料，仍可由
+PostgreSQL 與 reviewed official content 完整重建。
 
 部署 shell 可另外設定 `CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ZONE_ID`、
 `CLOUDFLARE_CACHE_RULES_REQUIRED=true`、`PUBLIC_SMOKE_BASE_URL` 與
@@ -987,11 +987,15 @@ PostgreSQL 重建。
 `/opt/zutomayo-card-online/public/battle`。Game 容器以唯讀方式掛載該目錄到
 `/app/dist/battle`；`BATTLE_ASSET_DIR` 與 `REMOTE_BATTLE_ASSET_DIR` 只在需要覆蓋預設路徑時設定。
 
-部署順序固定為：備份 `.env`/Compose → 以 migration role 產生新的 `pg_dump -Fc`
-並寫入 SHA-256 → checkout `origin/master` → 同步 `APP_BUILD_ID`、`APP_VERSION`、
-`GAME_RULES_VERSION`、`EXPECTED_SCHEMA_MIGRATION=000049_match_replay_summaries`
-及 migration checksum → 備份、設定並驗證 1Panel Meilisearch → 實際檢查三服務 `REDIS_DB` 一致且 Redis
-`maxmemory-policy=noeviction` → 同步並校驗私有 battle 素材 → build／migration → 發布卡牌、Q&A、勘誤與規則文件 → `npm run search:reindex` 原子重建及 `search:check` → `docker compose up --wait` → 透過 SSH tunnel 驗證三服務 `/health`、`/ready`、build ID、dataset SHA、卡牌／Q&A／規則搜尋及所有 battle 素材 → 視憑證設定同步 Cloudflare Cache Rules → 透過正常 DNS 與香港直連驗證快取。`/api/app-version` 的 `datasetSha256` 必須與 receipt 完全一致；不一致時 deployment smoke 失敗。Cache smoke 涵蓋 PWA 控制檔、公開／私人 API Header、battle 素材版本、真實 MIME、內容與缺失素材 404。
+部署順序固定為：驗證 release manifest 與七個 image attestation → 驗證並串流私有 battle 素材 →
+建立上一個 verified manifest、Compose、role bootstrap 與素材 snapshot → 安裝新的 immutable release
+設定並 pull image → 驗證 production role/TLS contract → migration → 發布 reviewed official content →
+role/TLS 與 WAL operational smoke → 停止舊 API、清除 Redis `search:index:rebuild` 租約
+（失敗時重新啟動舊 API）→ `docker compose up --wait` → 透過 SSH tunnel 驗證三服務
+`/health`、`/ready`、build ID、dataset SHA、卡牌／Q&A／規則搜尋及所有 battle 素材 →
+視憑證設定同步 Cloudflare Cache Rules → 透過正常 DNS 與香港直連驗證快取。
+`/api/app-version` 的 `datasetSha256` 必須與 receipt 完全一致；不一致時 deployment smoke 失敗。
+Cache smoke 涵蓋 PWA 控制檔、公開／私人 API Header、battle 素材版本、真實 MIME、內容與缺失素材 404。
 
 本地完整重建與唯讀狀態檢查分別使用：
 
@@ -1002,8 +1006,10 @@ npm run search:check
 
 Meilisearch volume 是可丟棄的衍生資料，不是備份來源。災難復原以 PostgreSQL 與官方發布資料完成後重新執行 `search:reindex`；不要把搜尋 volume 當作唯一可恢復副本。
 
-`POSTGRES_CONTAINER`（預設 `postgresql`）、`REDIS_CONTAINER`（預設 `redis`）與
-`REMOTE_BACKUP_DIR` 可依 server4 的實際容器名稱或路徑覆寫。部署或健康驗證失敗時腳本會停止並保留現場，修正後直接發布下一版；不會切回舊 `.env`、Compose 或 runtime image。
+`REDIS_CONTAINER`（預設 `redis`）可依 server4 的實際容器名稱覆寫。部署、鎖交接、健康或
+cache 驗證失敗時，只要完整 rollback snapshot 已建立，腳本會恢復上一個 verified manifest、
+Compose、runtime image 與私有 battle 素材並重新執行 smoke；bootstrap 沒有可驗證的前一版時則
+停止並要求人工處理。
 
 部署完成且使用者已註冊一般帳號後，透過一次性 migration 容器指定完整管理權限：
 
