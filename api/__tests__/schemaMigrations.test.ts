@@ -92,6 +92,25 @@ describe('schema migrations', () => {
     expect(schemaGate).toContain('replay_summary');
   });
 
+  it('stores Resend support threads and durable admin reply history', () => {
+    const migration = readRepoFile('migrations/000050_support_inbox.js');
+    const initSchema = readRepoFile('api/server.cjs');
+    const schemaGate = readRepoFile('api/schemaGate.cjs');
+    for (const artifact of [
+      'support_emails',
+      'support_email_replies',
+      'message_id',
+      'resend_email_id',
+      'idx_support_emails_status_received',
+      'idx_support_email_replies_thread',
+    ]) {
+      expect(migration).toContain(artifact);
+      expect(initSchema).toContain(artifact);
+      expect(schemaGate).toContain(artifact);
+    }
+    expect(migration).toContain('export const down = false');
+  });
+
   it('persists physical card ownership for signed-in users', () => {
     const migration = readRepoFile('migrations/000046_user_card_collection.js');
     const initSchema = readRepoFile('api/server.cjs');

@@ -192,6 +192,7 @@ export const zhCN: Record<TranslationKey, string> = {
   'operations.subject.message': '消息',
   'operations.subject.report': '举报',
   'operations.subject.feedback': '反馈',
+  'operations.subject.support_email': '联系邮箱邮件',
   'accountAction.verifyTitle': '验证电子邮件',
   'accountAction.verifyPending': '正在验证你的邮箱...',
   'accountAction.verifySuccess': '电子邮件已验证，可以返回游戏。',

@@ -3,7 +3,7 @@ import type { Locale } from './i18n';
 export const LEGAL_OPERATOR = 'ZUTOMAYO CARD ONLINE Community';
 export const LEGAL_CONTACT_EMAIL = 'contact@mail.zutomayocard.online';
 export const OFFICIAL_FAN_GUIDELINE_URL = 'https://zutomayo.net/legal/';
-export const LEGAL_EFFECTIVE_DATE = '2026-07-30';
+export const LEGAL_EFFECTIVE_DATE = '2026-08-01';
 
 export type LegalDocumentId = 'overview' | 'privacy' | 'terms' | 'contact';
 
@@ -109,6 +109,7 @@ const zhTW: LegalLocaleContent = {
             '可連結帳號的完成對局與排名：365 天；可連結帳號的操作紀錄與聊天：通常 180 天。',
             '去識別的對局終局、牌組組成與允許清單規則事件：無固定到期日，用於版本、平衡、逾時與可靠性分析。',
             '舉報、制裁與管理稽核：通常 365 天；應用日誌 30 天；metrics 90 天；加密備份 35 天。',
+            '聯絡信箱來信與回覆：已回覆或已封存後通常保存 365 天；待處理、法律、安全或爭議案件例外。',
           ],
           paragraphs: ['安全事件、爭議或合法保存要求可能暫停特定資料的刪除。'],
         },
@@ -306,6 +307,7 @@ const en: LegalLocaleContent = {
             'Account-linked completed matches and rating changes: 365 days; account-linked action logs and chat: normally 180 days.',
             'De-identified match outcomes, deck composition, and allowlisted rules events have no fixed expiry and support version, balance, timeout, and reliability analysis.',
             'Reports, sanctions, and admin audit: normally 365 days; application logs 30 days; metrics 90 days; encrypted backups 35 days.',
+            'Contact inbox messages and replies: normally 365 days after resolution or archive; open, legal, security, or disputed cases are excepted.',
           ],
           paragraphs: [
             'Security incidents, disputes, or a lawful preservation requirement may pause deletion of specific records.',
@@ -481,7 +483,7 @@ const zhCN: LegalLocaleContent = {
           heading: '用途与保存',
           bullets: [
             '用于提供账号、牌组、对战、聊天、支持以及防滥用。',
-            '账号删除后通常在 30 天内删除或匿名化；对局与管理记录按安全和完整性需要有限期保存。',
+            '账号删除后通常在 30 天内删除或匿名化；对局与管理记录按安全和完整性需要有限期保存；已回复或封存的联系邮件通常保存 365 天。',
             '服务不出售个人数据，也不会用私人聊天建立广告画像。',
           ],
         },
@@ -611,7 +613,7 @@ const zhHK: LegalLocaleContent = {
           heading: '用途及保存',
           bullets: [
             '用嚟提供帳號、牌組、對戰、聊天、支援同防止濫用。',
-            '刪除帳號後通常會喺 30 日內刪除或匿名化；部分對局及管理記錄會按安全需要有限期保存。',
+            '刪除帳號後通常會喺 30 日內刪除或匿名化；部分對局及管理記錄會按安全需要有限期保存；已回覆或封存嘅聯絡電郵通常保存 365 日。',
             '服務唔會出售個人資料，亦唔會用私人聊天建立廣告檔案。',
           ],
         },
@@ -746,7 +748,7 @@ const ja: LegalLocaleContent = {
           heading: '利用目的と保存',
           bullets: [
             'アカウント、デッキ、対戦、チャット、サポート、不正防止の提供。',
-            '削除確認後、アカウントは通常30日以内に削除または匿名化します。対戦・監査記録は安全性と整合性のため一定期間保存する場合があります。',
+            '削除確認後、アカウントは通常30日以内に削除または匿名化します。対戦・監査記録は安全性と整合性のため一定期間保存し、対応済みまたはアーカイブ済みのお問い合わせメールは通常365日保存します。',
             '個人データを販売せず、非公開チャットを広告プロファイルに利用しません。',
           ],
         },
@@ -885,7 +887,7 @@ const ko: LegalLocaleContent = {
           heading: '목적 및 보관',
           bullets: [
             '계정, 덱, 대전, 채팅, 지원과 악용 방지를 제공합니다.',
-            '확인된 삭제 요청 후 계정은 일반적으로 30일 이내 삭제 또는 익명화하며, 대전·감사 기록은 안전과 무결성을 위해 일정 기간 보관할 수 있습니다.',
+            '확인된 삭제 요청 후 계정은 일반적으로 30일 이내 삭제 또는 익명화하며, 대전·감사 기록은 안전과 무결성을 위해 일정 기간 보관하고 답변 또는 보관 처리된 문의 이메일은 일반적으로 365일 보관합니다.',
             '개인정보를 판매하거나 비공개 채팅을 광고 프로필에 사용하지 않습니다.',
           ],
         },

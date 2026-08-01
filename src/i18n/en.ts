@@ -197,6 +197,7 @@ export const en: Record<TranslationKey, string> = {
   'operations.subject.message': 'Message',
   'operations.subject.report': 'Report',
   'operations.subject.feedback': 'Feedback',
+  'operations.subject.support_email': 'Support email',
   'accountAction.verifyTitle': 'Verify email',
   'accountAction.verifyPending': 'Verifying your email...',
   'accountAction.verifySuccess': 'Your email is verified. You can return to the game.',

@@ -143,6 +143,9 @@ Frontend build-time variables (baked into the bundle at `vite build`):
 | `JWT_SECRET`                            | **required**                        | HMAC key for signed user/admin tokens. **Must be at least 32 characters.** Generate with `openssl rand -hex 32`. Set a stable secret in production or all tokens become invalid when the API process restarts. |
 | `ADMIN_SESSION_TTL_SECONDS`             | `3600`                              | Linked 或舊式管理員 session 的有效秒數，伺服器會限制在 5 分鐘至 8 小時。                                                                                                                                       |
 | `ADMIN_TOTP_ENCRYPTION_KEY`             | empty                               | 只供舊式獨立 TOTP 管理員使用的加密金鑰；使用 linked user 管理員時不需要。                                                                                                                                      |
+| `RESEND_API_KEY`                        | empty                               | Resend server-side API key used to list/retrieve received contact mail and send replies. Never expose it through a `VITE_*` variable.                                                                          |
+| `RESEND_WEBHOOK_SECRET`                 | empty                               | `whsec_...` signing secret for the Resend webhook registered at `/api/webhooks/resend` with the `email.received` event. The API verifies the raw request body before ingesting mail metadata.                  |
+| `RESEND_CONTACT_FROM`                   | contact mailbox                     | Verified sender used for admin inbox replies. Defaults to `ZUTOMAYO CARD <contact@mail.zutomayocard.online>` and must belong to a sending domain verified in the same Resend account.                          |
 | `ALLOWED_ORIGINS`                       | empty                               | Comma-separated CORS allowlist. When empty, the server falls back to localhost dev origins only.                                                                                                               |
 | `TRUSTED_PROXY`                         | empty                               | Comma-separated trusted proxy IP/CIDR allowlist. `X-Forwarded-For` is honored only when the TCP peer matches this list; keep empty for direct traffic.                                                         |
 | `APP_VERSION`                           | `package.json` version              | App release version returned by `/api/version` and `/api/app-version`. Leave empty to use the package version.                                                                                                 |
@@ -170,6 +173,12 @@ Frontend build-time variables (baked into the bundle at `vite build`):
 | `ACCOUNT_EXPORT_MAX_BYTES`              | `8388608`                           | Maximum serialized synchronous account export size; values are clamped to 64 KiB through 25 MiB.                                                                                                               |
 
 Cloudflare-fronted deployments must include every current CIDR from [Cloudflare IP Ranges](https://www.cloudflare.com/ips/) in `TRUSTED_PROXY`, in addition to the local ingress/container ranges.
+
+After deploying migration `000050_support_inbox`, create a Resend webhook for `email.received` at
+`https://<public-host>/api/webhooks/resend`, set its signing secret as `RESEND_WEBHOOK_SECRET`, and restart the API.
+The admin **聯絡信箱** page also calls Resend's received-email list API when refreshed, so messages received before
+the webhook was registered are imported. The webhook endpoint requires the original raw body and must not pass
+through a proxy transformation that rewrites JSON.
 
 Cloudflare Web Analytics may inject its browser beacon for aggregate traffic and Web Vitals reporting. Production CSP allows only its documented script origin, `https://static.cloudflareinsights.com`; do not broaden this to a wildcard or enable unrelated script injection products without a separate security review. Umami remains the source of application funnel events through the same-origin `/analytics` proxy. Browser QA must treat any remaining analytics CSP violation as a failure.
 

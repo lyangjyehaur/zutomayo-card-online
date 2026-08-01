@@ -196,6 +196,7 @@ export const ko: Record<TranslationKey, string> = {
   'operations.subject.message': '메시지',
   'operations.subject.report': '신고',
   'operations.subject.feedback': '피드백',
+  'operations.subject.support_email': '문의 이메일',
   'accountAction.verifyTitle': '이메일 인증',
   'accountAction.verifyPending': '이메일을 인증하는 중...',
   'accountAction.verifySuccess': '이메일 인증이 완료되었습니다. 게임으로 돌아가세요.',

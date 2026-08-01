@@ -9,6 +9,7 @@ const RETENTION_DAYS = Object.freeze({
   chat: 180,
   reports: 365,
   deckShareReports: 365,
+  supportEmails: 365,
   adminAudit: 365,
   accountTokens: 2,
   relationshipOutboxDelivered: 30,
@@ -100,6 +101,7 @@ function operationDefinitions(cutoffs) {
   const reportHold = activeHoldForAny('report', ['r.id'], reportAccountScope);
   const reportMessageHold = activeHoldForAny('message', ['r.message_id'], reportAccountScope);
   const deckShareReportHold = activeHoldForAny('report', ['r.id'], ['r.reporter_user_id', 's.owner_user_id']);
+  const supportEmailHold = activeHoldForAny('support_email', ['e.id']);
 
   return [
     {
@@ -270,6 +272,29 @@ function operationDefinitions(cutoffs) {
        WHERE r.id = c.id`,
       countParams: [cutoffs.deckShareReports],
       mutateParams: [cutoffs.deckShareReports],
+    },
+    {
+      name: 'supportEmails',
+      countSql: `SELECT COUNT(*)::int AS count
+        FROM support_emails e
+       WHERE e.received_at < $1
+         AND e.status IN ('replied', 'archived')
+         AND ${supportEmailHold}`,
+      mutateSql: `WITH candidates AS (
+        SELECT e.id
+          FROM support_emails e
+         WHERE e.received_at < $1
+           AND e.status IN ('replied', 'archived')
+           AND ${supportEmailHold}
+         ORDER BY e.received_at ASC
+         FOR UPDATE SKIP LOCKED
+         LIMIT $2
+      )
+      DELETE FROM support_emails e
+       USING candidates c
+       WHERE e.id = c.id`,
+      countParams: [cutoffs.supportEmails],
+      mutateParams: [cutoffs.supportEmails],
     },
     {
       name: 'adminAudit',

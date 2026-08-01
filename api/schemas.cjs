@@ -358,6 +358,29 @@ const adminUserListQuerySchema = z
   })
   .strict();
 
+const adminSupportEmailListQuerySchema = z
+  .object({
+    status: z.enum(['all', 'open', 'replied', 'archived']).optional().default('open'),
+    limit: z.coerce.number().int().min(1).max(200).optional().default(100),
+    sync: z
+      .enum(['true', 'false'])
+      .optional()
+      .transform((value) => value !== 'false'),
+  })
+  .strict();
+
+const adminSupportEmailReplySchema = z
+  .object({
+    text: z.string().trim().min(1).max(20_000),
+  })
+  .strict();
+
+const adminSupportEmailStatusSchema = z
+  .object({
+    status: z.enum(['open', 'replied', 'archived']),
+  })
+  .strict();
+
 const adminRoleUpdateSchema = z
   .object({
     role: z.enum(['viewer', 'moderator', 'operator', 'admin']).nullable(),
@@ -387,7 +410,15 @@ const adminSeasonCreateSchema = z
   .strict();
 const adminSeasonListQuerySchema = z.object({ limit: z.coerce.number().int().min(1).max(200).optional() }).strict();
 
-const legalHoldSubjectTypeSchema = z.enum(['account', 'match', 'conversation', 'message', 'report', 'feedback']);
+const legalHoldSubjectTypeSchema = z.enum([
+  'account',
+  'match',
+  'conversation',
+  'message',
+  'report',
+  'feedback',
+  'support_email',
+]);
 const legalHoldCreateSchema = z
   .object({
     subjectType: legalHoldSubjectTypeSchema,
@@ -534,6 +565,9 @@ module.exports = {
   adminLoginSchema,
   adminEloSchema,
   adminUserListQuerySchema,
+  adminSupportEmailListQuerySchema,
+  adminSupportEmailReplySchema,
+  adminSupportEmailStatusSchema,
   adminRoleUpdateSchema,
   seasonIdSchema,
   adminSeasonCreateSchema,

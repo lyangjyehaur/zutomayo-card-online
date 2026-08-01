@@ -190,6 +190,7 @@ export const zhTW = {
   'operations.subject.message': '訊息',
   'operations.subject.report': '舉報',
   'operations.subject.feedback': '反饋',
+  'operations.subject.support_email': '聯絡信箱郵件',
   'accountAction.verifyTitle': '驗證電子郵件',
   'accountAction.verifyPending': '正在驗證你的信箱...',
   'accountAction.verifySuccess': '電子郵件已驗證，可以返回遊戲。',

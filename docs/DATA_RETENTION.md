@@ -8,6 +8,7 @@
 | 去識別對局分析                   | 無固定期限   | 保留終局、版本、牌組組成與 allowlisted 規則事件；必要時定向刪除 |
 | 聊天訊息                         | 180 天       | 逾期刪除或匿名化；審核證據另計                                  |
 | 舉報、制裁與管理稽核             | 365 天       | 逾期刪除或匿名化；法律義務例外                                  |
+| 聯絡信箱來信與回覆               | 365 天       | 已回覆／已封存案件逾期整筆刪除；待處理或法律保留案件例外        |
 | 應用程式日誌與 trace             | 30 天        | 自動 lifecycle 刪除                                             |
 | Metrics                          | 90 天        | 聚合後刪除原始高基數資料                                        |
 | 零結果搜尋聚合                   | 90 天        | 不含帳號或 IP；疑似敏感查詢不落明文，逾期整筆刪除               |
@@ -33,7 +34,7 @@ session-level advisory lock，逐批使用 `FOR UPDATE SKIP LOCKED` 排空資料
 `RETENTION_METRICS_FILE` 輸出 `retention_last_success_unixtime_seconds` 等 Prometheus 指標。
 
 每次執行會在 `retention_runs` 留下模式、狀態、完成時間、各類筆數與錯誤；`legal_holds` 中
-未解除且未過期的項目會排除所有相應對局、訊息、檢舉與稽核資料。對局的 authoritative action log
+未解除且未過期的項目會排除所有相應對局、訊息、檢舉、聯絡信箱案件與稽核資料。對局的 authoritative action log
 在 180 天先清理，直接帳號識別在 365 天再匿名化；聊天會以 `[redacted]` 匿名化並保留必要的
 moderation/report evidence。`legal_hold_objects` 保存 hold 的衍生 subject mapping，避免只比對單一
 root id 而漏保留關聯資料。

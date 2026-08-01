@@ -46,6 +46,7 @@ describe('retention service', () => {
       translations: 2,
       reports: 2,
       deckShareReports: 2,
+      supportEmails: 2,
       adminAudit: 2,
       accountTokens: 2,
       searchZeroResults: 2,
@@ -62,7 +63,7 @@ describe('retention service', () => {
     const pool = createPool();
     await runRetention({ pool, dryRun: false, runId: 'retention_live' });
     const destructiveQueries = pool.queries.filter(({ sql }) =>
-      /UPDATE matches|UPDATE chat_messages|DELETE FROM chat_reports|DELETE FROM deck_share_reports|DELETE FROM admin_audit_log/.test(
+      /UPDATE matches|UPDATE chat_messages|DELETE FROM chat_reports|DELETE FROM deck_share_reports|DELETE FROM support_emails|DELETE FROM admin_audit_log/.test(
         sql,
       ),
     );

@@ -31,7 +31,15 @@ import {
   Textarea,
 } from '../ui';
 
-const SUBJECT_TYPES: LegalHoldSubjectType[] = ['account', 'match', 'conversation', 'message', 'report', 'feedback'];
+const SUBJECT_TYPES: LegalHoldSubjectType[] = [
+  'account',
+  'match',
+  'conversation',
+  'message',
+  'report',
+  'feedback',
+  'support_email',
+];
 
 type HoldStatus = 'active' | 'released' | 'expired' | 'all';
 const SEASONS_UI_ENABLED = false;

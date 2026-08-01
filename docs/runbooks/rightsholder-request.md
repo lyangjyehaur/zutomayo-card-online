@@ -14,10 +14,11 @@ This runbook covers:
 
 ## Intake
 
-1. Record received UTC, sender, subject category, affected URL/card/content, requested action, and assigned operator.
+1. Open **管理後台 → 聯絡信箱**, sync Resend, and select the request. The inbox records received UTC, sender, subject, message ID, status, and reply history.
 2. Keep the original message and attachments private. Do not copy identity documents or private data into a public issue.
-3. Acknowledge receipt. Ask only for information needed to confirm the request and the sender's authority.
+3. Reply from the inbox so `In-Reply-To` and `References` keep the conversation in the original email thread. Acknowledge receipt and ask only for information needed to confirm the request and the sender's authority.
 4. For a rightsholder request, collect the claimed rights basis, affected material, requested action, and a statement that the sender is authorized and the information is accurate.
+5. Use the support email ID shown by the inbox as the legal-hold subject when correspondence must outlive the normal 365-day retention period.
 
 ## Triage
 

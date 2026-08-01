@@ -198,6 +198,7 @@ export const ja: Record<TranslationKey, string> = {
   'operations.subject.message': 'メッセージ',
   'operations.subject.report': '通報',
   'operations.subject.feedback': 'フィードバック',
+  'operations.subject.support_email': 'お問い合わせメール',
   'accountAction.verifyTitle': 'メールアドレスを確認',
   'accountAction.verifyPending': 'メールアドレスを確認しています...',
   'accountAction.verifySuccess': 'メールアドレスを確認しました。ゲームに戻れます。',

@@ -25,6 +25,7 @@ import { AdminDeckShareReportsPanel } from '../components/AdminDeckShareReportsP
 import { AdminOfficialRulingsPanel } from '../components/AdminOfficialRulingsPanel';
 import { AdminOperationsPanel } from '../components/AdminOperationsPanel';
 import { AdminTranslationSettingsPanel } from '../components/AdminTranslationSettingsPanel';
+import { AdminSupportInboxPanel } from '../components/AdminSupportInboxPanel';
 import {
   Alert,
   Badge,
@@ -105,6 +106,13 @@ export function OperationsPage() {
   return (
     <ResourceFrame title="營運與合規" description="管理賽季、資料保留與 legal hold 工作流。">
       <AdminOperationsPanel token={token()} />
+    </ResourceFrame>
+  );
+}
+export function SupportInboxPage() {
+  return (
+    <ResourceFrame title="聯絡信箱" description="同步 Resend 收件、查看詢問內容並在原郵件討論串直接回覆。">
+      <AdminSupportInboxPanel token={token()} />
     </ResourceFrame>
   );
 }
