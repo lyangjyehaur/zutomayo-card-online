@@ -5,6 +5,7 @@
 #   ./scripts/deploy-server4.sh
 #   ./scripts/deploy-server4.sh --confirm
 #   ./scripts/deploy-server4.sh --dry-run
+#   ./scripts/deploy-server4.sh --runtime-only --confirm
 
 set -euo pipefail
 
@@ -62,6 +63,7 @@ CARD_UNLISTED_RELEASE_FILES=(
 
 CONFIRM=false
 DRY_RUN=false
+DEPLOY_MODE=full
 
 usage() {
   sed -n '2,10p' "$0"
@@ -72,6 +74,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --confirm) CONFIRM=true; shift ;;
     --dry-run) DRY_RUN=true; shift ;;
+    --runtime-only) DEPLOY_MODE=runtime-only; shift ;;
     -h|--help) usage ;;
     *) printf 'unknown argument: %s\n' "$1" >&2; exit 2 ;;
   esac
@@ -159,6 +162,10 @@ load_local_release() {
   EXPECTED_SCHEMA_CHECKSUM="$(sha256_file "$migration_file")"
   [[ "$EXPECTED_SCHEMA_CHECKSUM" =~ ^[a-f0-9]{64}$ ]] || die 'migration checksum is invalid'
   verify_local_battle_assets
+  if [[ "$DEPLOY_MODE" == runtime-only ]]; then
+    log 'runtime-only mode: preserving published cards, official content, and search index'
+    return
+  fi
   [[ -f "$OFFICIAL_TRANSLATIONS_SOURCE" ]] || \
     die "reviewed official-rulings translations are missing: $OFFICIAL_TRANSLATIONS_SOURCE"
   [[ -f "$OFFICIAL_RULE_DOCUMENTS_SOURCE" ]] || \
@@ -262,27 +269,34 @@ prepare_external_meilisearch() {
     chmod 0600 .env
 
     config='$MEILI_APP_DIR/config/config.toml'
-    sed -i 's/^env = .*/env = \"production\"/' \"\$config\"
-    sed -i 's/^http_addr = .*/http_addr = \"0.0.0.0:7700\"/' \"\$config\"
-    if grep -Eq '^#? *no_analytics = ' \"\$config\"; then
-      sed -i 's/^#\? *no_analytics = .*/no_analytics = true/' \"\$config\"
-    else
-      printf '\nno_analytics = true\n' >> \"\$config\"
+    if test '$DEPLOY_MODE' = full; then
+      sed -i 's/^env = .*/env = \"production\"/' \"\$config\"
+      sed -i 's/^http_addr = .*/http_addr = \"0.0.0.0:7700\"/' \"\$config\"
+      if grep -Eq '^#? *no_analytics = ' \"\$config\"; then
+        sed -i 's/^#\? *no_analytics = .*/no_analytics = true/' \"\$config\"
+      else
+        printf '\nno_analytics = true\n' >> \"\$config\"
+      fi
     fi
     grep -qx 'env = \"production\"' \"\$config\"
     grep -qx 'http_addr = \"0.0.0.0:7700\"' \"\$config\"
     grep -qx 'no_analytics = true' \"\$config\"
 
-    cd '$MEILI_APP_DIR'
-    docker compose up -d --force-recreate meilisearch >/dev/null
-    for attempt in \$(seq 1 30); do
-      if docker exec '$MEILI_CONTAINER' curl --fail --silent http://localhost:7700/health |
-        grep -q '\"status\":\"available\"'; then
-        break
-      fi
-      test \"\$attempt\" -lt 30 || { echo 'external Meilisearch health check timed out' >&2; exit 1; }
-      sleep 2
-    done
+    if test '$DEPLOY_MODE' = full; then
+      cd '$MEILI_APP_DIR'
+      docker compose up -d --force-recreate meilisearch >/dev/null
+      for attempt in \$(seq 1 30); do
+        if docker exec '$MEILI_CONTAINER' curl --fail --silent http://localhost:7700/health |
+          grep -q '\"status\":\"available\"'; then
+          break
+        fi
+        test \"\$attempt\" -lt 30 || { echo 'external Meilisearch health check timed out' >&2; exit 1; }
+        sleep 2
+      done
+    else
+      docker exec '$MEILI_CONTAINER' curl --fail --silent http://localhost:7700/health |
+        grep -q '\"status\":\"available\"'
+    fi
     runtime_key=\$(docker inspect '$MEILI_CONTAINER' --format '{{range .Config.Env}}{{println .}}{{end}}' |
       sed -n 's/^MEILI_MASTER_KEY=//p')
     test \"\$runtime_key\" = \"\$container_key\" || {
@@ -299,7 +313,7 @@ prepare_external_meilisearch() {
     }
     docker run --rm --network 1panel-network --entrypoint curl '$MEILI_EXPECTED_IMAGE' \
       --fail --silent http://meilisearch:7700/health | grep -q '\"status\":\"available\"'
-    echo 'external Meilisearch verified: production, private, healthy, and reachable on 1panel-network'"
+    echo 'external Meilisearch verified: production, private, healthy, and reachable on 1panel-network (mode=$DEPLOY_MODE)'"
 }
 
 remote_sync_master_and_env() {
@@ -327,6 +341,20 @@ remote_sync_master_and_env() {
     upsert_env EXPECTED_SCHEMA_CHECKSUM '$EXPECTED_SCHEMA_CHECKSUM'
     upsert_env ALLOWED_ORIGINS '$SERVER4_ALLOWED_ORIGIN'
     grep -E '^(APP_BUILD_ID|APP_BUILT_AT|APP_VERSION|GAME_RULES_VERSION|EXPECTED_SCHEMA_MIGRATION|EXPECTED_SCHEMA_CHECKSUM|ALLOWED_ORIGINS|VITE_CARD_DATASET_SHA256)=' .env"
+}
+
+load_remote_card_dataset_sha256() {
+  local remote_dataset_sha256
+  remote_dataset_sha256="$(ssh_run "set -euo pipefail
+    cd '$REMOTE_DIR'
+    sed -n 's/^VITE_CARD_DATASET_SHA256=//p' .env | tail -n 1")"
+  [[ "$remote_dataset_sha256" =~ ^[a-f0-9]{64}$ ]] || \
+    die 'runtime-only deployment requires an existing valid VITE_CARD_DATASET_SHA256 on server4'
+  if [[ -n "$CARD_DATASET_SHA256" && "$CARD_DATASET_SHA256" != "$remote_dataset_sha256" ]]; then
+    die "operator-provided card dataset SHA-256 does not match server4: expected=$CARD_DATASET_SHA256 actual=$remote_dataset_sha256"
+  fi
+  CARD_DATASET_SHA256="$remote_dataset_sha256"
+  log "preserving server4 card dataset SHA-256: $CARD_DATASET_SHA256"
 }
 
 sync_battle_assets() {
@@ -643,20 +671,26 @@ run_cache_policy_smoke() {
 }
 
 load_local_release
-confirm_action "deploy origin/master $TARGET_SHORT"
+confirm_action "deploy origin/master $TARGET_SHORT in $DEPLOY_MODE mode"
 if [[ "$DRY_RUN" == true ]]; then
-  log "[dry-run] would back up PostgreSQL and deploy origin/master $TARGET_SHORT"
+  log "[dry-run] would back up PostgreSQL and deploy origin/master $TARGET_SHORT in $DEPLOY_MODE mode"
   log "[dry-run] schema=$EXPECTED_SCHEMA_MIGRATION checksum=$EXPECTED_SCHEMA_CHECKSUM"
-  log "[dry-run] would stream the reviewed official-rulings translations and require an atomic active release"
-  log "[dry-run] would stream and atomically activate the translated official rule documents"
-  log "[dry-run] would stream and transactionally import reviewed card-derived effects"
-  log "[dry-run] would stream and transactionally import reviewed card-derived names"
-  log "[dry-run] would stream and transactionally publish reviewed unlisted cards"
-  log "[dry-run] would back up, configure, and verify the external 1Panel Meilisearch service"
+  if [[ "$DEPLOY_MODE" == runtime-only ]]; then
+    log '[dry-run] would preserve and verify the existing card dataset SHA-256'
+    log '[dry-run] would preserve published cards, official content, private battle assets, and the search index'
+    log '[dry-run] would verify the external 1Panel Meilisearch service without reconfiguring or recreating it'
+  else
+    log "[dry-run] would stream the reviewed official-rulings translations and require an atomic active release"
+    log "[dry-run] would stream and atomically activate the translated official rule documents"
+    log "[dry-run] would stream and transactionally import reviewed card-derived effects"
+    log "[dry-run] would stream and transactionally import reviewed card-derived names"
+    log "[dry-run] would stream and transactionally publish reviewed unlisted cards"
+    log "[dry-run] would back up, configure, and verify the external 1Panel Meilisearch service"
+    log '[dry-run] would derive and record the card dataset SHA-256 after publishing data and before building runtime images'
+    log "[dry-run] would atomically rebuild and verify the Meilisearch knowledge index"
+    log "[dry-run] would synchronize and verify $BATTLE_ASSET_COUNT private battle assets"
+  fi
   log "[dry-run] would set ALLOWED_ORIGINS=$SERVER4_ALLOWED_ORIGIN"
-  log '[dry-run] would derive and record the card dataset SHA-256 after publishing data and before building runtime images'
-  log "[dry-run] would atomically rebuild and verify the Meilisearch knowledge index"
-  log "[dry-run] would synchronize and verify $BATTLE_ASSET_COUNT private battle assets"
   log "[dry-run] would verify every battle asset through origin and $PUBLIC_SMOKE_BASE_URL"
   log '[dry-run] would sync Cloudflare cache rules when credentials are configured'
   log "[dry-run] would verify cache headers through $PUBLIC_SMOKE_BASE_URL and $DIRECT_SMOKE_ADDRESS"
@@ -675,29 +709,43 @@ log 'configuring and verifying the external 1Panel Meilisearch service'
 prepare_external_meilisearch || die 'external Meilisearch verification failed; the application release was not replaced'
 log 'checking PostgreSQL TLS, shared Redis, and search safety configuration'
 verify_remote_runtime_config
-log 'synchronizing private battle assets outside GitHub'
-sync_battle_assets
+if [[ "$DEPLOY_MODE" == full ]]; then
+  log 'synchronizing private battle assets outside GitHub'
+  sync_battle_assets
+else
+  log 'preserving the existing verified private battle assets'
+fi
 
 remote_build_migration || die 'migration image build or schema migration failed; the running release was not replaced'
-log 'streaming and transactionally publishing reviewed unlisted cards'
-release_reviewed_unlisted_cards || die 'reviewed unlisted-card release gate failed; the running release was not replaced'
-log 'streaming and transactionally importing reviewed card-derived names'
-release_card_derived_names || die 'card-derived-names release gate failed; the running release was not replaced'
-log 'streaming and transactionally importing reviewed card-derived effects'
-release_card_derived_effects || die 'card-derived-effects release gate failed; the running release was not replaced'
-log 'synchronizing and atomically activating current official Q&A, errata, and five reviewed locales'
-release_official_rulings || die 'official-rulings release gate failed; the running release was not replaced'
-log 'synchronizing and atomically activating Grand Rules and Floor Rules in five reviewed locales'
-release_official_rule_documents || die 'official rule documents release gate failed; the running release was not replaced'
-log 'deriving the public card dataset identity from the imported data'
-preflight_card_dataset || die 'public card dataset preflight failed; runtime images were not built'
-record_card_dataset_sha256 || die 'card dataset SHA-256 could not be recorded; runtime images were not built'
-log 'atomically rebuilding and verifying the public knowledge search index'
-reindex_knowledge_search || die 'knowledge search reindex failed; the running application release was not replaced'
+if [[ "$DEPLOY_MODE" == full ]]; then
+  log 'streaming and transactionally publishing reviewed unlisted cards'
+  release_reviewed_unlisted_cards || die 'reviewed unlisted-card release gate failed; the running release was not replaced'
+  log 'streaming and transactionally importing reviewed card-derived names'
+  release_card_derived_names || die 'card-derived-names release gate failed; the running release was not replaced'
+  log 'streaming and transactionally importing reviewed card-derived effects'
+  release_card_derived_effects || die 'card-derived-effects release gate failed; the running release was not replaced'
+  log 'synchronizing and atomically activating current official Q&A, errata, and five reviewed locales'
+  release_official_rulings || die 'official-rulings release gate failed; the running release was not replaced'
+  log 'synchronizing and atomically activating Grand Rules and Floor Rules in five reviewed locales'
+  release_official_rule_documents || die 'official rule documents release gate failed; the running release was not replaced'
+  log 'deriving the public card dataset identity from the imported data'
+  preflight_card_dataset || die 'public card dataset preflight failed; runtime images were not built'
+  record_card_dataset_sha256 || die 'card dataset SHA-256 could not be recorded; runtime images were not built'
+  log 'atomically rebuilding and verifying the public knowledge search index'
+  reindex_knowledge_search || die 'knowledge search reindex failed; the running application release was not replaced'
+else
+  load_remote_card_dataset_sha256
+  log 'verifying the preserved public card dataset identity against the running API'
+  preflight_card_dataset || die 'preserved public card dataset preflight failed; runtime images were not built'
+fi
 log 'building runtime images with the verified dataset identity'
 remote_build_runtime || die 'runtime image build failed; the running release was not replaced'
-log 'stopping the previous API and handing off the knowledge search rebuild lease'
-remote_handoff_knowledge_search_lock || die 'knowledge search lock handoff failed; inspect the server4 API container'
+if [[ "$DEPLOY_MODE" == full ]]; then
+  log 'stopping the previous API and handing off the knowledge search rebuild lease'
+  remote_handoff_knowledge_search_lock || die 'knowledge search lock handoff failed; inspect the server4 API container'
+else
+  log 'leaving the existing knowledge search index and rebuild lease untouched'
+fi
 remote_start || die 'deployment failed; inspect the server4 Compose logs before retrying'
 
 run_smoke "$TARGET_SHA" || die 'health verification failed; inspect the deployed release before retrying'
@@ -705,4 +753,4 @@ sync_cloudflare_cache_rules || die 'Cloudflare cache rule synchronization failed
 run_cache_policy_smoke || die 'public/direct cache policy verification failed'
 
 ssh_run "date -u +%Y-%m-%dT%H:%M:%SZ > '$REMOTE_DIR/.release.deployed-at'"
-log "deployment completed: origin/master $TARGET_SHORT"
+log "deployment completed: origin/master $TARGET_SHORT (mode=$DEPLOY_MODE)"

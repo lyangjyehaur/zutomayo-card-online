@@ -160,6 +160,14 @@ describe('operational shell scripts', () => {
     expect(deploy).toContain('record_card_dataset_sha256');
     expect(deploy).toContain('operator-provided card dataset SHA-256 does not match preflight');
     expect(deploy.indexOf('preflight_card_dataset ||')).toBeLessThan(deploy.indexOf('remote_build_runtime ||'));
+    expect(deploy).toContain('--runtime-only');
+    expect(deploy).toContain('DEPLOY_MODE=runtime-only');
+    expect(deploy).toContain('load_remote_card_dataset_sha256');
+    expect(deploy).toContain('preserving server4 card dataset SHA-256');
+    expect(deploy).toContain('preserving the existing verified private battle assets');
+    expect(deploy).toContain('leaving the existing knowledge search index and rebuild lease untouched');
+    expect(deploy).toContain("if test '$DEPLOY_MODE' = full; then");
+    expect(deploy).toContain('verify the external 1Panel Meilisearch service without reconfiguring or recreating it');
     expect(deploy).toContain('redis-cli --no-auth-warning -n');
     expect(deploy).toContain('DEL search:index:rebuild');
     expect(deploy).toContain("docker compose -f '$COMPOSE_FILE' stop api");
