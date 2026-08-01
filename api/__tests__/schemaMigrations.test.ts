@@ -42,6 +42,24 @@ describe('schema migrations', () => {
     expect(migration).toContain('export const down = false');
   });
 
+  it('adds bounded identity-free connection lifecycle telemetry', () => {
+    const migration = readRepoFile('migrations/000050_match_connection_lifecycle.js');
+    const gameFallback = readRepoFile('src/server/db/postgres-adapter.ts');
+    const schemaGate = readRepoFile('api/schemaGate.cjs');
+    for (const artifact of [
+      'connection_events',
+      'player0_disconnected_at',
+      'player1_disconnected_at',
+      'bjg_match_telemetry_connection_events_check',
+    ]) {
+      expect(migration).toContain(artifact);
+      expect(gameFallback).toContain(artifact);
+      expect(schemaGate).toContain(artifact);
+    }
+    expect(migration).toContain('jsonb_array_length(connection_events) <= 100');
+    expect(migration).toContain('export const down = false');
+  });
+
   it('keeps privacy-filtered zero-result analytics aligned with the development fallback', () => {
     const migration = readRepoFile('migrations/000047_knowledge_search_zero_results.js');
     const initSchema = readRepoFile('api/server.cjs');

@@ -409,6 +409,8 @@ but they do not execute `CREATE TABLE` or `CREATE INDEX`. A release that has not
 run the migration image therefore fails closed instead of silently changing
 schema from an application process.
 
+Migration `000050_match_connection_lifecycle` adds bounded runtime connection events and per-seat outstanding-disconnect timestamps. After deploying a build that requires it, verify that `match_analytics_capture_total` increases only with committed durable facts, trusted `direct` rows are not marked `missing-provenance`, initial seat proofs leave `seat_resume_counts` at zero, and `connectionDisconnect`／`connectionReconnect` child rows reconcile with each fact's `event_count`. Production checks must remain read-only and aggregate; do not export original match or user identifiers.
+
 ### Creating a new migration
 
 ```bash

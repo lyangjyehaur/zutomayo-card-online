@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- **連線生命週期分析**：以不含身份資訊的座位、遊戲階段、開局後秒數與斷線秒數保存 bounded disconnect/reconnect 事件，並提供分 mode／step／seat 的重連時長彙總。
+
+### Fixed
+
+- **對戰分析可靠性**：trusted direct 對戰不再誤標缺少來源，分析成功計數只在 PostgreSQL transaction COMMIT 後增加，避免 rollback 被誤報為永久保存。
+
 ## [0.2.6] - 2026-07-31
 
 ### Added

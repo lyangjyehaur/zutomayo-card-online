@@ -10,6 +10,9 @@ fixture-app,fixture-rules,fixture-dataset-a,quick_match,no_disconnect_observed,,
 fixture-app,fixture-rules,fixture-dataset-a,quick_match,reconnected,effectOrder,0,5,5,1,3,3
 fixture-app,fixture-rules,fixture-dataset-a,quick_match,reconnected,effectOrder,1,5,5,1,2,2
 fixture-app,fixture-rules,fixture-dataset-b,custom_room,no_disconnect_observed,,,1,0,0,,
+app_version,rules_version,dataset_sha256,match_mode,event_type,step,actor_seat,affected_matches,event_count,reconnect_gap_seconds_p50,reconnect_gap_seconds_p90
+fixture-app,fixture-rules,fixture-dataset-a,quick_match,connectionDisconnect,effectOrder,0,2,2,,
+fixture-app,fixture-rules,fixture-dataset-a,quick_match,connectionReconnect,effectOrder,0,2,2,30,44.4
 app_version,rules_version,dataset_sha256,metric,sample_size,wins,win_rate,wilson_lower_95,wilson_upper_95
 fixture-app,fixture-rules,fixture-dataset-a,janken_winner_win,100,90,0.9,0.8256326956323347,0.9447714583868638
 fixture-app,fixture-rules,fixture-dataset-a,seat_0_win,100,60,0.6,0.5020007846184025,0.6906002538863971

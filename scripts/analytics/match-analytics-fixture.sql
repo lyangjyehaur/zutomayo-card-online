@@ -62,6 +62,24 @@ SELECT lpad(to_hex(n), 64, '0'), 0, 5, 'effectOrder', n % 2,
        'timeoutAdvance', 'effectOrder', '{"timedOutStep":"effectOrder"}'::jsonb
 FROM generate_series(1, 10) AS series(n);
 
+-- Two trusted connection lifecycles exercise stage/seat counts and reconnect
+-- duration percentiles without any match, socket, session, or user identifier.
+UPDATE match_analytics
+SET event_count = 3
+WHERE source_match_digest IN (lpad(to_hex(1), 64, '0'), lpad(to_hex(2), 64, '0'));
+
+INSERT INTO match_analytics_events (
+  source_match_digest, sequence, turn, step, actor_seat, event_type, payload
+) VALUES
+  (lpad(to_hex(1), 64, '0'), 1, 0, 'effectOrder', 0, 'connectionDisconnect',
+   '{"offsetSeconds":30}'::jsonb),
+  (lpad(to_hex(1), 64, '0'), 2, 0, 'effectOrder', 0, 'connectionReconnect',
+   '{"offsetSeconds":42,"disconnectSeconds":12}'::jsonb),
+  (lpad(to_hex(2), 64, '0'), 1, 0, 'effectOrder', 0, 'connectionDisconnect',
+   '{"offsetSeconds":50}'::jsonb),
+  (lpad(to_hex(2), 64, '0'), 2, 0, 'effectOrder', 0, 'connectionReconnect',
+   '{"offsetSeconds":98,"disconnectSeconds":48}'::jsonb);
+
 -- A timeout-heavy match remains in operational timeout/length reports but is
 -- excluded from balance, deck, card, and matchup conclusions.
 INSERT INTO match_analytics (

@@ -472,6 +472,9 @@ const REQUIRED_RUNTIME_COLUMNS = Object.freeze({
     'player1_disconnect_count',
     'player0_reconnect_count',
     'player1_reconnect_count',
+    'connection_events',
+    'player0_disconnected_at',
+    'player1_disconnected_at',
     'observed_at',
     'updated_at',
   ],
@@ -723,6 +726,12 @@ const REQUIRED_RUNTIME_CONSTRAINTS = Object.freeze([
     constraintName: 'bjg_match_telemetry_counts_check',
     constraintType: 'c',
     fragments: ['player0_disconnect_count >= 0', 'player1_reconnect_count >= 0'],
+  },
+  {
+    tableName: 'bjg_match_telemetry',
+    constraintName: 'bjg_match_telemetry_connection_events_check',
+    constraintType: 'c',
+    fragments: ["jsonb_typeof(connection_events) = 'array'", 'jsonb_array_length(connection_events) <= 100'],
   },
   { tableName: 'match_analytics', constraintType: 'p', fragments: ['primary key (source_match_digest)'] },
   {

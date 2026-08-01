@@ -45,9 +45,11 @@ root id 而漏保留關聯資料。
 需要移除資料，仍可依 digest 定向處理。
 
 `bjg_match_telemetry` 是短期 operational 表，以原始 match ID foreign key 關聯 `bjg_matches` 並隨其刪除。
-platform role 只能寫入 server 判定的 `match_mode`、`traffic_class` 與每席 disconnect／reconnect 計數；
-game、retention、backup 只讀，API role 不具權限。永久 archive 只接收固定兩席計數陣列與 seat resume
-次數；首次 seat proof 不計為 resume。不保存 join timeline、session/socket/user ID、room/invite ID 或 IP。
+platform role 只能寫入 server 判定的 `match_mode`、`traffic_class`、每席 disconnect／reconnect 計數，以及
+最多 100 筆連線生命週期摘要。摘要只含座位、權威遊戲階段、開局後秒數與斷線秒數；game、retention、
+backup 只讀，API role 不具權限。永久 archive 只接收固定兩席計數陣列、seat resume 次數與再次 allowlist
+後的 `connectionDisconnect`／`connectionReconnect` 事件；首次 seat proof 不計為 resume。不保存絕對連線
+時間、session/socket/user ID、room/invite ID、IP 或自由文字。
 
 已結案或駁回的牌組分享檢舉通常保存 365 天後刪除；pending／reviewing 狀態不由一般 retention
 自動刪除。牌組分享本身與帳號有效期間一致，取消發布只改變可見狀態，不是立即刪除資料。

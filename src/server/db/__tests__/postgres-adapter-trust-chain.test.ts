@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import type { State } from 'boardgame.io';
 import { MatchSeatReservationError, PostgresAdapter } from '../postgres-adapter';
+import { matchAnalyticsCaptureTotal } from '../../observability/metrics';
 
 type MockClient = {
   query: ReturnType<typeof vi.fn>;
@@ -69,6 +70,14 @@ function initialStateForAnalytics(): State {
     hand: Array.from({ length: 5 }, (_, index) => ({ defId: `card-${seat}-${index + 15}` })),
   });
   return { G: { players: [player(0), player(1)] } } as never;
+}
+
+async function captureCount(outcome: string, trafficClass: string): Promise<number> {
+  const metric = await matchAnalyticsCaptureTotal.get();
+  return (
+    metric.values.find((value) => value.labels.outcome === outcome && value.labels.traffic_class === trafficClass)
+      ?.value ?? 0
+  );
 }
 
 function stateBeforeDeckBind() {
@@ -543,6 +552,7 @@ describe('PostgresAdapter trust-chain transactions', () => {
   });
 
   it('writes terminal state and canonical outbox row in the same transaction', async () => {
+    const captureCountBefore = await captureCount('completed', 'operator');
     const schemaClient = mockClient();
     const transactionClient = mockClient(async (sql) => {
       if (sql.startsWith('SELECT metadata, initial_state FROM bjg_matches')) {
@@ -614,6 +624,30 @@ describe('PostgresAdapter trust-chain transactions', () => {
       expect.stringContaining('INSERT INTO match_analytics ('),
       expect.arrayContaining(['operator', 'quick_match', [2, 1], [1, 1], [3, 4]]),
     );
+    await expect(captureCount('completed', 'operator')).resolves.toBe(captureCountBefore + 1);
+  });
+
+  it('does not count a terminal capture when the transaction commit fails', async () => {
+    const captureCountBefore = await captureCount('completed', 'synthetic');
+    const schemaClient = mockClient();
+    const transactionClient = mockClient(async (sql) => {
+      if (sql === 'COMMIT') throw new Error('commit unavailable');
+      if (sql.startsWith('SELECT metadata, initial_state FROM bjg_matches')) {
+        return {
+          rows: [{ metadata: { setupData: { rulesVersion: 'legacy' } }, initial_state: initialStateForAnalytics() }],
+          rowCount: 1,
+        };
+      }
+      if (sql.includes('FROM bjg_match_seats')) return { rows: [], rowCount: 0 };
+      return { rows: [], rowCount: 1 };
+    });
+    const pool = mockPool([schemaClient, transactionClient]);
+    const adapter = new PostgresAdapter({ pool: pool as never, createIndexes: false });
+
+    await expect(adapter.setState('match_1', stateWithWinner())).rejects.toThrow('commit unavailable');
+
+    expect(transactionClient.query).toHaveBeenCalledWith('ROLLBACK');
+    await expect(captureCount('completed', 'synthetic')).resolves.toBe(captureCountBefore);
   });
 
   it('marks eligible results unrated when ranked delivery is disabled', async () => {

@@ -350,8 +350,25 @@ INSERT INTO bjg_match_telemetry (source_match_id, match_mode, traffic_class)
 VALUES ('role-smoke-telemetry', 'quick_match', 'synthetic');
 UPDATE bjg_match_telemetry
 SET player0_disconnect_count = player0_disconnect_count + 1,
-    player0_reconnect_count = player0_reconnect_count + 1
+    player0_reconnect_count = player0_reconnect_count + 1,
+    connection_events = jsonb_build_array(
+      jsonb_build_object('event', 'disconnect', 'seat', 0, 'step', 'effectOrder', 'offsetSeconds', 30),
+      jsonb_build_object('event', 'reconnect', 'seat', 0, 'step', 'effectOrder', 'offsetSeconds', 42, 'disconnectSeconds', 12)
+    ),
+    player0_disconnected_at = NULL
 WHERE source_match_id = 'role-smoke-telemetry';
+SELECT (
+  jsonb_array_length(connection_events) = 2
+  AND connection_events->1->>'disconnectSeconds' = '12'
+  AND player0_disconnected_at IS NULL
+) AS telemetry_lifecycle_ok
+FROM bjg_match_telemetry
+WHERE source_match_id = 'role-smoke-telemetry' \gset
+\if :telemetry_lifecycle_ok
+\else
+  \echo 'bounded telemetry lifecycle smoke failed'
+  \quit 3
+\endif
 SQL
 "${compose[@]}" exec --no-TTY --env PGPASSWORD="$PG_GAME_PASSWORD" postgres \
   psql --host 127.0.0.1 --username "$PG_GAME_USER" --dbname "$PG_DATABASE" --set=ON_ERROR_STOP=1 \

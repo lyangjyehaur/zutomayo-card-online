@@ -182,26 +182,61 @@ describe('match analytics projection', () => {
       version: { appVersion: '1.0.0', buildId: 'build-1', rulesVersion: 'rules-1' },
       environment: 'production',
       telemetry: {
-        matchMode: 'quick_match',
+        matchMode: 'direct',
         trafficClass: 'operator',
         disconnectCounts: [3, -1],
         reconnectCounts: [2, Number.MAX_SAFE_INTEGER],
+        connectionEvents: [
+          {
+            event: 'disconnect',
+            seat: 0,
+            step: 'effectOrder',
+            offsetSeconds: 30,
+            userId: 'private-user-0',
+          },
+          {
+            event: 'reconnect',
+            seat: 0,
+            step: 'effectOrder',
+            offsetSeconds: 42,
+            disconnectSeconds: 12,
+            socketId: 'private-socket',
+          },
+          { event: 'private-event', seat: 1, freeText: 'private-free-text' },
+        ],
       },
     });
 
     expect(analytics.fact).toMatchObject({
-      matchMode: 'quick_match',
+      matchMode: 'direct',
       trafficClass: 'operator',
       disconnectCounts: [3, 0],
       reconnectCounts: [2, 0],
       seatResumeCounts: [2, 1],
+      eventCount: 7,
     });
     expect(analytics.fact.qualityFlags).toEqual(
       expect.arrayContaining(['disconnect-observed', 'reconnect-observed', 'seat-resume-observed']),
     );
     expect(analytics.fact.qualityFlags).not.toContain('missing-provenance');
+    expect(analytics.events.slice(-2)).toEqual([
+      expect.objectContaining({
+        eventType: 'connectionDisconnect',
+        step: 'effectOrder',
+        actorSeat: 0,
+        payload: { offsetSeconds: 30 },
+      }),
+      expect.objectContaining({
+        eventType: 'connectionReconnect',
+        step: 'effectOrder',
+        actorSeat: 0,
+        payload: { offsetSeconds: 42, disconnectSeconds: 12 },
+      }),
+    ]);
     expect(JSON.stringify(analytics)).not.toContain('private-user');
     expect(JSON.stringify(analytics)).not.toContain('telemetry-source-match');
+    expect(JSON.stringify(analytics)).not.toContain('private-socket');
+    expect(JSON.stringify(analytics)).not.toContain('private-free-text');
   });
 
   it('drops hidden choices, instance IDs, user IDs, nested fields, and free text', () => {
@@ -279,6 +314,24 @@ describe('match analytics projection', () => {
           version: { appVersion: '1.0.0', buildId: 'build-1', rulesVersion: 'rules-1' },
           datasetSha256: 'dataset-sha',
           environment: 'production',
+          telemetry: {
+            matchMode: 'direct',
+            trafficClass: 'production',
+            disconnectCounts: [1, 0],
+            reconnectCounts: [0, 0],
+            connectionEvents: [
+              {
+                event: 'disconnect',
+                seat: 0,
+                step: secret,
+                offsetSeconds: 1,
+                userId: secret,
+                socketId: secret,
+                freeText: secret,
+                unknownNested: { secret, arbitraryNestedValue },
+              },
+            ],
+          },
         });
 
         const serialized = JSON.stringify(analytics);
