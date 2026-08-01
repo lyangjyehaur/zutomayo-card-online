@@ -772,6 +772,8 @@ export const zhCN: Record<TranslationKey, string> = {
   'pwa.checkingBody': '正在确认当前是否有新版本可用。',
   'pwa.upToDateTitle': '已是最新版本',
   'pwa.upToDateBody': '当前打开的版本已是最新。',
+  'pwa.updatedTitle': '更新完成',
+  'pwa.updatedBody': '当前运行版本：',
   'pwa.checkFailedTitle': '检查更新失败',
   'pwa.checkFailedBody': '暂时无法确认版本，请稍后再试。',
   'pwa.installReadyTitle': '可以安装成 App',

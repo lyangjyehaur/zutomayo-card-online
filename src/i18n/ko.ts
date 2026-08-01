@@ -779,6 +779,8 @@ export const ko: Record<TranslationKey, string> = {
   'pwa.checkingBody': '새 버전을 사용할 수 있는지 확인하고 있습니다.',
   'pwa.upToDateTitle': '최신 버전입니다',
   'pwa.upToDateBody': '현재 사용 중인 버전이 최신입니다.',
+  'pwa.updatedTitle': '업데이트 완료',
+  'pwa.updatedBody': '현재 실행 버전:',
   'pwa.checkFailedTitle': '업데이트 확인 실패',
   'pwa.checkFailedBody': '버전을 확인할 수 없습니다. 잠시 후 다시 시도하세요.',
   'pwa.installReadyTitle': '앱으로 설치할 수 있습니다',

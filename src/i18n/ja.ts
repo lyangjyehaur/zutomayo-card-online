@@ -782,6 +782,8 @@ export const ja: Record<TranslationKey, string> = {
   'pwa.checkingBody': '新しいバージョンが利用可能か確認しています。',
   'pwa.upToDateTitle': '最新バージョンです',
   'pwa.upToDateBody': '現在のバージョンは最新です。',
+  'pwa.updatedTitle': '更新が完了しました',
+  'pwa.updatedBody': '現在実行中：',
   'pwa.checkFailedTitle': '更新確認に失敗しました',
   'pwa.checkFailedBody': 'バージョンを確認できませんでした。あとでもう一度お試しください。',
   'pwa.installReadyTitle': 'アプリとしてインストールできます',

@@ -245,6 +245,7 @@ const ADMIN_SESSION_TTL_SECONDS = Number(process.env.ADMIN_SESSION_TTL_SECONDS) 
 const PACKAGE_VERSION = readPackageVersion();
 const APP_VERSION = process.env.APP_VERSION || PACKAGE_VERSION;
 const APP_BUILD_ID = process.env.APP_BUILD_ID || APP_VERSION;
+const APP_BUILT_AT = process.env.APP_BUILT_AT || process.env.APP_BUILD_TIME || new Date().toISOString();
 const GAME_RULES_VERSION = process.env.GAME_RULES_VERSION || APP_VERSION;
 // Ranked writes are fail-closed. Production must explicitly opt in after the
 // seat-identity trust chain has been verified.
@@ -259,6 +260,7 @@ const APP_VERSION_INFO = Object.freeze({
   appVersion: APP_VERSION,
   buildId: APP_BUILD_ID,
   rulesVersion: GAME_RULES_VERSION,
+  builtAt: APP_BUILT_AT,
 });
 
 const METRICS_TOKEN = process.env.METRICS_TOKEN || '';

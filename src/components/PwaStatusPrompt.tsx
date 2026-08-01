@@ -1,28 +1,67 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   applyPwaUpdateOrRecover,
   fetchServerVersion,
   getPendingPwaUpdate,
   PWA_RECOVER_REQUESTED_EVENT,
+  PWA_UPDATE_PROMPT_REQUESTED_EVENT,
   PWA_UPDATE_READY_EVENT,
   recoverPwaAndReload,
   type PwaUpdateReadyDetail,
 } from '../clientVersion';
 import { t } from '../i18n';
-import { APP_VERSION_INFO, type AppVersionInfo } from '../version';
+import { isPwaUpdateSafePath, recordRunningRelease } from '../pwaUpdatePolicy';
+import { APP_VERSION_INFO, formatReleaseLabel, type AppVersionInfo } from '../version';
 import { AppDrawer } from './AppDrawer';
+import { useToast } from './ToastProvider';
 
 export function PwaStatusPrompt() {
+  const location = useLocation();
+  const { showToast } = useToast();
   const [updateReady, setUpdateReady] = useState<PwaUpdateReadyDetail | null>(() => getPendingPwaUpdate());
   const [latestVersion, setLatestVersion] = useState<AppVersionInfo | null>(null);
   const [isApplyingUpdate, setIsApplyingUpdate] = useState(false);
+  const [isUpdatePromptOpen, setIsUpdatePromptOpen] = useState(false);
   const [isRecoverPromptOpen, setIsRecoverPromptOpen] = useState(false);
   const [isRecovering, setIsRecovering] = useState(false);
+  const deferredUpdateTracked = useRef(false);
+
+  useEffect(() => {
+    const transition = recordRunningRelease(window.localStorage, APP_VERSION_INFO);
+    if (transition === 'updated') {
+      showToast({
+        title: t('pwa.updatedTitle'),
+        body: `${t('pwa.updatedBody')} ${formatReleaseLabel(APP_VERSION_INFO)}`,
+        kind: 'success',
+      });
+    }
+
+    const bootTelemetry = window.setTimeout(() => {
+      try {
+        window.umami?.track('C_PWA_App_Boot', {
+          app_version: APP_VERSION_INFO.appVersion,
+          build_id: APP_VERSION_INFO.buildId,
+          built_at: APP_VERSION_INFO.builtAt,
+          update_transition: transition,
+        });
+      } catch {
+        // Analytics should never affect startup.
+      }
+    }, 1500);
+    return () => window.clearTimeout(bootTelemetry);
+  }, [showToast]);
 
   useEffect(() => {
     const onUpdateReady = (event: Event) => {
       const updateEvent = event as CustomEvent<PwaUpdateReadyDetail>;
       setUpdateReady(updateEvent.detail);
+      setIsApplyingUpdate(false);
+    };
+    const onUpdatePromptRequested = (event: Event) => {
+      const updateEvent = event as CustomEvent<PwaUpdateReadyDetail>;
+      setUpdateReady(updateEvent.detail);
+      setIsUpdatePromptOpen(true);
       setIsApplyingUpdate(false);
     };
     const onRecoverRequested = () => {
@@ -31,12 +70,52 @@ export function PwaStatusPrompt() {
     };
 
     window.addEventListener(PWA_UPDATE_READY_EVENT, onUpdateReady);
+    window.addEventListener(PWA_UPDATE_PROMPT_REQUESTED_EVENT, onUpdatePromptRequested);
     window.addEventListener(PWA_RECOVER_REQUESTED_EVENT, onRecoverRequested);
     return () => {
       window.removeEventListener(PWA_UPDATE_READY_EVENT, onUpdateReady);
+      window.removeEventListener(PWA_UPDATE_PROMPT_REQUESTED_EVENT, onUpdatePromptRequested);
       window.removeEventListener(PWA_RECOVER_REQUESTED_EVENT, onRecoverRequested);
     };
   }, []);
+
+  useEffect(() => {
+    if (!updateReady) {
+      deferredUpdateTracked.current = false;
+      setIsUpdatePromptOpen(false);
+      return;
+    }
+    if (isUpdatePromptOpen) return;
+
+    if (!isPwaUpdateSafePath(location.pathname)) {
+      if (!deferredUpdateTracked.current) {
+        deferredUpdateTracked.current = true;
+        try {
+          window.umami?.track('C_PWA_Update_Deferred', {
+            current_build_id: APP_VERSION_INFO.buildId,
+            route: location.pathname,
+          });
+        } catch {
+          // Analytics should never affect updates.
+        }
+      }
+      return;
+    }
+
+    const applyTimer = window.setTimeout(() => {
+      setIsApplyingUpdate(true);
+      try {
+        window.umami?.track('C_PWA_Update_Auto_Apply', {
+          current_build_id: APP_VERSION_INFO.buildId,
+          route: location.pathname,
+        });
+      } catch {
+        // Analytics should never affect updates.
+      }
+      void applyPwaUpdateOrRecover(updateReady);
+    }, 1200);
+    return () => window.clearTimeout(applyTimer);
+  }, [isUpdatePromptOpen, location.pathname, updateReady]);
 
   useEffect(() => {
     if (!updateReady) {
@@ -79,12 +158,12 @@ export function PwaStatusPrompt() {
   };
 
   const versionText = (version: AppVersionInfo | null) =>
-    version ? `v${version.appVersion} · ${version.buildId}` : t('common.unavailable');
+    version ? formatReleaseLabel(version) : t('common.unavailable');
 
   return (
     <>
       <AppDrawer
-        open={!!updateReady}
+        open={isUpdatePromptOpen && !!updateReady}
         kicker={t('pwa.kicker')}
         title={t('pwa.updateTitle')}
         description={t('pwa.updateBody')}
@@ -98,7 +177,7 @@ export function PwaStatusPrompt() {
           {
             label: t('pwa.recoverAction'),
             onClick: () => {
-              setUpdateReady(null);
+              setIsUpdatePromptOpen(false);
               setIsRecoverPromptOpen(true);
             },
             tone: 'secondary',
@@ -106,7 +185,7 @@ export function PwaStatusPrompt() {
           },
           {
             label: t('onlineSession.dismissAction'),
-            onClick: () => setUpdateReady(null),
+            onClick: () => setIsUpdatePromptOpen(false),
             tone: 'secondary',
             eventName: 'C_PWA_Update_Dismiss',
           },

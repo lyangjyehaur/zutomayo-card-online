@@ -48,6 +48,7 @@ jobs:
       expected_migration: ${{ steps.release.outputs.migration }}
       expected_checksum: ${{ steps.release.outputs.checksum }}
       release_ref: ${{ steps.release.outputs.ref }}
+      release_built_at: ${{ steps.release.outputs.built_at }}
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -93,11 +94,13 @@ jobs:
           MIGRATION="$(find migrations -maxdepth 1 -type f -name '*.js' -printf '%f\n' | sort | tail -n 1 | sed 's/\.js$//')"
           [[ "$MIGRATION" =~ ^[0-9]{6,}_[a-z0-9_]+$ ]] || { echo 'could not resolve latest migration' >&2; exit 2; }
           CHECKSUM="$(sha256sum "migrations/${MIGRATION}.js" | awk '{print $1}')"
+          BUILT_AT="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
           [[ "$CHECKSUM" =~ ^[a-f0-9]{64}$ ]] || { echo 'could not calculate migration checksum' >&2; exit 2; }
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
           echo "migration=$MIGRATION" >> "$GITHUB_OUTPUT"
           echo "checksum=$CHECKSUM" >> "$GITHUB_OUTPUT"
           echo "ref=$REF" >> "$GITHUB_OUTPUT"
+          echo "built_at=$BUILT_AT" >> "$GITHUB_OUTPUT"
           echo "release SHA: $SHA"
           echo "expected migration: $MIGRATION ($CHECKSUM)"
 
@@ -271,6 +274,7 @@ jobs:
           build-args: |
             APP_VERSION=${{ steps.pkg.outputs.version }}
             APP_BUILD_ID=${{ needs.preflight.outputs.release_sha }}
+            APP_BUILT_AT=${{ needs.preflight.outputs.release_built_at }}
             GAME_RULES_VERSION=${{ steps.pkg.outputs.version }}
             VITE_CARD_DATASET_SHA256=${{ vars.VITE_CARD_DATASET_SHA256 }}
             SENTRY_URL=${{ secrets.SENTRY_URL }}

@@ -14,6 +14,7 @@ describe('online version guard', () => {
       appVersion: expectedAppVersion,
       buildId: expectedBuildId,
       rulesVersion: expectedRulesVersion,
+      builtAt: expect.any(String),
     });
   });
 

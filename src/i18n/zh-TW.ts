@@ -770,6 +770,8 @@ export const zhTW = {
   'pwa.checkingBody': '正在確認目前是否有新版本可用。',
   'pwa.upToDateTitle': '已是最新版本',
   'pwa.upToDateBody': '目前開啟的版本已是最新。',
+  'pwa.updatedTitle': '已更新完成',
+  'pwa.updatedBody': '目前已執行版本：',
   'pwa.checkFailedTitle': '檢查更新失敗',
   'pwa.checkFailedBody': '暫時無法確認版本，請稍後再試。',
   'pwa.installReadyTitle': '可以安裝成 App',

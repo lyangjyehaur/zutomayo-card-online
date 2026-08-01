@@ -781,6 +781,8 @@ export const en: Record<TranslationKey, string> = {
   'pwa.checkingBody': 'Looking for a newer version of the app.',
   'pwa.upToDateTitle': 'Already up to date',
   'pwa.upToDateBody': 'You are using the latest available version.',
+  'pwa.updatedTitle': 'Update complete',
+  'pwa.updatedBody': 'Now running:',
   'pwa.checkFailedTitle': 'Update check failed',
   'pwa.checkFailedBody': 'Could not confirm the latest version. Try again later.',
   'pwa.installReadyTitle': 'Install as an app',

@@ -772,6 +772,8 @@ export const zhHK: Record<TranslationKey, string> = {
   'pwa.checkingBody': '正在確認目前有冇新版本可用。',
   'pwa.upToDateTitle': '已經係最新版本',
   'pwa.upToDateBody': '目前開住嘅版本已經係最新。',
+  'pwa.updatedTitle': '更新完成',
+  'pwa.updatedBody': '目前執行緊版本：',
   'pwa.checkFailedTitle': '檢查更新失敗',
   'pwa.checkFailedBody': '暫時確認唔到版本，請稍後再試。',
   'pwa.installReadyTitle': '可以安裝成 App',

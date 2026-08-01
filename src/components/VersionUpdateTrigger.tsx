@@ -1,18 +1,14 @@
 import { useState } from 'react';
-import { applyPwaUpdateOrRecover, fetchServerVersion, requestPwaUpdateCheck } from '../clientVersion';
+import {
+  applyPwaUpdateOrRecover,
+  fetchServerVersion,
+  requestPwaUpdateCheck,
+  requestPwaUpdatePrompt,
+} from '../clientVersion';
 import { useToast } from './ToastProvider';
 import { t } from '../i18n';
-import { APP_BUILT_AT, APP_VERSION_INFO, isSameAppVersion } from '../version';
+import { APP_VERSION_INFO, formatReleaseLabel, isSameAppVersion } from '../version';
 import { Button } from '../ui';
-
-function formatBuildStamp(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  const pad = (part: number) => String(part).padStart(2, '0');
-  return `${String(date.getFullYear()).slice(-2)}${pad(date.getMonth() + 1)}${pad(date.getDate())}${pad(
-    date.getHours(),
-  )}${pad(date.getMinutes())}`;
-}
 
 export function VersionUpdateTrigger() {
   const { showToast } = useToast();
@@ -33,7 +29,12 @@ export function VersionUpdateTrigger() {
       const serverVersion = await fetchServerVersion();
       const hasServerUpdate = Boolean(serverVersion && !isSameAppVersion(APP_VERSION_INFO, serverVersion));
 
-      if (updateReady || hasServerUpdate) {
+      if (updateReady) {
+        requestPwaUpdatePrompt(updateReady);
+        return;
+      }
+
+      if (hasServerUpdate) {
         showToast({
           title: t('pwa.updateTitle'),
           body: t('pwa.updateBody'),
@@ -41,7 +42,7 @@ export function VersionUpdateTrigger() {
           durationMs: null,
           actionLabel: t('pwa.updateAction'),
           onAction: () => {
-            void applyPwaUpdateOrRecover(updateReady);
+            void applyPwaUpdateOrRecover(null);
           },
         });
         return;
@@ -63,7 +64,7 @@ export function VersionUpdateTrigger() {
     }
   };
 
-  const versionLabel = `v${APP_VERSION_INFO.appVersion} · ${APP_VERSION_INFO.buildId.slice(0, 7)} · ${formatBuildStamp(APP_BUILT_AT)}`;
+  const versionLabel = formatReleaseLabel(APP_VERSION_INFO);
 
   return (
     <Button
