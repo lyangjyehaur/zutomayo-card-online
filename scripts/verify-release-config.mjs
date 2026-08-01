@@ -251,6 +251,7 @@ function assertServer4DeployScript() {
     'git reset --hard origin/master',
     "find migrations -maxdepth 1 -type f -name '*.js'",
     'APP_BUILD_ID',
+    'APP_BUILT_AT',
     'APP_VERSION',
     'GAME_RULES_VERSION',
     'VITE_CARD_DATASET_SHA256:-',

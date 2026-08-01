@@ -4,7 +4,10 @@ export interface AppVersionInfo {
   appVersion: string;
   buildId: string;
   rulesVersion: string;
+  builtAt?: string;
 }
+
+export const SHORT_BUILD_ID_LENGTH = 7;
 
 declare const __APP_VERSION__: string | undefined;
 declare const __APP_BUILD_ID__: string | undefined;
@@ -61,6 +64,7 @@ export const APP_VERSION_INFO: AppVersionInfo = Object.freeze({
     definedAppVersion ??
     readRuntimeEnv('APP_VERSION') ??
     PACKAGE_VERSION,
+  builtAt: APP_BUILT_AT,
 });
 
 export function normalizeVersionInfo(value: unknown): AppVersionInfo | null {
@@ -77,7 +81,30 @@ export function normalizeVersionInfo(value: unknown): AppVersionInfo | null {
     appVersion: data.appVersion,
     buildId: data.buildId,
     rulesVersion: data.rulesVersion,
+    ...(typeof data.builtAt === 'string' && data.builtAt.trim() ? { builtAt: data.builtAt.trim() } : {}),
   };
+}
+
+export function shortBuildId(buildId: string): string {
+  return buildId.slice(0, SHORT_BUILD_ID_LENGTH);
+}
+
+export function formatBuildStamp(value: string | undefined): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const pad = (part: number) => String(part).padStart(2, '0');
+  return `${String(date.getFullYear()).slice(-2)}${pad(date.getMonth() + 1)}${pad(date.getDate())}${pad(
+    date.getHours(),
+  )}${pad(date.getMinutes())}`;
+}
+
+/** Compact release identity shared by the lobby, update UI, and completion toast. */
+export function formatReleaseLabel(version: AppVersionInfo): string {
+  const parts = [`v${version.appVersion}`, shortBuildId(version.buildId)];
+  const buildStamp = formatBuildStamp(version.builtAt);
+  if (buildStamp) parts.push(buildStamp);
+  return parts.join(' · ');
 }
 
 export function isSameAppVersion(left: AppVersionInfo, right: AppVersionInfo): boolean {

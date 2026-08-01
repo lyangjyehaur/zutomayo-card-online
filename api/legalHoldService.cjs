@@ -2,7 +2,15 @@
 
 const crypto = require('crypto');
 
-const LEGAL_HOLD_SUBJECT_TYPES = Object.freeze(['account', 'match', 'conversation', 'message', 'report', 'feedback']);
+const LEGAL_HOLD_SUBJECT_TYPES = Object.freeze([
+  'account',
+  'match',
+  'conversation',
+  'message',
+  'report',
+  'feedback',
+  'support_email',
+]);
 const LEGAL_HOLD_LOCK_NAME = 'zutomayo:retention-job:v1';
 
 async function withTransaction(pool, operation) {
@@ -294,6 +302,13 @@ async function resolveFeedbackObjects(client, objects, subjectId) {
   return true;
 }
 
+async function resolveSupportEmailObjects(client, objects, subjectId) {
+  const email = (await client.query('SELECT id FROM support_emails WHERE id = $1 LIMIT 1', [subjectId])).rows[0];
+  if (!email) return false;
+  addObject(objects, 'support_email', email.id);
+  return true;
+}
+
 async function resolveLegalHoldObjects(client, { subjectType, subjectId }) {
   const objects = new Map();
   const resolvers = {
@@ -303,6 +318,7 @@ async function resolveLegalHoldObjects(client, { subjectType, subjectId }) {
     message: resolveMessageObjects,
     report: resolveReportObjects,
     feedback: resolveFeedbackObjects,
+    support_email: resolveSupportEmailObjects,
   };
   const resolver = resolvers[subjectType];
   if (!resolver) return { exists: false, objects: [] };

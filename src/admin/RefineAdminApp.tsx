@@ -6,6 +6,7 @@ import {
   Info,
   Languages,
   Library,
+  Mail,
   MessageSquareWarning,
   Megaphone,
   Music2,
@@ -30,6 +31,7 @@ import {
   OfficialRulingsPage,
   OperationsPage,
   SongsPage,
+  SupportInboxPage,
   TranslationPage,
   UsersPage,
 } from './ResourcePages';
@@ -54,6 +56,11 @@ const resources = [
   },
   { name: 'users', list: '/admin/users', meta: { label: '使用者', icon: <Users className="size-4" /> } },
   { name: 'matches', list: '/admin/matches', meta: { label: '對戰紀錄', icon: <Swords className="size-4" /> } },
+  {
+    name: 'support-inbox',
+    list: '/admin/support-inbox',
+    meta: { label: '聯絡信箱', icon: <Mail className="size-4" /> },
+  },
   { name: 'chat', list: '/admin/chat', meta: { label: '聊天安全', icon: <MessageSquareWarning className="size-4" /> } },
   { name: 'deck-shares', list: '/admin/deck-shares', meta: { label: '分享審核', icon: <Share2 className="size-4" /> } },
   {
@@ -200,6 +207,14 @@ export function RefineAdminApp() {
               element={
                 <AccessRoute resource="chat">
                   <ChatPage />
+                </AccessRoute>
+              }
+            />
+            <Route
+              path="support-inbox"
+              element={
+                <AccessRoute resource="support-inbox">
+                  <SupportInboxPage />
                 </AccessRoute>
               }
             />

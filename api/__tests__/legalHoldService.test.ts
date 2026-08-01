@@ -9,6 +9,7 @@ const {
   listLegalHolds,
   reconcileActiveLegalHolds,
   releaseLegalHold,
+  resolveLegalHoldObjects,
 } = require('../legalHoldService.cjs') as {
   LEGAL_HOLD_LOCK_NAME: string;
   createLegalHold: (input: Record<string, unknown>) => Promise<Record<string, unknown>>;
@@ -16,6 +17,10 @@ const {
   listLegalHolds: (input: Record<string, unknown>) => Promise<Record<string, unknown>>;
   reconcileActiveLegalHolds: (client: Record<string, unknown>) => Promise<Record<string, unknown>>;
   releaseLegalHold: (input: Record<string, unknown>) => Promise<Record<string, unknown>>;
+  resolveLegalHoldObjects: (
+    client: Record<string, unknown>,
+    input: Record<string, unknown>,
+  ) => Promise<Record<string, unknown>>;
 };
 
 function transactionPool(
@@ -28,6 +33,18 @@ function transactionPool(
 describe('legal hold service', () => {
   it('uses the shared retention lock namespace before expanding a hold', async () => {
     expect(LEGAL_HOLD_LOCK_NAME).toBe('zutomayo:retention-job:v1');
+  });
+
+  it('resolves support inbox mail as a legal-hold subject', async () => {
+    const pool = transactionPool((sql) =>
+      sql.includes('FROM support_emails') ? { rows: [{ id: 'received_1' }] } : {},
+    );
+    await expect(
+      resolveLegalHoldObjects(pool, { subjectType: 'support_email', subjectId: 'received_1' }),
+    ).resolves.toEqual({
+      exists: true,
+      objects: [{ type: 'support_email', id: 'received_1' }],
+    });
   });
 
   it('matches active holds against live account-derived objects', async () => {

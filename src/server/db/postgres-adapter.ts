@@ -185,6 +185,12 @@ interface MatchTelemetryRow extends QueryResultRow {
   player1_disconnect_count: number;
   player0_reconnect_count: number;
   player1_reconnect_count: number;
+  connection_events: unknown;
+}
+
+interface MatchAnalyticsCaptureResult {
+  outcome: MatchAnalyticsProjection['fact']['outcome'];
+  trafficClass: MatchAnalyticsProjection['fact']['trafficClass'];
 }
 
 function trustedMatchTelemetry(row: MatchTelemetryRow | undefined): TrustedMatchTelemetry | undefined {
@@ -194,6 +200,7 @@ function trustedMatchTelemetry(row: MatchTelemetryRow | undefined): TrustedMatch
     trafficClass: row.traffic_class,
     disconnectCounts: [row.player0_disconnect_count, row.player1_disconnect_count],
     reconnectCounts: [row.player0_reconnect_count, row.player1_reconnect_count],
+    connectionEvents: row.connection_events,
   };
 }
 
@@ -397,9 +404,34 @@ export class PostgresAdapter {
           player1_disconnect_count  INTEGER NOT NULL DEFAULT 0,
           player0_reconnect_count   INTEGER NOT NULL DEFAULT 0,
           player1_reconnect_count   INTEGER NOT NULL DEFAULT 0,
+          connection_events         JSONB NOT NULL DEFAULT '[]'::jsonb,
+          player0_disconnected_at   TIMESTAMPTZ,
+          player1_disconnected_at   TIMESTAMPTZ,
           observed_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
           updated_at                TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
+      `);
+      await client.query(
+        `ALTER TABLE bjg_match_telemetry
+           ADD COLUMN IF NOT EXISTS connection_events JSONB NOT NULL DEFAULT '[]'::jsonb,
+           ADD COLUMN IF NOT EXISTS player0_disconnected_at TIMESTAMPTZ,
+           ADD COLUMN IF NOT EXISTS player1_disconnected_at TIMESTAMPTZ`,
+      );
+      await client.query(`
+        DO $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1
+              FROM pg_constraint
+             WHERE conname = 'bjg_match_telemetry_connection_events_check'
+               AND conrelid = 'bjg_match_telemetry'::regclass
+          ) THEN
+            ALTER TABLE bjg_match_telemetry
+              ADD CONSTRAINT bjg_match_telemetry_connection_events_check
+              CHECK (jsonb_typeof(connection_events) = 'array' AND jsonb_array_length(connection_events) <= 100);
+          END IF;
+        END
+        $$;
       `);
       await client.query(`
         CREATE TABLE IF NOT EXISTS bjg_match_result_outbox (
@@ -590,8 +622,9 @@ export class PostgresAdapter {
       lock.writing = true;
       clearImmediate(lock.releaseHandle);
       try {
-        await this.writeState(lock.client, matchID, state, deltalog);
+        const capture = await this.writeState(lock.client, matchID, state, deltalog);
         await this.releaseUpdateLock(lock, 'commit');
+        this.recordMatchAnalyticsCapture(capture);
       } catch (err) {
         await this.releaseUpdateLock(lock, 'rollback');
         throw err;
@@ -600,9 +633,10 @@ export class PostgresAdapter {
     }
 
     if (canonicalTerminalResult(state)) {
-      await this.withTransaction(async (client) => {
-        await this.writeState(client, matchID, state, deltalog);
+      const capture = await this.withTransaction(async (client) => {
+        return this.writeState(client, matchID, state, deltalog);
       });
+      this.recordMatchAnalyticsCapture(capture);
       return;
     }
     await this.writeState(this.pool, matchID, state, deltalog);
@@ -837,9 +871,9 @@ export class PostgresAdapter {
         const rankedEligible = playerData.rankedEligible === true;
         await client.query(
           `INSERT INTO bjg_match_seats (
-             match_id, player_id, user_id, ranked_eligible, credential_hash, reserved_at, last_resumed_at
+             match_id, player_id, user_id, ranked_eligible, credential_hash, reserved_at
            )
-           VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`,
+           VALUES ($1, $2, $3, $4, $5, NOW())`,
           [input.matchID, input.playerID, userId, rankedEligible, expectedHash],
         );
         seat = {
@@ -860,7 +894,7 @@ export class PostgresAdapter {
       await client.query(
         `UPDATE bjg_match_seats
             SET last_resumed_at = NOW(),
-                resume_count = resume_count + 1
+                resume_count = resume_count + CASE WHEN last_resumed_at IS NULL THEN 0 ELSE 1 END
           WHERE match_id = $1 AND player_id = $2`,
         [input.matchID, input.playerID],
       );
@@ -1097,7 +1131,8 @@ export class PostgresAdapter {
 
   async wipe(matchID: string): Promise<boolean> {
     if (this.closed) return false;
-    return this.withTransaction(async (client) => {
+    let capture: MatchAnalyticsCaptureResult | undefined;
+    const deleted = await this.withTransaction(async (client) => {
       // Runtime state is the recovery source until either terminal or
       // abandoned analytics children reconcile. Lock it before inspecting the
       // outbox so state writes and cleanup cannot classify the same row twice.
@@ -1176,7 +1211,8 @@ export class PostgresAdapter {
         const telemetry = await client.query<MatchTelemetryRow>(
           `SELECT match_mode, traffic_class,
                   player0_disconnect_count, player1_disconnect_count,
-                  player0_reconnect_count, player1_reconnect_count
+                  player0_reconnect_count, player1_reconnect_count,
+                  connection_events
              FROM bjg_match_telemetry
             WHERE source_match_id = $1
             FOR SHARE`,
@@ -1209,7 +1245,10 @@ export class PostgresAdapter {
         try {
           const inserted = await this.insertMatchAnalytics(client, analytics);
           if (inserted) {
-            matchAnalyticsCaptureTotal.labels(analytics.fact.outcome, analytics.fact.trafficClass).inc();
+            capture = {
+              outcome: analytics.fact.outcome,
+              trafficClass: analytics.fact.trafficClass,
+            };
           }
         } catch (error) {
           matchAnalyticsCaptureFailuresTotal.labels('abandoned-persistence').inc();
@@ -1252,6 +1291,8 @@ export class PostgresAdapter {
       const deleted = await client.query(`DELETE FROM bjg_matches WHERE match_id = $1`, [matchID]);
       return deleted.rowCount === 1;
     });
+    this.recordMatchAnalyticsCapture(capture);
+    return deleted;
   }
 
   async listMatches(opts?: ListMatchesOpts): Promise<string[]> {
@@ -1392,7 +1433,7 @@ export class PostgresAdapter {
     matchID: string,
     state: State,
     deltalog?: LogEntry[],
-  ): Promise<void> {
+  ): Promise<MatchAnalyticsCaptureResult | undefined> {
     const nextStateID = typeof state._stateID === 'number' ? state._stateID : null;
     const expectedStateID = this.expectedPreviousStateID(state);
     const hasDeltalog = Boolean(deltalog && deltalog.length > 0);
@@ -1429,8 +1470,9 @@ export class PostgresAdapter {
 
     const terminalResult = canonicalTerminalResult(state);
     if (terminalResult) {
-      await this.enqueueTerminalResult(queryable, matchID, state, terminalResult);
+      return this.enqueueTerminalResult(queryable, matchID, state, terminalResult);
     }
+    return undefined;
   }
 
   private async enqueueTerminalResult(
@@ -1438,7 +1480,7 @@ export class PostgresAdapter {
     matchID: string,
     state: State,
     result: CanonicalTerminalResult,
-  ): Promise<void> {
+  ): Promise<MatchAnalyticsCaptureResult | undefined> {
     const match = await queryable.query<Pick<MatchRow, 'metadata' | 'initial_state'>>(
       'SELECT metadata, initial_state FROM bjg_matches WHERE match_id = $1',
       [matchID],
@@ -1457,7 +1499,8 @@ export class PostgresAdapter {
     const telemetry = await queryable.query<MatchTelemetryRow>(
       `SELECT match_mode, traffic_class,
               player0_disconnect_count, player1_disconnect_count,
-              player0_reconnect_count, player1_reconnect_count
+              player0_reconnect_count, player1_reconnect_count,
+              connection_events
          FROM bjg_match_telemetry
         WHERE source_match_id = $1`,
       [matchID],
@@ -1563,13 +1606,15 @@ export class PostgresAdapter {
     }
     try {
       const inserted = await this.insertMatchAnalytics(queryable, analytics);
-      if (inserted) {
-        matchAnalyticsCaptureTotal.labels(analytics.fact.outcome, analytics.fact.trafficClass).inc();
-      }
+      return inserted ? { outcome: analytics.fact.outcome, trafficClass: analytics.fact.trafficClass } : undefined;
     } catch (error) {
       matchAnalyticsCaptureFailuresTotal.labels('persistence').inc();
       throw error;
     }
+  }
+
+  private recordMatchAnalyticsCapture(capture: MatchAnalyticsCaptureResult | undefined): void {
+    if (capture) matchAnalyticsCaptureTotal.labels(capture.outcome, capture.trafficClass).inc();
   }
 
   private async insertMatchAnalytics(

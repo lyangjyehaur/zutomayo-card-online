@@ -4,7 +4,16 @@ const crypto = require('crypto');
 
 const ROLE_PERMISSIONS = Object.freeze({
   viewer: ['users:read', 'matches:read', 'audit:read', 'seasons:read'],
-  moderator: ['users:read', 'matches:read', 'audit:read', 'seasons:read', 'chat:moderate', 'feedback:moderate'],
+  moderator: [
+    'users:read',
+    'matches:read',
+    'audit:read',
+    'seasons:read',
+    'chat:moderate',
+    'feedback:moderate',
+    'support:read',
+    'support:reply',
+  ],
   operator: [
     'users:read',
     'matches:read',
@@ -17,6 +26,8 @@ const ROLE_PERMISSIONS = Object.freeze({
     'seasons:read',
     'seasons:write',
     'legal-holds:read',
+    'support:read',
+    'support:reply',
   ],
   admin: ['*'],
 });

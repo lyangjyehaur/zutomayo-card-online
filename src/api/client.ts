@@ -224,7 +224,14 @@ export interface AdminSeasonCreateInput {
   rewardConfig: AdminSeason['rewardConfig'];
 }
 
-export type LegalHoldSubjectType = 'account' | 'match' | 'conversation' | 'message' | 'report' | 'feedback';
+export type LegalHoldSubjectType =
+  | 'account'
+  | 'match'
+  | 'conversation'
+  | 'message'
+  | 'report'
+  | 'feedback'
+  | 'support_email';
 
 export interface LegalHold {
   id: string;
@@ -1943,6 +1950,54 @@ export interface AdminMatch {
   createdAt: string;
 }
 
+export type SupportEmailStatus = 'open' | 'replied' | 'archived';
+
+export interface SupportEmailSummary {
+  id: string;
+  messageId: string;
+  sender: string;
+  recipients: string[];
+  subject: string;
+  status: SupportEmailStatus;
+  receivedAt: string;
+  viewedAt: string | null;
+  repliedAt: string | null;
+  archivedAt: string | null;
+  attachmentCount: number;
+  hasContent: boolean;
+}
+
+export interface SupportEmailReply {
+  id: string;
+  resendEmailId: string;
+  adminUserId: string;
+  recipients: string[];
+  subject: string;
+  textBody: string;
+  sentAt: string;
+}
+
+export interface SupportEmailDetail extends SupportEmailSummary {
+  replyTo: string[];
+  cc: string[];
+  body: string;
+  attachments: Array<{
+    id?: string;
+    filename?: string;
+    content_type?: string;
+    size?: number;
+  }>;
+  replies: SupportEmailReply[];
+}
+
+export interface SupportInboxResponse {
+  emails: SupportEmailSummary[];
+  configured: boolean;
+  webhookConfigured: boolean;
+  sender: string;
+  syncError: string;
+}
+
 export async function adminLogin(credentials: {
   username: string;
   password: string;
@@ -1997,6 +2052,47 @@ export async function adminGetMatches(token: string, limit = 50): Promise<{ matc
     headers: { Authorization: `Bearer ${token}` },
   });
   return data;
+}
+
+export async function adminGetSupportEmails(
+  token: string,
+  status: SupportEmailStatus | 'all' = 'open',
+  sync = true,
+): Promise<SupportInboxResponse> {
+  const search = new URLSearchParams({ status, limit: '100', sync: String(sync) });
+  return request<SupportInboxResponse>(`/admin/support/emails?${search.toString()}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function adminGetSupportEmail(token: string, emailId: string): Promise<SupportEmailDetail> {
+  return request<SupportEmailDetail>(`/admin/support/emails/${encodeURIComponent(emailId)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function adminReplySupportEmail(
+  token: string,
+  emailId: string,
+  text: string,
+): Promise<{ id: string; resendEmailId: string; recipients: string[]; subject: string }> {
+  return request(`/admin/support/emails/${encodeURIComponent(emailId)}/replies`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ text }),
+  });
+}
+
+export async function adminUpdateSupportEmailStatus(
+  token: string,
+  emailId: string,
+  status: SupportEmailStatus,
+): Promise<{ id: string; status: SupportEmailStatus; archivedAt: string | null }> {
+  return request(`/admin/support/emails/${encodeURIComponent(emailId)}/status`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ status }),
+  });
 }
 
 type AdminSeasonRow = {

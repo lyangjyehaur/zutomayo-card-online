@@ -23,6 +23,8 @@ describe('admin auth service', () => {
     expect(hasAdminPermission('viewer', 'seasons:write')).toBe(false);
     expect(hasAdminPermission('viewer', 'elo:write')).toBe(false);
     expect(hasAdminPermission('moderator', 'chat:moderate')).toBe(true);
+    expect(hasAdminPermission('moderator', 'support:read')).toBe(true);
+    expect(hasAdminPermission('moderator', 'support:reply')).toBe(true);
     expect(hasAdminPermission('operator', 'seasons:write')).toBe(true);
     expect(hasAdminPermission('operator', 'legal-holds:read')).toBe(true);
     expect(hasAdminPermission('operator', 'legal-holds:write')).toBe(false);

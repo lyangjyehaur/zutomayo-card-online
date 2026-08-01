@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { PostgresAdapter } from '../postgres-adapter';
+import { matchAnalyticsCaptureTotal } from '../../observability/metrics';
 
 type MockClient = {
   query: ReturnType<typeof vi.fn>;
@@ -65,6 +66,14 @@ function matchRow(terminal = true) {
     metadata: { setupData: { rulesVersion: 'rules-v1' } },
     updated_at: new Date('2026-07-31T05:00:00.000Z'),
   };
+}
+
+async function abandonedCaptureCount(): Promise<number> {
+  const metric = await matchAnalyticsCaptureTotal.get();
+  return (
+    metric.values.find((value) => value.labels.outcome === 'abandoned' && value.labels.traffic_class === 'production')
+      ?.value ?? 0
+  );
 }
 
 describe('PostgresAdapter result retention', () => {
@@ -175,6 +184,7 @@ describe('PostgresAdapter result retention', () => {
   });
 
   it('archives a stale unfinished room as abandoned before removing runtime state', async () => {
+    const captureCountBefore = await abandonedCaptureCount();
     let sourceDigest = '';
     let integrityDigest = '';
     let eventCount = 0;
@@ -252,6 +262,49 @@ describe('PostgresAdapter result retention', () => {
     expect(transactionClient.query).toHaveBeenCalledWith('DELETE FROM bjg_matches WHERE match_id = $1', [
       'match_unfinished',
     ]);
+    await expect(abandonedCaptureCount()).resolves.toBe(captureCountBefore + 1);
+  });
+
+  it('does not count an abandoned archive when its transaction commit fails', async () => {
+    const captureCountBefore = await abandonedCaptureCount();
+    let integrityDigest = '';
+    let eventCount = 0;
+    const schemaClient = client();
+    const transactionClient = client(async (sql, params) => {
+      if (sql === 'COMMIT') throw new Error('commit unavailable');
+      if (sql.includes('FROM bjg_matches') && sql.includes('FOR UPDATE')) {
+        return { rows: [matchRow(false)], rowCount: 1 };
+      }
+      if (sql.includes('FROM bjg_match_result_outbox')) return { rows: [], rowCount: 0 };
+      if (sql.includes('FROM bjg_match_seats')) return { rows: [], rowCount: 0 };
+      if (sql.startsWith('INSERT INTO match_analytics (')) {
+        eventCount = Number(params?.[27]);
+        integrityDigest = String(params?.[29]);
+        return { rows: [{ integrity_sha256: integrityDigest }], rowCount: 1 };
+      }
+      if (sql.includes('FROM match_analytics analytics')) {
+        return {
+          rows: [
+            {
+              integrity_sha256: integrityDigest,
+              deck_count: 2,
+              event_count: eventCount,
+              archived_deck_count: '2',
+              archived_event_count: String(eventCount),
+            },
+          ],
+          rowCount: 1,
+        };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+    const pg = pool([schemaClient, transactionClient]);
+    const adapter = new PostgresAdapter({ pool: pg as never, createIndexes: false });
+
+    await expect(adapter.wipe('match_unfinished')).rejects.toThrow('commit unavailable');
+
+    expect(transactionClient.query).toHaveBeenCalledWith('ROLLBACK');
+    await expect(abandonedCaptureCount()).resolves.toBe(captureCountBefore);
   });
 
   it('retains a terminal state when its outbox and analytics archive are missing', async () => {

@@ -52,11 +52,18 @@ describe('platform match telemetry store', () => {
 
     expect(query).toHaveBeenCalledTimes(6);
     expect(query.mock.calls[1]?.[0]).toContain('player0_disconnect_count = player0_disconnect_count + 1');
+    expect(query.mock.calls[1]?.[0]).toContain("'event', 'disconnect'");
+    expect(query.mock.calls[1]?.[0]).toContain("state->'G'->>'step'");
+    expect(query.mock.calls[1]?.[0]).toContain('player0_disconnected_at = NOW()');
+    expect(query.mock.calls[1]?.[1]).toEqual(['match-1', 0]);
     expect(query.mock.calls[3]?.[0]).toContain(
       "WHEN $2 = 'reconnect' OR player0_disconnect_count > player0_reconnect_count THEN 1",
     );
-    expect(query.mock.calls[3]?.[1]).toEqual(['match-1', 'join']);
+    expect(query.mock.calls[3]?.[0]).toContain("'disconnectSeconds'");
+    expect(query.mock.calls[3]?.[0]).toContain('player0_disconnected_at = NULL');
+    expect(query.mock.calls[3]?.[1]).toEqual(['match-1', 'join', 0]);
     expect(query.mock.calls[5]?.[0]).toContain('player1_reconnect_count = player1_reconnect_count + CASE');
+    expect(query.mock.calls[5]?.[1]).toEqual(['match-1', 'reconnect', 1]);
     expect(query.mock.calls.flatMap((call) => call[1] ?? [])).not.toContain('spectator');
   });
 });

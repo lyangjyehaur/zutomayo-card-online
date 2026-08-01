@@ -8,6 +8,7 @@
 | 去識別對局分析                   | 無固定期限   | 保留終局、版本、牌組組成與 allowlisted 規則事件；必要時定向刪除 |
 | 聊天訊息                         | 180 天       | 逾期刪除或匿名化；審核證據另計                                  |
 | 舉報、制裁與管理稽核             | 365 天       | 逾期刪除或匿名化；法律義務例外                                  |
+| 聯絡信箱來信與回覆               | 365 天       | 已回覆／已封存案件逾期整筆刪除；待處理或法律保留案件例外        |
 | 應用程式日誌與 trace             | 30 天        | 自動 lifecycle 刪除                                             |
 | Metrics                          | 90 天        | 聚合後刪除原始高基數資料                                        |
 | 零結果搜尋聚合                   | 90 天        | 不含帳號或 IP；疑似敏感查詢不落明文，逾期整筆刪除               |
@@ -33,7 +34,7 @@ session-level advisory lock，逐批使用 `FOR UPDATE SKIP LOCKED` 排空資料
 `RETENTION_METRICS_FILE` 輸出 `retention_last_success_unixtime_seconds` 等 Prometheus 指標。
 
 每次執行會在 `retention_runs` 留下模式、狀態、完成時間、各類筆數與錯誤；`legal_holds` 中
-未解除且未過期的項目會排除所有相應對局、訊息、檢舉與稽核資料。對局的 authoritative action log
+未解除且未過期的項目會排除所有相應對局、訊息、檢舉、聯絡信箱案件與稽核資料。對局的 authoritative action log
 在 180 天先清理，直接帳號識別在 365 天再匿名化；聊天會以 `[redacted]` 匿名化並保留必要的
 moderation/report evidence。`legal_hold_objects` 保存 hold 的衍生 subject mapping，避免只比對單一
 root id 而漏保留關聯資料。
@@ -45,9 +46,11 @@ root id 而漏保留關聯資料。
 需要移除資料，仍可依 digest 定向處理。
 
 `bjg_match_telemetry` 是短期 operational 表，以原始 match ID foreign key 關聯 `bjg_matches` 並隨其刪除。
-platform role 只能寫入 server 判定的 `match_mode`、`traffic_class` 與每席 disconnect／reconnect 計數；
-game、retention、backup 只讀，API role 不具權限。永久 archive 只接收固定兩席計數陣列與 seat resume
-次數，不保存 join timeline、session/socket/user ID、room/invite ID 或 IP。
+platform role 只能寫入 server 判定的 `match_mode`、`traffic_class`、每席 disconnect／reconnect 計數，以及
+最多 100 筆連線生命週期摘要。摘要只含座位、權威遊戲階段、開局後秒數與斷線秒數；game、retention、
+backup 只讀，API role 不具權限。永久 archive 只接收固定兩席計數陣列、seat resume 次數與再次 allowlist
+後的 `connectionDisconnect`／`connectionReconnect` 事件；首次 seat proof 不計為 resume。不保存絕對連線
+時間、session/socket/user ID、room/invite ID、IP 或自由文字。
 
 已結案或駁回的牌組分享檢舉通常保存 365 天後刪除；pending／reviewing 狀態不由一般 retention
 自動刪除。牌組分享本身與帳號有效期間一致，取消發布只改變可見狀態，不是立即刪除資料。

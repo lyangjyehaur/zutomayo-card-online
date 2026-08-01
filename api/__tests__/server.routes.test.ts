@@ -952,6 +952,7 @@ describe('server routes', () => {
       expect(body.appVersion).toBe('0.2.0');
       expect(body.buildId).toBeDefined();
       expect(body.rulesVersion).toBeDefined();
+      expect(body.builtAt).toEqual(expect.any(String));
     });
 
     it('GET /api/version returns same version info', async () => {

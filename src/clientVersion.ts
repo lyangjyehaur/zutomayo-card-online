@@ -2,6 +2,7 @@ import { registerSW } from 'virtual:pwa-register';
 import { APP_VERSION_INFO, isSameAppVersion, normalizeVersionInfo, type AppVersionInfo } from './version';
 
 export const PWA_UPDATE_READY_EVENT = 'zutomayo:pwa-update-ready';
+export const PWA_UPDATE_PROMPT_REQUESTED_EVENT = 'zutomayo:pwa-update-prompt-requested';
 export const PWA_RECOVER_REQUESTED_EVENT = 'zutomayo:pwa-recover-requested';
 
 export interface PwaUpdateReadyDetail {
@@ -46,6 +47,16 @@ function dispatchPwaUpdateReady(): void {
 
 export function getPendingPwaUpdate(): PwaUpdateReadyDetail | null {
   return pendingUpdateReady;
+}
+
+/** Open the detailed update UI only after an explicit manual check. */
+export function requestPwaUpdatePrompt(updateReady: PwaUpdateReadyDetail | null = pendingUpdateReady): void {
+  if (typeof window === 'undefined' || !updateReady) return;
+  window.dispatchEvent(
+    new CustomEvent<PwaUpdateReadyDetail>(PWA_UPDATE_PROMPT_REQUESTED_EVENT, {
+      detail: updateReady,
+    }),
+  );
 }
 
 export class VersionMismatchError extends Error {

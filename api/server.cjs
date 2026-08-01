@@ -48,6 +48,16 @@ const { listCardSynergies, upsertCardSynergy } = require('./cardSynergyService.c
 const { listOwnedCardIds, mergeCardOwnership, setCardOwnership } = require('./cardCollectionService.cjs');
 const { listAdminUsers, resetUserElo, updateLinkedAdminRole } = require('./adminService.cjs');
 const {
+  SupportInboxError,
+  getSupportEmail,
+  ingestReceivedWebhook,
+  listSupportEmails,
+  replyToSupportEmail,
+  syncSupportInbox,
+  updateSupportEmailStatus,
+  verifyResendWebhook,
+} = require('./supportInboxService.cjs');
+const {
   authenticateAdmin,
   createLinkedAdminSession,
   revokeAdminSession,
@@ -242,9 +252,13 @@ const ADMIN_TOTP_ENCRYPTION_KEY = process.env.ADMIN_TOTP_ENCRYPTION_KEY || '';
 const SERVICE_CONFIG_ENCRYPTION_KEY =
   process.env.SERVICE_CONFIG_ENCRYPTION_KEY || ADMIN_TOTP_ENCRYPTION_KEY || JWT_SECRET || '';
 const ADMIN_SESSION_TTL_SECONDS = Number(process.env.ADMIN_SESSION_TTL_SECONDS) || 60 * 60;
+const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
+const RESEND_WEBHOOK_SECRET = process.env.RESEND_WEBHOOK_SECRET || '';
+const RESEND_CONTACT_FROM = process.env.RESEND_CONTACT_FROM || 'ZUTOMAYO CARD <contact@mail.zutomayocard.online>';
 const PACKAGE_VERSION = readPackageVersion();
 const APP_VERSION = process.env.APP_VERSION || PACKAGE_VERSION;
 const APP_BUILD_ID = process.env.APP_BUILD_ID || APP_VERSION;
+const APP_BUILT_AT = process.env.APP_BUILT_AT || process.env.APP_BUILD_TIME || new Date().toISOString();
 const GAME_RULES_VERSION = process.env.GAME_RULES_VERSION || APP_VERSION;
 // Ranked writes are fail-closed. Production must explicitly opt in after the
 // seat-identity trust chain has been verified.
@@ -259,6 +273,7 @@ const APP_VERSION_INFO = Object.freeze({
   appVersion: APP_VERSION,
   buildId: APP_BUILD_ID,
   rulesVersion: GAME_RULES_VERSION,
+  builtAt: APP_BUILT_AT,
 });
 
 const METRICS_TOKEN = process.env.METRICS_TOKEN || '';
@@ -291,6 +306,7 @@ const CSRF_EXEMPT_PATHS = new Set([
   '/api/auth/password-reset/request',
   '/api/auth/password-reset/confirm',
   '/api/admin/login',
+  '/api/webhooks/resend',
   '/api/oauth/session',
   '/api/presence/heartbeat',
   '/api/auth/refresh',
@@ -1539,6 +1555,44 @@ async function initSchema() {
     )`,
     // 既有資料庫補欄位（CREATE TABLE IF NOT EXISTS 不會對已存在資料表新增欄位）
     `ALTER TABLE admin_audit_log ADD COLUMN IF NOT EXISTS admin_user_id TEXT`,
+
+    `CREATE TABLE IF NOT EXISTS support_emails (
+      id TEXT PRIMARY KEY,
+      message_id TEXT NOT NULL CHECK (message_id <> ''),
+      sender TEXT NOT NULL CHECK (sender <> ''),
+      recipients JSONB NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(recipients) = 'array'),
+      reply_to JSONB NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(reply_to) = 'array'),
+      cc JSONB NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(cc) = 'array'),
+      bcc JSONB NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(bcc) = 'array'),
+      subject TEXT NOT NULL DEFAULT '',
+      text_body TEXT,
+      html_body TEXT,
+      headers JSONB CHECK (headers IS NULL OR jsonb_typeof(headers) = 'object'),
+      attachments JSONB NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(attachments) = 'array'),
+      status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'replied', 'archived')),
+      received_at TIMESTAMPTZ NOT NULL,
+      synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      viewed_at TIMESTAMPTZ,
+      replied_at TIMESTAMPTZ,
+      archived_at TIMESTAMPTZ
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_support_emails_status_received
+      ON support_emails(status, received_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_support_emails_message_id
+      ON support_emails(message_id)`,
+    `CREATE TABLE IF NOT EXISTS support_email_replies (
+      id TEXT PRIMARY KEY,
+      support_email_id TEXT NOT NULL REFERENCES support_emails(id) ON DELETE CASCADE,
+      resend_email_id TEXT NOT NULL UNIQUE CHECK (resend_email_id <> ''),
+      admin_user_id TEXT NOT NULL CHECK (admin_user_id <> ''),
+      recipients JSONB NOT NULL CHECK (jsonb_typeof(recipients) = 'array'),
+      subject TEXT NOT NULL,
+      text_body TEXT NOT NULL CHECK (text_body <> ''),
+      headers JSONB NOT NULL CHECK (jsonb_typeof(headers) = 'object'),
+      sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_support_email_replies_thread
+      ON support_email_replies(support_email_id, sent_at ASC)`,
 
     // ===== 反饋功能 schema（參考 Fider）=====
     `CREATE TABLE IF NOT EXISTS feedback_posts (
@@ -3895,6 +3949,27 @@ function handleRequest(req, res) {
       });
     });
 
+  const readRawBody = (maxBytes = 1024 * 1024) =>
+    new Promise((resolve) => {
+      const chunks = [];
+      let size = 0;
+      let tooLarge = false;
+      req.on('data', (chunk) => {
+        if (tooLarge) return;
+        const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
+        size += buffer.length;
+        if (size > maxBytes) {
+          tooLarge = true;
+          resolve(null);
+          return;
+        }
+        chunks.push(buffer);
+      });
+      req.on('end', () => {
+        if (!tooLarge) resolve(Buffer.concat(chunks).toString('utf8'));
+      });
+    });
+
   // 統一 async handler 錯誤處理：PG/Redis 丟錯時回 500，避免 unhandled rejection 崩潰。
   // 使用 withScope 包裹單次 capture，避免 configureScope 污染 Node server 請求 scope。
   const safe = (fn) => {
@@ -4021,6 +4096,27 @@ function handleRequest(req, res) {
     if ((pathname === '/api/app-version' || pathname === '/api/version') && method === 'GET') {
       res.setHeader('Cache-Control', 'no-store');
       json(APP_VERSION_INFO);
+      return;
+    }
+
+    if (pathname === '/api/webhooks/resend' && method === 'POST') {
+      const rawBody = await readRawBody();
+      if (rawBody === null) return json({ error: 'Webhook payload too large' }, 413);
+      try {
+        const event = verifyResendWebhook({
+          rawBody,
+          headers: {
+            id: req.headers['svix-id'],
+            timestamp: req.headers['svix-timestamp'],
+            signature: req.headers['svix-signature'],
+          },
+          webhookSecret: RESEND_WEBHOOK_SECRET,
+        });
+        json(await ingestReceivedWebhook({ pool, event }));
+      } catch (error) {
+        if (error instanceof SupportInboxError) return json({ error: error.message }, error.status);
+        throw error;
+      }
       return;
     }
 
@@ -5424,6 +5520,97 @@ function handleRequest(req, res) {
     }
 
     // ===== Admin API (P0-3 + P2-12) =====
+
+    if (pathname === '/api/admin/support/emails' && method === 'GET') {
+      if (!(await authorizeAdmin(req, 'support:read'))) return json({ error: 'Unauthorized' }, 401);
+      const parsed = validateBody(S.adminSupportEmailListQuerySchema, Object.fromEntries(url.searchParams.entries()));
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      let syncError = '';
+      if (RESEND_API_KEY && parsed.data.sync !== false) {
+        try {
+          await syncSupportInbox({ pool, apiKey: RESEND_API_KEY });
+        } catch (error) {
+          syncError = error instanceof Error ? error.message : 'Resend synchronization failed';
+          reqLog.warn({ err: error }, 'support inbox synchronization failed');
+        }
+      }
+      json({
+        emails: await listSupportEmails(pool, parsed.data),
+        configured: Boolean(RESEND_API_KEY),
+        webhookConfigured: Boolean(RESEND_WEBHOOK_SECRET),
+        sender: RESEND_CONTACT_FROM,
+        syncError,
+      });
+      return;
+    }
+
+    const adminSupportReplyRoute = pathname.match(/^\/api\/admin\/support\/emails\/([^/]+)\/replies$/);
+    if (adminSupportReplyRoute && method === 'POST') {
+      const admin = await authorizeAdmin(req, 'support:reply');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
+      const body = await readBody();
+      const parsed = validateBody(S.adminSupportEmailReplySchema, body);
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      try {
+        json(
+          await replyToSupportEmail({
+            pool,
+            emailId: decodeURIComponent(adminSupportReplyRoute[1]),
+            text: parsed.data.text,
+            adminUserId: admin.adminUserId,
+            apiKey: RESEND_API_KEY,
+            from: RESEND_CONTACT_FROM,
+          }),
+          201,
+        );
+      } catch (error) {
+        if (error instanceof SupportInboxError) return json({ error: error.message }, error.status);
+        throw error;
+      }
+      return;
+    }
+
+    const adminSupportStatusRoute = pathname.match(/^\/api\/admin\/support\/emails\/([^/]+)\/status$/);
+    if (adminSupportStatusRoute && method === 'PUT') {
+      const admin = await authorizeAdmin(req, 'support:reply');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
+      const body = await readBody();
+      const parsed = validateBody(S.adminSupportEmailStatusSchema, body);
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      try {
+        json(
+          await updateSupportEmailStatus({
+            pool,
+            emailId: decodeURIComponent(adminSupportStatusRoute[1]),
+            status: parsed.data.status,
+            adminUserId: admin.adminUserId,
+          }),
+        );
+      } catch (error) {
+        if (error instanceof SupportInboxError) return json({ error: error.message }, error.status);
+        throw error;
+      }
+      return;
+    }
+
+    const adminSupportDetailRoute = pathname.match(/^\/api\/admin\/support\/emails\/([^/]+)$/);
+    if (adminSupportDetailRoute && method === 'GET') {
+      if (!(await authorizeAdmin(req, 'support:read'))) return json({ error: 'Unauthorized' }, 401);
+      try {
+        json(
+          await getSupportEmail({
+            pool,
+            emailId: decodeURIComponent(adminSupportDetailRoute[1]),
+            apiKey: RESEND_API_KEY,
+            refresh: Boolean(RESEND_API_KEY),
+          }),
+        );
+      } catch (error) {
+        if (error instanceof SupportInboxError) return json({ error: error.message }, error.status);
+        throw error;
+      }
+      return;
+    }
 
     // 已綁定的普通使用者登入後，可直接換取受 RBAC 與撤銷機制保護的管理員 session。
     if (pathname === '/api/admin/session' && method === 'POST') {

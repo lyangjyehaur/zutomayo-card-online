@@ -150,6 +150,7 @@ load_local_release() {
   [[ "$TARGET_SHA" == "$origin_sha" ]] || die 'local master must exactly match origin/master before deployment'
   TARGET_SHORT="$(git rev-parse --short=12 "$TARGET_SHA")"
   PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+  APP_BUILT_AT="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
   [[ "$PACKAGE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]] || die 'package version is invalid'
   EXPECTED_SCHEMA_MIGRATION="$(find migrations -maxdepth 1 -type f -name '*.js' -print | sort | tail -n 1 | sed 's#^.*/##; s/\.js$//')"
   [[ "$EXPECTED_SCHEMA_MIGRATION" =~ ^[0-9]{6,}_[a-z0-9_]+$ ]] || die 'could not resolve the latest migration'
@@ -319,12 +320,13 @@ remote_sync_master_and_env() {
       fi
     }
     upsert_env APP_BUILD_ID '$TARGET_SHA'
+    upsert_env APP_BUILT_AT '$APP_BUILT_AT'
     upsert_env APP_VERSION '$PACKAGE_VERSION'
     upsert_env GAME_RULES_VERSION '$PACKAGE_VERSION'
     upsert_env EXPECTED_SCHEMA_MIGRATION '$EXPECTED_SCHEMA_MIGRATION'
     upsert_env EXPECTED_SCHEMA_CHECKSUM '$EXPECTED_SCHEMA_CHECKSUM'
     upsert_env ALLOWED_ORIGINS '$SERVER4_ALLOWED_ORIGIN'
-    grep -E '^(APP_BUILD_ID|APP_VERSION|GAME_RULES_VERSION|EXPECTED_SCHEMA_MIGRATION|EXPECTED_SCHEMA_CHECKSUM|ALLOWED_ORIGINS|VITE_CARD_DATASET_SHA256)=' .env"
+    grep -E '^(APP_BUILD_ID|APP_BUILT_AT|APP_VERSION|GAME_RULES_VERSION|EXPECTED_SCHEMA_MIGRATION|EXPECTED_SCHEMA_CHECKSUM|ALLOWED_ORIGINS|VITE_CARD_DATASET_SHA256)=' .env"
 }
 
 sync_battle_assets() {

@@ -94,7 +94,15 @@ describe('production schema gate', () => {
     );
     expect(REQUIRED_RUNTIME_COLUMNS.bjg_match_seats).toContain('resume_count');
     expect(REQUIRED_RUNTIME_COLUMNS.bjg_match_telemetry).toEqual(
-      expect.arrayContaining(['match_mode', 'traffic_class', 'player0_disconnect_count', 'player1_reconnect_count']),
+      expect.arrayContaining([
+        'match_mode',
+        'traffic_class',
+        'player0_disconnect_count',
+        'player1_reconnect_count',
+        'connection_events',
+        'player0_disconnected_at',
+        'player1_disconnected_at',
+      ]),
     );
     expect(REQUIRED_RUNTIME_COLUMNS.match_analytics).toEqual(
       expect.arrayContaining([
@@ -122,6 +130,12 @@ describe('production schema gate', () => {
       expect.objectContaining({
         tableName: 'bjg_match_telemetry',
         constraintName: 'bjg_match_telemetry_classification_check',
+      }),
+    );
+    expect(REQUIRED_RUNTIME_CONSTRAINTS).toContainEqual(
+      expect.objectContaining({
+        tableName: 'bjg_match_telemetry',
+        constraintName: 'bjg_match_telemetry_connection_events_check',
       }),
     );
     expect(REQUIRED_RUNTIME_INDEXES).toContainEqual(

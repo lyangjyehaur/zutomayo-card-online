@@ -94,6 +94,9 @@ describe('Refine admin providers', () => {
       adminAccessControlProvider.can({ resource: 'chat', action: 'list', params: {} }),
     ).resolves.toMatchObject({ can: true });
     await expect(
+      adminAccessControlProvider.can({ resource: 'support-inbox', action: 'list', params: {} }),
+    ).resolves.toMatchObject({ can: true });
+    await expect(
       adminAccessControlProvider.can({ resource: 'official-rulings', action: 'list', params: {} }),
     ).resolves.toMatchObject({ can: false });
     sessionStorage.setItem(ADMIN_ROLE_KEY, 'operator');

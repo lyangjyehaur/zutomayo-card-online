@@ -11,7 +11,13 @@ describe('match analytics query pack', () => {
     const sql = readRepoFile('scripts/analytics/match-analytics-core.sql');
 
     expect(sql).toContain('seat_classes');
+    expect(sql).toContain('unformed_sessions');
+    expect(sql).toContain("quality_flags @> ARRAY['missing-seat-reservation']::text[]");
+    expect(sql).toContain('completed_sessions::double precision / NULLIF(formed_sessions, 0)');
     expect(sql).toContain('connection_class');
+    expect(sql).toContain("events.event_type IN ('connectionDisconnect', 'connectionReconnect')");
+    expect(sql).toContain('reconnect_gap_seconds_p50');
+    expect(sql).toContain('reconnect_gap_seconds_p90');
     expect(sql).toContain("'seat_0_win'::text AS metric");
     expect(sql).toContain("'janken_winner_win'::text AS metric");
     expect(sql).toContain('gameover_reason_code');

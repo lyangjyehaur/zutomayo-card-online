@@ -261,25 +261,87 @@ export function createPostgresPlatformMatchParticipantStore(
       );
       const disconnectColumn = playerID === '0' ? 'player0_disconnect_count' : 'player1_disconnect_count';
       const reconnectColumn = playerID === '0' ? 'player0_reconnect_count' : 'player1_reconnect_count';
+      const disconnectedAtColumn = playerID === '0' ? 'player0_disconnected_at' : 'player1_disconnected_at';
+      const runtimeSnapshot = `
+        SELECT match_id,
+               CASE
+                 WHEN state->'G'->>'step' IN ('janken', 'mulligan', 'initialSet', 'turnSet', 'effectOrder', 'gameOver')
+                   THEN state->'G'->>'step'
+                 ELSE 'unknown'
+               END AS step,
+               CASE
+                 WHEN state->'G'->>'matchStartedAt' ~ '^[0-9]+(\\.[0-9]+)?$' THEN
+                   LEAST(
+                     86400::numeric,
+                     GREATEST(
+                       0::numeric,
+                       FLOOR(
+                         EXTRACT(EPOCH FROM NOW())
+                         - LEAST(
+                             EXTRACT(EPOCH FROM NOW()),
+                             GREATEST(0::numeric, (state->'G'->>'matchStartedAt')::numeric / 1000)
+                           )
+                       )
+                     )
+                   )::integer
+                 ELSE 0
+               END AS offset_seconds
+          FROM bjg_matches
+         WHERE match_id = $1`;
       if (input.event === 'disconnect') {
         await pool.query(
-          `UPDATE bjg_match_telemetry
+          `WITH runtime AS (${runtimeSnapshot})
+           UPDATE bjg_match_telemetry telemetry
               SET ${disconnectColumn} = ${disconnectColumn} + 1,
+                  ${disconnectedAtColumn} = NOW(),
+                  connection_events = (
+                    CASE WHEN jsonb_array_length(connection_events) >= 100
+                      THEN connection_events - 0
+                      ELSE connection_events
+                    END
+                  ) || jsonb_build_array(jsonb_build_object(
+                    'event', 'disconnect',
+                    'seat', $2::integer,
+                    'step', runtime.step,
+                    'offsetSeconds', runtime.offset_seconds
+                  )),
                   updated_at = NOW()
-            WHERE source_match_id = $1`,
-          [boardgameMatchID],
+             FROM runtime
+            WHERE telemetry.source_match_id = runtime.match_id`,
+          [boardgameMatchID, Number(playerID)],
         );
         return;
       }
       await pool.query(
-        `UPDATE bjg_match_telemetry
+        `WITH runtime AS (${runtimeSnapshot})
+         UPDATE bjg_match_telemetry telemetry
             SET ${reconnectColumn} = ${reconnectColumn} + CASE
                   WHEN $2 = 'reconnect' OR ${disconnectColumn} > ${reconnectColumn} THEN 1
                   ELSE 0
                 END,
+                connection_events = CASE
+                  WHEN ${disconnectedAtColumn} IS NULL THEN connection_events
+                  ELSE (
+                    CASE WHEN jsonb_array_length(connection_events) >= 100
+                      THEN connection_events - 0
+                      ELSE connection_events
+                    END
+                  ) || jsonb_build_array(jsonb_build_object(
+                    'event', 'reconnect',
+                    'seat', $3::integer,
+                    'step', runtime.step,
+                    'offsetSeconds', runtime.offset_seconds,
+                    'disconnectSeconds', LEAST(
+                      86400::numeric,
+                      GREATEST(0::numeric, FLOOR(EXTRACT(EPOCH FROM NOW() - ${disconnectedAtColumn})))
+                    )::integer
+                  ))
+                END,
+                ${disconnectedAtColumn} = NULL,
                 updated_at = NOW()
-          WHERE source_match_id = $1`,
-        [boardgameMatchID, input.event],
+           FROM runtime
+          WHERE telemetry.source_match_id = runtime.match_id`,
+        [boardgameMatchID, input.event, Number(playerID)],
       );
     },
     async close() {

@@ -55,6 +55,7 @@ export interface TrustedMatchTelemetry {
   trafficClass: TrafficClass;
   disconnectCounts: readonly [number, number];
   reconnectCounts: readonly [number, number];
+  connectionEvents?: unknown;
 }
 
 export interface AnalyticsSeat {
@@ -359,6 +360,47 @@ function projectEvents(sourceMatchDigest: string, actionLog: unknown): MatchAnal
   });
 }
 
+function projectConnectionEvents(
+  sourceMatchDigest: string,
+  connectionEvents: unknown,
+  firstSequence: number,
+): MatchAnalyticsEvent[] {
+  if (!Array.isArray(connectionEvents)) return [];
+  return connectionEvents.slice(0, 100).flatMap((raw, sourceIndex) => {
+    const entry = record(raw);
+    const runtimeEvent = entry?.event;
+    if (!entry || (runtimeEvent !== 'disconnect' && runtimeEvent !== 'reconnect')) return [];
+    const actorSeat = seat(entry.seat);
+    const offsetSeconds = integer(entry.offsetSeconds, 0, 86_400);
+    if (actorSeat === null || offsetSeconds === null) return [];
+    const step = enumValue(entry.step, GAME_STEPS) ?? 'unknown';
+    const payload: JsonRecord = { offsetSeconds };
+    if (runtimeEvent === 'reconnect') {
+      const disconnectSeconds = integer(entry.disconnectSeconds, 0, 86_400);
+      if (disconnectSeconds === null) return [];
+      payload.disconnectSeconds = disconnectSeconds;
+    }
+    return [
+      {
+        sourceMatchDigest,
+        sequence: firstSequence + sourceIndex,
+        turn: 0,
+        step,
+        actorSeat,
+        eventType: runtimeEvent === 'disconnect' ? 'connectionDisconnect' : 'connectionReconnect',
+        cardDefId: null,
+        targetSeat: null,
+        hpBefore: null,
+        hpAfter: null,
+        chronosPosition: null,
+        resultCode: null,
+        timeoutPhase: null,
+        payload,
+      },
+    ];
+  });
+}
+
 function gameoverReasonCode(events: MatchAnalyticsEvent[], winner: 0 | 1 | null): string {
   if (events.some((event) => event.eventType === 'surrender')) return 'surrender';
   if (
@@ -402,7 +444,11 @@ function buildProjection(
   const state = input.state as State & { G?: JsonRecord };
   const G = state.G ?? {};
   const actionLog = G.actionLog;
-  const events = projectEvents(sourceDigest, actionLog);
+  const actionEvents = projectEvents(sourceDigest, actionLog);
+  const nextSequence = actionEvents.reduce((highest, event) => Math.max(highest, event.sequence), -1) + 1;
+  const events = actionEvents.concat(
+    projectConnectionEvents(sourceDigest, input.telemetry?.connectionEvents, nextSequence),
+  );
   const playerStates = Array.isArray(G.players) ? G.players : [];
   const finalHp: [number, number] = [
     integer(record(playerStates[0])?.hp) ?? 0,
@@ -443,7 +489,7 @@ function buildProjection(
     ...(input.seats.length < 2 ? ['missing-seat-reservation'] : []),
     ...(events.length === 0 ? ['missing-events'] : []),
     ...(lifecycle.outcome === 'abandoned' ? ['abandoned'] : []),
-    ...(!input.telemetry || matchMode === 'direct' || matchMode === 'unknown' ? ['missing-provenance'] : []),
+    ...(!input.telemetry || matchMode === 'unknown' ? ['missing-provenance'] : []),
     ...(disconnectCounts.some((count) => count > 0) ? ['disconnect-observed'] : []),
     ...(reconnectCounts.some((count) => count > 0) ? ['reconnect-observed'] : []),
     ...(resumeCounts.some((count) => count > 0) ? ['seat-resume-observed'] : []),

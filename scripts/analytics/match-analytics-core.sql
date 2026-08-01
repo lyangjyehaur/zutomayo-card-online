@@ -17,15 +17,34 @@ WITH daily AS (
     rules_version,
     dataset_sha256,
     COUNT(*) AS sessions,
+    COUNT(*) FILTER (
+      WHERE outcome = 'abandoned'
+        AND action_count = 0
+        AND quality_flags @> ARRAY['missing-seat-reservation']::text[]
+    ) AS unformed_sessions,
+    COUNT(*) FILTER (
+      WHERE NOT (
+        outcome = 'abandoned'
+        AND action_count = 0
+        AND quality_flags @> ARRAY['missing-seat-reservation']::text[]
+      )
+    ) AS formed_sessions,
     COUNT(*) FILTER (WHERE outcome <> 'abandoned') AS completed_sessions,
-    COUNT(*) FILTER (WHERE outcome = 'abandoned') AS abandoned_sessions
+    COUNT(*) FILTER (
+      WHERE outcome = 'abandoned'
+        AND NOT (
+          action_count = 0
+          AND quality_flags @> ARRAY['missing-seat-reservation']::text[]
+        )
+    ) AS abandoned_sessions
   FROM match_analytics
   GROUP BY 1, 2, 3, 4, 5, 6, 7, 8
 )
 SELECT
   *,
-  completed_sessions::double precision / NULLIF(sessions, 0) AS completion_rate,
-  abandoned_sessions::double precision / NULLIF(sessions, 0) AS abandonment_rate
+  formed_sessions::double precision / NULLIF(sessions, 0) AS room_formation_rate,
+  completed_sessions::double precision / NULLIF(formed_sessions, 0) AS completion_rate,
+  abandoned_sessions::double precision / NULLIF(formed_sessions, 0) AS abandonment_rate
 FROM daily
 ORDER BY day DESC, environment, traffic_class, match_mode;
 
@@ -96,6 +115,38 @@ LEFT JOIN step_timeouts detail USING (
 )
 ORDER BY summary.app_version, summary.rules_version, summary.dataset_sha256,
          summary.match_mode, summary.connection_class, detail.step, detail.actor_seat;
+
+-- 2b. Trusted connection lifecycle events by mode, stage, and seat. Reconnect
+-- percentiles use only the bounded server-derived disconnect duration.
+SELECT
+  facts.app_version,
+  facts.rules_version,
+  facts.dataset_sha256,
+  facts.match_mode,
+  events.event_type,
+  events.step,
+  events.actor_seat,
+  COUNT(DISTINCT events.source_match_digest) AS affected_matches,
+  COUNT(*) AS event_count,
+  percentile_cont(0.5) WITHIN GROUP (
+    ORDER BY (events.payload->>'disconnectSeconds')::integer
+  ) FILTER (
+    WHERE events.event_type = 'connectionReconnect'
+      AND events.payload->>'disconnectSeconds' ~ '^[0-9]+$'
+  ) AS reconnect_gap_seconds_p50,
+  percentile_cont(0.9) WITHIN GROUP (
+    ORDER BY (events.payload->>'disconnectSeconds')::integer
+  ) FILTER (
+    WHERE events.event_type = 'connectionReconnect'
+      AND events.payload->>'disconnectSeconds' ~ '^[0-9]+$'
+  ) AS reconnect_gap_seconds_p90
+FROM match_analytics_events events
+JOIN match_analytics facts USING (source_match_digest)
+WHERE facts.outcome <> 'abandoned'
+  AND facts.traffic_class = 'production'
+  AND events.event_type IN ('connectionDisconnect', 'connectionReconnect')
+GROUP BY 1, 2, 3, 4, 5, 6, 7
+ORDER BY 1, 2, 3, 4, 5, 6, 7;
 
 -- 3. Seat and janken advantage with 95% Wilson intervals.
 WITH observations AS (

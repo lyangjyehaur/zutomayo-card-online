@@ -207,7 +207,8 @@ bjg_matches(
 )
 
 bjg_match_telemetry(source_match_id FK, match_mode, traffic_class,
-                    player_disconnect_counts, player_reconnect_counts, timestamps)
+                    player_disconnect_counts, player_reconnect_counts,
+                    bounded_connection_events, disconnected_at_by_seat, timestamps)
 
 match_analytics(source_match_digest PK, versions, outcome, final_hp,
                 seat_classes, disconnect_counts, reconnect_counts,
@@ -218,14 +219,18 @@ match_analytics_events(source_match_digest, sequence, typed_allowlisted_event)
 
 `bjg_matches` 是短期可恢復 runtime state；`bjg_match_telemetry` 由 Colyseus server relay 與經驗證的
 match-shell 座位生命週期寫入，只保留可信的配對來源、traffic class 與每席 disconnect／reconnect
-次數，隨來源 match `ON DELETE CASCADE`。它不接受 client 自稱的 mode/test flag，也不保存 room、session、
-socket、user ID 或 IP。`/resume` 另在 `bjg_match_seats.resume_count` 計數，避免與 WebSocket reconnect 混淆。
+次數，以及最多 100 筆由權威 state 導出的座位、遊戲階段、開局後秒數與斷線秒數，隨來源 match
+`ON DELETE CASCADE`。它不接受 client 自稱的 mode/test flag，也不保存 room、session、socket、user ID、
+IP 或自由文字。`/resume` 另在 `bjg_match_seats.resume_count` 計數，避免與 WebSocket reconnect 混淆。
+首次成功 seat proof 只設定 `last_resumed_at`；同一座位後續再次成功取得 proof 才增加 `resume_count`。
 
 三張 `match_analytics*` 表是不依附 `bjg_matches` foreign key
 的去識別永久分析層。原始 match ID 先做 SHA-256 digest，兩副牌只保存排序後的卡牌定義 ID，事件由
 `matchAnalytics.ts` typed projector 逐欄允許，不複製 `G`、隱藏牌序、instance ID 或任意文字。終局與
 abandoned capture 在刪除 operational row 前，把 telemetry 壓成固定兩席計數陣列；缺少來源時明確標示
-`direct` 與 `missing-provenance`，不從瀏覽器內容猜測。
+`missing-provenance`，不從瀏覽器內容猜測。由 platform/game runtime 建立的 `direct` telemetry 屬可信來源，
+不再僅因 mode 為 `direct` 而誤標；其 bounded connection events 以 `connectionDisconnect`／
+`connectionReconnect` typed events 永久保存。
 
 **並發控制三層機制**（避免多實例同時處理 move 造成覆蓋）：
 
@@ -597,6 +602,7 @@ flowchart TB
 
 1. boardgame.io `endIf` 回傳 `{ winner }` 或 `{ draw: true }`。
 2. `PostgresAdapter.writeState()` 在同一個 PG transaction 寫入 terminal state、result outbox，以及去識別的 match fact、兩副牌快照與 allowlisted events；任一寫入失敗會整筆 rollback。
+   `match_analytics_capture_total` 只在 transaction `COMMIT` 成功後增加，不能把 rollback 或 commit failure 誤報為 durable capture。
 3. `source_match_digest` primary key 與 integrity SHA-256 使重複 terminal callback 冪等；相同 digest 若內容不同則 fail closed。
 4. ranked outbox worker 驗證權威座位後執行 `calculateElo`、更新 users 並寫入 `matches`；ranked 關閉、guest 或 draw 仍會保存匿名分析，不受計分資格影響。
 5. 可連結帳號的 action log 經 `sanitizeActionLog` 清理後供玩家歷史使用；永久分析事件使用更嚴格的獨立 projector，一般 API role 無法讀取。
@@ -626,7 +632,7 @@ flowchart TB
 | `http_requests_total`                       | Counter   | 兩者 | 同上 labels                                                            |
 | `rate_limited_requests_total`               | Counter   | api  | label: `pathname`                                                      |
 | `active_socket_connections`                 | Gauge     | game | 當前 Socket.IO 連線數                                                  |
-| `match_analytics_capture_total`             | Counter   | game | 新增的匿名終局封存，按 outcome／traffic class 分組                     |
+| `match_analytics_capture_total`             | Counter   | game | 已 COMMIT 的匿名終局封存，按 outcome／traffic class 分組               |
 | `match_analytics_capture_failures_total`    | Counter   | game | projector 或 persistence 階段的封存失敗                                |
 | `match_analytics_cleanup_blocked_total`     | Counter   | game | pending delivery 或封存不完整而阻擋 runtime cleanup                    |
 | `match_analytics_unarchived_terminal`       | Gauge     | game | 尚未與匿名 archive 完成 reconciliation 的 terminal runtime row 數量    |

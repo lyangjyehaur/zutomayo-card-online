@@ -73,7 +73,7 @@ export const adminAuthProvider: AuthProvider = {
 
 const READ_ONLY_RESOURCES = new Set(['matches', 'i18n']);
 const VIEWER_RESOURCES = new Set(['users', 'matches', 'i18n']);
-const MODERATOR_RESOURCES = new Set([...VIEWER_RESOURCES, 'chat', 'deck-shares']);
+const MODERATOR_RESOURCES = new Set([...VIEWER_RESOURCES, 'chat', 'deck-shares', 'support-inbox']);
 const OPERATOR_RESOURCES = new Set([
   ...MODERATOR_RESOURCES,
   'cards',
