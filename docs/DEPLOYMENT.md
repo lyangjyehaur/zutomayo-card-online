@@ -820,7 +820,8 @@ PostgreSQL 重建。
 `maxmemory-policy=noeviction` 及 Docker ingress 已列入 `TRUSTED_PROXY` → 同步並校驗私有 battle 素材 →
 只建置 migration image 並 migrate → 發布卡牌、Q&A、勘誤與規則文件 → 對內部 API 執行 card dataset
 preflight、留存報告並將 SHA-256 寫入 `.env` → `npm run search:reindex` 原子重建及 `search:check` →
-建置 game／api／platform → `docker compose up --wait` → 透過 SSH tunnel 驗證三服務 `/health`、
+建置 game／api／platform → 停止舊 API、清除其 Redis `search:index:rebuild` 租約（失敗時重新啟動舊 API）→
+`docker compose up --wait` → 透過 SSH tunnel 驗證三服務 `/health`、
 `/ready`、build ID、dataset SHA、卡牌／Q&A／規則搜尋及所有 battle 素材 → 視憑證設定同步
 Cloudflare Cache Rules → 透過正常 DNS 與香港直連驗證快取。`/api/app-version` 的 `datasetSha256`
 必須與 preflight 完全一致；不一致時 deployment smoke 失敗。Cache smoke 涵蓋 PWA 控制檔、
