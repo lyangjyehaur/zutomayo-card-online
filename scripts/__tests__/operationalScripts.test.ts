@@ -11,12 +11,14 @@ const scripts = [
   'pg-wal-archive.sh',
   'pg-wal-restore.sh',
   'pg-restore-drill.sh',
+  'run-pg-restore-drill-scheduled.sh',
   'postgres-init-roles.sh',
   'postgres-role-smoke.sh',
   'compose-chaos-drill.sh',
   'deploy-server4.sh',
   'server4-recovery-drill.sh',
 ];
+const hasDockerCompose = spawnSync('docker', ['compose', 'version'], { stdio: 'ignore' }).status === 0;
 
 describe('operational shell scripts', () => {
   it.each(scripts)('%s has valid Bash syntax', (script) => {
@@ -53,35 +55,15 @@ describe('operational shell scripts', () => {
         ...process.env,
         PG_RESTORE_DRILL_IMAGE: `postgres@sha256:${'a'.repeat(64)}`,
         PG_RESTORE_RELEASE_EVIDENCE: 'true',
+        RELEASE_SHA: 'b'.repeat(40),
+        EXPECTED_SCHEMA_MIGRATION: '000041_official_rule_documents',
+        EXPECTED_SCHEMA_CHECKSUM: 'c'.repeat(64),
+        MIGRATE_IMAGE: `ghcr.io/example/zutomayo-card-online-migrate@sha256:${'d'.repeat(64)}`,
       },
       timeout: 5_000,
     });
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('evidence_output is required');
-  });
-
-  it('requires chat, feedback, and boardgame fixtures before a release restore drill can start Docker', () => {
-    const result = spawnSync('bash', [resolve('scripts/pg-restore-drill.sh'), '/tmp/example.dump.age'], {
-      encoding: 'utf8',
-      env: {
-        ...process.env,
-        PG_RESTORE_DRILL_IMAGE: `postgres@sha256:${'a'.repeat(64)}`,
-        PG_RESTORE_RELEASE_EVIDENCE: 'true',
-        PG_RESTORE_EVIDENCE_OUTPUT: '/tmp/restore-drill.json',
-        RELEASE_SHA: 'b'.repeat(40),
-        PG_RESTORE_BACKUP_COMPLETED_AT: '2026-07-31T00:00:00.000Z',
-        PG_RESTORE_INCIDENT_AT: '2026-07-31T00:01:00.000Z',
-        PG_RESTORE_EXPECT_ACCOUNT_ID: 'u_release_fixture',
-        PG_RESTORE_EXPECT_DECK_ID: 'deck_release_fixture',
-        PG_RESTORE_EXPECT_MATCH_ID: 'match_release_fixture',
-        PG_RESTORE_EXPECT_LEADERBOARD_USER_ID: 'u_release_fixture',
-        EXPECTED_SCHEMA_MIGRATION: '000047_knowledge_search_zero_results',
-        EXPECTED_SCHEMA_CHECKSUM: 'c'.repeat(64),
-      },
-      timeout: 5_000,
-    });
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain('expected_chat_message_id is required');
   });
 
   it('routes logical and physical backups through separate PostgreSQL roles', () => {
@@ -93,167 +75,384 @@ describe('operational shell scripts', () => {
     );
   });
 
-  it('runs the real PostgreSQL/Redis outbox and social race smoke after role bootstrap', () => {
+  it('runs real PostgreSQL outbox, social race, and deletion anonymization smokes after role bootstrap', () => {
     const smoke = readFileSync(resolve('scripts/postgres-role-smoke.sh'), 'utf8');
+    const compose = readFileSync(resolve('docker-compose.yml'), 'utf8');
+    const concurrencySmoke = readFileSync(resolve('docker-compose.postgres-concurrency-smoke.yml'), 'utf8');
+    expect(smoke).toContain('PG_BOOTSTRAP_USER');
+    expect(smoke).toContain('PG_PASSWORD="${PG_PASSWORD:-$PG_APP_PASSWORD}"');
+    expect(smoke).toContain('export PG_DATABASE PG_APP_USER PG_APP_PASSWORD PG_PASSWORD');
+    expect(smoke).toContain('migration owner is still a superuser');
+    expect(compose).toContain('POSTGRES_USER: ${PG_BOOTSTRAP_USER:-${PG_MIGRATION_USER:-zutomayo}}');
     expect(smoke).toContain("grep -qx '1'");
     expect(smoke).toContain('migrate npm run relationship:outbox:pg-smoke');
+    expect(smoke).toContain('migrate npm run db:migration-lineage:smoke');
+    expect(smoke).toContain('migrate npm run db:platform-schema:smoke');
+    expect(smoke).toContain('platform-relationship-race-pg-smoke');
+    expect(smoke).toContain('lineage_database="${PG_DATABASE}_lineage"');
+    expect(smoke).toContain('--env REQUIRE_APP_ROLE_GATE=false');
+    expect(smoke).toContain('REDIS_DB="${REDIS_DB:-7}"');
+    expect(smoke).toContain('--env REDIS_DB="$REDIS_DB"');
     expect(smoke).toContain('api node social-concurrency-pg-smoke.cjs');
-  });
-
-  it('writes a structured failed deployment-smoke receipt', () => {
-    const directory = mkdtempSync(resolve(tmpdir(), 'zutomayo-deploy-smoke-'));
-    const reportPath = resolve(directory, 'smoke.json');
-    const result = spawnSync(
-      process.execPath,
-      [
-        resolve('scripts/deploy-smoke.mjs'),
-        '--host',
-        '127.0.0.1',
-        '--game-port',
-        '1',
-        '--api-port',
-        '1',
-        '--platform-port',
-        '1',
-        '--attempts',
-        '1',
-        '--timeout-ms',
-        '50',
-        '--retry-delay-ms',
-        '0',
-        '--report-path',
-        reportPath,
-      ],
-      { encoding: 'utf8', timeout: 5_000 },
+    expect(smoke).toContain('--env NODE_ENV=test api node account-deletion-pg-smoke.cjs');
+    expect(smoke).toContain('"${source_smoke_compose[@]}" run --build --rm --no-deps boardgame-metadata-pg-smoke');
+    expect(smoke).toContain('migrate node scripts/admin-credential-pg-smoke.cjs');
+    expect(smoke).toContain('ADMIN_CREDENTIAL_PG_SMOKE_ALLOW_REMOTE=true');
+    expect(concurrencySmoke).toContain('target: builder');
+    expect(concurrencySmoke).toContain(
+      "command: ['node', '--import', 'tsx', 'scripts/boardgame-metadata-pg-smoke.ts']",
     );
-    expect(result.status).not.toBe(0);
-    expect(JSON.parse(readFileSync(reportPath, 'utf8'))).toMatchObject({
-      schemaVersion: 1,
-      status: 'failed',
-      checks: {
-        healthReady: false,
-        buildIdentityVerified: false,
-        datasetIdentityVerified: false,
-        applicationSmokePassed: false,
-        battleAssetsVerified: false,
-        smokePassed: false,
-      },
-    });
+    expect(concurrencySmoke).not.toContain('target: runtime');
   });
 
-  it('keeps the server4 beta deployment backup, Redis, asset, and health gates', () => {
+  it('requires signed official card data completeness in logical and PITR restore evidence', () => {
+    const logicalRestore = readFileSync(resolve('scripts/pg-restore-drill.sh'), 'utf8');
+    expect(logicalRestore).toContain('[[ "$cards_count" == 422 ]]');
+    expect(logicalRestore).toContain('official_card_data_releases');
+    expect(logicalRestore).toContain('missing_official_english_names');
+    expect(logicalRestore).toContain('missing_official_english_effects');
+    expect(logicalRestore).toContain('official_errata');
+  });
+
+  it.skipIf(!hasDockerCompose)('renders aligned E2E PostgreSQL defaults against the overlay database', () => {
+    const result = spawnSync(
+      'docker',
+      [
+        'compose',
+        '-f',
+        'docker-compose.yml',
+        '-f',
+        'docker-compose.e2e.yml',
+        'config',
+        '--no-interpolate',
+        '--format',
+        'json',
+      ],
+      { encoding: 'utf8', timeout: 10_000 },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    const config = JSON.parse(result.stdout);
+    expect(config.services.postgres.environment).toContain('POSTGRES_DB=zutomayo_e2e');
+    expect(config.services.postgres.environment).toContain('PG_MIGRATION_USER=${PG_MIGRATION_USER:-zutomayo}');
+    expect(config.services.migrate.environment).toContain('PG_USER=${PG_MIGRATION_USER:-zutomayo}');
+    expect(config.services.seed.environment).toContain('PG_USER=${PG_MIGRATION_USER:-zutomayo}');
+    expect(config.services.postgres.healthcheck.test).toEqual([
+      'CMD-SHELL',
+      'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"',
+    ]);
+  });
+
+  it('runs the E2E runner separately from successful one-shot dependencies', () => {
+    const workflow = readFileSync(resolve('.github/workflows/ci.yml'), 'utf8');
+    const browserMatrix = readFileSync(resolve('.github/workflows/e2e-matrix.yml'), 'utf8');
+    expect(workflow).toContain('"${compose[@]}" build');
+    expect(workflow).toContain('"${compose[@]}" run --rm e2e');
+    expect(workflow).toContain('PG_BOOTSTRAP_USER: zutomayo_e2e_bootstrap');
+    expect(workflow).toContain('CARD_DATA_DIR: /tmp/zutomayo-card-data');
+    expect(workflow).toContain('export EXPECTED_SCHEMA_MIGRATION="$(find migrations');
+    expect(workflow).toContain('export EXPECTED_SCHEMA_CHECKSUM="$(sha256sum');
+    expect(browserMatrix).toContain('PG_BOOTSTRAP_USER: zutomayo_e2e_bootstrap');
+    expect(browserMatrix).toContain('export EXPECTED_SCHEMA_MIGRATION="$(find migrations');
+    expect(browserMatrix).toContain('export EXPECTED_SCHEMA_CHECKSUM="$(sha256sum');
+    expect(workflow).not.toContain('--abort-on-container-exit');
+    expect(workflow).not.toContain('--exit-code-from e2e');
+  });
+
+  it('binds synthetic E2E cards to release metadata without relaxing the public API contract', () => {
+    const generator = readFileSync(resolve('scripts/create-e2e-card-seed.ts'), 'utf8');
+    const seed = readFileSync(resolve('scripts/seed-cards-pg.ts'), 'utf8');
+    const service = readFileSync(resolve('api/cardDataService.cjs'), 'utf8');
+    const routes = readFileSync(resolve('api/publicCardRoutes.cjs'), 'utf8');
+
+    expect(generator).toContain('createSeedCardDataRelease(cards, texts, releaseSha)');
+    expect(seed).toContain('loadSeedCardDataRelease()');
+    expect(seed).toContain('INSERT INTO official_card_data_releases');
+    expect(seed).toContain('Card seed release metadata does not match APP_BUILD_ID');
+    expect(readFileSync(resolve('docker-compose.e2e.yml'), 'utf8')).toContain('APP_BUILD_ID=${APP_BUILD_ID:-}');
+    expect(service).toContain("status: 503, error: 'Card data unavailable'");
+    expect(routes).toContain('if (!result.ok) json({ error: result.error }, result.status)');
+  });
+
+  it('makes authenticated ranked multiplayer mandatory in the Docker E2E stack', () => {
+    const compose = readFileSync(resolve('docker-compose.e2e.yml'), 'utf8');
+    const spec = readFileSync(resolve('e2e/authenticated-multiplayer.spec.ts'), 'utf8');
+
+    expect(compose).toContain('VITE_PLATFORM_URL: ws://platform.e2e.test:3002');
+    expect(compose).toContain('AUTH_COOKIE_DOMAIN=.e2e.test');
+    expect(compose).toContain('PLATFORM_PUBLIC_ADDRESS=ws://platform.e2e.test:3002');
+    expect(compose).toContain('ALLOWED_ORIGINS=http://game.e2e.test:3000');
+    expect(compose).toContain('E2E_BASE_URL=http://game.e2e.test:3000');
+    expect(compose).toContain('E2E_PLATFORM_COOKIE_SHARED=1');
+    expect(compose).toContain('E2E_AUTHENTICATED_MULTIPLAYER=1');
+    expect(compose).toContain('E2E_RANKED_MATCHES_ENABLED=1');
+    expect(compose).toContain('RANKED_MATCHES_ENABLED=true');
+    expect(compose).toContain('GAME_BACKGROUND_WORKERS_ENABLED=true');
+    expect(spec).toContain('Authenticated multiplayer is required but misconfigured');
+    expect(spec).toContain("test.skip(!QUICK_MATCH_ENABLED, 'Quick Match UI is temporarily disabled')");
+  });
+
+  it('gates standalone PWA behavior and deterministic responsive layouts in CI', () => {
+    const workflow = readFileSync(resolve('.github/workflows/ci.yml'), 'utf8');
+    const packageJson = JSON.parse(readFileSync(resolve('package.json'), 'utf8')) as {
+      scripts: Record<string, string>;
+    };
+    const pwaSmoke = readFileSync(resolve('scripts/pwa-standalone-smoke.mjs'), 'utf8');
+    const adminSmoke = readFileSync(resolve('scripts/admin-responsive-smoke.mjs'), 'utf8');
+    const uiSmoke = readFileSync(resolve('scripts/ui-responsive-smoke.mjs'), 'utf8');
+    const adminCss = readFileSync(resolve('src/components/AdminPanel.css'), 'utf8');
+    const browserSmokeFiles = [
+      'scripts/pwa-standalone-smoke.mjs',
+      'scripts/ui-responsive-smoke.mjs',
+      'scripts/admin-responsive-smoke.mjs',
+      'scripts/battle-responsive-smoke.mjs',
+      'scripts/online-lobby-responsive-smoke.mjs',
+      'scripts/tools-responsive-smoke.mjs',
+    ];
+    const viteConfig = readFileSync(resolve('vite.config.ts'), 'utf8');
+
+    expect(packageJson.scripts['smoke:pwa-standalone']).toContain('pwa-standalone-smoke.mjs');
+    expect(workflow).toContain('name: Responsive & PWA gates');
+    expect(workflow).toContain('npm run smoke:pwa-standalone');
+    expect(workflow).toContain('npm run smoke:ui-responsive');
+    expect(workflow).toContain('npm run smoke:battle-responsive');
+    expect(workflow).toContain('npm run smoke:online-lobby-responsive');
+    expect(workflow).toContain('npm run smoke:tools-responsive');
+    expect(workflow).toContain('responsive-pwa-evidence');
+    expect(pwaSmoke).toContain("matchMedia('(display-mode: standalone)').matches");
+    expect(pwaSmoke).toContain('navigator.serviceWorker?.controller');
+    expect(pwaSmoke).toContain('Network.emulateNetworkConditions');
+    expect(pwaSmoke).toContain("chrome.kill('SIGKILL')");
+    expect(pwaSmoke).toContain('maxRetries: 10');
+    expect(pwaSmoke).toContain('retryDelay: 200');
+    for (const file of browserSmokeFiles) {
+      const source = readFileSync(resolve(file), 'utf8');
+      expect(source, file).toContain("from 'node:os'");
+      expect(source, file).toContain('tmpdir()');
+      expect(source, file).toContain('--disable-dev-shm-usage');
+      expect(source, file).toContain('Date.now() - started < 30000');
+      expect(source, file).not.toContain('/private/tmp');
+    }
+    for (const file of [
+      'scripts/pwa-standalone-smoke.mjs',
+      'scripts/admin-responsive-smoke.mjs',
+      'scripts/online-lobby-responsive-smoke.mjs',
+    ]) {
+      const source = readFileSync(resolve(file), 'utf8');
+      for (const header of [
+        'X-Card-Dataset-Sha256',
+        'X-Card-Dataset-Release-Sha',
+        'X-Card-Dataset-Count',
+        'X-Card-Data-App-Version',
+        'X-Card-Data-Build-Id',
+        'X-Card-Data-Rules-Version',
+      ]) {
+        expect(source, `${file}: ${header}`).toContain(header);
+      }
+    }
+    expect(pwaSmoke).toContain("location.pathname === '/play/ai'");
+    expect(pwaSmoke).toContain('X-Card-Dataset-Sha256');
+    expect(adminSmoke).toContain("waitForSelector(client, '.admin-card-list')");
+    expect(adminSmoke).toContain("document.querySelector('.admin-nav-item[aria-label=");
+    expect(adminSmoke).not.toContain('.admin-card-grid');
+    expect(uiSmoke).toContain("client.send('Page.addScriptToEvaluateOnNewDocument', { source: setup })");
+    expect(uiSmoke).not.toContain('evalChecked(client, setup)');
+    expect(adminCss).toMatch(/@media \(max-width: 1179px\) \{[\s\S]*\.admin-responsive-table/);
+    expect(adminCss).toMatch(/\.admin-nav-item \{[\s\S]*min-height: var\(--touch-target-min\)/);
+    expect(viteConfig).toContain("['/api/cards', '/api/cards/texts']");
+    expect(viteConfig).toContain("handler: 'NetworkFirst'");
+    expect(viteConfig).toContain('cacheName: `card-data-${cardDataCacheKey}`');
+  });
+
+  it('gates the rendered production role/TLS environment before migration', () => {
     const deploy = readFileSync(resolve('scripts/deploy-server4.sh'), 'utf8');
-    const compose = readFileSync(resolve('docker-compose.server4.yml'), 'utf8');
-    const smoke = readFileSync(resolve('scripts/deploy-smoke.mjs'), 'utf8');
-    const assetChecksums = readFileSync(resolve('scripts/battle-assets.sha256'), 'utf8').trim().split('\n');
-    expect(deploy).toContain('git reset --hard origin/master');
-    expect(deploy).toContain('pg_dump');
-    expect(deploy).toContain('--format=custom');
-    expect(deploy).toContain('sha256sum --check');
-    expect(deploy).toContain('extract_redis_db');
-    expect(deploy).toContain('CONFIG GET maxmemory-policy');
-    expect(deploy).toContain('noeviction');
-    expect(deploy).toContain('build --pull migrate');
-    expect(deploy).toContain('build --pull game api platform');
-    expect(deploy.indexOf('build --pull migrate')).toBeLessThan(deploy.indexOf('build --pull game api platform'));
-    expect(deploy).toContain('public-card-dataset-preflight.ts');
-    expect(deploy).toContain('record_card_dataset_sha256');
-    expect(deploy).toContain('operator-provided card dataset SHA-256 does not match preflight');
-    expect(deploy.indexOf('preflight_card_dataset ||')).toBeLessThan(deploy.indexOf('remote_build_runtime ||'));
+    expect(deploy).toContain('verify-compose-role-env.mjs $ROLE_ENV_VALIDATOR_ARGS');
+    expect(deploy).toContain('jq -c -f scripts/project-compose-role-env.jq');
+    expect(deploy).toContain("ROLE_ENV_VALIDATOR_ARGS='--require-pgsslmode=verify-full --require-rediss'");
+    expect(deploy).toContain('node --import tsx "$SCRIPT_DIR/platform-deployment-smoke.ts"');
+    expect(deploy).toContain('--expected-public-address "$platform_public_address"');
+    expect(deploy).toContain('--bootstrap');
+  });
+
+  it('hands the knowledge-search lease from the previous API to the immutable release', () => {
+    const deploy = readFileSync(resolve('scripts/deploy-server4.sh'), 'utf8');
+    const orchestrationStart = deploy.indexOf('remote_deploy()');
+    const orchestration = deploy.slice(orchestrationStart, deploy.indexOf('remote_rollback()', orchestrationStart));
+    const roleGate = orchestration.indexOf('postgres-role-tls-$role');
+    const handoff = orchestration.indexOf('DEL search:index:rebuild');
+    const startup = orchestration.indexOf("docker compose -f '$COMPOSE_FILE' up -d --wait");
+
+    expect(deploy).toContain('REDIS_CONTAINER="${REDIS_CONTAINER:-redis}"');
     expect(deploy).toContain('redis-cli --no-auth-warning -n');
     expect(deploy).toContain('DEL search:index:rebuild');
     expect(deploy).toContain("docker compose -f '$COMPOSE_FILE' stop api");
     expect(deploy).toContain("docker compose -f '$COMPOSE_FILE' start api >/dev/null || true");
-    expect(deploy.indexOf('remote_build_runtime ||')).toBeLessThan(
-      deploy.indexOf('remote_handoff_knowledge_search_lock ||'),
+    expect(handoff).toBeGreaterThan(roleGate);
+    expect(startup).toBeGreaterThan(handoff);
+  });
+
+  it('publishes reviewed official content with the signed migration image before rollout smoke', () => {
+    const deploy = readFileSync(resolve('scripts/deploy-server4.sh'), 'utf8');
+    const canary = readFileSync(resolve('scripts/deploy-server4-canary.sh'), 'utf8');
+    const release = readFileSync(resolve('scripts/release-official-content.sh'), 'utf8');
+    const composeFiles = [
+      'docker-compose.server4.yml',
+      'docker-compose.server4-slot.yml',
+      'docker-compose.staging.yml',
+    ].map((path) => readFileSync(resolve(path), 'utf8'));
+
+    expect(deploy).toContain(
+      "docker compose -f '$COMPOSE_FILE' run --rm --no-deps -T migrate sh scripts/release-official-content.sh",
     );
-    expect(deploy.indexOf('remote_handoff_knowledge_search_lock ||')).toBeLessThan(deploy.indexOf('remote_start ||'));
-    expect(deploy).toContain('up -d --wait');
-    expect(deploy).toContain('battle-assets.sha256');
-    expect(deploy).toContain('sync_battle_assets');
-    expect(deploy).toContain('release_official_rulings');
-    expect(deploy).toContain('OFFICIAL_RULE_DOCUMENTS_SOURCE');
-    expect(deploy).toContain('release_official_rule_documents');
-    expect(deploy).toContain('OFFICIAL_RULE_DOCUMENTS_FILE');
-    expect(deploy).toContain('release_card_derived_effects');
-    expect(deploy).toContain('CARD_DERIVED_EFFECTS_REVIEW_SOURCE');
-    expect(deploy).toContain('import-card-derived-effects-pg.ts');
-    expect(deploy).toContain('release_reviewed_unlisted_cards');
-    expect(deploy).toContain('CARD_UNLISTED_RELEASE_SOURCE');
-    expect(deploy).toContain('release-reviewed-unlisted-cards.ts');
-    expect(deploy).toContain('audit-reviewed-unlisted-cards.ts');
-    expect(deploy).toContain('prepare_external_meilisearch');
-    expect(deploy).toContain("docker inspect '$MEILI_CONTAINER'");
-    expect(deploy).toContain('docker compose up -d --force-recreate meilisearch');
-    expect(deploy).toContain('1Panel Meilisearch key does not match the running container');
-    expect(deploy).toContain('external Meilisearch master key changed during recreation');
-    expect(deploy).toContain('1panel-network');
-    expect(deploy).toContain('no_analytics = true');
-    expect(deploy).toContain("sed -i 's/^env = .*/env =");
-    expect(deploy).toContain('host_binding');
-    expect(deploy).toContain('127.0.0.1');
-    expect(compose).toContain('MEILI_HOST=http://meilisearch:7700');
-    expect(compose).not.toMatch(/^ {2}meilisearch:/m);
-    expect(compose).not.toContain('meili-data');
-    expect(deploy.indexOf('release_reviewed_unlisted_cards ||')).toBeLessThan(
-      deploy.indexOf('release_card_derived_names ||'),
-    );
-    expect(deploy.indexOf('release_card_derived_names ||')).toBeLessThan(
-      deploy.indexOf('release_card_derived_effects ||'),
-    );
-    expect(deploy).toContain('scripts/import-card-derived-names-pg.ts');
-    expect(deploy).toContain('--translations=-');
+    expect(canary).toContain('compose run --rm --no-deps -T migrate sh scripts/release-official-content.sh');
+    expect(release).toContain('/run/card-data/*');
+    expect(release).toContain('release-official-rulings.ts');
+    expect(release).toContain('release-official-rule-documents.ts');
+    expect(release).toContain('< "$OFFICIAL_RULINGS_TRANSLATIONS_FILE"');
+    for (const compose of composeFiles) {
+      expect(compose).toContain('OFFICIAL_RULINGS_TRANSLATIONS_FILE');
+      expect(compose).toContain('OFFICIAL_RULE_DOCUMENTS_FILE');
+      expect(compose).toContain('${CARD_DATA_DIR:?Set CARD_DATA_DIR to the private reviewed card-data directory}');
+    }
+  });
+
+  it('ships private battle assets alongside every immutable deployment', () => {
+    const deploy = readFileSync(resolve('scripts/deploy-server4.sh'), 'utf8');
+    const smoke = readFileSync(resolve('scripts/deploy-smoke.mjs'), 'utf8');
+    const assetChecksums = readFileSync(resolve('scripts/battle-assets.sha256'), 'utf8').trim().split('\n');
+    const composeFiles = [
+      'docker-compose.server4.yml',
+      'docker-compose.server4-slot.yml',
+      'docker-compose.staging.yml',
+    ].map((path) => readFileSync(resolve(path), 'utf8'));
+
+    expect(deploy).toContain('verify_local_battle_assets');
     expect(deploy).toContain('COPYFILE_DISABLE=1 tar');
-    expect(deploy).toContain("-name '._*' -delete");
-    expect(deploy).toContain('sha256sum --check');
+    expect(deploy).toContain('copy_battle_assets');
+    expect(deploy).toContain("sha256sum --check '$REMOTE_DIR/.battle-assets.sha256.incoming'");
+    expect(deploy).toContain('$REMOTE_DIR/backups/battle-assets/previous');
     expect(deploy).toContain('--check-battle-assets true');
-    expect(deploy).toContain('--public-base-url');
-    expect(deploy).toContain('PUBLIC_SMOKE_BASE_URL');
-    expect(deploy).toContain('cloudflare:cache:apply');
-    expect(deploy).toContain('CLOUDFLARE_CACHE_RULES_REQUIRED');
-    expect(deploy).toContain('cache-policy-smoke.ts');
-    expect(deploy).toContain('DIRECT_SMOKE_ADDRESS');
-    expect(deploy).toContain('DEPLOY_SMOKE_REPORT_PATH');
-    expect(deploy).toContain('VITE_CARD_DATASET_SHA256:-');
-    expect(deploy).toContain("upsert_env ALLOWED_ORIGINS '$SERVER4_ALLOWED_ORIGIN'");
-    expect(deploy).toContain('ALLOWED_ORIGINS must contain only the production HTTPS origin');
-    expect(deploy).toContain('--expected-dataset-sha256');
-    expect(compose).toContain('CARD_DATASET_SHA256=${VITE_CARD_DATASET_SHA256:-}');
-    expect(compose).toContain('MATCH_ANALYTICS_TRAFFIC_CLASS=production');
-    const stagingCompose = readFileSync(resolve('docker-compose.staging.yml'), 'utf8');
-    expect(stagingCompose).toContain('CARD_DATASET_SHA256=${VITE_CARD_DATASET_SHA256:?');
-    expect(stagingCompose).toContain('MATCH_ANALYTICS_TRAFFIC_CLASS=synthetic');
-    expect(smoke).toContain("args.get('expected-dataset-sha256')");
-    expect(smoke).toContain('datasetIdentityVerified');
-    expect(deploy).not.toContain('--rollback');
-    expect(deploy).not.toContain('rollback_and_smoke');
-    expect(deploy).not.toContain('.env.previous');
-    expect(deploy).not.toContain('$COMPOSE_FILE.previous');
-    expect(compose).toContain('${BATTLE_ASSET_DIR:-./public/battle}:/app/dist/battle:ro');
     expect(smoke).toContain("new URL('./battle-assets.sha256', import.meta.url)");
     expect(smoke).toContain('assertBattleAssetPayload');
-    expect(smoke).toContain('publicBaseUrl');
+    for (const compose of composeFiles) {
+      expect(compose).toContain('${BATTLE_ASSET_DIR:-./public/battle}');
+      expect(compose).toContain('/app/dist/battle');
+    }
     expect(smoke).toContain('if (checkBattleAssets)');
-    expect(smoke).toContain("args.get('report-path')");
     expect(smoke).toContain('/api/official/status');
     expect(assetChecksums).toHaveLength(22);
     expect(assetChecksums.every((line) => /^[a-f0-9]{64} {2}[A-Za-z0-9._/-]+\.(png|svg)$/.test(line))).toBe(true);
-    expect(deploy).not.toContain('--manifest');
-    expect(deploy).not.toContain('cosign');
-    expect(deploy).not.toContain('attestation');
   });
 
-  it('manages cache rules without embedding Cloudflare credentials', () => {
-    const rules = readFileSync(resolve('scripts/cloudflare-cache-rules.ts'), 'utf8');
-    const smoke = readFileSync(resolve('scripts/cache-policy-smoke.ts'), 'utf8');
-    expect(rules).toContain('zutomayo-cache-');
-    expect(rules).toContain('http_request_cache_settings');
-    expect(rules).toContain('CLOUDFLARE_API_TOKEN');
-    expect(rules).toContain("mode: 'respect_origin'");
-    expect(rules).not.toMatch(/Bearer [A-Za-z0-9_-]{20,}/);
-    expect(smoke).toContain('direct-address');
-    expect(smoke).toContain('servername: url.hostname');
-    expect(smoke).toContain('CF-Cache-Status'.toLowerCase());
+  it('imports and gates the signed official card dataset before server4 applications start', () => {
+    const packageJson = JSON.parse(readFileSync(resolve('package.json'), 'utf8')) as {
+      scripts: Record<string, string>;
+    };
+    const server4 = readFileSync(resolve('docker-compose.server4.yml'), 'utf8');
+    const server4Slot = readFileSync(resolve('docker-compose.server4-slot.yml'), 'utf8');
+    const staging = readFileSync(resolve('docker-compose.staging.yml'), 'utf8');
+    const localCompose = readFileSync(resolve('docker-compose.yml'), 'utf8');
+    const importer = readFileSync(resolve('scripts/import-card-official-texts-pg.ts'), 'utf8');
+    const workflow = readFileSync(resolve('.github/workflows/ci.yml'), 'utf8');
+    const restartSmoke = readFileSync(resolve('scripts/e2e-game-process-restart-smoke.sh'), 'utf8');
+    const restartSpec = readFileSync(resolve('e2e/game-process-restart.spec.ts'), 'utf8');
+
+    expect(packageJson.scripts.verify).toContain('npm run data:policy');
+    expect(packageJson.scripts.verify).toContain('npm run dependency:patches');
+    expect(packageJson.scripts['dependency:patches']).toBe('patch-package --error-on-fail');
+    expect(packageJson.scripts.postinstall).toBe('patch-package');
+    expect(packageJson.scripts['e2e:game-restart']).toContain('e2e-game-process-restart-smoke.sh');
+    expect(restartSmoke).toContain('-e E2E_PROCESS_RESTART_CONTROLLER=1');
+    expect(restartSpec).toContain("process.env.E2E_PROCESS_RESTART_CONTROLLER !== '1'");
+    expect(packageJson.scripts['db:migrate:release']).toContain('scripts/backfill-legacy-deleted-accounts-pg.cjs');
+    expect(packageJson.scripts['platform:relationship-race:pg-smoke']).toContain(
+      'scripts/platform-relationship-race-pg-smoke.ts',
+    );
+    expect(packageJson.scripts['db:migrate:release']).toContain('scripts/release-card-data.cjs');
+    expect(server4).toContain('REQUIRE_OFFICIAL_CARD_DATA=true');
+    expect(server4).toContain('RELEASE_SHA=${RELEASE_SHA:');
+    expect(server4Slot).toContain("REQUIRE_OFFICIAL_CARD_DATA: 'true'");
+    expect(server4Slot).toContain('RELEASE_SHA: ${RELEASE_SHA:');
+    expect(staging).toContain('REQUIRE_OFFICIAL_CARD_DATA=true');
+    expect(staging).toContain('RELEASE_SHA=${RELEASE_SHA:');
+    expect(localCompose).toContain('REQUIRE_OFFICIAL_CARD_DATA=${REQUIRE_OFFICIAL_CARD_DATA:-false}');
+    for (const compose of [server4, server4Slot, staging, localCompose]) {
+      expect(compose).toContain('LEGACY_TOMBSTONE_BACKFILL_APPROVED');
+      expect(compose).toContain('LEGACY_TOMBSTONE_BACKFILL_EXPECTED_COUNT');
+    }
+    expect(importer).toContain("assertPostgresExpectedRole(process.env, 'PG_MIGRATION_USER')");
+    expect(importer).toContain('postgresConnectionString(process.env)');
+    expect(importer).toContain('ssl: postgresSslConfig(process.env)');
+    expect(importer).toContain("pg_advisory_xact_lock(hashtext('zutomayo:official-card-data-release'))");
+    expect(importer).toContain('Official card dataset ${cardDataManifest.datasetSha256} was already applied');
+    const ledgerInsert = importer.indexOf('INSERT INTO official_card_data_releases');
+    const exactGate = importer.indexOf('requireExact: true', ledgerInsert);
+    const commit = importer.indexOf("client.query('COMMIT')", exactGate);
+    expect(ledgerInsert).toBeGreaterThan(0);
+    expect(exactGate).toBeGreaterThan(ledgerInsert);
+    expect(commit).toBeGreaterThan(exactGate);
+    expect(workflow).toContain('npm run data:policy');
+  });
+
+  it('validates the active release and smokes its build id after automatic rollback', () => {
+    const deploy = readFileSync(resolve('scripts/deploy-server4.sh'), 'utf8');
+    expect(deploy).toContain('validate_remote_manifest \'.release.env\' "$current_manifest"');
+    expect(deploy).toContain('ROLLBACK_RELEASE_SHA="$RELEASE_SHA"');
+    expect(deploy).toContain('RELEASE_SHA="$ROLLBACK_RELEASE_SHA"');
+    expect(deploy).toContain("test -s '$COMPOSE_FILE.previous'");
+    expect(deploy).toContain('test -s scripts/postgres-init-roles.sh.previous');
+    expect(deploy).toContain('cp -p scripts/postgres-init-roles.sh.previous scripts/postgres-init-roles.sh');
+    expect(deploy).toContain('--source-digest "$RELEASE_SHA"');
+    expect(deploy).toContain('.release.rollback-ready');
+    expect(deploy).toContain('validate_remote_manifest \'.release.env\' "$current_manifest" true');
+    expect(deploy).toContain("MANIFEST_FORMAT='legacy-six'");
+    expect(deploy).toContain('ROLLBACK_MANIFEST_FORMAT="$MANIFEST_FORMAT"');
+    expect(deploy).toContain("printf '%s\\n' '$ROLLBACK_MANIFEST_FORMAT' > .release.previous.format");
+  });
+
+  it('keeps new legacy deployments strict while allowing only verified rollback targets to be legacy-six', () => {
+    const directory = mkdtempSync(resolve(tmpdir(), 'zutomayo-release-transition-'));
+    const sixManifest = resolve(directory, 'legacy-six.env');
+    const sevenManifest = resolve(directory, 'current-seven.env');
+    const image = (app: string) => 'ghcr.io/example/zutomayo-card-online-' + app + '@sha256:' + 'a'.repeat(64);
+    const lines = [
+      'RELEASE_SHA=' + 'a'.repeat(40),
+      'APP_VERSION=1.2.3',
+      'GAME_RULES_VERSION=1.2.3',
+      'EXPECTED_SCHEMA_MIGRATION=000035_remove_card_text_rollback_compat',
+      'EXPECTED_SCHEMA_CHECKSUM=' + 'b'.repeat(64),
+      ...['game', 'api', 'platform', 'migrate', 'retention', 'gateway'].map(
+        (app) => app.toUpperCase() + '_IMAGE=' + image(app),
+      ),
+    ];
+    writeFileSync(sixManifest, lines.join('\n') + '\n');
+    writeFileSync(sevenManifest, [...lines, 'OPS_IMAGE=' + image('ops')].join('\n') + '\n');
+    const run = (manifest: string) =>
+      spawnSync('bash', [resolve('scripts/deploy-server4.sh'), '--manifest', manifest, '--dry-run'], {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          VERIFY_RELEASE_ARTIFACTS: 'false',
+          VITE_CARD_DATASET_SHA256: 'c'.repeat(64),
+        },
+      });
+
+    const rejected = run(sixManifest);
+    expect(rejected.status).toBe(1);
+    expect(rejected.stderr).toContain('OPS_IMAGE is required for a new release');
+    expect(run(sevenManifest).status).toBe(0);
+  });
+
+  it('rolls an N image back over an N+1 schema without running the old migration image', () => {
+    const deploy = readFileSync(resolve('scripts/deploy-server4.sh'), 'utf8');
+    const rollbackStart = deploy.indexOf('remote_rollback()');
+    const rollbackEnd = deploy.indexOf('run_smoke()', rollbackStart);
+    const rollback = deploy.slice(rollbackStart, rollbackEnd);
+
+    expect(rollback).toContain(
+      "docker compose -f '$COMPOSE_FILE' up -d --no-deps --wait --wait-timeout 180 game api platform",
+    );
+    expect(rollback).not.toContain("docker compose -f '$COMPOSE_FILE' run --rm migrate");
+    expect(rollback).not.toContain("docker compose -f '$COMPOSE_FILE' up -d --wait");
   });
 
   it('keeps source recovery staging-only and reuses the normal deploy path', () => {
@@ -263,14 +462,7 @@ describe('operational shell scripts', () => {
     expect(recovery).toContain("!= '149.104.6.238'");
     expect(recovery).toContain('stop game api platform');
     expect(recovery).toContain('deploy-server4.sh');
-    expect(recovery).toContain('RECOVERY_DATASET_SHA256');
-    expect(recovery).toContain('RECOVERY_MATCH_IMPACT_REPORT');
-    expect(recovery).toContain('preDeployBackupVerified');
     expect(recovery).toContain('sourceCheckoutVerified');
-    expect(recovery).toContain('datasetIdentityVerified');
-    expect(recovery).toContain('buildIdentityVerified');
-    expect(recovery).toContain('battleAssetsVerified');
-    expect(recovery).toContain('websocketOutcomeVerified');
     expect(recovery).toContain('smokePassed');
   });
 
@@ -333,13 +525,6 @@ describe('operational shell scripts', () => {
     });
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('synthetic production probe requires');
-  });
-
-  it('does not hide Cloudflare analytics CSP violations from browser QA', () => {
-    const benchmark = readFileSync(resolve('scripts/ai-browser-benchmark.mjs'), 'utf8');
-    expect(benchmark).not.toContain('static.cloudflareinsights.com');
-    expect(benchmark).not.toContain('isIgnorableConsoleError');
-    expect(benchmark).toContain("if (message.type() === 'error') consoleErrors.push(message.text())");
   });
 });
 

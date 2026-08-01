@@ -136,6 +136,8 @@ export function HandZone({
               imageContext={variant === 'fan' ? 'hand' : 'thumbnail'}
               state={state}
               onActivate={onCardTap ? () => onCardTap(index) : undefined}
+              positionInSet={{ index, total: cards.length }}
+              ariaPressed={selectedIndex === index}
               tutId={card.defId}
             />
             {activeCostIndex === index && (variant === 'fan' || !costPopover) ? (

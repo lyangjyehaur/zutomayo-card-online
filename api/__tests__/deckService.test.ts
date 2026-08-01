@@ -5,6 +5,8 @@ type Queryable = {
   query: ReturnType<typeof vi.fn<(sql: string, params?: unknown[]) => Promise<{ rows: unknown[]; rowCount?: number }>>>;
 };
 
+const ACCOUNT_ROW_LOCK_SQL = 'SELECT id, deleted_at, elo, match_count, wins FROM users WHERE id = $1 FOR UPDATE';
+
 const require = createRequire(import.meta.url);
 const {
   consumeDeckReservation,
@@ -62,12 +64,26 @@ function poolResult(rows: unknown[] = [], rowCount = 1): Queryable {
 
 function poolWithKnownCards(cardIds: string[]): Queryable {
   return {
-    query: vi.fn(async (sql: string) => {
+    query: vi.fn(async (sql: string, params?: unknown[]) => {
+      if (sql === ACCOUNT_ROW_LOCK_SQL) {
+        return { rows: [{ id: params?.[0], deleted_at: null }], rowCount: 1 };
+      }
       if (sql.startsWith('SELECT id FROM cards')) {
         return { rows: [...new Set(cardIds)].map((id) => ({ id })), rowCount: cardIds.length };
       }
       return { rows: [], rowCount: 1 };
     }),
+  };
+}
+
+function connectedPool(handler: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[]; rowCount?: number }>): {
+  pool: Queryable & { connect: ReturnType<typeof vi.fn> };
+  client: Queryable & { release: ReturnType<typeof vi.fn> };
+} {
+  const client = { query: vi.fn(handler), release: vi.fn() };
+  return {
+    client,
+    pool: { query: vi.fn(), connect: vi.fn(async () => client) },
   };
 }
 
@@ -115,16 +131,44 @@ describe('deck service', () => {
 
   it('creates valid decks with generated ids and JSON card ids', async () => {
     const cardIds = makeCardIds();
-    const pool = poolWithKnownCards(cardIds);
+    const { pool, client } = connectedPool(async (sql, params) => {
+      if (sql === ACCOUNT_ROW_LOCK_SQL) return { rows: [{ id: params?.[0], deleted_at: null }], rowCount: 1 };
+      if (sql.startsWith('SELECT id FROM cards')) {
+        return { rows: [...new Set(cardIds)].map((id) => ({ id })), rowCount: cardIds.length };
+      }
+      return { rows: [], rowCount: 1 };
+    });
 
     await expect(createUserDeck(pool, 'u_1', { name: 'Deck', cardIds }, () => 'd_fixed')).resolves.toEqual({
       ok: true,
       body: { id: 'd_fixed', name: 'Deck', cardIds },
     });
-    expect(pool.query).toHaveBeenCalledWith(
+    expect(pool.query).not.toHaveBeenCalled();
+    expect(client.query).toHaveBeenCalledWith(
       'INSERT INTO decks (id, user_id, name, card_ids) VALUES ($1, $2, $3, $4::jsonb)',
       ['d_fixed', 'u_1', 'Deck', JSON.stringify(cardIds)],
     );
+    expect(client.query).toHaveBeenLastCalledWith('COMMIT');
+    expect(client.release).toHaveBeenCalledOnce();
+  });
+
+  it('rejects deck creation after the account tombstone is observed under lock', async () => {
+    const cardIds = makeCardIds();
+    const { pool, client } = connectedPool(async (sql, params) => {
+      if (sql === ACCOUNT_ROW_LOCK_SQL) {
+        return { rows: [{ id: params?.[0], deleted_at: '2026-07-15T00:00:00.000Z' }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+
+    await expect(createUserDeck(pool, 'u_deleted', { name: 'Deck', cardIds })).resolves.toEqual({
+      ok: false,
+      status: 409,
+      error: 'Account is deleted or unavailable',
+    });
+    expect(client.query.mock.calls.some(([sql]) => String(sql).startsWith('INSERT INTO decks'))).toBe(false);
+    expect(client.query).toHaveBeenLastCalledWith('ROLLBACK');
+    expect(client.release).toHaveBeenCalledOnce();
   });
 
   it('returns 400 for invalid create payloads before writing', async () => {
@@ -190,14 +234,15 @@ describe('deck service', () => {
 
   it('creates a short-lived reservation from a deck owned by the caller', async () => {
     const cardIds = makeCardIds();
-    const pool: Queryable = {
-      query: vi.fn(async (sql: string) => {
-        if (sql.includes('FROM decks')) {
-          return { rows: [{ id: 'd_1', card_ids: cardIds, updated_at: '2026-07-12T00:00:00.000Z' }], rowCount: 1 };
-        }
-        return { rows: [], rowCount: 1 };
-      }),
-    };
+    const { pool, client } = connectedPool(async (sql, params) => {
+      if (sql === ACCOUNT_ROW_LOCK_SQL) {
+        return { rows: [{ id: params?.[0], deleted_at: null }], rowCount: 1 };
+      }
+      if (sql.includes('FROM decks')) {
+        return { rows: [{ id: 'd_1', card_ids: cardIds, updated_at: '2026-07-12T00:00:00.000Z' }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 1 };
+    });
 
     await expect(reserveUserDeck(pool, 'u_1', 'd_1', 'rules-v1', () => 'dr_fixed', 60)).resolves.toMatchObject({
       ok: true,
@@ -209,7 +254,8 @@ describe('deck service', () => {
         expiresAt: expect.any(String),
       },
     });
-    expect(pool.query).toHaveBeenLastCalledWith(expect.stringContaining('INSERT INTO deck_reservations'), [
+    expect(pool.query).not.toHaveBeenCalled();
+    expect(client.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO deck_reservations'), [
       'dr_fixed',
       'u_1',
       'd_1',
@@ -218,6 +264,29 @@ describe('deck service', () => {
       JSON.stringify(cardIds),
       expect.any(Date),
     ]);
+    expect(client.query).toHaveBeenLastCalledWith('COMMIT');
+    expect(client.release).toHaveBeenCalledOnce();
+  });
+
+  it('rejects deck reservations for a tombstoned account before reading the deck', async () => {
+    const { pool, client } = connectedPool(async (sql, params) => {
+      if (sql === ACCOUNT_ROW_LOCK_SQL) {
+        return { rows: [{ id: params?.[0], deleted_at: '2026-07-15T00:00:00.000Z' }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 1 };
+    });
+
+    await expect(reserveUserDeck(pool, 'u_deleted', 'd_1', 'rules-v1')).resolves.toEqual({
+      ok: false,
+      status: 409,
+      error: 'Account is deleted or unavailable',
+    });
+    expect(client.query.mock.calls.some(([sql]) => String(sql).includes('FROM decks'))).toBe(false);
+    expect(client.query.mock.calls.some(([sql]) => String(sql).startsWith('INSERT INTO deck_reservations'))).toBe(
+      false,
+    );
+    expect(client.query).toHaveBeenLastCalledWith('ROLLBACK');
+    expect(client.release).toHaveBeenCalledOnce();
   });
 
   it('binds a reservation once and rejects ownership or seat replays', async () => {

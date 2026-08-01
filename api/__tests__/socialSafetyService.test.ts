@@ -2,6 +2,9 @@ import { createRequire } from 'node:module';
 import { describe, expect, it, vi } from 'vitest';
 
 const require = createRequire(import.meta.url);
+const { hashIdempotencyKey } = require('../relationshipOutbox.cjs') as {
+  hashIdempotencyKey: (value: string) => string;
+};
 const { blockUser, createFriendRequest, listBlocks, listFriendRequests, respondToFriendRequest, unblockUser } =
   require('../socialSafetyService.cjs') as Record<
     string,
@@ -11,7 +14,7 @@ const { blockUser, createFriendRequest, listBlocks, listFriendRequests, respondT
 function createPool(handler: (sql: string, params?: unknown[]) => { rows: Record<string, unknown>[] }) {
   return {
     query: vi.fn(async (sql: string, params?: unknown[]) => {
-      if (sql === 'SELECT * FROM users WHERE id = $1 FOR UPDATE') {
+      if (sql === 'SELECT id, deleted_at, elo, match_count, wins FROM users WHERE id = $1 FOR UPDATE') {
         return { rows: [{ id: String(params?.[0]), deleted_at: null }] };
       }
       return handler(sql, params);
@@ -65,7 +68,7 @@ describe('social safety service', () => {
     expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('VALUES ($1, $2), ($2, $1)'), ['u_sender', 'u_me']);
     expect(pool.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO relationship_change_outbox'),
-      expect.arrayContaining(['friend_request:9:accepted']),
+      expect.arrayContaining([hashIdempotencyKey('friend_request:9:accepted')]),
     );
   });
 
@@ -107,7 +110,7 @@ describe('social safety service', () => {
     expect(pool.query).toHaveBeenCalledWith('COMMIT');
     expect(pool.query).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO relationship_change_outbox'),
-      expect.arrayContaining(['block_created:u_me:u_target:2026-07-13T00:00:00.000Z']),
+      expect.arrayContaining([expect.stringMatching(/^[a-f0-9]{64}$/)]),
     );
   });
 

@@ -129,17 +129,17 @@ function CardBrowserDetailContent({
 }: CardBrowserDetailContentProps & { showTitle?: boolean }) {
   return (
     <>
-      {showTitle && <div className="truncate font-display text-sm font-bold text-content-primary/90">{title}</div>}
+      {showTitle && <div className="truncate font-display text-sm font-bold text-content-primary">{title}</div>}
       {meta && (
-        <div className="mt-0.5 font-mono text-minutia uppercase tracking-normal text-accent-primary/50">{meta}</div>
+        <div className="mt-0.5 font-mono text-minutia uppercase tracking-normal text-accent-primary">{meta}</div>
       )}
       {stats && (
-        <div className="mt-2.5 flex flex-wrap gap-x-3 gap-y-1 font-mono text-caption uppercase tracking-normal">
+        <div className="mt-2.5 flex flex-wrap gap-x-3 gap-y-1 font-mono text-caption uppercase tracking-normal text-content-primary">
           {stats}
         </div>
       )}
-      {effect && <p className="mt-2.5 text-body-sm leading-relaxed text-content-primary/80">{effect}</p>}
-      {footer && <div className="mt-2 font-mono text-minutia text-content-muted">{footer}</div>}
+      {effect && <p className="mt-2.5 text-body-sm leading-relaxed text-content-primary">{effect}</p>}
+      {footer && <div className="mt-2 font-mono text-minutia text-content-primary">{footer}</div>}
     </>
   );
 }

@@ -1,7 +1,8 @@
 /* global module, require */
 
 const crypto = require('crypto');
-const { createUserDeck, validateDeckInput } = require('./deckService.cjs');
+const { acquireAccountMutationLocks } = require('./accountMutationLock.cjs');
+const { createUserDeckInTransaction, validateDeckInput } = require('./deckService.cjs');
 
 const DEFAULT_PAGE_LIMIT = 24;
 const MAX_PAGE_LIMIT = 48;
@@ -328,6 +329,7 @@ async function copyDeckShare(
   generateDeckId = () => `d_${crypto.randomBytes(8).toString('hex')}`,
 ) {
   return withTransaction(pool, async (client) => {
+    await acquireAccountMutationLocks(client, [userId]);
     const share = await readInteractableShare(client, userId, shareId);
     if (!share) return { ok: false, status: 404, error: 'Deck share not found' };
 
@@ -358,7 +360,7 @@ async function copyDeckShare(
 
     const requestedName = typeof input.name === 'string' ? input.name.trim() : '';
     const copyName = (requestedName || `${share.name} Copy`).slice(0, 60);
-    const created = await createUserDeck(
+    const created = await createUserDeckInTransaction(
       client,
       userId,
       { name: copyName, cardIds: cardIdsFromRow(share) },

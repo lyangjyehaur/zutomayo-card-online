@@ -1,0 +1,70 @@
+services:
+  postgres-wal-operational-smoke:
+    image: ${OPS_IMAGE:?Set OPS_IMAGE to a verified immutable @sha256 digest}
+    profiles: [postgres-ops]
+    user: '70:70'
+    group_add:
+      - ${POSTGRES_OPS_SECRETS_GID:?Set the host group id allowed to read PostgreSQL ops secrets}
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=33554432,mode=0700,uid=70,gid=70
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    mem_limit: 256m
+    cpus: 0.5
+    environment:
+      PGHOST: ${PG_DEPLOY_GATE_HOST:-postgresql}
+      PGPORT: ${PG_DEPLOY_GATE_PORT:-5432}
+      PGDATABASE: ${PG_WAL_OPERATOR_DATABASE:?Set PG_WAL_OPERATOR_DATABASE to the application database}
+      PG_WAL_PROBE_USER: ${PG_WAL_OPERATOR_USER:?Set PG_WAL_OPERATOR_USER in .env}
+      PGSSLMODE: verify-full
+      PGSSLROOTCERT: /run/secrets/postgres-ca.crt
+      PGPASSFILE: /run/secrets/postgres-operator.pgpass
+      PG_WAL_RESTORE_COMMAND: /opt/zutomayo/scripts/pg-wal-restore.sh
+      PG_WAL_SWITCH_FUNCTION: zutomayo_ops.switch_wal
+      PG_WAL_OFFSITE_URI: ${PG_WAL_OFFSITE_URI:?Set the encrypted WAL S3 URI}
+      PG_BACKUP_AGE_IDENTITY_FILE: /run/secrets/wal-age-identity
+      AWS_SHARED_CREDENTIALS_FILE: /run/secrets/wal-s3-credentials
+      AWS_PROFILE: ${PG_WAL_S3_PROFILE:-default}
+      AWS_REGION: ${PG_WAL_S3_REGION:?Set the WAL object-store region}
+      AWS_DEFAULT_REGION: ${PG_WAL_S3_REGION:?Set the WAL object-store region}
+      AWS_ENDPOINT_URL: ${PG_WAL_S3_ENDPOINT:-}
+      AWS_EC2_METADATA_DISABLED: 'true'
+      POSTGRES_OPS_SECRETS_GID: ${POSTGRES_OPS_SECRETS_GID:?Set the PostgreSQL ops secrets group id}
+      PG_WAL_EXPECTED_ARCHIVE_COMMAND_FRAGMENT: ${PG_WAL_EXPECTED_ARCHIVE_COMMAND_FRAGMENT:-pg-wal-archive.sh}
+      PG_WAL_PROBE_TIMEOUT_SECONDS: ${PG_WAL_PROBE_TIMEOUT_SECONDS:-60}
+      PG_WAL_PROBE_POLL_SECONDS: ${PG_WAL_PROBE_POLL_SECONDS:-2}
+    volumes:
+      - type: bind
+        source: ${PG_CA_FILE:?Set PG_CA_FILE to the PostgreSQL CA file}
+        target: /run/secrets/postgres-ca.crt
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${PG_WAL_OPERATOR_PGPASS_FILE:?Set the root-owned operator pgpass file}
+        target: /run/secrets/postgres-operator.pgpass
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${PG_WAL_AGE_IDENTITY_FILE:?Set the root-owned age identity file}
+        target: /run/secrets/wal-age-identity
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${PG_WAL_S3_CREDENTIALS_FILE:?Set the root-owned S3 credentials file}
+        target: /run/secrets/wal-s3-credentials
+        read_only: true
+        bind:
+          create_host_path: false
+    networks:
+      - 1panel-network
+    restart: 'no'
+
+networks:
+  1panel-network:
+    external: true

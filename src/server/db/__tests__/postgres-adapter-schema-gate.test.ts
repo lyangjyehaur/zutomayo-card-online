@@ -4,28 +4,28 @@ import { PostgresAdapter } from '../postgres-adapter';
 
 const require = createRequire(import.meta.url);
 const {
-  REQUIRED_RUNTIME_TABLES,
-  REQUIRED_RUNTIME_COLUMNS,
-  REQUIRED_RUNTIME_COLUMN_CONTRACTS,
-  REQUIRED_RUNTIME_CONSTRAINTS,
-  REQUIRED_RUNTIME_INDEXES,
+  REQUIRED_BOARDGAME_RUNTIME_TABLES,
+  REQUIRED_BOARDGAME_RUNTIME_COLUMNS,
+  REQUIRED_BOARDGAME_RUNTIME_COLUMN_CONTRACTS,
+  REQUIRED_BOARDGAME_RUNTIME_CONSTRAINTS,
+  REQUIRED_BOARDGAME_RUNTIME_INDEXES,
 } = require('../../../../api/schemaGate.cjs') as {
-  REQUIRED_RUNTIME_TABLES: string[];
-  REQUIRED_RUNTIME_COLUMNS: Record<string, string[]>;
-  REQUIRED_RUNTIME_COLUMN_CONTRACTS: Array<{
+  REQUIRED_BOARDGAME_RUNTIME_TABLES: string[];
+  REQUIRED_BOARDGAME_RUNTIME_COLUMNS: Record<string, string[]>;
+  REQUIRED_BOARDGAME_RUNTIME_COLUMN_CONTRACTS: Array<{
     tableName: string;
     columnName: string;
     udtName: string;
     nullable: boolean;
     defaultToken: string | null;
   }>;
-  REQUIRED_RUNTIME_CONSTRAINTS: Array<{
+  REQUIRED_BOARDGAME_RUNTIME_CONSTRAINTS: Array<{
     tableName: string;
     constraintName?: string;
     constraintType: string;
     fragments: string[];
   }>;
-  REQUIRED_RUNTIME_INDEXES: Array<{ tableName: string; indexName: string; fragments: string[] }>;
+  REQUIRED_BOARDGAME_RUNTIME_INDEXES: Array<{ tableName: string; indexName: string; fragments: string[] }>;
 };
 
 describe('PostgresAdapter production schema gate', () => {
@@ -38,15 +38,15 @@ describe('PostgresAdapter production schema gate', () => {
         .mockResolvedValueOnce({ rows: [{ '?column?': 1 }] })
         .mockResolvedValueOnce({ rows: [{ sha256: checksum }] })
         .mockResolvedValueOnce({
-          rows: REQUIRED_RUNTIME_TABLES.map((table_name) => ({ table_name, present: true })),
+          rows: REQUIRED_BOARDGAME_RUNTIME_TABLES.map((table_name) => ({ table_name, present: true })),
         })
         .mockResolvedValueOnce({
-          rows: Object.entries(REQUIRED_RUNTIME_COLUMNS).flatMap(([table_name, columns]) =>
+          rows: Object.entries(REQUIRED_BOARDGAME_RUNTIME_COLUMNS).flatMap(([table_name, columns]) =>
             columns.map((column_name) => ({ table_name, column_name, present: true })),
           ),
         })
         .mockResolvedValueOnce({
-          rows: REQUIRED_RUNTIME_COLUMN_CONTRACTS.map((contract) => ({
+          rows: REQUIRED_BOARDGAME_RUNTIME_COLUMN_CONTRACTS.map((contract) => ({
             table_name: contract.tableName,
             column_name: contract.columnName,
             udt_name: contract.udtName,
@@ -56,7 +56,7 @@ describe('PostgresAdapter production schema gate', () => {
           })),
         })
         .mockResolvedValueOnce({
-          rows: REQUIRED_RUNTIME_CONSTRAINTS.map((contract) => ({
+          rows: REQUIRED_BOARDGAME_RUNTIME_CONSTRAINTS.map((contract) => ({
             table_name: contract.tableName,
             constraint_name: contract.constraintName || `${contract.tableName}_${contract.constraintType}`,
             constraint_type: contract.constraintType,
@@ -64,7 +64,7 @@ describe('PostgresAdapter production schema gate', () => {
           })),
         })
         .mockResolvedValueOnce({
-          rows: REQUIRED_RUNTIME_INDEXES.map((contract) => ({
+          rows: REQUIRED_BOARDGAME_RUNTIME_INDEXES.map((contract) => ({
             table_name: contract.tableName,
             index_name: contract.indexName,
             index_definition: contract.fragments.join(' '),
@@ -86,6 +86,9 @@ describe('PostgresAdapter production schema gate', () => {
       '000015_game_seats_result_outbox',
     ]);
     expect(client.query.mock.calls[2]?.[1]?.[0]).toEqual(
+      expect.arrayContaining(['users', 'deck_reservations', 'bjg_matches', 'bjg_match_seats']),
+    );
+    expect(client.query.mock.calls[2]?.[1]?.[0]).not.toEqual(
       expect.arrayContaining(['account_deletion_requests', 'legal_hold_objects', 'chat_messages', 'user_blocks']),
     );
     expect(client.query.mock.calls.every(([sql]) => !/^\s*(CREATE|ALTER|DROP)/i.test(String(sql)))).toBe(true);

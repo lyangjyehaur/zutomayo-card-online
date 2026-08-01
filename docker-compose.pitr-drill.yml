@@ -1,0 +1,117 @@
+services:
+  artifact-init:
+    image: ${PG_PITR_DRILL_IMAGE:?Set PG_PITR_DRILL_IMAGE to an immutable PostgreSQL @sha256 reference}
+    user: '0:0'
+    entrypoint: ['/bin/sh', '-eu', '-c']
+    command:
+      - |
+        chown postgres:${PG_PITR_ARTIFACT_GID:?Set PG_PITR_ARTIFACT_GID} /artifacts
+        chmod 0770 /artifacts
+    volumes:
+      - ${PG_PITR_DRILL_ARTIFACT_DIR:?Set PG_PITR_DRILL_ARTIFACT_DIR}:/artifacts
+    networks:
+      - pitr
+    restart: 'no'
+
+  archive-init:
+    image: ${PG_PITR_DRILL_IMAGE:?Set PG_PITR_DRILL_IMAGE to an immutable PostgreSQL @sha256 reference}
+    user: '0:0'
+    entrypoint: ['/bin/sh', '-eu', '-c']
+    command:
+      - |
+        chown postgres:postgres /pitr-wal
+        chmod 0700 /pitr-wal
+    volumes:
+      - pitr-wal:/pitr-wal
+    networks:
+      - pitr
+    restart: 'no'
+
+  source:
+    image: ${PG_PITR_DRILL_IMAGE:?Set PG_PITR_DRILL_IMAGE to an immutable PostgreSQL @sha256 reference}
+    command:
+      - postgres
+      - -c
+      - wal_level=replica
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_timeout=2s
+      - -c
+      - archive_command=test ! -f /pitr-wal/%f && cp %p /pitr-wal/%f
+    environment:
+      POSTGRES_DB: zutomayo_pitr
+      POSTGRES_HOST_AUTH_METHOD: trust
+      POSTGRES_USER: postgres
+    depends_on:
+      artifact-init:
+        condition: service_completed_successfully
+      archive-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready --username postgres --dbname zutomayo_pitr']
+      interval: 2s
+      timeout: 2s
+      retries: 30
+      start_period: 5s
+    volumes:
+      - pitr-source:/var/lib/postgresql/data
+      - pitr-wal:/pitr-wal
+      - ./scripts/pg-pitr-source-init.sh:/docker-entrypoint-initdb.d/10-pitr-replication.sh:ro
+    networks:
+      - pitr
+    restart: 'no'
+
+  migrate:
+    image: ${PG_PITR_DRILL_MIGRATE_IMAGE:?Set PG_PITR_DRILL_MIGRATE_IMAGE to the release manifest digest}
+    command: ['npm', 'run', 'db:migrate:release']
+    environment:
+      DATABASE_URL: ''
+      EXPECTED_SCHEMA_CHECKSUM: ${EXPECTED_SCHEMA_CHECKSUM:?Set EXPECTED_SCHEMA_CHECKSUM}
+      EXPECTED_SCHEMA_MIGRATION: ${EXPECTED_SCHEMA_MIGRATION:?Set EXPECTED_SCHEMA_MIGRATION}
+      NODE_ENV: test
+      PG_DATABASE: zutomayo_pitr
+      PG_HOST: source
+      PG_MIGRATION_USER: postgres
+      PG_PASSWORD: ''
+      PG_PORT: '5432'
+      PGSSLMODE: disable
+      PG_USER: postgres
+      REQUIRE_APP_ROLE_GATE: 'false'
+    depends_on:
+      source:
+        condition: service_healthy
+    networks:
+      - pitr
+    restart: 'no'
+
+  drill:
+    image: ${PG_PITR_DRILL_IMAGE:?Set PG_PITR_DRILL_IMAGE to an immutable PostgreSQL @sha256 reference}
+    user: postgres
+    entrypoint: ['/bin/bash', '/workspace/scripts/pg-pitr-drill.sh', '__worker']
+    environment:
+      EXPECTED_SCHEMA_CHECKSUM: ${EXPECTED_SCHEMA_CHECKSUM:?Set EXPECTED_SCHEMA_CHECKSUM}
+      EXPECTED_SCHEMA_MIGRATION: ${EXPECTED_SCHEMA_MIGRATION:?Set EXPECTED_SCHEMA_MIGRATION}
+      PG_PITR_DRILL_IMAGE: ${PG_PITR_DRILL_IMAGE:?Set PG_PITR_DRILL_IMAGE}
+      PG_PITR_DRILL_MIGRATE_IMAGE: ${PG_PITR_DRILL_MIGRATE_IMAGE:?Set PG_PITR_DRILL_MIGRATE_IMAGE}
+      PG_PITR_RUN_ID: ${PG_PITR_RUN_ID:?Set PG_PITR_RUN_ID}
+      RELEASE_SHA: ${RELEASE_SHA:?Set RELEASE_SHA to the full release commit SHA}
+    depends_on:
+      source:
+        condition: service_healthy
+    volumes:
+      - ./scripts/pg-pitr-drill.sh:/workspace/scripts/pg-pitr-drill.sh:ro
+      - ${PG_PITR_DRILL_ARTIFACT_DIR:?Set PG_PITR_DRILL_ARTIFACT_DIR}:/artifacts
+      - pitr-wal:/pitr-wal:ro
+    networks:
+      - pitr
+    init: true
+    restart: 'no'
+
+networks:
+  pitr:
+    internal: true
+
+volumes:
+  pitr-source:
+  pitr-wal:

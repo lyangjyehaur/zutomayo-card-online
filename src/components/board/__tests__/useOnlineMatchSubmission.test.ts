@@ -64,7 +64,12 @@ describe('useOnlineMatchSubmission helpers', () => {
 
   it('uses authoritative game timestamps for duration after remount or reconnect', () => {
     const G = gameState({ matchStartedAt: 10_000, matchEndedAt: 73_500 });
-    expect(matchDurationSeconds(G, 999_999)).toBe(63.5);
+    expect(matchDurationSeconds(G, 999_999)).toBe(63);
+  });
+
+  it('clamps invalid and oversized match durations to the API contract', () => {
+    expect(matchDurationSeconds(gameState({ matchStartedAt: 20_000, matchEndedAt: 10_000 }))).toBe(0);
+    expect(matchDurationSeconds(gameState({ matchStartedAt: 1, matchEndedAt: 172_800_001 }))).toBe(86_400);
   });
 
   it('restores the exact rated result after the result screen remounts', () => {

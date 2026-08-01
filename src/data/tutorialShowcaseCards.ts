@@ -114,6 +114,14 @@ export const TUTORIAL_SHOWCASE_CARDS = {
 
 export type TutorialShowcaseCardId = keyof typeof TUTORIAL_SHOWCASE_CARDS;
 
+export const TUTORIAL_CHAPTER_CARD_ASSETS = {
+  '2nd_40': '/tutorial/cards/2nd_40.jpg',
+  '1st_100': '/tutorial/cards/1st_100.jpg',
+  '2nd_86': '/tutorial/cards/2nd_86.jpg',
+} as const;
+
+export type TutorialChapterCardId = keyof typeof TUTORIAL_CHAPTER_CARD_ASSETS;
+
 type TutorialShowcaseLocale = 'zh-TW' | 'zh-HK' | 'zh-CN' | 'ja' | 'en' | 'ko';
 
 export const TUTORIAL_SHOWCASE_CARD_TEXTS = {

@@ -67,6 +67,7 @@ import {
   normalizeGameOverWinner,
   useOnlineMatchSubmission,
 } from './board/useOnlineMatchSubmission';
+import { handSelectionResetKey } from './board/handSelection';
 import { getChoiceInstruction, getPhaseInstruction } from './board/phaseInstruction';
 import { shouldRevealCardsInOpponentHand } from './board/revealedHandPresentation';
 import { battleCardBlockReason, deriveBattleActionAvailability } from './board/actionAvailability';
@@ -521,7 +522,7 @@ function LogBreakdown({ breakdown }: { breakdown: HpChangeBreakdown }) {
         const valueDisplay = line.value.startsWith('board.') ? t(line.value as never) : line.value;
         return (
           <div key={idx} className="flex items-baseline gap-1 text-micro text-content-muted">
-            <span className="text-content-muted">{t(line.label as never)}:</span>
+            <span>{t(line.label as never)}:</span>
             {line.cardDefId ? (
               <LogCardChip cardDefId={line.cardDefId} />
             ) : (
@@ -921,6 +922,8 @@ function MulliganScreen({
                   state={done ? 'disabled' : selected.includes(index) ? 'selected' : 'idle'}
                   onActivate={done ? undefined : () => activateCard(card, index)}
                   onInspect={() => focusCard(card)}
+                  positionInSet={{ index, total: G.players[me].hand.length }}
+                  ariaPressed={selected.includes(index)}
                 />
                 <CardCostTag card={card} />
               </div>
@@ -1820,7 +1823,7 @@ function BattleLogSidebarPanel({ G, compact = false }: { G: GameState; compact?:
   return (
     <div className="battle-log-panel flex min-h-0 flex-1 flex-col rounded-sm bg-surface-base p-4 ring-1 ring-content-primary/10">
       <div className="mb-3 flex items-center justify-between">
-        <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">
+        <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary">
           {t('board.panel.log')}
         </span>
         <span className="size-1.5 animate-pulse rounded-full bg-accent-action" />
@@ -2198,6 +2201,13 @@ function BattleBoard({
   const [selectedPendingChoiceOptions, setSelectedPendingChoiceOptions] = useState<string[]>([]);
   const [detailSheetOpen, setDetailSheetOpen] = useState(false);
   const [zoneSheet, setZoneSheet] = useState<{ kind: 'abyss' | 'power'; owner: PlayerIndex } | null>(null);
+  const selectionResetKey = handSelectionResetKey({
+    step: G.step,
+    turnNumber: G.turnNumber,
+    ready: G.ready,
+    playerIndex: meIndex,
+    playerID: playerID ?? null,
+  });
   const revealedHandChoice = G.pendingChoice?.type === 'acknowledgeRevealedHand' ? G.pendingChoice : undefined;
   const revealedCardSourceZone = revealedHandChoice?.payload.sourceZone ?? 'hand';
   const revealCardsInOpponentHand = Boolean(
@@ -2218,7 +2228,6 @@ function BattleBoard({
     automaticEffectIndex === undefined ? undefined : G.pendingEffects[meIndex][automaticEffectIndex];
   const awaitingPlayers = getPlayersAwaitingAction(G);
   const awaitingPlayersKey = awaitingPlayers.join(',');
-  const meReady = G.ready[meIndex];
   useEffect(() => {
     if (!reviewingRevealedOpponentHand) {
       setDesktopHandRevealReady(false);
@@ -2398,7 +2407,7 @@ function BattleBoard({
   useEffect(() => {
     setSelectedHandIndex(null);
     setInteractionMessage('');
-  }, [G.step, G.turnNumber, meReady, meIndex]);
+  }, [selectionResetKey]);
 
   useEffect(() => {
     if (focusedCard || me.hand.length === 0) return;

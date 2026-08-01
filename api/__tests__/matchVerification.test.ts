@@ -87,10 +87,12 @@ describe('verifyBoardgameMatchResult', () => {
   });
 
   it('rejects missing, unfinished, mismatched, and unbound source matches', async () => {
-    await expect(verifyBoardgameMatchResult(poolWithRows([]).pool, 'missing', 0, 'u_0')).resolves.toMatchObject({
+    const missing = poolWithRows([]);
+    await expect(verifyBoardgameMatchResult(missing.pool, 'missing', 0, 'u_0')).resolves.toMatchObject({
       ok: false,
       status: 404,
     });
+    expect(missing.query).toHaveBeenCalledWith(expect.stringContaining('FOR SHARE OF m'), ['missing']);
 
     await expect(
       verifyBoardgameMatchResult(

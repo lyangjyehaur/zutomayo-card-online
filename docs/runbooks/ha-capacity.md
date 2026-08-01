@@ -18,15 +18,34 @@
 
 目前預設每個 replica 的最壞連線預算如下，若調整 pool 必須同步更新此表：
 
-| Service          | 預設 pool 上限 / replica | 備註                                          |
-| ---------------- | -----------------------: | --------------------------------------------- |
-| API              |                       20 | `PG_POOL_MAX`                                 |
-| Game match state |                       20 | `PostgresAdapter`, `PG_POOL_MAX`              |
-| Game card loader |                        5 | 獨立 pool                                     |
-| Platform stores  |                       15 | friend/participant/chat 各 5；目前為三個 pool |
-| Platform health  |                        1 | 獨立 readiness pool                           |
+| Service                    | 預設 pool 上限 / replica | 備註                                |
+| -------------------------- | -----------------------: | ----------------------------------- |
+| API                        |                       20 | `PG_POOL_MAX`                       |
+| Game match state           |                       20 | `PostgresAdapter`, `PG_POOL_MAX`    |
+| Game card loader           |                        5 | `GAME_CARD_PG_POOL_MAX`，預設最多 5 |
+| Platform auth/schema       |                        8 | `PLATFORM_AUTH_DB_POOL_MAX`         |
+| Platform friend store      |                        5 | `PLATFORM_PG_POOL_MAX`              |
+| Platform block store       |                        5 | `PLATFORM_PG_POOL_MAX`              |
+| Platform participant store |                        5 | `PLATFORM_PG_POOL_MAX`              |
+| Platform chat preview      |                        5 | `PLATFORM_PG_POOL_MAX`              |
 
-兩個 API、game、platform replicas 在預設值下最多需要 `2 * (20 + 25 + 16) = 122` 條應用連線，尚未包含 migration/exporter/管理保留。未部署 PgBouncer 前，不應直接用 PostgreSQL 預設 100 connections 啟動這個拓撲。
+兩個 API、game、platform replicas 在預設值下最多需要 `2 * (20 + 25 + 28) = 146` 條應用連線，尚未包含 migration/exporter/管理保留。未部署 PgBouncer 前，不應直接用 PostgreSQL 預設 100 connections 啟動這個拓撲。
+
+### server4 controlled-beta 例外預算
+
+[`docker-compose.server4-slot.yml`](../../docker-compose.server4-slot.yml) 為現有 `max_connections=100` 的單機 controlled-beta 明確降低 pool，並由 container labels 宣告 reservation：
+
+| 每個 slot 的服務   | replicas | 每 replica 上限 | slot 小計 |
+| ------------------ | -------: | --------------: | --------: |
+| Game web           |        2 |               3 |         6 |
+| API web            |        2 |               2 |         4 |
+| Platform p1/p2     |        2 |               5 |        10 |
+| Stable game worker |        1 |               3 |         3 |
+| Stable API worker  |        1 |               2 |         2 |
+
+一個 web slot 是 20 connections；只有 stable slot 擁有的兩個 worker 再保留 5。Blue + green + 單一 worker owner 的宣告上限為 45。`scripts/deploy-server4-canary.sh` 在 migration 或啟 worker 前會讀取 PostgreSQL 的真實 max/reserved/current connections、既有 managed labels 與 legacy game/API 的 45-connection reservation，再額外保留 2 條 transient 連線及至少 20 條事故操作 headroom。它刻意把目前開啟的已知連線和宣告 pool 上限重複計算，寧可保守阻擋。
+
+2026-07-14 server4 唯讀 preflight：`max_connections=100`、`superuser_reserved_connections=3`、7 條 database connections。Bootstrap blue web slot 的保守投影為 `7 current + 45 legacy + 20 blue + 2 transient + 20 headroom = 94 / 97 usable`；legacy 還在時啟 worker 或第二個 warm slot會被 gate 阻擋。OpenResty 切到 gateway、停止 legacy game/API 後，才能把 workers 交給 blue，之後才允許 stage green。這是單機 beta envelope，不等於上述 managed multi-AZ production 門檻。
 
 ### Redis
 

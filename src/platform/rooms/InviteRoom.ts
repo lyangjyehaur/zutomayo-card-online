@@ -1,4 +1,5 @@
 import { Room, type AuthContext } from '@colyseus/core';
+import { createEmptyPlatformBlockStore, type PlatformBlockStore } from '../blockStore';
 import { createEmptyPlatformFriendStore, type PlatformFriendStore } from '../friendStore';
 import { platformLogger as logger } from '../logger';
 import { createEmptyPlatformMatchParticipantStore, type PlatformMatchParticipantStore } from '../matchParticipantStore';
@@ -39,6 +40,7 @@ export function parseFriendInviteId(inviteId: string): { inviterUserId: string; 
 
 export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: PlatformClient }> {
   static friendStore: PlatformFriendStore = createEmptyPlatformFriendStore();
+  static blockStore: PlatformBlockStore = createEmptyPlatformBlockStore();
   static enforceFriendship = false;
   private static participantStore: PlatformMatchParticipantStore = createEmptyPlatformMatchParticipantStore();
   private static readonly activeRooms = new Set<InviteRoom>();
@@ -55,10 +57,15 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
   private inviter?: PlatformClientProfile;
   private createdAt = Date.now();
   private expiresAt = this.createdAt + INVITE_TTL_MS;
+  private finalRelayInFlight = false;
 
   static configureFriendStore(friendStore: PlatformFriendStore, options: { enforceFriendship?: boolean } = {}): void {
     InviteRoom.friendStore = friendStore;
     InviteRoom.enforceFriendship = options.enforceFriendship === true;
+  }
+
+  static configureBlockStore(blockStore: PlatformBlockStore | null): void {
+    InviteRoom.blockStore = blockStore ?? createEmptyPlatformBlockStore();
   }
 
   static configureParticipantStore(store: PlatformMatchParticipantStore | null): void {
@@ -121,17 +128,7 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
     });
 
     this.onMessage<BoardgameMatchReadyMessage>('boardgameMatchReady', async (client, message) => {
-      if (!this.inviter || client.sessionId !== this.inviter.sessionId) return;
-      if (this.status !== 'accepted') return;
-      const boardgameMatchID = optionalText(message.boardgameMatchID, 128);
-      if (!boardgameMatchID || this.boardgameMatchID) return;
-      this.boardgameMatchID = boardgameMatchID;
-      this.roomCode = this.roomCode ?? boardgameMatchID;
-      this.status = 'finished';
-      await this.recordMatchProvenance(boardgameMatchID);
-      await this.refreshMetadata();
-      this.broadcast('boardgameMatchReady', { boardgameMatchID });
-      this.broadcastSnapshot();
+      await this.finishBoardgameMatch(client, message);
     });
 
     await this.refreshMetadata();
@@ -155,16 +152,20 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
     const auth = await authenticatePlatformClientCurrent(options, context);
     if (!auth.authenticated) throw new Error('Authentication required');
     if (!this.isJoinableStatus(options.status)) throw new Error('Invite is not joinable');
-    const inviteId = optionalText(options.inviteId, 128);
+    const suppliedInviteId = optionalText(options.inviteId, 128);
+    const inviteId = suppliedInviteId ?? this.inviteId;
     const friendInvite = inviteId ? parseFriendInviteId(inviteId) : null;
     if (!inviteId || !friendInvite) throw new Error('Invalid invite id');
-    if (this.inviteId && inviteId !== this.inviteId) throw new Error('Invite access denied');
+    if (suppliedInviteId && this.inviteId && suppliedInviteId !== this.inviteId) {
+      throw new Error('Invite access denied');
+    }
     const targetUserId = optionalText(options.targetUserId, 128);
     if (targetUserId && targetUserId !== friendInvite.targetUserId) throw new Error('Invalid invite target');
     if (auth.userId !== friendInvite.inviterUserId && auth.userId !== friendInvite.targetUserId) {
       throw new Error('Invite access denied');
     }
     await this.assertFriendInviteAllowed(auth.userId, friendInvite);
+    await this.assertFriendInviteNotBlocked(friendInvite);
     return { ...auth, role: 'player' };
   }
 
@@ -185,8 +186,12 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
       role: 'player',
       joinedAt: Date.now(),
     };
-    if (reconnectingInviter) recordPlatformReconnect('invite');
-    if (!this.inviter && this.canBecomeInviter(client.userData)) this.inviter = client.userData;
+    if (reconnectingInviter) {
+      recordPlatformReconnect('invite');
+      this.inviter = client.userData;
+    } else if (!this.inviter && this.canBecomeInviter(client.userData)) {
+      this.inviter = client.userData;
+    }
     await this.refreshMetadata();
     this.clock.setTimeout(() => client.send('inviteSnapshot', this.snapshot()), 50);
     const readyBoardgameMatchID = this.status === 'finished' ? this.boardgameMatchID : undefined;
@@ -209,6 +214,12 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
         await this.cancel('inviter_left');
         return;
       }
+    }
+
+    if (client.userData && this.isInviter(client.userData) && this.inviter?.sessionId !== client.sessionId) {
+      await this.refreshMetadata();
+      this.broadcastSnapshot();
+      return;
     }
 
     await this.refreshMetadata();
@@ -235,7 +246,12 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
   private async cancel(reason: string): Promise<void> {
     if (!this.canCancel()) return;
     this.status = 'cancelled';
-    await this.refreshMetadata();
+    this.boardgameMatchID = undefined;
+    try {
+      await this.refreshMetadata();
+    } catch (err) {
+      logger.warn({ err, inviteId: this.inviteId, reason }, 'invite cancellation metadata update failed');
+    }
     this.broadcast('inviteCancelled', { inviteId: this.inviteId, reason });
     this.broadcastSnapshot();
   }
@@ -272,6 +288,64 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
     this.broadcastSnapshot();
   }
 
+  private async finishBoardgameMatch(client: PlatformClient, message: BoardgameMatchReadyMessage): Promise<void> {
+    if (
+      !this.inviter ||
+      client.sessionId !== this.inviter.sessionId ||
+      this.status !== 'accepted' ||
+      this.finalRelayInFlight
+    )
+      return;
+    const boardgameMatchID = optionalText(message.boardgameMatchID, 128);
+    if (!boardgameMatchID || this.boardgameMatchID) return;
+    const friendInvite = parseFriendInviteId(this.inviteId);
+    if (!friendInvite) {
+      await this.cancel('relationship_check_unavailable');
+      return;
+    }
+    const previousRoomCode = this.roomCode;
+    this.finalRelayInFlight = true;
+
+    try {
+      const transitioned = await InviteRoom.blockStore.withPairTransitionFence(
+        friendInvite.inviterUserId,
+        friendInvite.targetUserId,
+        async () => {
+          if (!this.inviter || client.sessionId !== this.inviter.sessionId || this.status !== 'accepted') return false;
+          if (!(await this.isFriendInviteFriendshipCurrent(friendInvite))) return false;
+          if (!this.inviter || client.sessionId !== this.inviter.sessionId || this.status !== 'accepted') return false;
+          this.boardgameMatchID = boardgameMatchID;
+          this.roomCode = this.roomCode ?? boardgameMatchID;
+          this.status = 'finished';
+          return true;
+        },
+      );
+      if (!transitioned) {
+        if (this.status === 'accepted') await this.cancel('relationship_changed');
+        return;
+      }
+
+      await this.recordMatchProvenance(boardgameMatchID);
+      await this.refreshMetadata();
+      this.broadcast('boardgameMatchReady', { boardgameMatchID });
+      this.broadcastSnapshot();
+    } catch (err) {
+      logger.warn({ err, inviteId: this.inviteId }, 'invite final relationship fence failed');
+      if (this.isFinishedTransition(boardgameMatchID)) {
+        this.status = 'accepted';
+        this.boardgameMatchID = undefined;
+        this.roomCode = previousRoomCode;
+      }
+      if (this.status === 'accepted') await this.cancel('relationship_check_unavailable');
+    } finally {
+      this.finalRelayInFlight = false;
+    }
+  }
+
+  private isFinishedTransition(boardgameMatchID: string): boolean {
+    return this.status === 'finished' && this.boardgameMatchID === boardgameMatchID;
+  }
+
   private canBecomeInviter(profile: PlatformClientProfile): boolean {
     return this.inviterUserId ? profile.userId === this.inviterUserId : true;
   }
@@ -301,9 +375,39 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
     inviterUserId: string;
     targetUserId: string;
   }): Promise<void> {
-    if (!InviteRoom.enforceFriendship) return;
-    await this.assertFriendInviteAllowed(friendInvite.inviterUserId, friendInvite);
-    await this.assertFriendInviteAllowed(friendInvite.targetUserId, friendInvite);
+    if (InviteRoom.enforceFriendship) {
+      await this.assertFriendInviteAllowed(friendInvite.inviterUserId, friendInvite);
+      await this.assertFriendInviteAllowed(friendInvite.targetUserId, friendInvite);
+    }
+    await this.assertFriendInviteNotBlocked(friendInvite);
+  }
+
+  private async isFriendInviteFriendshipCurrent(friendInvite: {
+    inviterUserId: string;
+    targetUserId: string;
+  }): Promise<boolean> {
+    if (!InviteRoom.enforceFriendship) return true;
+    if (InviteRoom.friendStore.areUsersFriends) {
+      return InviteRoom.friendStore.areUsersFriends(friendInvite.inviterUserId, friendInvite.targetUserId);
+    }
+    const [inviterFriends, targetFriends] = await Promise.all([
+      InviteRoom.friendStore.listFriendUserIds(friendInvite.inviterUserId),
+      InviteRoom.friendStore.listFriendUserIds(friendInvite.targetUserId),
+    ]);
+    return inviterFriends.includes(friendInvite.targetUserId) && targetFriends.includes(friendInvite.inviterUserId);
+  }
+
+  private async assertFriendInviteNotBlocked(friendInvite: {
+    inviterUserId: string;
+    targetUserId: string;
+  }): Promise<void> {
+    try {
+      if (!(await InviteRoom.blockStore.areUsersBlocked(friendInvite.inviterUserId, friendInvite.targetUserId))) return;
+    } catch (err) {
+      logger.warn({ err, inviteId: this.inviteId }, 'failed to verify friend invite block relationship');
+      throw new Error('Invite block check unavailable');
+    }
+    throw new Error('Invite blocked');
   }
 
   private snapshot(): PlatformClient['~messages']['inviteSnapshot'] {

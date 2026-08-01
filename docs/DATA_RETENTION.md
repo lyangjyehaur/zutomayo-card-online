@@ -18,6 +18,9 @@
 - 每日執行 retention job，記錄刪除筆數、批次數、耗時與錯誤；失敗、重入跳過或超過 26 小時未成功必須告警。
 - 帳號刪除先撤銷 session，再刪除登入身分、私人牌組、實體卡收藏、玩家擁有的分享、分享按讚、社交關係與未完成 token；分享複製與檢舉證據移除帳號識別，最後匿名化 user row。
 - 使用者資料匯出不得包含 password hash、salt、OAuth token、IP、其他使用者私人資料或管理員備註。
+- 匯出物件預設只可下載 7 天；到期由 API worker 先以資料庫保存的完整 key 與 `object_version_id` 刪除，再把 job 標為已 purge。`ACCOUNT_EXPORT_S3_VERSIONING_MODE=required` 時不得只建立 delete marker。
+- `account_export_jobs` 只可在 `failed`/`expired` 等 terminal 狀態、`object_key` 與 `object_version_id` 已清空且已達 365 天時刪除；`account_export_audit` 使用獨立 365 天 cutoff，不可因 job 提前 cascade 消失。
+- Bucket lifecycle 必須強制涵蓋設定 prefix 下的 orphan/expired objects，期限長於下載期限，並在版本化時處理 non-current versions/delete markers；只有驗證後才可設 `ACCOUNT_EXPORT_S3_LIFECYCLE_CONFIRMED=true`。Lifecycle 是 safety net，不得取代 worker purge 與稽核。
 - Backup restore 後必須重新執行 retention job，避免已過期資料永久復活。
 - 法律保留必須記錄範圍、理由、owner 與到期日，不能用無期限標記取代；建立時會驗證 subject 存在並展開當下的衍生資料。上線前仍須補上持續 reconciliation，確保 hold 建立後新增的對局、訊息與舉報也被納入。
 - `match_analytics*` 永久層不得保存帳號 ID、email、暱稱、IP、user agent、聊天、憑證、原始 match ID、卡牌 instance ID 或牌庫順序。來源 match ID 只以 SHA-256 digest 用於冪等與清理對帳。

@@ -328,6 +328,10 @@ describe('deck share service', () => {
     const ids = cardIds();
     const query = vi.fn(async (sql: string) => {
       if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') return { rows: [], rowCount: 1 };
+      if (sql.startsWith('SELECT pg_advisory_xact_lock')) return { rows: [], rowCount: 1 };
+      if (sql.startsWith('SELECT id, deleted_at, elo, match_count, wins FROM users')) {
+        return { rows: [{ id: 'u_viewer', deleted_at: null, elo: 1200, match_count: 0, wins: 0 }], rowCount: 1 };
+      }
       if (sql.includes('FROM deck_shares ds')) {
         return { rows: [{ id: 'ds_fixed_share', owner_user_id: 'u_owner', name: 'Shared', card_ids: ids }] };
       }

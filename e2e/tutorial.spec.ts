@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Locator, type Page } from '@playwright/test';
 
 /**
  * 教學模式 E2E 測試。
@@ -11,7 +11,15 @@ import { test, expect } from '@playwright/test';
  */
 test.describe.configure({ mode: 'serial' });
 
-async function simulateCardApiOutage(page: import('@playwright/test').Page) {
+async function activateWithKeyboard(locator: Locator): Promise<void> {
+  await expect(locator).toBeVisible();
+  await expect(locator).toBeEnabled();
+  await locator.focus();
+  await expect(locator).toBeFocused();
+  await locator.press('Enter');
+}
+
+async function simulateCardApiOutage(page: Page): Promise<void> {
   await page.route('**/api/cards', (route) => route.abort());
   await page.route('**/cards.json', (route) => route.abort());
 }
@@ -32,7 +40,7 @@ async function expectDecodedImages(images: import('@playwright/test').Locator) {
         }),
       ),
     )
-    .toBe(true);
+    .toBe(true, { timeout: 20_000 });
 }
 
 async function expectChronosAt(page: import('@playwright/test').Page, position: number, time: '夜' | '晝') {
@@ -207,9 +215,9 @@ async function confirmTutorialRewind(page: import('@playwright/test').Page) {
 
 test.describe('教學頁面載入', () => {
   test.beforeEach(async ({ page }) => {
+    await simulateCardApiOutage(page);
     await page.addInitScript(() => {
       localStorage.setItem('zutomayo_deck_intro_seen', 'true');
-      localStorage.setItem('zutomayo_locale', 'zh-TW');
     });
   });
 
@@ -283,11 +291,9 @@ test.describe('教學頁面載入', () => {
       await page.getByTestId(`tutorial-card-selector-${id}`).click();
       const card = page.getByTestId('tutorial-card-example');
       await expect(card).toBeVisible();
-      await expect(card).toHaveAttribute('data-card-image-delivery', 'imgproxy');
-      await expect(card).toHaveAttribute('src', /^\/api\/imgproxy\//);
-      await expect(card).toHaveAttribute('src', new RegExp(`r2\\.dan\\.tw/cards/.*${id}`), {
-        timeout: 10_000,
-      });
+      await expect(card).toHaveAttribute('data-card-image-delivery', 'bundled-asset');
+      await expect(card).toHaveAttribute('src', `/tutorial/cards/${id}.jpg`);
+      await expectDecodedImages(card);
     }
 
     await page.getByRole('button', { name: /戰場介紹/ }).click();
@@ -606,40 +612,71 @@ test.describe('教學頁面載入', () => {
       { width: 1024, height: 768 },
     ]) {
       await page.setViewportSize(viewport);
-      await page.waitForTimeout(120);
+      const readGeometry = async () => {
+        const board = page.getByTestId('tutorial-real-board-preview');
+        const boardBox = await board.boundingBox();
+        const opponentBox = await board.locator('.bf-opponent').boundingBox();
+        const playerBox = await board.locator('.bf-player').boundingBox();
+        const opponentBattleBox = await page.getByTestId('tutorial-field-target-battle').boundingBox();
+        const chronosBox = await page.getByTestId('tutorial-field-target-chronos').boundingBox();
+        const playerBattleBox = await page.getByTestId('tutorial-field-target-battle-player').boundingBox();
+        if (!boardBox || !opponentBox || !playerBox || !opponentBattleBox || !chronosBox || !playerBattleBox) {
+          return null;
+        }
+        const centralTop = Math.min(opponentBattleBox.y, chronosBox.y, playerBattleBox.y);
+        const centralBottom = Math.max(
+          opponentBattleBox.y + opponentBattleBox.height,
+          chronosBox.y + chronosBox.height,
+          playerBattleBox.y + playerBattleBox.height,
+        );
+        const clearances = [
+          centralTop - (opponentBox.y + opponentBox.height) - 8,
+          playerBox.y - centralBottom - 8,
+          chronosBox.x - (opponentBattleBox.x + opponentBattleBox.width) - 8,
+          playerBattleBox.x - (chronosBox.x + chronosBox.width) - 8,
+          boardBox.y + boardBox.height + 1 - (playerBox.y + playerBox.height),
+        ];
+        return {
+          boardBox,
+          opponentBox,
+          playerBox,
+          opponentBattleBox,
+          chronosBox,
+          playerBattleBox,
+          centralTop,
+          centralBottom,
+          minimumClearance: Math.min(...clearances),
+        };
+      };
 
-      const board = page.getByTestId('tutorial-real-board-preview');
-      const boardBox = await board.boundingBox();
-      const opponentBox = await board.locator('.bf-opponent').boundingBox();
-      const playerBox = await board.locator('.bf-player').boundingBox();
-      const opponentBattleBox = await page.getByTestId('tutorial-field-target-battle').boundingBox();
-      const chronosBox = await page.getByTestId('tutorial-field-target-chronos').boundingBox();
-      const playerBattleBox = await page.getByTestId('tutorial-field-target-battle-player').boundingBox();
+      await expect
+        .poll(async () => (await readGeometry())?.minimumClearance ?? Number.NEGATIVE_INFINITY, {
+          message: JSON.stringify(viewport),
+          timeout: 5_000,
+        })
+        .toBeGreaterThanOrEqual(0);
 
-      expect(boardBox, JSON.stringify(viewport)).not.toBeNull();
-      expect(opponentBox, JSON.stringify(viewport)).not.toBeNull();
-      expect(playerBox, JSON.stringify(viewport)).not.toBeNull();
-      expect(opponentBattleBox, JSON.stringify(viewport)).not.toBeNull();
-      expect(chronosBox, JSON.stringify(viewport)).not.toBeNull();
-      expect(playerBattleBox, JSON.stringify(viewport)).not.toBeNull();
-
-      const centralTop = Math.min(opponentBattleBox!.y, chronosBox!.y, playerBattleBox!.y);
-      const centralBottom = Math.max(
-        opponentBattleBox!.y + opponentBattleBox!.height,
-        chronosBox!.y + chronosBox!.height,
-        playerBattleBox!.y + playerBattleBox!.height,
-      );
-      expect(centralTop - (opponentBox!.y + opponentBox!.height), JSON.stringify(viewport)).toBeGreaterThanOrEqual(8);
-      expect(playerBox!.y - centralBottom, JSON.stringify(viewport)).toBeGreaterThanOrEqual(8);
+      const geometry = await readGeometry();
+      expect(geometry, JSON.stringify(viewport)).not.toBeNull();
+      const {
+        boardBox,
+        opponentBox,
+        playerBox,
+        opponentBattleBox,
+        chronosBox,
+        playerBattleBox,
+        centralTop,
+        centralBottom,
+      } = geometry!;
+      expect(centralTop - (opponentBox.y + opponentBox.height), JSON.stringify(viewport)).toBeGreaterThanOrEqual(8);
+      expect(playerBox.y - centralBottom, JSON.stringify(viewport)).toBeGreaterThanOrEqual(8);
       expect(
-        chronosBox!.x - (opponentBattleBox!.x + opponentBattleBox!.width),
+        chronosBox.x - (opponentBattleBox.x + opponentBattleBox.width),
         JSON.stringify(viewport),
       ).toBeGreaterThanOrEqual(8);
-      expect(playerBattleBox!.x - (chronosBox!.x + chronosBox!.width), JSON.stringify(viewport)).toBeGreaterThanOrEqual(
-        8,
-      );
-      expect(playerBox!.y + playerBox!.height, JSON.stringify(viewport)).toBeLessThanOrEqual(
-        boardBox!.y + boardBox!.height + 1,
+      expect(playerBattleBox.x - (chronosBox.x + chronosBox.width), JSON.stringify(viewport)).toBeGreaterThanOrEqual(8);
+      expect(playerBox.y + playerBox.height, JSON.stringify(viewport)).toBeLessThanOrEqual(
+        boardBox.y + boardBox.height + 1,
       );
     }
   });
@@ -673,7 +710,6 @@ test.describe('教學覆蓋層與互動 @requires-backend', () => {
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => {
       localStorage.setItem('zutomayo_deck_intro_seen', 'true');
-      localStorage.setItem('zutomayo_locale', 'zh-TW');
     });
   });
 
@@ -694,17 +730,17 @@ test.describe('教學覆蓋層與互動 @requires-backend', () => {
 
     for (const id of ['2nd_40', '1st_100', '2nd_86']) {
       await page.getByTestId(`tutorial-card-selector-${id}`).click();
-      await expectDecodedImages(page.getByTestId('tutorial-card-example'));
+      const card = page.getByTestId('tutorial-card-example');
+      await expect(card).toHaveAttribute('data-card-image-delivery', 'bundled-asset');
+      await expect(card).toHaveAttribute('src', `/tutorial/cards/${id}.jpg`);
+      await expectDecodedImages(card);
     }
 
-    const picture = page.getByTestId('tutorial-card-example').locator('xpath=..');
-    const sources = await picture.evaluate((element) => {
-      const firstUrl = (srcset: string) => srcset.split(',')[0]?.trim().split(/\s+/)[0] ?? '';
-      const avif = element.querySelector<HTMLSourceElement>('source[type="image/avif"]');
-      const webp = element.querySelector<HTMLSourceElement>('source[type="image/webp"]');
-      const image = element.querySelector<HTMLImageElement>('img');
-      return [firstUrl(avif?.srcset ?? ''), firstUrl(webp?.srcset ?? ''), image?.src ?? ''].filter(Boolean);
-    });
+    // E2E exercises the real signer/proxy/format pipeline with a same-stack source.
+    // The deployment smoke separately verifies that production can fetch the R2 origin.
+    const representativeSource = 'http://game:3000/tutorial/cards/2nd_40.jpg';
+    const imgproxyPath = `/api/imgproxy/rs:fit:720:0/plain/${representativeSource}`;
+    const sources = [`${imgproxyPath}@avif`, `${imgproxyPath}@webp`, imgproxyPath];
     expect(sources).toHaveLength(3);
     for (const source of sources) {
       const response = await page.request.get(source);
@@ -839,10 +875,10 @@ test.describe('教學覆蓋層與互動 @requires-backend', () => {
     expect(blockedPaper).not.toBeNull();
     await page.mouse.click(blockedPaper!.x + blockedPaper!.width / 2, blockedPaper!.y + blockedPaper!.height / 2);
     await expectTutorialPhase(page, 'janken');
-    await page.locator('[data-tut="janken-rock"]').first().click();
+    await activateWithKeyboard(page.locator('[data-tut="janken-rock"]').first());
 
     await expectTutorialPhase(page, 'janken-result');
-    await page.locator('[data-tut="setup-feedback"]').first().getByRole('button').click();
+    await activateWithKeyboard(page.locator('[data-tut="setup-feedback"]').first().getByRole('button'));
 
     await expectTutorialPhase(page, 'opening-hand');
     await expectTooltipContentUsable(page, true);
@@ -859,7 +895,7 @@ test.describe('教學覆蓋層與互動 @requires-backend', () => {
       'data-tut-selected',
       'false',
     );
-    await page.locator('[data-tut-mulligan-card="1st_2"]').first().getByRole('button').click();
+    await activateWithKeyboard(page.locator('[data-tut-mulligan-card="1st_2"]').first().getByRole('button'));
 
     await expectTutorialPhase(page, 'mulligan-confirm');
     const blockedKeepHand = await page.locator('[data-tut="mulligan-keep"]').first().boundingBox();
@@ -869,7 +905,7 @@ test.describe('教學覆蓋層與互動 @requires-backend', () => {
       blockedKeepHand!.y + blockedKeepHand!.height / 2,
     );
     await expectTutorialPhase(page, 'mulligan-confirm');
-    await page.locator('[data-tut="mulligan-redraw"]').first().click();
+    await activateWithKeyboard(page.locator('[data-tut="mulligan-redraw"]').first());
 
     await expectTutorialPhase(page, 'initialSet-select');
     const blockedInitialCard = await page.locator('[data-tut-card="1st_46"]').first().boundingBox();
@@ -880,18 +916,18 @@ test.describe('教學覆蓋層與互動 @requires-backend', () => {
     );
     await expectTutorialPhase(page, 'initialSet-select');
     await expect(page.locator('[data-tut="set-selected-card"]')).toHaveCount(0);
-    await page.locator('[data-tut-card="1st_70"]').first().click();
+    await activateWithKeyboard(page.locator('[data-tut-card="1st_70"]').first());
 
     await expectTutorialPhase(page, 'initialSet-place');
-    await page.locator('[data-tut="set-selected-card"]').first().click();
+    await activateWithKeyboard(page.locator('[data-tut="set-selected-card"]').first());
 
     await expectTutorialPhase(page, 'initialSet-confirm');
-    await page.locator('[data-tut="confirm-set"]').first().click();
+    await activateWithKeyboard(page.locator('[data-tut="confirm-set"]').first());
 
     const preparationCompleteDialog = page.getByRole('dialog', { name: '戰鬥準備完成' });
     await expect(preparationCompleteDialog).toBeVisible();
     await expect(preparationCompleteDialog).toContainText('猜拳、起手牌重抽與初始放置');
-    await preparationCompleteDialog.getByRole('button', { name: '返回教學進度', exact: true }).click();
+    await activateWithKeyboard(preparationCompleteDialog.getByRole('button', { name: '返回教學進度', exact: true }));
 
     await expect(page.getByRole('heading', { name: '新手教學', exact: true })).toBeVisible();
     await expect(page.getByTestId('tutorial-chapter-tab-flow')).toHaveAttribute('aria-current', 'step');
@@ -904,8 +940,8 @@ test.describe('教學覆蓋層與互動 @requires-backend', () => {
     await expect(hiddenFlowOverlay).toHaveAttribute('data-tutorial-phase', 'flow-recap', { timeout: 15_000 });
     await expect(hiddenFlowOverlay).toBeHidden();
 
-    await page.getByTestId('tutorial-chapter-tab-flow').click();
-    await page.getByRole('button', { name: '開始實戰教學', exact: true }).click();
+    await activateWithKeyboard(page.getByTestId('tutorial-chapter-tab-flow'));
+    await activateWithKeyboard(page.getByRole('button', { name: '開始實戰教學', exact: true }));
 
     const flowOverlay = await expectTutorialPhase(page, 'flow-recap');
     await expect(flowOverlay).toHaveAttribute('data-tutorial-step', '1');
@@ -930,7 +966,7 @@ test.describe('教學覆蓋層與互動 @requires-backend', () => {
     expect(firstTurnPlayback.tooltipText['hp-calc']).toContain('100 - 20 = 80');
     expect(firstTurnPlayback.legacySettlementPopupSeen).toBe(false);
     await expectSingleContextHighlight(page);
-    await page.getByRole('button', { name: '下一頁' }).click();
+    await activateWithKeyboard(page.getByRole('button', { name: '下一頁' }));
 
     await expectTutorialPhase(page, 'turnSet-character-select');
     await expectSingleActionHighlight(page);
@@ -941,25 +977,25 @@ test.describe('教學覆蓋層與互動 @requires-backend', () => {
       blockedTurnCard!.y + blockedTurnCard!.height / 2,
     );
     await expectTutorialPhase(page, 'turnSet-character-select');
-    await page.locator('[data-tut-card="1st_46"]').first().click();
+    await activateWithKeyboard(page.locator('[data-tut-card="1st_46"]').first());
 
     await expectTutorialPhase(page, 'turnSet-character-place');
     await expectSingleActionHighlight(page);
-    await page.locator('[data-tut="set-selected-card"]').first().click();
+    await activateWithKeyboard(page.locator('[data-tut="set-selected-card"]').first());
 
     await expectTutorialPhase(page, 'turnSet-area-select');
     await expectSingleActionHighlight(page);
-    await page.getByRole('button', { name: '上一頁', exact: true }).click();
+    await activateWithKeyboard(page.getByRole('button', { name: '上一頁', exact: true }));
     await confirmTutorialRewind(page);
 
     await expectTutorialPhase(page, 'turnSet-character-select');
     await expect(page.locator('[data-tut="player-hp"][aria-label="玩家 · HP 80/100"]')).toBeVisible();
     await expectChronosAt(page, 3, '夜');
     await expect(page.locator('[data-tut="confirm-set"]').first()).toBeDisabled();
-    await page.locator('[data-tut-card="1st_46"]').first().click();
+    await activateWithKeyboard(page.locator('[data-tut-card="1st_46"]').first());
 
     await expectTutorialPhase(page, 'turnSet-character-place');
-    await page.locator('[data-tut="set-selected-card"]').first().click();
+    await activateWithKeyboard(page.locator('[data-tut="set-selected-card"]').first());
 
     await expectTutorialPhase(page, 'turnSet-area-select');
     await expectSingleActionHighlight(page);
@@ -971,11 +1007,11 @@ test.describe('教學覆蓋層與互動 @requires-backend', () => {
       blockedAreaCard!.y + blockedAreaCard!.height / 2,
     );
     await expectTutorialPhase(page, 'turnSet-area-select');
-    await page.locator('[data-tut-card="2nd_98"]').first().click();
+    await activateWithKeyboard(page.locator('[data-tut-card="2nd_98"]').first());
 
     await expectTutorialPhase(page, 'turnSet-area-place');
     await expectSingleActionHighlight(page);
-    await page.locator('[data-tut="set-selected-card"]').first().click();
+    await activateWithKeyboard(page.locator('[data-tut="set-selected-card"]').first());
 
     await expectTutorialPhase(page, 'turnSet-confirm');
     await expectSingleActionHighlight(page);
@@ -994,27 +1030,27 @@ test.describe('教學覆蓋層與互動 @requires-backend', () => {
     expect(secondClockPlayback.legacySettlementPopupSeen).toBe(false);
     await expectSingleContextHighlight(page);
     await expect(page.locator('.effect-order-panel')).toHaveCount(0);
-    await page.getByRole('button', { name: '下一頁' }).click();
+    await activateWithKeyboard(page.getByRole('button', { name: '下一頁' }));
 
     await expectTutorialPhase(page, 'power-charging');
     await expectSingleContextHighlight(page);
     await expect(page.locator('.effect-order-panel')).toHaveCount(0);
-    await page.getByRole('button', { name: '下一頁' }).click();
+    await activateWithKeyboard(page.getByRole('button', { name: '下一頁' }));
 
     await expectTutorialPhase(page, 'area-enchant');
     await expectSingleContextHighlight(page);
     await expect(page.locator('.effect-order-panel')).toHaveCount(0);
-    await page.getByRole('button', { name: '下一頁' }).click();
+    await activateWithKeyboard(page.getByRole('button', { name: '下一頁' }));
 
     await expectTutorialPhase(page, 'effectOrder-action');
     await expectSingleActionHighlight(page);
     await expect(page.locator('.effect-order-panel:visible')).toHaveCount(1);
-    await page.locator('[data-tut-effect-card="2nd_98"]').first().click();
+    await activateWithKeyboard(page.locator('[data-tut-effect-card="2nd_98"]').first());
 
     await expectTutorialPhase(page, 'choice-mechanics');
     await expect(page.locator('.bf-root:visible .bf-hud-turn-value')).toHaveText('02');
     await expect(page.locator('[data-tut="opponent-hp"][aria-label="電腦 · HP 100/100"]')).toBeVisible();
-    await page.getByRole('button', { name: '上一頁', exact: true }).click();
+    await activateWithKeyboard(page.getByRole('button', { name: '上一頁', exact: true }));
     await confirmTutorialRewind(page);
 
     await expectTutorialPhase(page, 'effectOrder-action');
@@ -1022,7 +1058,7 @@ test.describe('教學覆蓋層與互動 @requires-backend', () => {
     await expect(page.locator('[data-tut="opponent-hp"][aria-label="電腦 · HP 100/100"]')).toBeVisible();
     await expectChronosAt(page, 10, '晝');
     await expect(page.locator('.effect-order-panel:visible')).toHaveCount(1);
-    await page.locator('[data-tut-effect-card="2nd_98"]').first().click();
+    await activateWithKeyboard(page.locator('[data-tut-effect-card="2nd_98"]').first());
 
     await expectTutorialPhase(page, 'choice-mechanics');
     await expect(page.locator('.bf-root:visible .bf-hud-turn-value')).toHaveText('02');
@@ -1038,19 +1074,19 @@ test.describe('教學覆蓋層與互動 @requires-backend', () => {
     await expect(page.locator('.bf-root:visible .bf-hud-turn-value')).toHaveText('02');
     await expectSingleContextHighlight(page);
     await expect(page.locator('[data-tut="opponent-hp"][aria-label="電腦 · HP 30/100"]')).toBeVisible();
-    await page.getByRole('button', { name: '下一頁' }).click();
+    await activateWithKeyboard(page.getByRole('button', { name: '下一頁' }));
 
     let completeOverlay = await expectTutorialPhase(page, 'complete');
-    await completeOverlay.getByRole('button', { name: '上一頁', exact: true }).click();
+    await activateWithKeyboard(completeOverlay.getByRole('button', { name: '上一頁', exact: true }));
     await expectTutorialPhase(page, 'turn-end-cleanup');
-    await page.getByRole('button', { name: '下一頁', exact: true }).click();
+    await activateWithKeyboard(page.getByRole('button', { name: '下一頁', exact: true }));
     completeOverlay = await expectTutorialPhase(page, 'complete');
     await expect(page.locator('.bf-root:visible .bf-hud-turn-value')).toHaveText('03');
     await expectTooltipContentUsable(page);
     await expect(completeOverlay.getByRole('button', { name: '返回教學', exact: true })).toBeVisible();
     const continueBattle = completeOverlay.getByRole('button', { name: '繼續完成教學關卡', exact: true });
     await expect(continueBattle).toBeVisible();
-    await continueBattle.click();
+    await activateWithKeyboard(continueBattle);
 
     await expect(page.locator('.tutorial-game-overlay')).toHaveCount(0);
     await expect(page.locator('[data-tut="player-hand"] button').first()).toBeEnabled();

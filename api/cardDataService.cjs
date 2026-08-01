@@ -163,6 +163,28 @@ async function getPublicCards(pool, searchParams) {
   }
 }
 
+async function getOfficialCardDataVersion(pool) {
+  try {
+    const row = (
+      await pool.query(
+        `SELECT dataset_sha256, release_sha, card_count, applied_at
+         FROM official_card_data_releases
+         ORDER BY applied_at DESC, dataset_sha256 DESC
+         LIMIT 1`,
+      )
+    ).rows[0];
+    if (!row) return null;
+    return {
+      datasetSha256: row.dataset_sha256,
+      releaseSha: row.release_sha,
+      cardCount: Number(row.card_count),
+      appliedAt: row.applied_at instanceof Date ? row.applied_at.toISOString() : String(row.applied_at),
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function getCatalogCards(pool, searchParams = new URLSearchParams()) {
   try {
     const conditions = ["publication_status = 'published'", "play_status IN ('playable', 'display_only')"];
@@ -395,6 +417,7 @@ module.exports = {
   getCardOfficialErrata,
   getCardTextsI18n,
   getGameConfig,
+  getOfficialCardDataVersion,
   getPresetDecks,
   getPublicCard,
   getPublicCards,

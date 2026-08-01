@@ -139,6 +139,9 @@ flowchart LR
 ### PWA
 
 - `vite-plugin-pwa` 產生 Service Worker 與 manifest（`src/clientVersion.ts`）。
+- 離線支援範圍是「已成功暖機過卡牌資料的本機 AI 對戰」；登入、配對、聊天、排行榜、Feedback 與管理功能仍需要網路，不承諾離線寫入或稍後同步。
+- Workbox 對 `/api/cards`、`/api/cards/texts` 使用 build/rules 隔離的 `NetworkFirst` cache。Production 客戶端只接受帶 signed dataset SHA、dataset release SHA、card count、app/build/rules headers 的 response；缺少 metadata、張數不符、同一 runtime dataset 漂移或版本不一致都 fail closed。
+- `buildId` 是前端 engine identity；正式 release 使用完整 commit SHA。當 `buildId` 為完整 SHA 時，卡牌 dataset ledger 的 `releaseSha` 必須完全相同，因而將 engine、rules 與 signed card dataset 綁在同一 release。
 - **自動更新**：`registerPwaAutoUpdate()` 註冊 SW，`onNeedRefresh` 時派發 `zutomayo:pwa-update-ready` 事件，由 `PwaStatusPrompt` 提示使用者。
 - **強制復原**：`recoverPwaAndReload()` 會 unregister 所有 SW 並清空 caches 後重整，用於偵測到壞版本時。
 - **版本相容**：`ensureCompatibleAppVersion()` 比對 `/api/app-version` 與本地 `APP_VERSION_INFO`，不符時拋 `VersionMismatchError` 並提示重整。
@@ -320,9 +323,10 @@ boardgame.io 多實例需要**兩個獨立的跨節點層**，兩者職責不同
 
 - 卡牌資料可以保存 canonical 原始 URL；這只是來源資料，不代表瀏覽器可直接載入原圖。
 - 所有玩家端、Admin 與教學 UI 必須使用 `CardImage`。它會透過同源 `/api/imgproxy` 產生尺寸化的 AVIF/WebP/srcset，預設在 imgproxy 失敗時 fail closed，不得靜默回退至原始 R2 URL。
+- CH.02 的三張固定示例是唯一玩家端 bundled-asset 例外：經人工確認的 `public/tutorial/cards/{2nd_40,1st_100,2nd_86}.jpg` 隨前端版本發布，呼叫端必須設定 `bundledAsset` 與非空的 `bundledAssetReason`。這只保證固定教學在 API 或 imgproxy 不可用時仍可閱讀，不適用於牌組、戰場或其他動態卡圖。
 - 若特殊 UI 確實需要原圖回退，必須同時傳入 `fallbackToOriginal={true}` 與非空的 `originalFallbackReason`，在本節記錄用途，並同步審查 CSP／效能 gate 的明確例外。Public Beta 玩家 UI 目前沒有此例外。
 - PWA 只快取 `/api/imgproxy/` 回應；Content Security Policy 不允許玩家端直接向卡圖來源站載入圖片。
-- `npm run image:policy` 會掃描直接 `<img>` 卡圖、未說明的原圖回退、PWA 原圖快取與 CSP 放行；`npm run verify` 包含此檢查。效能 smoke 也會把任何繞過 imgproxy 的實際圖片請求視為失敗。
+- `npm run image:policy` 會掃描直接 `<img>` 卡圖、bundled-asset 數量與理由、未說明的原圖回退、PWA 原圖快取與 CSP 放行；`npm run verify` 包含此檢查。效能 smoke 也會把任何未列入例外而繞過 imgproxy 的實際圖片請求視為失敗。
 - 唯一既有直接來源例外是 `scripts/card-official-text-review-server.ts`：這是 localhost-only 的官方文本人工審查工具，沒有 App/imgproxy runtime；本機 OCR 圖片不存在時會導向 canonical 原圖以供核對。它不會進入玩家端 bundle 或部署服務。
 
 ### 認證流程
@@ -668,7 +672,7 @@ flowchart TB
 1. **builder**（`node:22-alpine`）：`npm ci` → `COPY . .` → `npm run build`（含 typecheck + vite build）→ 刪除 source map。可選上傳 source map 到 GlitchTip（`SENTRY_URL`/`SENTRY_AUTH_TOKEN`）。
 2. **runtime**（`node:22-alpine`）：`npm ci --omit=dev` → 從 builder COPY `dist` / `src` / `data` / `scripts` → `USER node` → `CMD ["npm", "run", "server"]`。
 
-`api/Dockerfile` 為 API server 獨立鏡像（不含 `node-pg-migrate` 與 `migrations/`，靠 `initSchema()` fallback）。
+`api/Dockerfile` 為 API server 獨立鏡像（不含 `node-pg-migrate` 與 `migrations/`）；production/staging 禁止 runtime DDL，必須先由 signed migration image 完成 migration 與 schema gate。
 
 ### docker-compose 六個單元（含 one-shot migrate）
 
@@ -682,14 +686,16 @@ redis ────┬─> game (Pub/Sub + Socket.IO adapter + rate limit)
           └─> platform (RedisDriver + RedisPresence)
 ```
 
-| 服務     | 鏡像                     | healthcheck             | depends_on                                                        |
-| -------- | ------------------------ | ----------------------- | ----------------------------------------------------------------- |
-| postgres | `postgres:16-alpine`     | `pg_isready`            | -                                                                 |
-| redis    | `redis:7-alpine`         | `redis-cli ping`        | -                                                                 |
-| migrate  | builder stage            | -                       | postgres healthy                                                  |
-| game     | 自建                     | `wget --spider /health` | postgres healthy + redis healthy                                  |
-| api      | 自建（`api/Dockerfile`） | `wget --spider /health` | postgres healthy + redis healthy + migrate completed_successfully |
-| platform | 自建                     | `wget --spider /health` | postgres healthy + redis healthy + api healthy                    |
+| 服務     | 鏡像                     | healthcheck            | depends_on                                                        |
+| -------- | ------------------------ | ---------------------- | ----------------------------------------------------------------- |
+| postgres | `postgres:16-alpine`     | `pg_isready`           | -                                                                 |
+| redis    | `redis:7-alpine`         | `redis-cli ping`       | -                                                                 |
+| migrate  | builder stage            | -                      | postgres healthy                                                  |
+| game     | 自建                     | `wget --spider /ready` | postgres healthy + redis healthy                                  |
+| api      | 自建（`api/Dockerfile`） | `wget --spider /ready` | postgres healthy + redis healthy + migrate completed_successfully |
+| platform | 自建                     | `wget --spider /ready` | postgres healthy + redis healthy + api healthy                    |
+
+`/health` 保留給 liveness／依賴診斷；Docker、gateway 與 load balancer 必須以 `/ready` 判斷是否接收新流量，drain 開始時 readiness 會先轉為 `503`。Release frontend 不烘焙可變的 platform URL，而是由瀏覽器推導同源 `wss://<current-host>` 進入 gateway。每個 platform process／release slot 必須設定可由 gateway 精確路由回該實例的 `PLATFORM_PUBLIC_ADDRESS`，訂位後的 WebSocket 不可再任意負載平衡。
 
 - **必要環境變數**：`PG_PASSWORD`、`JWT_SECRET`（≥32 字元，建議 `openssl rand -hex 32`）。
 - **Volumes**：`pg-data`（PG 資料目錄，唯一真實來源）、`redis-data`（AOF 持久化，遺失可接受＝冷重啟）。
@@ -723,7 +729,7 @@ checkout → setup-node → npm ci
 
 平行的 `e2e` job 以 `docker-compose.e2e.yml` 啟動隔離服務棧並執行 Playwright，失敗時上傳 report 與 test results。任一步驟失敗皆阻擋合併。`smoke:*` 與 k6 `load:*` 仍需依目標環境另行執行；本機以 `npm run verify` 對齊靜態檢查、單測與 build。
 
-`.github/workflows/cd.yml` 在 master 更新時建置 game/api/platform GHCR staging images，在 `v*` tag 建置 production images；`workflow_dispatch` 可選 staging／production SSH 部署。`docker-compose.staging.yml` 使用隔離 ports，但連接外部 PostgreSQL（`verify-full` + CA secret）與 Redis（`rediss://` + ACL/password）；bundled plaintext DB 只保留於 development Compose。Server4 beta 使用 `scripts/deploy-server4.sh` 從 `origin/master` 直接建置、啟動並執行 smoke，不保留舊 runtime 相容或回滾分支。
+`.github/workflows/cd.yml` 在 master 更新或手動 staging dispatch 時建置並驗證七個 immutable GHCR images，在 `v*` tag 建置 production images；未合併的 staging SHA 只接受同倉庫、base `master` 的 open PR 精確 head，且必須已有該 SHA 的成功 CI。Production dispatch 只接受位於 master ancestry 的 exact `v<semver>` tag 並解析既有 images。`docker-compose.staging.yml` 使用隔離 ports，但連接外部 PostgreSQL（`verify-full` + CA secret）與 Redis（`rediss://` + ACL/password）；bundled plaintext DB 只保留於 development Compose，正式 rollback 由 `scripts/deploy-server4.sh` 管理。
 
 ---
 

@@ -2,7 +2,8 @@ import { createRequire } from 'node:module';
 import { describe, expect, it, vi } from 'vitest';
 
 const require = createRequire(import.meta.url);
-const { sendChatMessage } = require('../chatService.cjs') as {
+const { markConversationRead, sendChatMessage } = require('../chatService.cjs') as {
+  markConversationRead: (input: Record<string, unknown>) => Promise<Record<string, unknown>>;
   sendChatMessage: (input: Record<string, unknown>) => Promise<Record<string, unknown>>;
 };
 
@@ -71,5 +72,30 @@ describe('guest match chat', () => {
         allowPresenceOnlyUserId: true,
       }),
     ).resolves.toMatchObject({ ok: true, body: { message: { authorUserId: null, content: 'hello' } } });
+  });
+
+  it('acknowledges guest reads without inserting a foreign-key-backed read cursor', async () => {
+    const query = vi.fn(async (sql: string) => {
+      if (sql.includes('FROM platform_match_participants') && sql.includes('bjg_match_seats')) {
+        return { rows: [{ ok: 1 }] };
+      }
+      throw new Error(`Unexpected query: ${sql}`);
+    });
+
+    await expect(
+      markConversationRead({
+        pool: { query },
+        userId: 'guest:match:bgio-match-1:reservation:abc',
+        body: {
+          conversationType: 'match',
+          subjectId: 'bgio-match-1',
+          lastReadMessageId: 'chat_msg_guest',
+        },
+        enforceMatchParticipation: true,
+        allowPresenceOnlyUserId: true,
+      }),
+    ).resolves.toEqual({ ok: true, body: { ok: true } });
+
+    expect(query.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO chat_read_states'))).toBe(false);
   });
 });

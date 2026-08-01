@@ -415,13 +415,13 @@ export function DeckEditor({
               />
             </div>
           </label>
-          <div className="flex items-end gap-2">
+          <div className="deck-library-actions flex items-end gap-2">
             {onNewDeck && (
               <Button
                 type="button"
                 variant="secondary"
                 size="sm"
-                className="size-touch !px-0 md:w-auto md:!px-3"
+                className="deck-library-action size-touch !px-0 md:w-auto md:!px-3"
                 onClick={onNewDeck}
                 aria-label={t('deckEditor.newDeck')}
               >
@@ -434,7 +434,7 @@ export function DeckEditor({
                 type="button"
                 variant="secondary"
                 size="sm"
-                className="size-touch !px-0 md:w-auto md:!px-3"
+                className="deck-library-action size-touch !px-0 md:w-auto md:!px-3"
                 onClick={onImportDeck}
                 aria-label={t('deckEditor.importDeck')}
               >
@@ -447,7 +447,7 @@ export function DeckEditor({
                 type="button"
                 variant="secondary"
                 size="sm"
-                className="size-touch !px-0 md:w-auto md:!px-3"
+                className="deck-library-action size-touch !px-0 md:w-auto md:!px-3"
                 onClick={() => onExportDeck(deck)}
                 disabled={deck.length === 0}
                 aria-label={t('deckEditor.exportDeck')}
@@ -734,7 +734,7 @@ export function DeckEditor({
                 size="sm"
                 variant="primary"
                 aria-label={saveLabel ?? t('deckEditor.saveDeck')}
-                className="size-touch shrink-0 px-0 sm:w-auto sm:px-3"
+                className="deck-save-action size-touch shrink-0 px-0 sm:w-auto sm:px-3"
               >
                 <Save className="size-3.5" aria-hidden="true" />
                 <span className="hidden sm:inline">{saveLabel ?? t('deckEditor.saveDeck')}</span>

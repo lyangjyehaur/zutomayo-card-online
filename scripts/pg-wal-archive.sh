@@ -36,19 +36,35 @@ write_metrics() {
 
 fail() {
   echo "ERROR: $1" >&2
-  write_metrics 0 0 || true
   exit 1
 }
 
+valid_wal_name() {
+  [[ "$1" =~ ^[0-9A-Fa-f]{24}(\.[A-Za-z0-9._-]+)?$ || "$1" =~ ^[0-9A-Fa-f]{8}\.history$ ]]
+}
+
+work_dir=''
+archive_succeeded=false
+cleanup() {
+  local exit_code=$?
+  if [[ -n "$work_dir" ]]; then
+    rm -rf "$work_dir"
+  fi
+  if [[ "$archive_succeeded" != 'true' ]]; then
+    write_metrics 0 0 || true
+  fi
+  return "$exit_code"
+}
+trap cleanup EXIT
+
 [[ -f "$wal_path" ]] || fail 'WAL source path does not exist'
-[[ "$wal_name" =~ ^[0-9A-Fa-f]{24}(\.[A-Za-z0-9._-]+)?$ ]] || fail 'invalid WAL file name'
+valid_wal_name "$wal_name" || fail 'invalid WAL file name'
 [[ "$offsite_uri" == s3://* ]] || fail 'PG_WAL_OFFSITE_URI must use s3:// syntax'
 [[ -n "$recipient" || -n "$recipient_file" ]] || fail 'age recipient is required for WAL archiving'
 command -v age >/dev/null 2>&1 || fail 'age command not found'
 command -v aws >/dev/null 2>&1 || fail 'aws command not found'
 
 work_dir="$(mktemp -d "${TMPDIR:-/tmp}/pg-wal.XXXXXX")"
-trap 'rm -rf "$work_dir"' EXIT
 encrypted="$work_dir/${wal_name}.age"
 if [[ -n "$recipient_file" ]]; then
   age --recipients-file "$recipient_file" --output "$encrypted" "$wal_path"
@@ -66,3 +82,4 @@ remote_prefix="${offsite_uri%/}"
 aws s3 cp --only-show-errors "$encrypted" "$remote_prefix/${wal_name}.age"
 aws s3 cp --only-show-errors "${encrypted}.sha256" "$remote_prefix/${wal_name}.age.sha256"
 write_metrics 1 "$(date -u +%s)"
+archive_succeeded=true

@@ -71,6 +71,31 @@ function verifyTotp(secret, suppliedCode, timestamp = Date.now()) {
   return [-1, 0, 1].some((window) => timingSafeTextEqual(totpCode(secret, timestamp + window * 30_000), suppliedCode));
 }
 
+function sameCredentialSnapshot(current, authenticated) {
+  return (
+    current &&
+    !current.disabled_at &&
+    current.id === authenticated.id &&
+    current.role === authenticated.role &&
+    timingSafeTextEqual(current.password_hash, authenticated.password_hash) &&
+    timingSafeTextEqual(current.salt, authenticated.salt) &&
+    timingSafeTextEqual(current.totp_secret_ciphertext, authenticated.totp_secret_ciphertext)
+  );
+}
+
+async function issueAdminSession({ queryable, adminUserId, role, createSessionToken, sessionTtlSeconds, generateJti }) {
+  const jti = generateJti();
+  const ttl = Math.max(300, Math.min(Number(sessionTtlSeconds) || 3600, 8 * 60 * 60));
+  const token = createSessionToken({ adminUserId, role, jti, expiresIn: ttl });
+  await queryable.query(
+    `INSERT INTO admin_sessions (jti, admin_user_id, role, expires_at)
+     VALUES ($1, $2, $3, NOW() + ($4 * INTERVAL '1 second'))`,
+    [jti, adminUserId, role, ttl],
+  );
+  await queryable.query('UPDATE admin_users SET last_login_at = NOW() WHERE id = $1', [adminUserId]);
+  return { ok: true, body: { token, role, expiresIn: ttl } };
+}
+
 async function authenticateAdmin({
   pool,
   body,
@@ -105,34 +130,44 @@ async function authenticateAdmin({
   const totpSecret = await decryptTotpSecret(user.totp_secret_ciphertext);
   if (!verifyTotp(totpSecret, body.totpCode)) return { ok: false, status: 401, error: 'Invalid admin MFA code' };
 
-  return issueAdminSession({
-    pool,
-    adminUserId: user.id,
-    role: user.role,
-    createSessionToken,
-    sessionTtlSeconds,
-    generateJti,
-  });
-}
+  if (typeof pool.connect !== 'function') throw new Error('admin authentication requires a PostgreSQL pool');
+  const client = await pool.connect();
+  let transactionOpen = false;
+  try {
+    await client.query('BEGIN');
+    transactionOpen = true;
+    const lockedUser = (
+      await client.query(
+        `SELECT id, username, password_hash, salt, role, totp_secret_ciphertext, disabled_at
+         FROM admin_users
+         WHERE username = $1
+         FOR UPDATE`,
+        [username],
+      )
+    ).rows[0];
+    if (!sameCredentialSnapshot(lockedUser, user)) {
+      await client.query('ROLLBACK');
+      transactionOpen = false;
+      return { ok: false, status: 401, error: 'Invalid admin credentials' };
+    }
 
-async function issueAdminSession({
-  pool,
-  adminUserId,
-  role,
-  createSessionToken,
-  sessionTtlSeconds = 60 * 60,
-  generateJti = () => crypto.randomBytes(18).toString('hex'),
-}) {
-  const jti = generateJti();
-  const ttl = Math.max(300, Math.min(Number(sessionTtlSeconds) || 3600, 8 * 60 * 60));
-  const token = createSessionToken({ adminUserId, role, jti, expiresIn: ttl });
-  await pool.query(
-    `INSERT INTO admin_sessions (jti, admin_user_id, role, expires_at)
-     VALUES ($1, $2, $3, NOW() + ($4 * INTERVAL '1 second'))`,
-    [jti, adminUserId, role, ttl],
-  );
-  await pool.query('UPDATE admin_users SET last_login_at = NOW() WHERE id = $1', [adminUserId]);
-  return { ok: true, body: { token, role, expiresIn: ttl } };
+    const result = await issueAdminSession({
+      queryable: client,
+      adminUserId: user.id,
+      role: user.role,
+      createSessionToken,
+      sessionTtlSeconds,
+      generateJti,
+    });
+    await client.query('COMMIT');
+    transactionOpen = false;
+    return result;
+  } catch (error) {
+    if (transactionOpen) await client.query('ROLLBACK').catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 async function createLinkedAdminSession({
@@ -142,26 +177,46 @@ async function createLinkedAdminSession({
   sessionTtlSeconds = 60 * 60,
   generateJti = () => crypto.randomBytes(18).toString('hex'),
 }) {
-  const admin = (
-    await pool.query(
-      `SELECT a.id, a.role
-       FROM admin_users a
-       JOIN users u ON u.id = a.user_id
-       WHERE a.user_id = $1
-         AND a.disabled_at IS NULL
-         AND u.deleted_at IS NULL`,
-      [userId],
-    )
-  ).rows[0];
-  if (!admin) return { ok: false, status: 403, error: 'Account does not have admin access' };
-  return issueAdminSession({
-    pool,
-    adminUserId: admin.id,
-    role: admin.role,
-    createSessionToken,
-    sessionTtlSeconds,
-    generateJti,
-  });
+  if (typeof pool.connect !== 'function') throw new Error('linked admin authentication requires a PostgreSQL pool');
+  const client = await pool.connect();
+  let transactionOpen = false;
+  try {
+    await client.query('BEGIN');
+    transactionOpen = true;
+    const admin = (
+      await client.query(
+        `SELECT a.id, a.role
+         FROM admin_users a
+         JOIN users u ON u.id = a.user_id
+         WHERE a.user_id = $1
+           AND a.disabled_at IS NULL
+           AND u.deleted_at IS NULL
+         FOR UPDATE OF a`,
+        [userId],
+      )
+    ).rows[0];
+    if (!admin) {
+      await client.query('ROLLBACK');
+      transactionOpen = false;
+      return { ok: false, status: 403, error: 'Account does not have admin access' };
+    }
+    const result = await issueAdminSession({
+      queryable: client,
+      adminUserId: admin.id,
+      role: admin.role,
+      createSessionToken,
+      sessionTtlSeconds,
+      generateJti,
+    });
+    await client.query('COMMIT');
+    transactionOpen = false;
+    return result;
+  } catch (error) {
+    if (transactionOpen) await client.query('ROLLBACK').catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 async function verifyAdminSession({ pool, payload, permission }) {
@@ -203,6 +258,7 @@ module.exports = {
   decodeBase32,
   hasAdminPermission,
   revokeAdminSession,
+  sameCredentialSnapshot,
   timingSafeTextEqual,
   totpCode,
   verifyAdminSession,

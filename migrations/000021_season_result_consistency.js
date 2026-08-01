@@ -99,6 +99,8 @@ export const up = (pgm) => {
       WHERE ranked_eligible = TRUE;
 
     ALTER TABLE season_match_results
+      DROP CONSTRAINT IF EXISTS fk_season_match_results_canonical_match;
+    ALTER TABLE season_match_results
       ADD CONSTRAINT fk_season_match_results_canonical_match
       FOREIGN KEY (canonical_match_id) REFERENCES matches(id) ON DELETE RESTRICT;
 

@@ -47,6 +47,8 @@ describe('TUTORIAL_STEPS', () => {
     expect(openingHand?.interactionTarget).toBe('[data-tut-mulligan-card="1st_2"]');
     expect(openingHand?.actionOnly).toBe(true);
     expect(mulligan?.completeWhen).toBeTypeOf('function');
+    expect(mulligan?.completeWhen?.({ mulliganUsed: [true, false], step: 'mulligan' } as GameState, null)).toBe(false);
+    expect(mulligan?.completeWhen?.({ mulliganUsed: [true, false], step: 'initialSet' } as GameState, null)).toBe(true);
   });
 
   it('locks battle preparation to one exact scripted target per step', () => {

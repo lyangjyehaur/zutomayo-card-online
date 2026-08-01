@@ -71,6 +71,7 @@ afterEach(() => {
   configurePlatformJwtRevocationStore(null);
   configurePlatformJwtAccountStore(null);
   QuickMatchRoom.configureBlockStore(createEmptyPlatformBlockStore());
+  InviteRoom.configureBlockStore(createEmptyPlatformBlockStore());
   InviteRoom.configureFriendStore(
     {
       async listFriendUserIds() {
@@ -364,7 +365,7 @@ describe('platform room auth', () => {
     const areUsersBlocked = vi.fn(async (firstUserId: string, secondUserId: string) =>
       [firstUserId, secondUserId].includes('u_blocked'),
     );
-    QuickMatchRoom.configureBlockStore({ areUsersBlocked });
+    QuickMatchRoom.configureBlockStore({ ...createEmptyPlatformBlockStore(), areUsersBlocked });
     const quickRoom = new QuickMatchRoom();
 
     await expect(
@@ -496,6 +497,31 @@ describe('platform room auth', () => {
         cookieAuthContext('u_inviter'),
       ),
     ).resolves.toMatchObject({ userId: 'u_inviter', authenticated: true, role: 'player' });
+  });
+
+  it('authorizes opaque room-id joins from the room invite and current cookie identity', async () => {
+    const inviteRoom = new InviteRoom();
+    const inviteId = `friend:v1:${encodeURIComponent('u_inviter')}:${encodeURIComponent('u_target')}`;
+    const listFriendUserIds = vi.fn(async (userId: string) => (userId === 'u_target' ? ['u_inviter'] : ['u_target']));
+    InviteRoom.configureFriendStore({ listFriendUserIds }, { enforceFriendship: true });
+    vi.spyOn(inviteRoom, 'setMatchmaking').mockResolvedValue(undefined);
+    await inviteRoom.onCreate({ inviteId, targetUserId: 'u_target' });
+
+    await expect(
+      inviteRoom.onAuth({} as never, { userId: 'u_spoofed', displayName: 'Target' }, cookieAuthContext('u_target')),
+    ).resolves.toMatchObject({ userId: 'u_target', authenticated: true, role: 'player' });
+    expect(listFriendUserIds).toHaveBeenCalledWith('u_target');
+
+    await expect(
+      inviteRoom.onAuth({} as never, { displayName: 'Observer' }, cookieAuthContext('u_other')),
+    ).rejects.toThrow('Invite access denied');
+
+    const areUsersBlocked = vi.fn(async () => true);
+    InviteRoom.configureBlockStore({ ...createEmptyPlatformBlockStore(), areUsersBlocked });
+    await expect(
+      inviteRoom.onAuth({} as never, { displayName: 'Target' }, cookieAuthContext('u_target')),
+    ).rejects.toThrow('Invite blocked');
+    expect(areUsersBlocked).toHaveBeenCalledWith('u_inviter', 'u_target');
   });
 
   it('requires configured durable friendship for production friend invite joins', async () => {

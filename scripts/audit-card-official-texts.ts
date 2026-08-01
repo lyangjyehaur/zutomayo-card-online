@@ -11,13 +11,20 @@ type ExtractedCard = {
 };
 
 type Extraction = { cards: ExtractedCard[] };
+type HumanReviewField = { value?: unknown; source?: unknown; reviewedAt?: unknown };
+type HumanReviews = Record<string, { name?: HumanReviewField; effect?: HumanReviewField }>;
+type OcrOverrides = Record<string, { enNameOfficial?: unknown; enEffectOfficial?: unknown; note?: unknown }>;
 
 const verifiedStatuses = new Set(['machine_verified', 'human_verified']);
 const knownOfficialEnglishPrintDifferences = new Set(['4th_23']);
 const suspiciousOcrArtifact = /\b(?:ff|retum|charaoter|opponet|nand|specily|electrig|attibute|immedlately)\b/i;
 
-const source = process.argv[2] || 'data/card-english-extraction.json';
+const source = process.argv[2] || process.env.CARD_EXTRACTION_SOURCE || 'data/card-english-extraction.json';
 const extraction = JSON.parse(fs.readFileSync(source, 'utf8')) as Extraction;
+const humanReviewsSource = process.env.CARD_HUMAN_REVIEWS_SOURCE || 'data/card-english-human-reviews.json';
+const overridesSource = process.env.CARD_OCR_OVERRIDES_SOURCE || 'scripts/card-english-ocr-overrides.json';
+const humanReviews = (JSON.parse(fs.readFileSync(humanReviewsSource, 'utf8')) as { reviews: HumanReviews }).reviews;
+const overrides = JSON.parse(fs.readFileSync(overridesSource, 'utf8')) as OcrOverrides;
 
 const semanticTerms: Array<{ ja: RegExp; en: RegExp; label: string }> = [
   { ja: /闇/, en: /\b(darkness|dark)\b/i, label: 'darkness attribute' },
@@ -69,6 +76,21 @@ function attackAdjustment(value: string, lang: 'ja' | 'en'): string | null {
   return match ? `${match[1]}${Number(match[2])}` : null;
 }
 
+function hasReviewProvenance(card: ExtractedCard, field: 'name' | 'effect', value: string): boolean {
+  const review = humanReviews[card.id]?.[field];
+  const reviewedAt = typeof review?.reviewedAt === 'string' ? Date.parse(review.reviewedAt) : Number.NaN;
+  const humanReviewMatches =
+    review?.value === value &&
+    typeof review.source === 'string' &&
+    review.source.length > 0 &&
+    Number.isFinite(reviewedAt);
+  const override = overrides[card.id];
+  const overrideValue = field === 'name' ? override?.enNameOfficial : override?.enEffectOfficial;
+  const reviewedOverrideMatches =
+    overrideValue === value && typeof override?.note === 'string' && /verified/i.test(override.note);
+  return humanReviewMatches || reviewedOverrideMatches;
+}
+
 const problems: string[] = [];
 const ids = new Set<string>();
 const seenPrintDifferences = new Set<string>();
@@ -77,6 +99,9 @@ for (const card of extraction.cards) {
   ids.add(card.id);
   if (!verifiedStatuses.has(card.nameStatus) || !card.enNameOfficial.trim()) {
     problems.push(`${card.id}: official English name is not verified`);
+  }
+  if (card.nameStatus === 'human_verified' && !hasReviewProvenance(card, 'name', card.enNameOfficial)) {
+    problems.push(`${card.id}: human-verified English name has no matching review provenance`);
   }
   if (/[\u3040-\u309f\u30a0-\u30fa\u31f0-\u31ff\u3400-\u9fff]/u.test(card.enNameOfficial)) {
     problems.push(`${card.id}: official English name contains Japanese text`);
@@ -101,6 +126,9 @@ for (const card of extraction.cards) {
   if (!verifiedStatuses.has(card.effectStatus) || !englishEffect) {
     problems.push(`${card.id}: official English effect is not verified`);
     continue;
+  }
+  if (card.effectStatus === 'human_verified' && !hasReviewProvenance(card, 'effect', card.enEffectOfficial)) {
+    problems.push(`${card.id}: human-verified English effect has no matching review provenance`);
   }
   if (/[\u3040-\u309f\u30a0-\u30fa\u31f0-\u31ff\u3400-\u9fff]/u.test(englishEffect)) {
     problems.push(`${card.id}: official English effect contains Japanese text`);

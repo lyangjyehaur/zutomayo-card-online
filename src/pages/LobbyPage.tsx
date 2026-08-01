@@ -234,14 +234,25 @@ function HomeAnnouncements({
   );
 }
 
-function UtilityChannel({ channel, onOpen }: { channel: Channel; onOpen: (path: string) => void }) {
+function UtilityChannel({
+  channel,
+  networkOnline,
+  onOpen,
+}: {
+  channel: Channel;
+  networkOnline: boolean;
+  onOpen: (path: string) => void;
+}) {
   const { to, no, titleKey, captionKey, Icon } = channel;
+  const requiresNetwork = to === '/online' || to === '/leaderboard';
   return (
     <li className="min-w-0">
       <button
         type="button"
         onClick={() => onOpen(to)}
-        className="group flex h-full min-h-28 w-full flex-col items-start gap-3 rounded-md border border-border-soft bg-surface-base/55 p-4 text-left transition hover:border-accent-primary/55 hover:bg-surface-base/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--focus-ring-color]"
+        disabled={requiresNetwork && !networkOnline}
+        data-offline-requires-network={requiresNetwork ? to.slice(1) : undefined}
+        className="group flex h-full min-h-28 w-full flex-col items-start gap-3 rounded-md border border-border-soft bg-surface-base/55 p-4 text-left transition hover:border-accent-primary/55 hover:bg-surface-base/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--focus-ring-color] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:border-border-soft disabled:hover:bg-surface-base/55"
       >
         <span className="flex w-full items-center justify-between gap-3">
           <span className="font-mono text-caption text-accent-primary/75">CH.{no}</span>
@@ -270,6 +281,9 @@ function UtilityChannel({ channel, onOpen }: { channel: Channel; onOpen: (path: 
 export function LobbyPage({ onAuthChanged, deckSharingEnabled }: LobbyPageProps) {
   const navigate = useNavigate();
   const locale = useLocale();
+  const [networkOnline, setNetworkOnline] = useState(() =>
+    typeof navigator === 'undefined' ? true : navigator.onLine,
+  );
   const [showDeckIntro, setShowDeckIntro] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const { onlineCount } = useOnlinePresence();
@@ -284,6 +298,17 @@ export function LobbyPage({ onAuthChanged, deckSharingEnabled }: LobbyPageProps)
   );
   const [pendingBackgroundImage, setPendingBackgroundImage] = useState<string | null>(null);
   const [backgroundTransitioning, setBackgroundTransitioning] = useState(false);
+
+  useEffect(() => {
+    const handleOnline = () => setNetworkOnline(true);
+    const handleOffline = () => setNetworkOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   useEffect(() => {
     const seen = localStorage.getItem('zutomayo_deck_intro_seen');
@@ -601,8 +626,10 @@ export function LobbyPage({ onAuthChanged, deckSharingEnabled }: LobbyPageProps)
               <nav className="grid gap-3 sm:grid-cols-2" aria-label={t('lobby.homeStart')}>
                 <button
                   type="button"
-                  className="group relative min-h-48 overflow-hidden rounded-md border border-accent-primary/45 bg-surface-panel-strong p-5 text-left shadow-floating transition hover:border-accent-primary hover:bg-surface-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--focus-ring-color] sm:col-span-2"
+                  className="group relative min-h-48 overflow-hidden rounded-md border border-accent-primary/45 bg-surface-panel-strong p-5 text-left shadow-floating transition hover:border-accent-primary hover:bg-surface-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--focus-ring-color] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:border-accent-primary/45 disabled:hover:bg-surface-panel-strong sm:col-span-2"
                   onClick={() => navigate(START_CHANNELS[0].to)}
+                  disabled={!networkOnline}
+                  data-offline-requires-network="online"
                   data-umami-event="home-hero-online"
                 >
                   <span className="relative z-10 flex h-full max-w-[60%] flex-col items-start">
@@ -812,7 +839,7 @@ export function LobbyPage({ onAuthChanged, deckSharingEnabled }: LobbyPageProps)
             <nav aria-label={t('lobby.homeChannels')}>
               <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 {utilityChannels.map((channel) => (
-                  <UtilityChannel key={channel.to} channel={channel} onOpen={navigate} />
+                  <UtilityChannel key={channel.to} channel={channel} networkOnline={networkOnline} onOpen={navigate} />
                 ))}
               </ul>
             </nav>

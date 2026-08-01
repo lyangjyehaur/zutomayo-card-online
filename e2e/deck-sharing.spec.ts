@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
+import { cardDataHeaders } from './helpers/cardData';
 
 const cardIds = Array.from({ length: 20 }, (_, index) => `card_${index}`);
 const cards = cardIds.map((id, index) => ({
@@ -71,8 +72,17 @@ async function expectNoBlockingAxeViolations(page: Page, surface: string) {
   ).toEqual([]);
 }
 
+async function waitForModalAnimations(dialog: Locator): Promise<void> {
+  await dialog.evaluate(async (element) => {
+    const modalRoot = element.parentElement;
+    const animations = [...(modalRoot?.getAnimations() ?? []), ...element.getAnimations({ subtree: true })];
+    await Promise.allSettled(animations.map((animation) => animation.finished));
+  });
+}
+
 test.describe('牌組分享大廳', () => {
   test.beforeEach(async ({ page }) => {
+    const cardHeaders = await cardDataHeaders(page, cards.length);
     await page.addInitScript(() => {
       localStorage.setItem('zutomayo_deck_intro_seen', 'true');
       localStorage.setItem('zutomayo_locale', 'zh-TW');
@@ -87,9 +97,18 @@ test.describe('牌組分享大廳', () => {
       });
     });
     await page.route('**/api/config', (route) => route.fulfill({ json: { deck_sharing_enabled: true } }));
-    await page.route('**/api/cards', (route) => route.fulfill({ json: cards }));
-    await page.route('**/api/cards/texts', (route) => route.fulfill({ json: {} }));
-    await page.route('**/api/cards/*/texts', (route) => route.fulfill({ json: {} }));
+    await page.route(
+      (url) => url.pathname === '/api/cards',
+      (route) => route.fulfill({ headers: cardHeaders, json: cards }),
+    );
+    await page.route(
+      (url) => url.pathname === '/api/cards/texts',
+      (route) => route.fulfill({ headers: cardHeaders, json: {} }),
+    );
+    await page.route(
+      (url) => /^\/api\/cards\/[^/]+\/texts$/.test(url.pathname),
+      (route) => route.fulfill({ headers: cardHeaders, json: {} }),
+    );
     await page.route('**/api/csrf-token', (route) => route.fulfill({ json: { token: 'deck-share-test-csrf' } }));
     await page.route('**/api/imgproxy/**', (route) => route.fulfill({ status: 404, json: { error: 'not mocked' } }));
     await page.route('**/api/profile', async (route) => {
@@ -118,6 +137,13 @@ test.describe('牌組分享大廳', () => {
   });
 
   test('訪客可用鍵盤從大廳開啟詳情與卡牌 Sheet', async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'share', { configurable: true, value: undefined });
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: { writeText: async () => undefined },
+      });
+    });
     await page.goto('/deck-shares');
     await expect(page.getByRole('heading', { name: '探索玩家分享的牌組' })).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole('button', { name: '分享牌組' })).toHaveCount(0);

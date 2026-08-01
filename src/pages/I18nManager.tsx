@@ -264,6 +264,7 @@ export function I18nManager() {
           className="i18n-locale-tabs"
           behavior="tabs"
           size="sm"
+          optionClassName="!min-w-11"
           ariaLabel={t('settings.language')}
           options={availableLocales.map((locale) => ({ value: locale, label: getLocaleLabel(locale) }))}
           value={selectedLocale}

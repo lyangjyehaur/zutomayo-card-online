@@ -5,6 +5,7 @@
 // be mistaken for a healthy application database.
 const REQUIRED_RUNTIME_TABLES = Object.freeze([
   'schema_migration_checksums',
+  'official_card_data_releases',
   'users',
   'user_identities',
   'decks',
@@ -67,6 +68,8 @@ const REQUIRED_RUNTIME_TABLES = Object.freeze([
   'retention_runs',
   'account_action_tokens',
   'account_deletion_requests',
+  'account_export_jobs',
+  'account_export_audit',
   'relationship_change_outbox',
   'admin_users',
   'admin_sessions',
@@ -83,7 +86,17 @@ const REQUIRED_RUNTIME_TABLES = Object.freeze([
 // retention, and account-deletion paths. Checking the columns catches an
 // interrupted expand migration even when the table itself already exists.
 const REQUIRED_RUNTIME_COLUMNS = Object.freeze({
-  users: ['id', 'auth_version', 'deleted_at'],
+  official_card_data_releases: [
+    'dataset_sha256',
+    'extraction_sha256',
+    'errata_sha256',
+    'review_provenance_sha256',
+    'release_sha',
+    'card_count',
+    'errata_count',
+    'applied_at',
+  ],
+  users: ['id', 'auth_version', 'deleted_at', 'identity_anonymized_at'],
   user_identities: ['user_id', 'provider', 'provider_user_id'],
   decks: ['id', 'user_id', 'card_ids', 'updated_at'],
   deck_reservations: ['id', 'user_id', 'deck_id', 'rules_version', 'card_ids', 'expires_at'],
@@ -166,12 +179,15 @@ const REQUIRED_RUNTIME_COLUMNS = Object.freeze({
     'effect_source',
     'review_status',
     'review_note',
+    'updated_at',
   ],
   card_official_errata: [
     'errata_id',
     'card_id',
+    'published_at',
     'affects_name',
     'affects_effect',
+    'incorrect_text',
     'corrected_english_status',
     'corrected_english_source',
     'reason_ja',
@@ -183,6 +199,7 @@ const REQUIRED_RUNTIME_COLUMNS = Object.freeze({
     'publication_status',
     'last_seen_at',
     'source_url',
+    'updated_at',
   ],
   official_qa_items: [
     'id',
@@ -360,7 +377,16 @@ const REQUIRED_RUNTIME_COLUMNS = Object.freeze({
   game_config: ['key', 'value'],
   service_integrations: ['key', 'config', 'secret_ciphertext', 'updated_at'],
   preset_decks: ['id', 'card_ids'],
-  admin_audit_log: ['id', 'action', 'target_type', 'created_at'],
+  admin_audit_log: [
+    'id',
+    'admin_user_id',
+    'action',
+    'target_type',
+    'target_id',
+    'details',
+    'created_at',
+    'identity_anonymized_at',
+  ],
   feedback_posts: ['id', 'title', 'description', 'status', 'created_at'],
   feedback_votes: ['post_id', 'created_at'],
   feedback_comments: ['id', 'post_id', 'content', 'created_at'],
@@ -405,6 +431,8 @@ const REQUIRED_RUNTIME_COLUMNS = Object.freeze({
     'season_id',
     'source_match_id',
     'canonical_match_id',
+    'winner_user_id',
+    'loser_user_id',
     'completed_at',
     'rules_version',
     'winner_rating_before',
@@ -412,6 +440,7 @@ const REQUIRED_RUNTIME_COLUMNS = Object.freeze({
     'loser_rating_before',
     'loser_rating_after',
     'applied_at',
+    'identity_anonymized_at',
   ],
   season_rewards: ['season_id', 'user_id', 'reward_tier', 'reward_payload', 'claimed_at'],
   season_reward_entitlements: ['season_id', 'user_id', 'reward_tier', 'reward_payload', 'granted_at'],
@@ -431,6 +460,48 @@ const REQUIRED_RUNTIME_COLUMNS = Object.freeze({
     'updated_at',
     'provider_deleted_at',
     'completed_at',
+    'identity_anonymized_at',
+  ],
+  account_export_jobs: [
+    'id',
+    'user_id',
+    'status',
+    'format_version',
+    'object_key',
+    'object_version_id',
+    'content_sha256',
+    'size_bytes',
+    'uncompressed_size_bytes',
+    'attempt_count',
+    'max_attempts',
+    'available_at',
+    'locked_at',
+    'lease_token',
+    'lease_expires_at',
+    'error_code',
+    'last_error',
+    'purge_attempt_count',
+    'purge_available_at',
+    'requested_at',
+    'snapshot_at',
+    'started_at',
+    'completed_at',
+    'expires_at',
+    'downloaded_at',
+    'download_count',
+    'purged_at',
+    'updated_at',
+    'identity_anonymized_at',
+  ],
+  account_export_audit: [
+    'id',
+    'job_id',
+    'user_id',
+    'event_type',
+    'request_id',
+    'details',
+    'created_at',
+    'identity_anonymized_at',
   ],
   relationship_change_outbox: [
     'event_id',
@@ -451,9 +522,20 @@ const REQUIRED_RUNTIME_COLUMNS = Object.freeze({
     'created_at',
     'updated_at',
     'delivered_at',
+    'identities_redacted_at',
   ],
-  admin_users: ['id', 'user_id', 'username', 'role', 'disabled_at'],
-  admin_sessions: ['jti', 'admin_user_id', 'role', 'expires_at', 'revoked_at'],
+  admin_users: [
+    'id',
+    'user_id',
+    'username',
+    'password_hash',
+    'salt',
+    'role',
+    'totp_secret_ciphertext',
+    'updated_at',
+    'disabled_at',
+  ],
+  admin_sessions: ['jti', 'admin_user_id', 'role', 'expires_at', 'created_at', 'revoked_at', 'last_seen_at'],
   bjg_matches: ['match_id', 'state', 'initial_state', 'metadata', 'log', 'updated_at'],
   bjg_match_seats: [
     'match_id',
@@ -538,10 +620,570 @@ const REQUIRED_RUNTIME_COLUMNS = Object.freeze({
   ],
 });
 
+// The game process runs under a least-privilege PostgreSQL role. Keep this
+// contract limited to the tables and columns touched by PostgresAdapter and
+// its account/deck mutation dependencies; information_schema intentionally
+// hides API-only columns from that role.
+const REQUIRED_BOARDGAME_RUNTIME_TABLES = Object.freeze([
+  'users',
+  'deck_reservations',
+  'bjg_matches',
+  'bjg_match_seats',
+  'bjg_match_result_outbox',
+]);
+
+const REQUIRED_BOARDGAME_RUNTIME_COLUMNS = Object.freeze({
+  users: ['id', 'deleted_at', 'elo', 'match_count', 'wins'],
+  deck_reservations: [
+    'id',
+    'user_id',
+    'deck_version',
+    'rules_version',
+    'card_ids',
+    'expires_at',
+    'match_id',
+    'player_id',
+    'consumed_at',
+  ],
+  bjg_matches: ['match_id', 'state', 'initial_state', 'metadata', 'log', 'updated_at'],
+  bjg_match_seats: [
+    'match_id',
+    'player_id',
+    'user_id',
+    'ranked_eligible',
+    'credential_hash',
+    'reserved_at',
+    'last_resumed_at',
+  ],
+  bjg_match_result_outbox: [
+    'source_match_id',
+    'player0_user_id',
+    'player1_user_id',
+    'winner_player',
+    'winner_user_id',
+    'loser_user_id',
+    'ranked_eligible',
+    'turns',
+    'duration_seconds',
+    'completed_at',
+    'rules_version',
+    'action_log',
+    'state_id',
+    'status',
+    'attempt_count',
+    'next_attempt_at',
+    'locked_at',
+    'last_error',
+    'delivered_match_id',
+    'created_at',
+    'updated_at',
+    'delivered_at',
+  ],
+});
+
+const REQUIRED_BOARDGAME_RUNTIME_COLUMN_CONTRACTS = Object.freeze([
+  { tableName: 'users', columnName: 'id', udtName: 'text', nullable: false, defaultToken: null },
+  { tableName: 'users', columnName: 'deleted_at', udtName: 'timestamptz', nullable: true, defaultToken: null },
+  { tableName: 'users', columnName: 'elo', udtName: 'int4', nullable: false, defaultToken: '1000' },
+  { tableName: 'users', columnName: 'match_count', udtName: 'int4', nullable: false, defaultToken: '0' },
+  { tableName: 'users', columnName: 'wins', udtName: 'int4', nullable: false, defaultToken: '0' },
+  {
+    tableName: 'deck_reservations',
+    columnName: 'card_ids',
+    udtName: 'jsonb',
+    nullable: false,
+    defaultToken: null,
+  },
+  {
+    tableName: 'deck_reservations',
+    columnName: 'expires_at',
+    udtName: 'timestamptz',
+    nullable: false,
+    defaultToken: null,
+  },
+  {
+    tableName: 'deck_reservations',
+    columnName: 'match_id',
+    udtName: 'text',
+    nullable: true,
+    defaultToken: null,
+  },
+  {
+    tableName: 'deck_reservations',
+    columnName: 'player_id',
+    udtName: 'text',
+    nullable: true,
+    defaultToken: null,
+  },
+  {
+    tableName: 'deck_reservations',
+    columnName: 'consumed_at',
+    udtName: 'timestamptz',
+    nullable: true,
+    defaultToken: null,
+  },
+  {
+    tableName: 'bjg_matches',
+    columnName: 'state',
+    udtName: 'jsonb',
+    nullable: true,
+    defaultToken: null,
+  },
+  {
+    tableName: 'bjg_matches',
+    columnName: 'initial_state',
+    udtName: 'jsonb',
+    nullable: true,
+    defaultToken: null,
+  },
+  {
+    tableName: 'bjg_matches',
+    columnName: 'metadata',
+    udtName: 'jsonb',
+    nullable: false,
+    defaultToken: null,
+  },
+  {
+    tableName: 'bjg_matches',
+    columnName: 'log',
+    udtName: 'jsonb',
+    nullable: false,
+    defaultToken: "'[]'::jsonb",
+  },
+  {
+    tableName: 'bjg_matches',
+    columnName: 'updated_at',
+    udtName: 'timestamptz',
+    nullable: false,
+    defaultToken: 'now()',
+  },
+  {
+    tableName: 'bjg_match_seats',
+    columnName: 'ranked_eligible',
+    udtName: 'bool',
+    nullable: false,
+    defaultToken: 'false',
+  },
+  {
+    tableName: 'bjg_match_seats',
+    columnName: 'reserved_at',
+    udtName: 'timestamptz',
+    nullable: false,
+    defaultToken: 'now()',
+  },
+  {
+    tableName: 'bjg_match_seats',
+    columnName: 'last_resumed_at',
+    udtName: 'timestamptz',
+    nullable: true,
+    defaultToken: null,
+  },
+  {
+    tableName: 'bjg_match_result_outbox',
+    columnName: 'winner_player',
+    udtName: 'int2',
+    nullable: true,
+    defaultToken: null,
+  },
+  {
+    tableName: 'bjg_match_result_outbox',
+    columnName: 'ranked_eligible',
+    udtName: 'bool',
+    nullable: false,
+    defaultToken: 'false',
+  },
+  {
+    tableName: 'bjg_match_result_outbox',
+    columnName: 'turns',
+    udtName: 'int4',
+    nullable: false,
+    defaultToken: '0',
+  },
+  {
+    tableName: 'bjg_match_result_outbox',
+    columnName: 'duration_seconds',
+    udtName: 'int4',
+    nullable: false,
+    defaultToken: '0',
+  },
+  {
+    tableName: 'bjg_match_result_outbox',
+    columnName: 'completed_at',
+    udtName: 'timestamptz',
+    nullable: false,
+    defaultToken: 'now()',
+  },
+  {
+    tableName: 'bjg_match_result_outbox',
+    columnName: 'rules_version',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: "'legacy'",
+  },
+  {
+    tableName: 'bjg_match_result_outbox',
+    columnName: 'action_log',
+    udtName: 'jsonb',
+    nullable: false,
+    defaultToken: "'[]'::jsonb",
+  },
+  {
+    tableName: 'bjg_match_result_outbox',
+    columnName: 'status',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: "'pending'",
+  },
+  {
+    tableName: 'bjg_match_result_outbox',
+    columnName: 'attempt_count',
+    udtName: 'int4',
+    nullable: false,
+    defaultToken: '0',
+  },
+  {
+    tableName: 'bjg_match_result_outbox',
+    columnName: 'next_attempt_at',
+    udtName: 'timestamptz',
+    nullable: false,
+    defaultToken: 'now()',
+  },
+]);
+
 // Catalog-level contracts for the fields whose shape is security or data-
 // integrity critical. `udtName` uses PostgreSQL's stable internal names
 // (for example `timestamptz` and `int4`) instead of localized display text.
 const REQUIRED_RUNTIME_COLUMN_CONTRACTS = Object.freeze([
+  {
+    tableName: 'users',
+    columnName: 'identity_anonymized_at',
+    udtName: 'timestamptz',
+    nullable: true,
+    defaultToken: null,
+  },
+  {
+    tableName: 'official_card_data_releases',
+    columnName: 'dataset_sha256',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: null,
+  },
+  {
+    tableName: 'official_card_data_releases',
+    columnName: 'extraction_sha256',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: null,
+  },
+  {
+    tableName: 'official_card_data_releases',
+    columnName: 'errata_sha256',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: null,
+  },
+  {
+    tableName: 'official_card_data_releases',
+    columnName: 'review_provenance_sha256',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: null,
+  },
+  {
+    tableName: 'official_card_data_releases',
+    columnName: 'release_sha',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: null,
+  },
+  {
+    tableName: 'official_card_data_releases',
+    columnName: 'card_count',
+    udtName: 'int4',
+    nullable: false,
+    defaultToken: null,
+  },
+  {
+    tableName: 'official_card_data_releases',
+    columnName: 'errata_count',
+    udtName: 'int4',
+    nullable: false,
+    defaultToken: null,
+  },
+  {
+    tableName: 'official_card_data_releases',
+    columnName: 'applied_at',
+    udtName: 'timestamptz',
+    nullable: false,
+    defaultToken: 'now()',
+  },
+  {
+    tableName: 'admin_audit_log',
+    columnName: 'details',
+    udtName: 'jsonb',
+    nullable: true,
+    defaultToken: null,
+  },
+  {
+    tableName: 'admin_audit_log',
+    columnName: 'created_at',
+    udtName: 'timestamptz',
+    nullable: false,
+    defaultToken: 'now()',
+  },
+  {
+    tableName: 'admin_audit_log',
+    columnName: 'identity_anonymized_at',
+    udtName: 'timestamptz',
+    nullable: true,
+    defaultToken: null,
+  },
+  {
+    tableName: 'admin_users',
+    columnName: 'user_id',
+    udtName: 'text',
+    nullable: true,
+    defaultToken: null,
+  },
+  {
+    tableName: 'admin_users',
+    columnName: 'password_hash',
+    udtName: 'text',
+    nullable: true,
+    defaultToken: null,
+  },
+  { tableName: 'admin_users', columnName: 'salt', udtName: 'text', nullable: true, defaultToken: null },
+  {
+    tableName: 'admin_users',
+    columnName: 'totp_secret_ciphertext',
+    udtName: 'text',
+    nullable: true,
+    defaultToken: null,
+  },
+  {
+    tableName: 'admin_users',
+    columnName: 'updated_at',
+    udtName: 'timestamptz',
+    nullable: false,
+    defaultToken: 'now()',
+  },
+  {
+    tableName: 'admin_sessions',
+    columnName: 'expires_at',
+    udtName: 'timestamptz',
+    nullable: false,
+    defaultToken: null,
+  },
+  {
+    tableName: 'admin_sessions',
+    columnName: 'revoked_at',
+    udtName: 'timestamptz',
+    nullable: true,
+    defaultToken: null,
+  },
+  {
+    tableName: 'cards',
+    columnName: 'en_name_official',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: "''",
+  },
+  {
+    tableName: 'cards',
+    columnName: 'en_effect_official',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: "''",
+  },
+  {
+    tableName: 'card_texts_i18n',
+    columnName: 'card_id',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: null,
+  },
+  {
+    tableName: 'card_texts_i18n',
+    columnName: 'lang',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: null,
+  },
+  {
+    tableName: 'card_texts_i18n',
+    columnName: 'name_text',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: "''",
+  },
+  {
+    tableName: 'card_texts_i18n',
+    columnName: 'effect_text',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: "''",
+  },
+  {
+    tableName: 'card_texts_i18n',
+    columnName: 'name_source',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: "''",
+  },
+  {
+    tableName: 'card_texts_i18n',
+    columnName: 'effect_source',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: "''",
+  },
+  {
+    tableName: 'card_texts_i18n',
+    columnName: 'review_status',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: "'pending_review'",
+  },
+  {
+    tableName: 'card_texts_i18n',
+    columnName: 'review_note',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: "''",
+  },
+  {
+    tableName: 'card_texts_i18n',
+    columnName: 'updated_at',
+    udtName: 'timestamptz',
+    nullable: false,
+    defaultToken: 'now()',
+  },
+  {
+    tableName: 'card_official_errata',
+    columnName: 'errata_id',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: null,
+  },
+  {
+    tableName: 'card_official_errata',
+    columnName: 'card_id',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: null,
+  },
+  {
+    tableName: 'card_official_errata',
+    columnName: 'published_at',
+    udtName: 'date',
+    nullable: false,
+    defaultToken: null,
+  },
+  {
+    tableName: 'card_official_errata',
+    columnName: 'affects_name',
+    udtName: 'bool',
+    nullable: false,
+    defaultToken: 'false',
+  },
+  {
+    tableName: 'card_official_errata',
+    columnName: 'affects_effect',
+    udtName: 'bool',
+    nullable: false,
+    defaultToken: 'false',
+  },
+  {
+    tableName: 'card_official_errata',
+    columnName: 'incorrect_text',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: "''",
+  },
+  {
+    tableName: 'card_official_errata',
+    columnName: 'corrected_english_status',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: "'pending_review'",
+  },
+  {
+    tableName: 'card_official_errata',
+    columnName: 'corrected_english_source',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: "'official_japanese_errata_translation'",
+  },
+  {
+    tableName: 'card_official_errata',
+    columnName: 'reason_ja',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: "''",
+  },
+  {
+    tableName: 'card_official_errata',
+    columnName: 'replacement_policy_ja',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: "''",
+  },
+  {
+    tableName: 'card_official_errata',
+    columnName: 'usage_policy_ja',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: "''",
+  },
+  {
+    tableName: 'card_official_errata',
+    columnName: 'card_number',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: "''",
+  },
+  {
+    tableName: 'card_official_errata',
+    columnName: 'content_hash',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: "''",
+  },
+  {
+    tableName: 'card_official_errata',
+    columnName: 'content_version',
+    udtName: 'int4',
+    nullable: false,
+    defaultToken: '1',
+  },
+  {
+    tableName: 'card_official_errata',
+    columnName: 'publication_status',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: "'published'",
+  },
+  {
+    tableName: 'card_official_errata',
+    columnName: 'last_seen_at',
+    udtName: 'timestamptz',
+    nullable: false,
+    defaultToken: 'now()',
+  },
+  {
+    tableName: 'card_official_errata',
+    columnName: 'source_url',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: null,
+  },
+  {
+    tableName: 'card_official_errata',
+    columnName: 'updated_at',
+    udtName: 'timestamptz',
+    nullable: false,
+    defaultToken: 'now()',
+  },
   { tableName: 'matches', columnName: 'completed_at', udtName: 'timestamptz', nullable: false, defaultToken: 'now()' },
   { tableName: 'matches', columnName: 'rules_version', udtName: 'text', nullable: false, defaultToken: "'legacy'" },
   {
@@ -555,6 +1197,20 @@ const REQUIRED_RUNTIME_COLUMN_CONTRACTS = Object.freeze([
   { tableName: 'season_ratings', columnName: 'rating', udtName: 'int4', nullable: false, defaultToken: null },
   { tableName: 'season_ratings', columnName: 'match_count', udtName: 'int4', nullable: false, defaultToken: '0' },
   { tableName: 'season_ratings', columnName: 'wins', udtName: 'int4', nullable: false, defaultToken: '0' },
+  {
+    tableName: 'season_match_results',
+    columnName: 'winner_user_id',
+    udtName: 'text',
+    nullable: true,
+    defaultToken: null,
+  },
+  {
+    tableName: 'season_match_results',
+    columnName: 'loser_user_id',
+    udtName: 'text',
+    nullable: true,
+    defaultToken: null,
+  },
   {
     tableName: 'season_ratings',
     columnName: 'placement_complete',
@@ -612,6 +1268,13 @@ const REQUIRED_RUNTIME_COLUMN_CONTRACTS = Object.freeze([
     defaultToken: 'now()',
   },
   {
+    tableName: 'season_match_results',
+    columnName: 'identity_anonymized_at',
+    udtName: 'timestamptz',
+    nullable: true,
+    defaultToken: null,
+  },
+  {
     tableName: 'account_deletion_requests',
     columnName: 'status',
     udtName: 'text',
@@ -648,6 +1311,20 @@ const REQUIRED_RUNTIME_COLUMN_CONTRACTS = Object.freeze([
   },
   {
     tableName: 'account_deletion_requests',
+    columnName: 'identity_anonymized_at',
+    udtName: 'timestamptz',
+    nullable: true,
+    defaultToken: null,
+  },
+  {
+    tableName: 'account_export_jobs',
+    columnName: 'user_id',
+    udtName: 'text',
+    nullable: true,
+    defaultToken: null,
+  },
+  {
+    tableName: 'account_deletion_requests',
     columnName: 'provider_deleted_at',
     udtName: 'timestamptz',
     nullable: true,
@@ -656,6 +1333,97 @@ const REQUIRED_RUNTIME_COLUMN_CONTRACTS = Object.freeze([
   {
     tableName: 'account_deletion_requests',
     columnName: 'completed_at',
+    udtName: 'timestamptz',
+    nullable: true,
+    defaultToken: null,
+  },
+  {
+    tableName: 'account_export_jobs',
+    columnName: 'status',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: "'queued'",
+  },
+  {
+    tableName: 'account_export_jobs',
+    columnName: 'format_version',
+    udtName: 'int2',
+    nullable: false,
+    defaultToken: '1',
+  },
+  {
+    tableName: 'account_export_jobs',
+    columnName: 'attempt_count',
+    udtName: 'int4',
+    nullable: false,
+    defaultToken: '0',
+  },
+  {
+    tableName: 'account_export_jobs',
+    columnName: 'max_attempts',
+    udtName: 'int4',
+    nullable: false,
+    defaultToken: '5',
+  },
+  {
+    tableName: 'account_export_jobs',
+    columnName: 'available_at',
+    udtName: 'timestamptz',
+    nullable: false,
+    defaultToken: 'now()',
+  },
+  {
+    tableName: 'account_export_jobs',
+    columnName: 'error_code',
+    udtName: 'text',
+    nullable: false,
+    defaultToken: "''",
+  },
+  {
+    tableName: 'account_export_jobs',
+    columnName: 'purge_attempt_count',
+    udtName: 'int4',
+    nullable: false,
+    defaultToken: '0',
+  },
+  {
+    tableName: 'account_export_jobs',
+    columnName: 'purge_available_at',
+    udtName: 'timestamptz',
+    nullable: false,
+    defaultToken: 'now()',
+  },
+  {
+    tableName: 'account_export_jobs',
+    columnName: 'download_count',
+    udtName: 'int4',
+    nullable: false,
+    defaultToken: '0',
+  },
+  {
+    tableName: 'account_export_jobs',
+    columnName: 'identity_anonymized_at',
+    udtName: 'timestamptz',
+    nullable: true,
+    defaultToken: null,
+  },
+  {
+    tableName: 'account_export_audit',
+    columnName: 'user_id',
+    udtName: 'text',
+    nullable: true,
+    defaultToken: null,
+  },
+  {
+    tableName: 'account_export_audit',
+    columnName: 'details',
+    udtName: 'jsonb',
+    nullable: false,
+    defaultToken: "'{}'::jsonb",
+  },
+  {
+    tableName: 'account_export_audit',
+    columnName: 'identity_anonymized_at',
     udtName: 'timestamptz',
     nullable: true,
     defaultToken: null,
@@ -694,6 +1462,13 @@ const REQUIRED_RUNTIME_COLUMN_CONTRACTS = Object.freeze([
     udtName: 'text',
     nullable: false,
     defaultToken: "''",
+  },
+  {
+    tableName: 'relationship_change_outbox',
+    columnName: 'identities_redacted_at',
+    udtName: 'timestamptz',
+    nullable: true,
+    defaultToken: null,
   },
 ]);
 
@@ -817,6 +1592,41 @@ const REQUIRED_RUNTIME_CONSTRAINTS = Object.freeze([
     fragments: ['primary key (errata_id, revision)'],
   },
   { tableName: 'card_revisions', constraintType: 'p', fragments: ['primary key (card_id, revision)'] },
+  { tableName: 'card_texts_i18n', constraintType: 'p', fragments: ['primary key (card_id, lang)'] },
+  {
+    tableName: 'card_texts_i18n',
+    constraintType: 'f',
+    fragments: ['foreign key (card_id)', 'references cards(id)', 'on delete cascade'],
+  },
+  { tableName: 'card_official_errata', constraintType: 'p', fragments: ['primary key (errata_id)'] },
+  { tableName: 'card_official_errata', constraintType: 'u', fragments: ['unique (card_id)'] },
+  {
+    tableName: 'card_official_errata',
+    constraintType: 'f',
+    fragments: ['foreign key (card_id)', 'references cards(id)', 'on delete cascade'],
+  },
+  {
+    tableName: 'card_official_errata',
+    constraintType: 'c',
+    fragments: ['affects_name OR affects_effect'],
+  },
+  {
+    tableName: 'card_official_errata',
+    constraintType: 'c',
+    fragments: ['corrected_english_status', 'official', 'verified', 'pending_review'],
+  },
+  {
+    tableName: 'card_official_errata',
+    constraintName: 'card_official_errata_english_source_check',
+    constraintType: 'c',
+    fragments: [
+      'corrected_english_source',
+      'official_errata_notice',
+      'official_card_print_unaffected',
+      'official_card_print_corrected',
+      'official_japanese_errata_translation',
+    ],
+  },
   {
     tableName: 'card_texts_i18n',
     constraintName: 'card_texts_i18n_derived_lang_check',
@@ -872,6 +1682,66 @@ const REQUIRED_RUNTIME_CONSTRAINTS = Object.freeze([
       'attempt_count >= 0',
     ],
   },
+  { tableName: 'account_export_jobs', constraintType: 'p', fragments: ['primary key (id)'] },
+  {
+    tableName: 'account_export_jobs',
+    constraintType: 'f',
+    fragments: ['foreign key (user_id)', 'references users(id)', 'on delete set null'],
+  },
+  {
+    tableName: 'account_export_jobs',
+    constraintType: 'c',
+    fragments: ['queued', 'processing', 'ready', 'failed', 'expired'],
+  },
+  {
+    tableName: 'account_export_jobs',
+    constraintType: 'c',
+    fragments: ['lease_token is not null', 'lease_expires_at is not null'],
+  },
+  {
+    tableName: 'account_export_jobs',
+    constraintType: 'c',
+    fragments: ['object_key is not null', 'content_sha256 is not null', 'expires_at is not null'],
+  },
+  {
+    tableName: 'account_export_jobs',
+    constraintType: 'c',
+    fragments: ['attempt_count >= 0'],
+  },
+  {
+    tableName: 'account_export_jobs',
+    constraintType: 'c',
+    fragments: ['attempt_count <= max_attempts'],
+  },
+  {
+    tableName: 'account_export_jobs',
+    constraintType: 'c',
+    fragments: ['purge_attempt_count >= 0'],
+  },
+  { tableName: 'account_export_audit', constraintType: 'p', fragments: ['primary key (id)'] },
+  {
+    tableName: 'account_export_audit',
+    constraintType: 'f',
+    fragments: ['foreign key (job_id)', 'references account_export_jobs(id)'],
+  },
+  {
+    tableName: 'account_export_audit',
+    constraintType: 'c',
+    fragments: [
+      'requested',
+      'processing',
+      'ready',
+      'retry_scheduled',
+      'failed',
+      'download_started',
+      'download_completed',
+      'download_interrupted',
+      'integrity_failed',
+      'expired',
+      'purged',
+      'purge_retry',
+    ],
+  },
   { tableName: 'relationship_change_outbox', constraintType: 'p', fragments: ['primary key (event_id)'] },
   {
     tableName: 'relationship_change_outbox',
@@ -920,6 +1790,54 @@ const REQUIRED_RUNTIME_CONSTRAINTS = Object.freeze([
   },
 ]);
 
+const REQUIRED_BOARDGAME_RUNTIME_CONSTRAINTS = Object.freeze([
+  { tableName: 'users', constraintType: 'p', fragments: ['primary key (id)'] },
+  { tableName: 'deck_reservations', constraintType: 'p', fragments: ['primary key (id)'] },
+  {
+    tableName: 'deck_reservations',
+    constraintType: 'f',
+    fragments: ['foreign key (user_id)', 'references users(id)', 'on delete cascade'],
+  },
+  {
+    tableName: 'deck_reservations',
+    constraintType: 'c',
+    fragments: ['player_id is null', 'player_id', "'0'", "'1'"],
+  },
+  { tableName: 'bjg_matches', constraintType: 'p', fragments: ['primary key (match_id)'] },
+  { tableName: 'bjg_match_seats', constraintType: 'p', fragments: ['primary key (match_id, player_id)'] },
+  { tableName: 'bjg_match_seats', constraintType: 'u', fragments: ['unique (match_id, user_id)'] },
+  {
+    tableName: 'bjg_match_seats',
+    constraintType: 'f',
+    fragments: ['foreign key (match_id)', 'references bjg_matches(match_id)', 'on delete cascade'],
+  },
+  {
+    tableName: 'bjg_match_seats',
+    constraintType: 'c',
+    fragments: ['player_id', "'0'", "'1'"],
+  },
+  {
+    tableName: 'bjg_match_result_outbox',
+    constraintType: 'p',
+    fragments: ['primary key (source_match_id)'],
+  },
+  {
+    tableName: 'bjg_match_result_outbox',
+    constraintType: 'f',
+    fragments: ['foreign key (source_match_id)', 'references bjg_matches(match_id)', 'on delete cascade'],
+  },
+  {
+    tableName: 'bjg_match_result_outbox',
+    constraintType: 'c',
+    fragments: ['status', 'pending', 'processing', 'delivered', 'unrated'],
+  },
+  {
+    tableName: 'bjg_match_result_outbox',
+    constraintType: 'c',
+    fragments: ['winner_player is null', 'winner_player', '0', '1'],
+  },
+]);
+
 const REQUIRED_RUNTIME_INDEXES = Object.freeze([
   {
     tableName: 'bjg_match_telemetry',
@@ -952,6 +1870,16 @@ const REQUIRED_RUNTIME_INDEXES = Object.freeze([
     fragments: ['occurrence_count desc', 'last_seen_at desc'],
   },
   {
+    tableName: 'card_texts_i18n',
+    indexName: 'idx_card_texts_i18n_lang_review',
+    fragments: ['(lang, review_status)'],
+  },
+  {
+    tableName: 'cards',
+    indexName: 'idx_cards_has_official_errata',
+    fragments: ['(has_official_errata)'],
+  },
+  {
     tableName: 'official_qa_item_revisions',
     indexName: 'idx_official_qa_item_revisions_content',
     fragments: ['qa_id', 'content_version', 'recorded_at'],
@@ -970,6 +1898,26 @@ const REQUIRED_RUNTIME_INDEXES = Object.freeze([
     tableName: 'matches',
     indexName: 'idx_matches_action_log_retention',
     fragments: ['action_log_purged_at', 'completed_at', 'action_log_purged_at is null'],
+  },
+  {
+    tableName: 'season_match_results',
+    indexName: 'idx_season_match_results_winner_user',
+    fragments: ['winner_user_id', 'winner_user_id is not null'],
+  },
+  {
+    tableName: 'season_match_results',
+    indexName: 'idx_season_match_results_loser_user',
+    fragments: ['loser_user_id', 'loser_user_id is not null'],
+  },
+  {
+    tableName: 'account_deletion_requests',
+    indexName: 'idx_account_deletion_requests_user_all',
+    fragments: ['user_id'],
+  },
+  {
+    tableName: 'relationship_change_outbox',
+    indexName: 'idx_relationship_change_outbox_user_ids',
+    fragments: ['using gin (user_ids)'],
   },
   {
     tableName: 'matches',
@@ -1008,6 +1956,68 @@ const REQUIRED_RUNTIME_INDEXES = Object.freeze([
     fragments: ['status', 'updated_at'],
   },
   {
+    tableName: 'account_export_jobs',
+    indexName: 'uq_account_export_jobs_active_user',
+    fragments: ['unique index', 'user_id', 'queued', 'processing'],
+  },
+  {
+    tableName: 'account_export_jobs',
+    indexName: 'idx_account_export_jobs_delivery',
+    fragments: ['status', 'available_at', 'lease_expires_at'],
+  },
+  {
+    tableName: 'account_export_jobs',
+    indexName: 'idx_account_export_jobs_user_requested',
+    fragments: ['user_id', 'requested_at desc'],
+  },
+  {
+    tableName: 'account_export_jobs',
+    indexName: 'idx_account_export_jobs_expiry',
+    fragments: ['expires_at', "status = 'ready'"],
+  },
+  {
+    tableName: 'account_export_jobs',
+    indexName: 'idx_account_export_jobs_purge',
+    fragments: ['purge_available_at', 'expires_at', 'object_key is not null'],
+  },
+  {
+    tableName: 'account_export_jobs',
+    indexName: 'idx_account_export_jobs_retention',
+    fragments: ['updated_at', 'failed', 'expired', 'object_key is null', 'object_version_id is null'],
+  },
+  {
+    tableName: 'account_export_audit',
+    indexName: 'idx_account_export_audit_job_created',
+    fragments: ['job_id', 'created_at'],
+  },
+  {
+    tableName: 'account_export_audit',
+    indexName: 'idx_account_export_audit_user_created',
+    fragments: ['user_id', 'created_at'],
+  },
+  {
+    tableName: 'account_export_audit',
+    indexName: 'idx_account_export_audit_retention',
+    fragments: ['created_at'],
+  },
+  {
+    tableName: 'account_export_audit',
+    indexName: 'uq_account_export_audit_request_event',
+    fragments: ['unique index', 'job_id', 'request_id', 'event_type', 'request_id is not null'],
+  },
+  {
+    tableName: 'account_export_audit',
+    indexName: 'uq_account_export_audit_request_terminal',
+    fragments: [
+      'unique index',
+      'job_id',
+      'request_id',
+      'download_completed',
+      'download_interrupted',
+      'integrity_failed',
+    ],
+  },
+  {
     tableName: 'relationship_change_outbox',
     indexName: 'idx_relationship_change_outbox_delivery',
     fragments: ['status', 'next_attempt_at'],
@@ -1018,6 +2028,89 @@ const REQUIRED_RUNTIME_INDEXES = Object.freeze([
     fragments: ['created_at'],
   },
 ]);
+
+const REQUIRED_BOARDGAME_RUNTIME_INDEXES = Object.freeze([
+  {
+    tableName: 'deck_reservations',
+    indexName: 'uq_deck_reservations_match_seat',
+    fragments: ['unique index', 'match_id', 'player_id', 'match_id is not null', 'player_id is not null'],
+  },
+  {
+    tableName: 'bjg_matches',
+    indexName: 'idx_bjg_matches_updated_at',
+    fragments: ['updated_at'],
+  },
+  {
+    tableName: 'bjg_matches',
+    indexName: 'idx_bjg_matches_game_name',
+    fragments: ["metadata ->> 'gamename'"],
+  },
+  {
+    tableName: 'bjg_match_seats',
+    indexName: 'idx_bjg_match_seats_user',
+    fragments: ['user_id', 'reserved_at desc'],
+  },
+  {
+    tableName: 'bjg_match_result_outbox',
+    indexName: 'idx_bjg_match_result_outbox_delivery',
+    fragments: ['status', 'next_attempt_at'],
+  },
+  {
+    tableName: 'bjg_match_result_outbox',
+    indexName: 'idx_match_result_outbox_season_settlement',
+    fragments: ['rules_version', 'completed_at', 'status', 'ranked_eligible = true'],
+  },
+]);
+
+// Platform runs under its own least-privilege role in production. Its startup
+// gate must prove every relation it actually reads/writes without requiring
+// API-only catalog visibility that the role is intentionally denied.
+const REQUIRED_PLATFORM_RUNTIME_TABLES = Object.freeze([
+  'schema_migration_checksums',
+  'official_card_data_releases',
+  'users',
+  'user_friends',
+  'user_blocks',
+  'platform_match_participants',
+  'platform_room_participants',
+  'chat_conversations',
+  'chat_messages',
+  'bjg_matches',
+]);
+
+const REQUIRED_PLATFORM_RUNTIME_COLUMNS = Object.freeze({
+  official_card_data_releases: REQUIRED_RUNTIME_COLUMNS.official_card_data_releases,
+  users: ['id', 'auth_version', 'deleted_at', 'identity_anonymized_at'],
+  user_friends: REQUIRED_RUNTIME_COLUMNS.user_friends,
+  user_blocks: REQUIRED_RUNTIME_COLUMNS.user_blocks,
+  platform_match_participants: REQUIRED_RUNTIME_COLUMNS.platform_match_participants,
+  platform_room_participants: REQUIRED_RUNTIME_COLUMNS.platform_room_participants,
+  chat_conversations: REQUIRED_RUNTIME_COLUMNS.chat_conversations,
+  chat_messages: REQUIRED_RUNTIME_COLUMNS.chat_messages,
+  bjg_matches: REQUIRED_RUNTIME_COLUMNS.bjg_matches,
+});
+
+const PLATFORM_RUNTIME_TABLE_SET = new Set(REQUIRED_PLATFORM_RUNTIME_TABLES);
+const PLATFORM_RUNTIME_COLUMN_SET = new Set(
+  Object.entries(REQUIRED_PLATFORM_RUNTIME_COLUMNS).flatMap(([tableName, columns]) =>
+    columns.map((columnName) => `${tableName}.${columnName}`),
+  ),
+);
+const REQUIRED_PLATFORM_RUNTIME_COLUMN_CONTRACTS = Object.freeze(
+  [...REQUIRED_RUNTIME_COLUMN_CONTRACTS, ...REQUIRED_BOARDGAME_RUNTIME_COLUMN_CONTRACTS].filter(
+    ({ tableName, columnName }) => PLATFORM_RUNTIME_COLUMN_SET.has(`${tableName}.${columnName}`),
+  ),
+);
+const REQUIRED_PLATFORM_RUNTIME_CONSTRAINTS = Object.freeze(
+  [...REQUIRED_RUNTIME_CONSTRAINTS, ...REQUIRED_BOARDGAME_RUNTIME_CONSTRAINTS].filter(({ tableName }) =>
+    PLATFORM_RUNTIME_TABLE_SET.has(tableName),
+  ),
+);
+const REQUIRED_PLATFORM_RUNTIME_INDEXES = Object.freeze(
+  [...REQUIRED_RUNTIME_INDEXES, ...REQUIRED_BOARDGAME_RUNTIME_INDEXES].filter(({ tableName }) =>
+    PLATFORM_RUNTIME_TABLE_SET.has(tableName),
+  ),
+);
 
 const DECK_SHARING_RUNTIME_TABLES = Object.freeze([
   'deck_shares',
@@ -1201,24 +2294,9 @@ function indexMatches(row, contract) {
   );
 }
 
-async function assertRuntimeSchema({ pool, expectedMigration, expectedChecksum, requireDeckSharing = false }) {
+async function assertExpectedMigration({ pool, expectedMigration, expectedChecksum }) {
   const migration = normalizeExpectedMigration(expectedMigration);
   const checksum = normalizeExpectedChecksum(expectedChecksum);
-  const requiredTables = requireDeckSharing
-    ? [...REQUIRED_RUNTIME_TABLES, ...DECK_SHARING_RUNTIME_TABLES]
-    : REQUIRED_RUNTIME_TABLES;
-  const requiredColumns = requireDeckSharing
-    ? { ...REQUIRED_RUNTIME_COLUMNS, ...DECK_SHARING_RUNTIME_COLUMNS }
-    : REQUIRED_RUNTIME_COLUMNS;
-  const requiredColumnContracts = requireDeckSharing
-    ? [...REQUIRED_RUNTIME_COLUMN_CONTRACTS, ...DECK_SHARING_RUNTIME_COLUMN_CONTRACTS]
-    : REQUIRED_RUNTIME_COLUMN_CONTRACTS;
-  const requiredConstraints = requireDeckSharing
-    ? [...REQUIRED_RUNTIME_CONSTRAINTS, ...DECK_SHARING_RUNTIME_CONSTRAINTS]
-    : REQUIRED_RUNTIME_CONSTRAINTS;
-  const requiredIndexes = requireDeckSharing
-    ? [...REQUIRED_RUNTIME_INDEXES, ...DECK_SHARING_RUNTIME_INDEXES]
-    : REQUIRED_RUNTIME_INDEXES;
   let applied;
   try {
     applied = await pool.query('SELECT 1 FROM public.schema_migrations WHERE name = $1 LIMIT 1', [migration]);
@@ -1234,6 +2312,17 @@ async function assertRuntimeSchema({ pool, expectedMigration, expectedChecksum, 
     throw new Error(`Schema migration checksum mismatch: ${migration}`);
   }
 
+  return { expectedMigration: migration, expectedChecksum: checksum };
+}
+
+async function assertSchemaContracts({
+  pool,
+  requiredTables,
+  requiredColumns,
+  requiredColumnContracts,
+  requiredConstraints,
+  requiredIndexes,
+}) {
   const tableCheck = await pool.query(
     `SELECT required.table_name,
             to_regclass('public.' || required.table_name) IS NOT NULL AS present
@@ -1333,10 +2422,85 @@ async function assertRuntimeSchema({ pool, expectedMigration, expectedChecksum, 
   if (missingIndexes.length > 0) {
     throw new Error(`Runtime indexes are missing or invalid: ${missingIndexes.join(', ')}`);
   }
-  return { expectedMigration: migration, expectedChecksum: checksum };
+}
+
+async function assertRuntimeSchema({ pool, expectedMigration, expectedChecksum, requireDeckSharing = false }) {
+  const expected = await assertExpectedMigration({ pool, expectedMigration, expectedChecksum });
+  await assertSchemaContracts({
+    pool,
+    requiredTables: requireDeckSharing
+      ? [...REQUIRED_RUNTIME_TABLES, ...DECK_SHARING_RUNTIME_TABLES]
+      : REQUIRED_RUNTIME_TABLES,
+    requiredColumns: requireDeckSharing
+      ? { ...REQUIRED_RUNTIME_COLUMNS, ...DECK_SHARING_RUNTIME_COLUMNS }
+      : REQUIRED_RUNTIME_COLUMNS,
+    requiredColumnContracts: requireDeckSharing
+      ? [...REQUIRED_RUNTIME_COLUMN_CONTRACTS, ...DECK_SHARING_RUNTIME_COLUMN_CONTRACTS]
+      : REQUIRED_RUNTIME_COLUMN_CONTRACTS,
+    requiredConstraints: requireDeckSharing
+      ? [...REQUIRED_RUNTIME_CONSTRAINTS, ...DECK_SHARING_RUNTIME_CONSTRAINTS]
+      : REQUIRED_RUNTIME_CONSTRAINTS,
+    requiredIndexes: requireDeckSharing
+      ? [...REQUIRED_RUNTIME_INDEXES, ...DECK_SHARING_RUNTIME_INDEXES]
+      : REQUIRED_RUNTIME_INDEXES,
+  });
+  await assertNoPendingLegacyTombstones(pool);
+  return expected;
+}
+
+async function assertNoPendingLegacyTombstones(pool) {
+  const pendingLegacyTombstones = await pool.query(
+    `SELECT COUNT(*) AS pending_count
+       FROM users
+      WHERE deleted_at IS NOT NULL
+        AND identity_anonymized_at IS NULL`,
+  );
+  const pendingCount = Number(pendingLegacyTombstones.rows[0]?.pending_count);
+  if (!Number.isSafeInteger(pendingCount) || pendingCount !== 0) {
+    throw new Error(
+      `Runtime schema contains ${Number.isSafeInteger(pendingCount) ? pendingCount : 'an unknown number of'} legacy deleted accounts pending identity anonymization`,
+    );
+  }
+}
+
+async function assertBoardgameRuntimeSchema({ pool, expectedMigration, expectedChecksum }) {
+  const expected = await assertExpectedMigration({ pool, expectedMigration, expectedChecksum });
+  await assertSchemaContracts({
+    pool,
+    requiredTables: REQUIRED_BOARDGAME_RUNTIME_TABLES,
+    requiredColumns: REQUIRED_BOARDGAME_RUNTIME_COLUMNS,
+    requiredColumnContracts: REQUIRED_BOARDGAME_RUNTIME_COLUMN_CONTRACTS,
+    requiredConstraints: REQUIRED_BOARDGAME_RUNTIME_CONSTRAINTS,
+    requiredIndexes: REQUIRED_BOARDGAME_RUNTIME_INDEXES,
+  });
+  return expected;
+}
+
+async function assertPlatformRuntimeSchema({ pool, expectedMigration, expectedChecksum }) {
+  const expected = await assertExpectedMigration({ pool, expectedMigration, expectedChecksum });
+  await assertSchemaContracts({
+    pool,
+    requiredTables: REQUIRED_PLATFORM_RUNTIME_TABLES,
+    requiredColumns: REQUIRED_PLATFORM_RUNTIME_COLUMNS,
+    requiredColumnContracts: REQUIRED_PLATFORM_RUNTIME_COLUMN_CONTRACTS,
+    requiredConstraints: REQUIRED_PLATFORM_RUNTIME_CONSTRAINTS,
+    requiredIndexes: REQUIRED_PLATFORM_RUNTIME_INDEXES,
+  });
+  await assertNoPendingLegacyTombstones(pool);
+  return expected;
 }
 
 module.exports = {
+  REQUIRED_BOARDGAME_RUNTIME_TABLES,
+  REQUIRED_BOARDGAME_RUNTIME_COLUMNS,
+  REQUIRED_BOARDGAME_RUNTIME_COLUMN_CONTRACTS,
+  REQUIRED_BOARDGAME_RUNTIME_CONSTRAINTS,
+  REQUIRED_BOARDGAME_RUNTIME_INDEXES,
+  REQUIRED_PLATFORM_RUNTIME_TABLES,
+  REQUIRED_PLATFORM_RUNTIME_COLUMNS,
+  REQUIRED_PLATFORM_RUNTIME_COLUMN_CONTRACTS,
+  REQUIRED_PLATFORM_RUNTIME_CONSTRAINTS,
+  REQUIRED_PLATFORM_RUNTIME_INDEXES,
   DECK_SHARING_RUNTIME_TABLES,
   DECK_SHARING_RUNTIME_COLUMNS,
   DECK_SHARING_RUNTIME_COLUMN_CONTRACTS,
@@ -1347,6 +2511,8 @@ module.exports = {
   REQUIRED_RUNTIME_COLUMN_CONTRACTS,
   REQUIRED_RUNTIME_CONSTRAINTS,
   REQUIRED_RUNTIME_INDEXES,
+  assertBoardgameRuntimeSchema,
+  assertPlatformRuntimeSchema,
   assertRuntimeSchema,
   normalizeExpectedChecksum,
   normalizeExpectedMigration,

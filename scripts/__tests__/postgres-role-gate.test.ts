@@ -4,31 +4,41 @@ import { createRequire } from 'node:module';
 import { describe, expect, it, vi } from 'vitest';
 
 const require = createRequire(import.meta.url);
-const { ALL_RELATIONS, ALL_TABLES, APPLICATION_TABLES, enforceRuntimeRolePrivileges, quoteIdentifier } =
-  require('../postgres-role-gate.cjs') as {
-    ALL_RELATIONS: string[];
-    ALL_TABLES: string[];
-    APPLICATION_TABLES: string[];
-    quoteIdentifier: (value: unknown) => string;
-    enforceRuntimeRolePrivileges: (
-      pool: { query: ReturnType<typeof vi.fn>; connect?: ReturnType<typeof vi.fn> },
-      options: {
-        appUser?: string;
-        roleUsers?: Record<string, string>;
-        requireComplete?: boolean;
-        requireDistinct?: boolean;
-      },
-    ) => Promise<{
+const {
+  ALL_RELATIONS,
+  ALL_TABLES,
+  APPLICATION_TABLES,
+  PROTECTED_SCHEMA_TABLES,
+  enforceRuntimeRolePrivileges,
+  quoteIdentifier,
+} = require('../postgres-role-gate.cjs') as {
+  ALL_RELATIONS: string[];
+  ALL_TABLES: string[];
+  APPLICATION_TABLES: string[];
+  COMPATIBILITY_VIEWS: string[];
+  PROTECTED_SCHEMA_TABLES: string[];
+  quoteIdentifier: (value: unknown) => string;
+  enforceRuntimeRolePrivileges: (
+    pool: { query: ReturnType<typeof vi.fn>; connect?: ReturnType<typeof vi.fn> },
+    options: {
       appUser?: string;
-      roles: Record<string, string>;
-      protectedTables: string[];
-      requiredRoleTypes: string[];
-    }>;
-  };
-const { REQUIRED_RUNTIME_TABLES, DECK_SHARING_RUNTIME_TABLES } = require('../../api/schemaGate.cjs') as {
-  REQUIRED_RUNTIME_TABLES: string[];
-  DECK_SHARING_RUNTIME_TABLES: string[];
+      roleUsers?: Record<string, string>;
+      requireComplete?: boolean;
+      requireDistinct?: boolean;
+    },
+  ) => Promise<{
+    appUser?: string;
+    roles: Record<string, string>;
+    protectedTables: string[];
+    requiredRoleTypes: string[];
+  }>;
 };
+const { REQUIRED_RUNTIME_COLUMNS, REQUIRED_RUNTIME_TABLES, DECK_SHARING_RUNTIME_TABLES } =
+  require('../../api/schemaGate.cjs') as {
+    REQUIRED_RUNTIME_COLUMNS: Record<string, string[]>;
+    REQUIRED_RUNTIME_TABLES: string[];
+    DECK_SHARING_RUNTIME_TABLES: string[];
+  };
 
 const roleUsers = Object.freeze({
   api: 'z_api',
@@ -38,6 +48,7 @@ const roleUsers = Object.freeze({
   monitor: 'z_monitor',
   backup: 'z_backup',
   wal: 'z_wal',
+  walOperator: 'z_wal_operator',
 });
 
 type QueryOverride = (sql: string, params: unknown[]) => { rows: unknown[] } | undefined;
@@ -60,31 +71,90 @@ function successfulQuery(users: Record<string, string> = roleUsers, override?: Q
           rolcreaterole: false,
           rolreplication: rolname === users.wal,
           rolbypassrls: false,
-          rolinherit: rolname !== users.wal,
+          rolinherit: rolname !== users.wal && rolname !== users.walOperator,
         })),
       };
     }
     if (sql.includes("rolname = 'pg_monitor'")) return { rows: [{ rolcanlogin: false }] };
+    if (sql.includes("namespace.nspname = 'zutomayo_ops'")) {
+      return {
+        rows: [
+          {
+            function_oid: 12345,
+            security_definer: true,
+            language_name: 'sql',
+            source: 'SELECT pg_catalog.pg_switch_wal()',
+            configuration: ['search_path=pg_catalog'],
+            owner_superuser: true,
+          },
+        ],
+      };
+    }
     if (sql.includes("to_regclass('public.'")) {
       return { rows: ALL_RELATIONS.map((table_name) => ({ table_name, present: true })) };
     }
     if (sql.includes('FROM information_schema.tables')) {
       return { rows: ALL_TABLES.map((table_name) => ({ table_name })) };
     }
+    if (sql.includes('FROM information_schema.columns')) {
+      return {
+        rows: Object.entries(REQUIRED_RUNTIME_COLUMNS).flatMap(([table_name, columns]) =>
+          columns.map((column_name) => ({ table_name, column_name })),
+        ),
+      };
+    }
     if (sql.includes('has_table_privilege')) return { rows: [] };
     if (sql.includes('has_column_privilege')) return { rows: [] };
     if (sql.includes('has_sequence_privilege')) return { rows: [] };
+    if (sql.includes('function_oid IS NOT NULL')) {
+      return {
+        rows: [
+          {
+            present: true,
+            security_definer: true,
+            safe_search_path: true,
+            owner_name: 'z_migrator',
+            public_execute_revoked: true,
+          },
+          {
+            present: true,
+            security_definer: true,
+            safe_search_path: true,
+            owner_name: 'z_migrator',
+            public_execute_revoked: true,
+          },
+        ],
+      };
+    }
+    if (sql.includes("has_schema_privilege(role_name, 'zutomayo_ops'")) {
+      return {
+        rows: uniqueUsers.map((role_name) => ({
+          role_name,
+          can_use: role_name === users.walOperator,
+          can_create: false,
+        })),
+      };
+    }
     if (sql.includes('has_schema_privilege')) {
       return {
         rows: uniqueUsers.map((role_name) => ({
           role_name,
-          can_use: role_name !== users.monitor && role_name !== users.wal,
+          can_use: role_name !== users.monitor && role_name !== users.wal && role_name !== users.walOperator,
           can_create: false,
         })),
       };
     }
     if (sql.includes('has_database_privilege')) {
       return { rows: uniqueUsers.map((role_name) => ({ role_name, can_connect: role_name !== users.wal })) };
+    }
+    if (sql.includes('function_signature') && sql.includes('has_function_privilege')) return { rows: [] };
+    if (sql.includes('has_function_privilege')) {
+      return {
+        rows: uniqueUsers.map((role_name) => ({
+          role_name,
+          can_switch_wal: role_name === users.walOperator,
+        })),
+      };
     }
     if (sql.includes('pg_has_role')) {
       return { rows: uniqueUsers.map((role_name) => ({ role_name, is_member: role_name === users.monitor })) };
@@ -130,7 +200,7 @@ describe('PostgreSQL runtime role gate', () => {
     ).resolves.toMatchObject({
       appUser: 'z_api',
       roles: roleUsers,
-      protectedTables: ['schema_migrations', 'schema_migration_checksums'],
+      protectedTables: ['schema_migrations', 'schema_migration_checksums', 'official_card_data_releases'],
     });
 
     const statements = query.mock.calls.map(([sql]) => String(sql));
@@ -139,6 +209,34 @@ describe('PostgreSQL runtime role gate', () => {
     expect(statements).toContain('GRANT SELECT ON TABLE public."deck_shares" TO "z_retention"');
     expect(statements).toContain('GRANT SELECT, DELETE ON TABLE public."deck_share_reports" TO "z_retention"');
     expect(statements).toContain('GRANT INSERT, UPDATE ON TABLE public."retention_runs" TO "z_retention"');
+    expect(statements).toContain(
+      'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public."account_export_jobs" TO "z_api"',
+    );
+    expect(statements).toContain('GRANT SELECT, INSERT ON TABLE public."account_export_audit" TO "z_api"');
+    expect(statements).not.toContain(
+      'GRANT UPDATE ("user_id", "details", "identity_anonymized_at") ON TABLE public."account_export_audit" TO "z_api"',
+    );
+    expect(statements).toContain('GRANT SELECT, INSERT ON TABLE public."admin_audit_log" TO "z_api"');
+    expect(statements).not.toContain(
+      'GRANT UPDATE ("target_id", "details", "identity_anonymized_at") ON TABLE public."admin_audit_log" TO "z_api"',
+    );
+    expect(statements).toContain(
+      'GRANT EXECUTE ON FUNCTION public.zutomayo_anonymize_account_export_audit(text) TO "z_api"',
+    );
+    expect(statements).toContain(
+      'GRANT EXECUTE ON FUNCTION public.zutomayo_anonymize_admin_audit_identity(text,text) TO "z_api"',
+    );
+    expect(statements).toContain(
+      'REVOKE UPDATE ("id", "admin_user_id", "action", "target_type", "target_id", "details", "created_at", "identity_anonymized_at") ON TABLE public."admin_audit_log" FROM "z_api"',
+    );
+    expect(statements).toContain('GRANT SELECT, DELETE ON TABLE public."account_export_jobs" TO "z_retention"');
+    expect(statements).toContain('GRANT SELECT, DELETE ON TABLE public."account_export_audit" TO "z_retention"');
+    expect(statements).not.toContain(
+      'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public."account_export_audit" TO "z_api"',
+    );
+    expect(statements).not.toContain(
+      'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public."admin_audit_log" TO "z_api"',
+    );
     expect(statements).not.toContain('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public."matches" TO "z_retention"');
     expect(statements).toContain('GRANT SELECT ON TABLE public."users" TO "z_backup"');
     expect(statements).toContain(
@@ -181,6 +279,8 @@ describe('PostgreSQL runtime role gate', () => {
     expect(statements).not.toContain('GRANT USAGE ON SCHEMA public TO "z_monitor"');
     expect(statements).not.toContain('GRANT CONNECT ON DATABASE "zutomayo" TO "z_wal"');
     expect(statements).not.toContain('GRANT USAGE ON SCHEMA public TO "z_wal"');
+    expect(statements).toContain('GRANT CONNECT ON DATABASE "zutomayo" TO "z_wal_operator"');
+    expect(statements).not.toContain('GRANT USAGE ON SCHEMA public TO "z_wal_operator"');
     expect(statements).toContain('BEGIN');
     expect(statements).toContain('COMMIT');
     expect(statements).toContain('SELECT pg_advisory_xact_lock(hashtext($1))');
@@ -189,7 +289,7 @@ describe('PostgreSQL runtime role gate', () => {
     );
     expect(statements).toContain('GRANT UPDATE ("elo", "match_count", "wins") ON TABLE public."users" TO "z_game"');
     expect(statements).toContain(
-      'GRANT SELECT ("id", "auth_version", "deleted_at") ON TABLE public."users" TO "z_platform"',
+      'GRANT SELECT ("id", "auth_version", "deleted_at", "identity_anonymized_at") ON TABLE public."users" TO "z_platform"',
     );
   });
 
@@ -232,7 +332,7 @@ describe('PostgreSQL runtime role gate', () => {
             rolcreaterole: false,
             rolreplication: rolname === roleUsers.wal,
             rolbypassrls: false,
-            rolinherit: rolname !== roleUsers.wal,
+            rolinherit: rolname !== roleUsers.wal && rolname !== roleUsers.walOperator,
           })),
       };
     });
@@ -293,6 +393,27 @@ describe('PostgreSQL runtime role gate', () => {
     const invalidStatements = invalidAcl.mock.calls.map(([sql]) => String(sql));
     expect(invalidStatements).toContain('ROLLBACK');
     expect(invalidStatements).not.toContain('COMMIT');
+
+    const unsafeFunction = successfulQuery(roleUsers, (sql) => {
+      if (!sql.includes('function_oid IS NOT NULL')) return undefined;
+      return {
+        rows: [
+          {
+            present: true,
+            security_definer: true,
+            safe_search_path: true,
+            owner_name: roleUsers.api,
+            public_execute_revoked: false,
+          },
+        ],
+      };
+    });
+    await expect(
+      enforceRuntimeRolePrivileges(
+        { query: unsafeFunction },
+        { roleUsers, requireComplete: true, requireDistinct: true },
+      ),
+    ).rejects.toThrow('function contract is missing or unsafe');
   });
 
   it('pins the ACL transaction to one acquired client', async () => {
@@ -318,7 +439,7 @@ describe('PostgreSQL role provisioning contract', () => {
     const runtimeTables = [...REQUIRED_RUNTIME_TABLES, ...DECK_SHARING_RUNTIME_TABLES];
     expect(new Set(ALL_RELATIONS.filter((table) => table !== 'schema_migrations'))).toEqual(new Set(runtimeTables));
     expect(new Set(APPLICATION_TABLES)).toEqual(
-      new Set(runtimeTables.filter((table) => table !== 'schema_migration_checksums')),
+      new Set(runtimeTables.filter((table) => !PROTECTED_SCHEMA_TABLES.includes(table))),
     );
   });
 
@@ -332,6 +453,7 @@ describe('PostgreSQL role provisioning contract', () => {
       'PG_MONITOR_USER',
       'PG_BACKUP_USER',
       'PG_WAL_USER',
+      'PG_WAL_OPERATOR_USER',
     ]) {
       expect(script).toContain(variable);
     }
@@ -346,8 +468,12 @@ describe('PostgreSQL role provisioning contract', () => {
     expect(script).toContain('ALTER TABLE %I.%I OWNER TO %I');
     expect(script).toMatch(/<<'SQL'\n(?:\\getenv[^\n]+\n)+BEGIN;[\s\S]+COMMIT;\nSQL/);
     expect(script).toContain("CASE WHEN replication THEN 'REPLICATION' ELSE 'NOREPLICATION' END");
-    expect(script).toContain("CASE WHEN replication THEN 'NOINHERIT' ELSE 'INHERIT' END");
+    expect(script).toContain("CASE WHEN inherit_role THEN 'INHERIT' ELSE 'NOINHERIT' END");
     expect(script).toContain('GRANT pg_monitor TO %I');
+    expect(script).toContain('CREATE OR REPLACE FUNCTION zutomayo_ops.switch_wal()');
+    expect(script).toContain('SECURITY DEFINER');
+    expect(script).toContain('SET search_path = pg_catalog');
+    expect(script).toContain('GRANT EXECUTE ON FUNCTION zutomayo_ops.switch_wal() TO %I');
   });
 
   it('rejects reused production role passwords before invoking psql', () => {
@@ -372,32 +498,21 @@ describe('PostgreSQL role provisioning contract', () => {
       PG_BACKUP_PASSWORD: 'backup-secret',
       PG_WAL_USER: 'z_wal',
       PG_WAL_PASSWORD: 'wal-secret',
+      PG_WAL_OPERATOR_USER: 'z_wal_operator',
+      PG_WAL_OPERATOR_PASSWORD: 'wal-operator-secret',
     };
     const result = spawnSync('bash', ['scripts/postgres-init-roles.sh'], { encoding: 'utf8', env });
     expect(result.status).toBe(2);
     expect(result.stderr).toContain('must not reuse passwords');
   });
 
-  it('masks non-own role secrets while retaining optional env-file configuration', () => {
-    const staging = readFileSync('docker-compose.staging.yml', 'utf8');
-    expect(staging).toContain('env_file: .env');
-    expect(staging).toContain('PG_GAME_PASSWORD');
-    expect(staging).toContain('PG_API_PASSWORD');
-    expect(staging).toContain('PG_PLATFORM_PASSWORD');
-    expect(staging).toContain('PG_MIGRATION_PASSWORD=');
-    expect(staging).toContain('PG_RETENTION_PASSWORD=');
-    expect(staging).toContain('PG_MONITOR_PASSWORD=');
-    expect(staging).toContain('PG_BACKUP_PASSWORD=');
-    expect(staging).toContain('PG_WAL_PASSWORD=');
-
-    const server4 = readFileSync('docker-compose.server4.yml', 'utf8');
-    expect(server4).toContain('env_file: .env');
-    expect(server4.match(/PG_USER=\$\{PG_APP_USER:/g)).toHaveLength(3);
-    expect(server4.match(/PG_PASSWORD=\$\{PG_APP_PASSWORD:/g)).toHaveLength(3);
-    expect(server4.match(/PG_MIGRATION_PASSWORD=/g)).toHaveLength(3);
-    expect(server4).not.toContain('PG_GAME_PASSWORD');
-    expect(server4).not.toContain('PG_API_PASSWORD');
-    expect(server4).not.toContain('PG_PLATFORM_PASSWORD');
-    expect(server4).not.toContain('PG_RETENTION_PASSWORD');
+  it('uses explicit runtime allowlists without importing the shared env file', () => {
+    for (const composeFile of ['docker-compose.server4.yml', 'docker-compose.staging.yml']) {
+      const compose = readFileSync(composeFile, 'utf8');
+      expect(compose).not.toContain('env_file:');
+      expect(compose).toContain('PG_GAME_PASSWORD');
+      expect(compose).toContain('PG_API_PASSWORD');
+      expect(compose).toContain('PG_PLATFORM_PASSWORD');
+    }
   });
 });

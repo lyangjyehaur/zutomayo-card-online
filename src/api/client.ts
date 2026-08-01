@@ -238,6 +238,27 @@ export interface LegalHold {
   metadata: Record<string, unknown>;
 }
 
+export type AccountExportStatus = 'queued' | 'processing' | 'ready' | 'failed' | 'expired';
+
+export interface AccountExportJob {
+  id: string;
+  status: AccountExportStatus;
+  formatVersion: number;
+  sizeBytes: number | null;
+  uncompressedSizeBytes: number | null;
+  contentSha256: string | null;
+  attemptCount: number;
+  maxAttempts: number;
+  requestedAt: string;
+  snapshotAt: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  expiresAt: string | null;
+  downloadedAt: string | null;
+  downloadCount: number;
+  errorCode: string;
+}
+
 export interface AccountExport {
   exportedAt: string;
   account: Record<string, unknown>;
@@ -1237,8 +1258,23 @@ export async function confirmPasswordReset(token: string, newPassword: string): 
   return result;
 }
 
-export async function exportAccountData(): Promise<AccountExport> {
-  return request<AccountExport>('/account/export');
+export async function createAccountExport(): Promise<AccountExportJob> {
+  const data = await request<{ job: AccountExportJob }>('/account/exports', { method: 'POST' });
+  return data.job;
+}
+
+export async function listAccountExports(): Promise<AccountExportJob[]> {
+  const data = await request<{ jobs: AccountExportJob[] }>('/account/exports');
+  return data.jobs;
+}
+
+export async function getAccountExport(jobId: string): Promise<AccountExportJob> {
+  const data = await request<{ job: AccountExportJob }>(`/account/exports/${encodeURIComponent(jobId)}`);
+  return data.job;
+}
+
+export function getAccountExportDownloadUrl(jobId: string): string {
+  return `${API_BASE}/account/exports/${encodeURIComponent(jobId)}/download`;
 }
 
 export async function deleteAccount(stepUp: {

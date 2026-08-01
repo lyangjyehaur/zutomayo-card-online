@@ -5,13 +5,14 @@ import { RedisDriver } from '@colyseus/redis-driver';
 import { RedisPresence } from '@colyseus/redis-presence';
 import { WebSocketTransport } from '@colyseus/ws-transport';
 import type { NextFunction, Request, Response } from 'express';
-import Redis from 'ioredis';
+import Redis, { type RedisOptions } from 'ioredis';
 import { Pool } from 'pg';
 import { createServiceReadiness } from '../operational/serviceLifecycle';
 import { APP_VERSION_INFO } from '../version';
 import {
   createPlatformAdmissionLimiter,
   createPlatformAdmissionMiddleware,
+  createPlatformPendingInviteDiscoveryLimiter,
   platformAdmissionClientIp,
   platformAdmissionLimitsFromEnv,
 } from './admission';
@@ -19,10 +20,13 @@ import { createPlatformBlockStoreFromEnv, resolvePlatformBlockStoreMode } from '
 import { createPlatformChatPreviewStoreFromEnv, resolvePlatformChatPreviewStoreMode } from './chatPreviewStore';
 import {
   isPlatformRedisMode,
+  platformRedisHealthChecks,
   redisUrlWithDb,
   resolvePlatformCorsOrigin,
   resolvePlatformCorsOrigins,
+  resolvePlatformPublicAddress,
   resolvePlatformRedisMode,
+  resolvePlatformRedisRoleConnections,
 } from './config';
 import { createPlatformFriendStoreFromEnv, resolvePlatformFriendStoreMode } from './friendStore';
 import { platformLogger as logger } from './logger';
@@ -43,8 +47,15 @@ import {
   configurePlatformJwtRevocationStore,
   createPostgresPlatformJwtAccountStore,
 } from './rooms/jwt';
+import {
+  createPendingInviteDiscoveryHandler,
+  createRedisPendingInviteRoomQuery,
+  PLATFORM_PENDING_INVITE_DISCOVERY_PATH,
+  platformPendingInviteTimeoutsFromEnv,
+  type PendingInviteDiscoveryDependencies,
+} from './pendingInviteDiscovery';
 import { CustomRoom, InviteRoom, LobbyRoom, MatchShellRoom, QuickMatchRoom } from './rooms';
-import { postgresConnectionString, postgresSslConfig, resolveRedisConnectionConfig } from '../runtimeSecurityConfig';
+import { postgresConnectionString, postgresSslConfig } from '../runtimeSecurityConfig';
 import type { PlatformRelationshipChange } from './rooms/types';
 import { createRelationshipChangeProcessor, createRelationshipRecoveryLoop } from './relationshipEventProcessor';
 import {
@@ -54,8 +65,8 @@ import {
 } from './matchmakingHttp';
 
 const require = createRequire(import.meta.url);
-const { assertRuntimeSchema } = require('../../api/schemaGate.cjs') as {
-  assertRuntimeSchema: (options: {
+const { assertPlatformRuntimeSchema: assertPlatformSchemaGate } = require('../../api/schemaGate.cjs') as {
+  assertPlatformRuntimeSchema: (options: {
     pool: Pick<Pool, 'query'>;
     expectedMigration: string | undefined;
     expectedChecksum: string | undefined;
@@ -70,12 +81,14 @@ interface CreatePlatformRuntimeOptions {
   gracefullyShutdown?: boolean;
   admissionLimiter?: ReturnType<typeof createPlatformAdmissionLimiter>;
   verifyAdmissionUserId?: (token: string) => Promise<string>;
+  pendingInviteDiscovery?: PendingInviteDiscoveryDependencies;
 }
 
 export interface PlatformRuntime {
   gameServer: Server;
   httpServer: http.Server;
   port: number;
+  publicAddress: string | undefined;
   redisMode: ReturnType<typeof resolvePlatformRedisMode>;
   friendStoreMode: ReturnType<typeof resolvePlatformFriendStoreMode>;
   blockStoreMode: ReturnType<typeof resolvePlatformBlockStoreMode>;
@@ -99,18 +112,27 @@ export async function assertPlatformRuntimeSchema(
 ): Promise<void> {
   if (!platformRequiresRuntimeSchema(env)) return;
   if (!pool) throw new Error('Platform production schema gate requires PostgreSQL');
-  await assertRuntimeSchema({
+  await assertPlatformSchemaGate({
     pool,
     expectedMigration: env.EXPECTED_SCHEMA_MIGRATION,
     expectedChecksum: env.EXPECTED_SCHEMA_CHECKSUM,
   });
 }
 
+export function platformPendingInviteRedisOptions(commandTimeoutMs: number, tls?: RedisOptions['tls']): RedisOptions {
+  return {
+    maxRetriesPerRequest: 1,
+    enableReadyCheck: true,
+    commandTimeout: commandTimeoutMs,
+    ...(tls ? { tls } : {}),
+  };
+}
+
 export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}): PlatformRuntime {
+  const pendingInviteTimeouts = platformPendingInviteTimeoutsFromEnv(process.env);
   const port = Number(process.env.PLATFORM_PORT) || 3002;
-  const redisConnection = resolveRedisConnectionConfig(process.env);
-  const redisUrl = redisConnection.url;
-  const redisTls = redisConnection.tls ? { rejectUnauthorized: true } : undefined;
+  const publicAddress = resolvePlatformPublicAddress(process.env.PLATFORM_PUBLIC_ADDRESS, process.env.NODE_ENV);
+  const redisConnections = resolvePlatformRedisRoleConnections(process.env);
   const redisDb = Number(process.env.REDIS_DB) || 0;
   const configuredRedisMode = process.env.PLATFORM_REDIS_MODE;
   const redisMode = resolvePlatformRedisMode(configuredRedisMode, process.env.NODE_ENV);
@@ -124,7 +146,6 @@ export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}
   if (configuredRedisMode?.trim() && !isPlatformRedisMode(configuredRedisMode)) {
     logger.warn({ mode: configuredRedisMode }, 'unknown PLATFORM_REDIS_MODE, falling back to environment default');
   }
-
   const httpServer = http.createServer();
   const trustedProxy = process.env.TRUSTED_PROXY;
   // WebSocketTransport handles upgrade events outside Express. Canonicalize
@@ -141,7 +162,10 @@ export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}
       request.headers['x-real-ip'] = ip;
     }
   });
-  const colyseusRedisUrl = redisUrlWithDb(redisUrl, redisDb);
+  const sharedRedisUrl = redisUrlWithDb(redisConnections.shared.url, redisDb);
+  const colyseusRedisUrl = redisUrlWithDb(redisConnections.colyseus.url, redisDb);
+  const sharedRedisTls = redisConnections.shared.tls ? { rejectUnauthorized: true } : undefined;
+  const colyseusRedisTls = redisConnections.colyseus.tls ? { rejectUnauthorized: true } : undefined;
   const friendStore = createPlatformFriendStoreFromEnv();
   const blockStore = createPlatformBlockStoreFromEnv();
   const matchParticipantStore = createPlatformMatchParticipantStoreFromEnv();
@@ -178,14 +202,35 @@ export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}
         ssl: postgresSslConfig(process.env),
       })
     : null;
-  const healthRedis =
+  const sharedHealthRedis =
+    redisMode === 'redis'
+      ? new Redis(sharedRedisUrl, {
+          maxRetriesPerRequest: 1,
+          enableReadyCheck: true,
+          ...(sharedRedisTls ? { tls: sharedRedisTls } : {}),
+        })
+      : null;
+  const colyseusHealthRedis =
     redisMode === 'redis'
       ? new Redis(colyseusRedisUrl, {
           maxRetriesPerRequest: 1,
           enableReadyCheck: true,
-          ...(redisTls ? { tls: redisTls } : {}),
+          ...(colyseusRedisTls ? { tls: colyseusRedisTls } : {}),
         })
       : null;
+  const colyseusDriver = redisMode === 'redis' ? new RedisDriver(colyseusRedisUrl) : undefined;
+  const pendingInviteDiscoveryRedis =
+    redisMode === 'redis'
+      ? new Redis(
+          colyseusRedisUrl,
+          platformPendingInviteRedisOptions(pendingInviteTimeouts.redisCommandTimeoutMs, colyseusRedisTls),
+        )
+      : null;
+  // RedisDriver retains a rejected HGETALL promise. Keep discovery on a direct,
+  // uncached read so one command timeout cannot poison every later poll.
+  const pendingInviteRedisQuery = pendingInviteDiscoveryRedis
+    ? createRedisPendingInviteRoomQuery(pendingInviteDiscoveryRedis)
+    : undefined;
   // The API service writes access-token revocation markers to this shared DB.
   // Keep a dedicated command connection so health checks/Colyseus presence do
   // not starve authentication reads, and make the verifier fail closed when
@@ -193,25 +238,26 @@ export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}
   const admissionLimits = platformAdmissionLimitsFromEnv();
   const authRevocationRedis =
     redisMode === 'redis'
-      ? new Redis(colyseusRedisUrl, {
+      ? new Redis(sharedRedisUrl, {
           maxRetriesPerRequest: 1,
           enableReadyCheck: true,
           commandTimeout: admissionLimits.timeoutMs,
-          ...(redisTls ? { tls: redisTls } : {}),
+          ...(sharedRedisTls ? { tls: sharedRedisTls } : {}),
         })
       : null;
   const relationshipRedis =
     redisMode === 'redis'
-      ? new Redis(colyseusRedisUrl, {
+      ? new Redis(sharedRedisUrl, {
           maxRetriesPerRequest: 1,
           enableReadyCheck: true,
-          ...(redisTls ? { tls: redisTls } : {}),
+          ...(sharedRedisTls ? { tls: sharedRedisTls } : {}),
         })
       : null;
   const runtimeSchemaRequired = platformRequiresRuntimeSchema();
 
   LobbyRoom.configureFriendStore(friendStore);
   InviteRoom.configureFriendStore(friendStore, { enforceFriendship: friendStoreMode === 'postgres' });
+  InviteRoom.configureBlockStore(blockStore);
   QuickMatchRoom.configureBlockStore(blockStore);
   QuickMatchRoom.configureParticipantStore(matchParticipantStore);
   CustomRoom.configureParticipantStore(matchParticipantStore);
@@ -291,7 +337,11 @@ export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}
   // server.ts awaits this before listen; attach a handler immediately so a
   // synchronous configuration rejection cannot become an unhandled promise.
   void schemaReady.catch(() => undefined);
-  healthRedis?.on('error', (err) => logger.warn({ err }, 'platform health Redis connection error'));
+  sharedHealthRedis?.on('error', (err) => logger.warn({ err }, 'platform shared health Redis connection error'));
+  colyseusHealthRedis?.on('error', (err) => logger.warn({ err }, 'platform Colyseus health Redis connection error'));
+  pendingInviteDiscoveryRedis?.on('error', (err) =>
+    logger.warn({ err }, 'platform pending invite discovery Redis connection error'),
+  );
   authRevocationRedis?.on('error', (err) => logger.warn({ err }, 'platform auth Redis connection error'));
   relationshipRedis?.on('error', (err) => logger.warn({ err }, 'platform relationship Redis connection error'));
   configurePlatformJwtRevocationStore(authRevocationRedis, { timeoutMs: admissionLimits.timeoutMs });
@@ -304,6 +354,9 @@ export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}
       nodeEnv: process.env.NODE_ENV,
       limits: admissionLimits,
     });
+  const pendingInviteDiscoveryLimiter = createPlatformPendingInviteDiscoveryLimiter(authRevocationRedis, {
+    nodeEnv: process.env.NODE_ENV,
+  });
 
   async function checkHealth(): Promise<{ ok: boolean; errors: string[]; checks: Record<string, string> }> {
     const checks: { name: string; promise: Promise<unknown> }[] = [];
@@ -314,7 +367,7 @@ export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}
       });
     }
     if (runtimeSchemaRequired) checks.push({ name: 'schema', promise: schemaReady });
-    if (healthRedis) checks.push({ name: 'redis', promise: healthRedis.ping() });
+    checks.push(...platformRedisHealthChecks(sharedHealthRedis, colyseusHealthRedis));
     if (relationshipRedis) {
       checks.push({
         name: 'relationship-events',
@@ -357,12 +410,15 @@ export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}
       matchParticipantStore.close?.(),
       chatPreviewStore.close?.(),
       healthPool?.end(),
-      healthRedis?.quit(),
+      sharedHealthRedis?.quit(),
+      colyseusHealthRedis?.quit(),
+      pendingInviteDiscoveryRedis?.quit(),
       authRevocationRedis?.quit(),
       relationshipRedis?.quit(),
     ]);
     configurePlatformJwtRevocationStore(null);
     configurePlatformJwtAccountStore(null);
+    InviteRoom.configureBlockStore(null);
     QuickMatchRoom.configureBlockStore(null);
     QuickMatchRoom.configureParticipantStore(null);
     CustomRoom.configureParticipantStore(null);
@@ -374,7 +430,9 @@ export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}
   };
 
   const gameServer = new Server({
+    publicAddress: publicAddress?.colyseusAddress,
     transport: new WebSocketTransport({ server: httpServer }),
+    driver: colyseusDriver,
     express: (app) => {
       app.use(platformMetricsMiddleware);
       app.use((req: Request, res: Response, next: NextFunction) => {
@@ -428,6 +486,16 @@ export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}
           res.status(503).set('Cache-Control', 'no-store').json({ error: 'Room list is temporarily unavailable' });
         }
       });
+      app.get(
+        PLATFORM_PENDING_INVITE_DISCOVERY_PATH,
+        createPendingInviteDiscoveryHandler({
+          limiter: pendingInviteDiscoveryLimiter,
+          trustedProxy,
+          queryTimeoutMs: pendingInviteTimeouts.queryTimeoutMs,
+          ...(pendingInviteRedisQuery ? { queryRooms: pendingInviteRedisQuery } : {}),
+          ...options.pendingInviteDiscovery,
+        }),
+      );
       app.get('/metrics', async (req, res) => {
         if (!platformMetricsAuthorized(req.headers.authorization)) {
           res.status(401).set('Cache-Control', 'no-store').json({ error: 'Unauthorized' });
@@ -441,7 +509,6 @@ export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}
     ...(redisMode === 'redis'
       ? {
           presence: new RedisPresence(colyseusRedisUrl),
-          driver: new RedisDriver(colyseusRedisUrl),
         }
       : {}),
     gracefullyShutdown: options.gracefullyShutdown ?? true,
@@ -500,6 +567,7 @@ export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}
     gameServer,
     httpServer,
     port,
+    publicAddress: publicAddress?.url,
     redisMode,
     friendStoreMode,
     blockStoreMode,

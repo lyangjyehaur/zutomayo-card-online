@@ -76,7 +76,8 @@ async function verifyBoardgameMatchResult(pool, sourceMatchId, winnerPlayer, aut
         `SELECT m.state, m.metadata, o.completed_at
            FROM bjg_matches m
            LEFT JOIN bjg_match_result_outbox o ON o.source_match_id = m.match_id
-          WHERE m.match_id = $1`,
+          WHERE m.match_id = $1
+          FOR SHARE OF m`,
         [sourceMatchId],
       )
     ).rows[0];

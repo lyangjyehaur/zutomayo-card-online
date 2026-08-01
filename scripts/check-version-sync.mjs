@@ -65,13 +65,17 @@ if (!releaseLinkPattern.test(changelog)) fail(`CHANGELOG.md is missing the v${re
 const managedFallbackFiles = [
   '.env.example',
   'Dockerfile',
+  'Dockerfile.gateway',
   'api/Dockerfile',
   'docker-compose.yml',
   'docker-compose.server4.yml',
+  'docker-compose.server4-slot.yml',
+  'docker-compose.server4-gateway.yml',
   'src/version.ts',
   'vite.config.ts',
   'api/server.cjs',
   'scripts/deploy-server4.sh',
+  'scripts/deploy-server4-canary.sh',
 ];
 const hardcodedVersionFallback =
   /\b(?:APP_VERSION|APP_BUILD_ID|GAME_RULES_VERSION|PACKAGE_VERSION|packageVersion|fallbackVersion)\b[^\n]*\b\d+\.\d+\.\d+\b/;

@@ -11,6 +11,7 @@ describe('card image delivery policy', () => {
     expect(summary.violations).toEqual([]);
     expect(summary.cardImageCallSites).toBeGreaterThan(0);
     expect(summary.directCardImageElements).toBe(0);
+    expect(summary.bundledAssetExceptions).toBe(1);
     expect(summary.originalFallbackExceptions).toBe(0);
     expect(summary.nonProductionExceptions).toBe(1);
   }, 30_000);

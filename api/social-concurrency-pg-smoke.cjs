@@ -4,6 +4,7 @@
 const assert = require('node:assert/strict');
 const { Pool } = require('pg');
 const { deleteAccount } = require('./accountLifecycleService.cjs');
+const { hashIdempotencyKey } = require('./relationshipOutbox.cjs');
 const { blockUser, respondToFriendRequest } = require('./socialSafetyService.cjs');
 
 const prefix = `social-race:${process.pid}:${Date.now()}`;
@@ -62,7 +63,11 @@ async function waitForAdvisoryWaiter() {
 }
 
 async function removeScenarioRows(scenario) {
-  await pool.query('DELETE FROM relationship_change_outbox WHERE idempotency_key LIKE $1', [`%${scenario.requester}%`]);
+  await pool.query(
+    `DELETE FROM relationship_change_outbox
+      WHERE $1 = ANY(user_ids) OR $2 = ANY(user_ids)`,
+    [scenario.requester, scenario.recipient],
+  );
   await pool.query(
     `DELETE FROM friend_requests
       WHERE requester_user_id = $1 OR recipient_user_id = $1`,
@@ -143,7 +148,7 @@ async function deleteBeforeAcceptRace() {
            (SELECT COUNT(*) FROM friend_requests WHERE requester_user_id = $1 OR recipient_user_id = $1)::integer AS requests,
            (SELECT COUNT(*) FROM user_blocks WHERE blocker_user_id = $1 OR blocked_user_id = $1)::integer AS blocks,
            (SELECT COUNT(*) FROM relationship_change_outbox WHERE idempotency_key = $2 AND kind = 'account_deleted')::integer AS deletion_events`,
-        [scenario.recipient, `account_deleted:${scenario.recipient}`],
+        [scenario.recipient, hashIdempotencyKey(`account_deleted:${scenario.recipient}`)],
       )
     ).rows[0];
     assert.deepEqual(state, { deleted: true, friends: 0, requests: 0, blocks: 0, deletion_events: 1 });

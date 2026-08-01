@@ -41,6 +41,8 @@ PG_PLATFORM_PASSWORD="${PG_PLATFORM_PASSWORD:-$legacy_app_password}"
 : "${PG_BACKUP_PASSWORD:?PG_BACKUP_PASSWORD must be set}"
 : "${PG_WAL_USER:?PG_WAL_USER must be set}"
 : "${PG_WAL_PASSWORD:?PG_WAL_PASSWORD must be set}"
+: "${PG_WAL_OPERATOR_USER:?PG_WAL_OPERATOR_USER must be set}"
+: "${PG_WAL_OPERATOR_PASSWORD:?PG_WAL_OPERATOR_PASSWORD must be set}"
 
 role_names=(
   "$PG_API_USER"
@@ -50,6 +52,7 @@ role_names=(
   "$PG_MONITOR_USER"
   "$PG_BACKUP_USER"
   "$PG_WAL_USER"
+  "$PG_WAL_OPERATOR_USER"
 )
 role_passwords=(
   "$PG_API_PASSWORD"
@@ -59,10 +62,11 @@ role_passwords=(
   "$PG_MONITOR_PASSWORD"
   "$PG_BACKUP_PASSWORD"
   "$PG_WAL_PASSWORD"
+  "$PG_WAL_OPERATOR_PASSWORD"
 )
-role_kinds=(api game platform retention monitor backup wal)
+role_kinds=(api game platform retention monitor backup wal wal_operator)
 export PG_API_PASSWORD PG_GAME_PASSWORD PG_PLATFORM_PASSWORD PG_RETENTION_PASSWORD
-export PG_MONITOR_PASSWORD PG_BACKUP_PASSWORD PG_WAL_PASSWORD PG_MIGRATION_PASSWORD
+export PG_MONITOR_PASSWORD PG_BACKUP_PASSWORD PG_WAL_PASSWORD PG_WAL_OPERATOR_PASSWORD PG_MIGRATION_PASSWORD
 
 seen_role_names=()
 seen_role_passwords=()
@@ -135,6 +139,7 @@ psql --set=ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
   --set=monitor_user="$PG_MONITOR_USER" \
   --set=backup_user="$PG_BACKUP_USER" \
   --set=wal_user="$PG_WAL_USER" \
+  --set=wal_operator_user="$PG_WAL_OPERATOR_USER" \
   --set=migration_user="$PG_MIGRATION_USER" <<'SQL'
 \getenv migration_password PG_MIGRATION_PASSWORD
 \getenv api_password PG_API_PASSWORD
@@ -144,6 +149,7 @@ psql --set=ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
 \getenv monitor_password PG_MONITOR_PASSWORD
 \getenv backup_password PG_BACKUP_PASSWORD
 \getenv wal_password PG_WAL_PASSWORD
+\getenv wal_operator_password PG_WAL_OPERATOR_PASSWORD
 BEGIN;
 
 SELECT format('CREATE ROLE %I', :'migration_user')
@@ -200,18 +206,20 @@ SELECT format('ALTER SEQUENCE %I.%I OWNER TO %I', namespace.nspname, relation.re
 CREATE TEMP TABLE bootstrap_roles (
   role_name text PRIMARY KEY,
   role_password text NOT NULL,
-  replication boolean NOT NULL DEFAULT false
+  replication boolean NOT NULL DEFAULT false,
+  inherit_role boolean NOT NULL DEFAULT true
 ) ON COMMIT DROP;
 
-INSERT INTO bootstrap_roles (role_name, role_password, replication)
+INSERT INTO bootstrap_roles (role_name, role_password, replication, inherit_role)
 VALUES
-  (:'api_user', :'api_password', false),
-  (:'game_user', :'game_password', false),
-  (:'platform_user', :'platform_password', false),
-  (:'retention_user', :'retention_password', false),
-  (:'monitor_user', :'monitor_password', false),
-  (:'backup_user', :'backup_password', false),
-  (:'wal_user', :'wal_password', true)
+  (:'api_user', :'api_password', false, true),
+  (:'game_user', :'game_password', false, true),
+  (:'platform_user', :'platform_password', false, true),
+  (:'retention_user', :'retention_password', false, true),
+  (:'monitor_user', :'monitor_password', false, true),
+  (:'backup_user', :'backup_password', false, true),
+  (:'wal_user', :'wal_password', true, false),
+  (:'wal_operator_user', :'wal_operator_password', false, false)
 ON CONFLICT (role_name) DO NOTHING;
 
 SELECT format('CREATE ROLE %I', role_name)
@@ -224,7 +232,7 @@ SELECT format(
   role_name,
   role_password,
   CASE WHEN replication THEN 'REPLICATION' ELSE 'NOREPLICATION' END,
-  CASE WHEN replication THEN 'NOINHERIT' ELSE 'INHERIT' END
+  CASE WHEN inherit_role THEN 'INHERIT' ELSE 'NOINHERIT' END
 )
   FROM bootstrap_roles
 \gexec
@@ -234,6 +242,26 @@ SELECT format('REVOKE pg_monitor FROM %I', role_name)
  WHERE role_name <> :'monitor_user'
 \gexec
 SELECT format('GRANT pg_monitor TO %I', :'monitor_user')\gexec
+
+CREATE SCHEMA IF NOT EXISTS zutomayo_ops;
+ALTER SCHEMA zutomayo_ops OWNER TO CURRENT_USER;
+REVOKE ALL ON SCHEMA zutomayo_ops FROM PUBLIC;
+SELECT format('REVOKE ALL ON SCHEMA zutomayo_ops FROM %I', role_name)
+  FROM bootstrap_roles
+\gexec
+SELECT format('GRANT USAGE ON SCHEMA zutomayo_ops TO %I', :'wal_operator_user')\gexec
+
+CREATE OR REPLACE FUNCTION zutomayo_ops.switch_wal()
+RETURNS pg_lsn
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = pg_catalog
+AS 'SELECT pg_catalog.pg_switch_wal()';
+REVOKE ALL ON FUNCTION zutomayo_ops.switch_wal() FROM PUBLIC;
+SELECT format('REVOKE ALL ON FUNCTION zutomayo_ops.switch_wal() FROM %I', role_name)
+  FROM bootstrap_roles
+\gexec
+SELECT format('GRANT EXECUTE ON FUNCTION zutomayo_ops.switch_wal() TO %I', :'wal_operator_user')\gexec
 
 SELECT format('REVOKE CONNECT ON DATABASE %I FROM PUBLIC', current_database())\gexec
 SELECT format('GRANT CONNECT ON DATABASE %I TO %I', current_database(), :'migration_user')\gexec

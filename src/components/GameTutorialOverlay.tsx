@@ -248,8 +248,16 @@ export function GameTutorialOverlay({
         ),
       ].filter((element, index, all) => all.indexOf(element) === index && !element.hasAttribute('disabled'));
 
-    const focusTooltip = () => window.requestAnimationFrame(() => tooltip.focus());
-    focusTooltip();
+    const focusFrame = window.requestAnimationFrame(() => {
+      const target = targets
+        .flatMap((element) =>
+          element.matches(FOCUSABLE_SELECTOR)
+            ? [element]
+            : Array.from(element.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)),
+        )
+        .find((element) => !element.hasAttribute('disabled'));
+      (target ?? tooltip).focus();
+    });
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Tab') return;
       const focusable = available();
@@ -267,6 +275,7 @@ export function GameTutorialOverlay({
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => {
+      window.cancelAnimationFrame(focusFrame);
       document.removeEventListener('keydown', handleKeyDown);
       restoredTabIndexes.forEach(({ element, tabIndex }) => {
         if (tabIndex === null) element.removeAttribute('tabindex');

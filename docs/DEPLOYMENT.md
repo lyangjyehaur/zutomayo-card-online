@@ -4,7 +4,7 @@ Production deployment uses [docker-compose.yml](../docker-compose.yml) with six 
 
 - `postgres`: PostgreSQL 16 (`postgres:16.4-alpine`) database. Shared data layer for both boardgame.io match state (`bjg_matches` table) and API data (users/decks/matches). Healthcheck: `pg_isready`.
 - `redis`: Redis 7 (`redis:7.2.5-alpine`, `appendonly yes`, `maxmemory-policy noeviction`). Powers boardgame.io PubSub, Socket.IO redis-adapter, Colyseus room/presence backing, authentication revocation/refresh state, and rate-limit counters. Healthcheck: `redis-cli ping`. `noeviction` is required because evicting a blacklist or `auth:revoked-before:*` key would silently resurrect a revoked session.
-- `migrate`: One-shot schema migration service (least-privilege migration role). Runs `npm run db:migrate:release` and the schema gate before app services start. Exits `0` on success; app services wait via `depends_on: service_completed_successfully`.
+- `migrate`: One-shot schema/data release service (least-privilege migration role). It applies migrations and, when `REQUIRE_OFFICIAL_CARD_DATA=true`, audits/imports the signed 422-card official-text dataset and requires the 422-card/12-errata completeness gate before app services start. Exits `0` on success; app services wait via `depends_on: service_completed_successfully`.
 - `game`: boardgame.io server, built React app, static card/admin assets, and `/api/*` proxy. Persists match state via `PostgresAdapter` and broadcasts cross-node via `RedisPubSub` + `@socket.io/redis-adapter`.
 - `api`: REST API service with PostgreSQL + Redis persistence. Uses `pg.Pool` for users/decks/matches/chat and Redis for authentication state, relationship-event delivery, and rate limiting.
 - `platform`: Colyseus platform service for lobby presence, quick matchmaking, custom-room lifecycle, invitations, spectator presence, and realtime room coordination. Uses Redis driver/presence in Compose and PostgreSQL-backed friend lookup.
@@ -54,9 +54,11 @@ docker compose down
 
 ## Environment / 環境變數
 
-Variables are passed through `docker-compose.yml` from the host environment (e.g. via a `.env` file or shell export).
+Compose reads host variables from a `.env` file or shell export for interpolation. Immutable staging/production Compose files do not mount that shared file into containers; every runtime receives only its explicit per-service allowlist.
 
-**REQUIRED:** the immutable staging/production-hardening path requires `PG_MIGRATION_USER`/`PG_MIGRATION_PASSWORD`; distinct API, GAME, PLATFORM, RETENTION, MONITOR, BACKUP, and WAL `PG_*_USER`/`PG_*_PASSWORD` pairs; `EXPECTED_SCHEMA_MIGRATION`; the four immutable `*_IMAGE` references; and `JWT_SECRET`. The current source-built Server4 Beta path is the documented exception and uses `PG_MIGRATION_*` plus shared `PG_APP_*`; full role isolation is deferred until the hardened deployment path is adopted. Set a non-empty `REDIS_PASSWORD` for every production deployment.
+Feedback image attachments are stored in the Compose-managed `feedback_uploads` volume mounted at `/app/data/feedback-uploads`; include that volume in host-level backups together with PostgreSQL logical backups.
+
+**REQUIRED:** production/staging require `PG_MIGRATION_USER`/`PG_MIGRATION_PASSWORD`; distinct API, GAME, PLATFORM, RETENTION, MONITOR, BACKUP, WAL replication, and WAL operator `PG_*_USER`/`PG_*_PASSWORD` pairs; `EXPECTED_SCHEMA_MIGRATION`; the seven immutable `*_IMAGE` references (including release gateway and PostgreSQL OPS); `JWT_SECRET`; the game/platform-only `PLATFORM_SEAT_TOKEN_SECRET`; a process/slot-specific `PLATFORM_PUBLIC_ADDRESS`; API-only `ADMIN_TOTP_ENCRYPTION_KEY` and `OAUTH_TOKEN_ENCRYPTION_KEY`; and either `OAUTH_PUBLIC_BASE_URL` or `PUBLIC_BASE_URL`. The four security keys must be pairwise distinct. `PG_APP_USER` remains a local-development compatibility alias only. Compose exits early if a production role is missing or aliased. Production/staging `REDIS_URL` must use `rediss://` and include Redis ACL/password credentials in the URL authority.
 
 Create a `.env` file from the template:
 
@@ -71,13 +73,21 @@ cp .env.example .env
 # - PG_MONITOR_USER / PG_MONITOR_PASSWORD
 # - PG_BACKUP_USER / PG_BACKUP_PASSWORD
 # - PG_WAL_USER / PG_WAL_PASSWORD
+# - PG_WAL_OPERATOR_USER / PG_WAL_OPERATOR_PASSWORD
 # - REDIS_PASSWORD (required in production)
 # - REDIS_URL=rediss://:<password>@redis:6380 (required in production)
 # - PG_CA_FILE (host path to the trusted PostgreSQL/Redis CA)
 # - PG_SSLROOTCERT and NODE_EXTRA_CA_CERTS=/run/secrets/zutomayo-service-ca.crt
 # - JWT_SECRET (generate with: openssl rand -hex 32)
+# - ACCOUNT_EXPORT_S3_BUCKET / ACCOUNT_EXPORT_S3_REGION
+# - ACCOUNT_EXPORT_S3_CREDENTIALS_MODE=default|static
+# - ACCOUNT_EXPORT_S3_VERSIONING_MODE=disabled|required
+# - ACCOUNT_EXPORT_S3_LIFECYCLE_CONFIRMED=true (only after bucket verification)
+# - ACCOUNT_EXPORT_PSEUDONYM_KEY (independent; generate with: openssl rand -hex 32)
 # Image digests and EXPECTED_SCHEMA_* come from the verified release manifest.
 ```
+
+PostgreSQL WAL deploy gate 另外要求 `PG_WAL_OPERATOR_DATABASE`、`PG_WAL_OFFSITE_URI`、`PG_WAL_S3_REGION` 與三個 host file path：`PG_WAL_OPERATOR_PGPASS_FILE`、`PG_WAL_AGE_IDENTITY_FILE`、`PG_WAL_S3_CREDENTIALS_FILE`。三個 source 檔案必須為 `root:<POSTGRES_OPS_SECRETS_GID>`、mode `0440`；entrypoint 會在 tmpfs 建立 OPS UID 所有、mode `0600` 的 runtime PGPASS，避免 libpq 忽略 group-readable password file。Compose 只把 source 唯讀掛入 non-root OPS container，不接受 `PGPASSWORD`、AWS access key 或 age identity 明文環境變數。部署腳本會從主 Compose 的 migration service 取得 gate 使用的 host/port；直接執行輔助 Compose 時可用 `PG_DEPLOY_GATE_HOST`、`PG_DEPLOY_GATE_PORT` 覆寫，production 預設為 `postgresql:5432`。
 
 ### `game`
 
@@ -119,54 +129,101 @@ Frontend build-time variables (baked into the bundle at `vite build`):
 | `VITE_UMAMI_TELEMETRY_SCRIPT_URL` | empty                | Optional same-origin replay / telemetry script URL. Leave empty for standard Umami analytics only.                                                                        |
 | `VITE_UMAMI_SECONDARY_WEBSITE_ID` | empty                | Backward-compatible alias used by `zutumayo-gallery`.                                                                                                                     |
 
-> 管理權限應綁定既有使用者帳號。套用 migration 後執行
-> `npm run admin:link -- --email=user@example.com --role=admin`；該使用者以一般帳號登入後，管理頁會透過
-> `POST /api/admin/session` 自動取得受 RBAC 與撤銷機制保護的管理員 session。舊式獨立 TOTP
-> 管理員登入只保留作相容方案。撤回權限使用
-> `npm run admin:unlink -- --email=user@example.com`，既有管理員 session 會連帶刪除。
+> Admin authentication is not handled in the frontend. `POST /api/admin/login` verifies an individual PostgreSQL-backed admin account, its password, and TOTP MFA, then issues a persisted revocable jti. `VITE_ADMIN_PASSWORD` and the legacy shared `ADMIN_PASSWORD` are ignored.
 
 ### `api`
 
-| Variable                                | Default                             | Notes                                                                                                                                                                                                          |
-| --------------------------------------- | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `API_PORT`                              | `3001`                              | API service port inside the container.                                                                                                                                                                         |
-| `PG_HOST`                               | `postgres`                          | PostgreSQL host. Use `localhost` for local dev outside Compose.                                                                                                                                                |
-| `PG_PORT`                               | `5432`                              | PostgreSQL port.                                                                                                                                                                                               |
-| `PG_USER`                               | `PG_API_USER` in Compose            | API data-plane role; it cannot perform DDL or modify migration history.                                                                                                                                        |
-| `PG_PASSWORD`                           | `PG_API_PASSWORD` in Compose        | API-only runtime password; never use the migration-owner password here.                                                                                                                                        |
-| `PG_DATABASE`                           | `zutomayo`                          | PostgreSQL database name. Source of truth for users, decks, matches, and leaderboard.                                                                                                                          |
-| `PGSSLMODE`                             | `verify-full` in production         | The server4 Compose requires the mounted trusted CA and does not permit a plaintext fallback.                                                                                                                  |
-| `REDIS_URL`                             | Compose-generated authenticated URL | Redis connection URL for refresh rotation, the compatibility queue, and rate limits. Production/staging require an authenticated TLS URL (`rediss://`).                                                        |
-| `REDIS_DB`                              | `0`                                 | Redis DB index (0-15) for key isolation when sharing a Redis instance with other services. See [Reusing Existing PG/Redis](#reusing-existing-postgresql--redis).                                               |
-| `JWT_SECRET`                            | **required**                        | HMAC key for signed user/admin tokens. **Must be at least 32 characters.** Generate with `openssl rand -hex 32`. Set a stable secret in production or all tokens become invalid when the API process restarts. |
-| `ADMIN_SESSION_TTL_SECONDS`             | `3600`                              | Linked 或舊式管理員 session 的有效秒數，伺服器會限制在 5 分鐘至 8 小時。                                                                                                                                       |
-| `ADMIN_TOTP_ENCRYPTION_KEY`             | empty                               | 只供舊式獨立 TOTP 管理員使用的加密金鑰；使用 linked user 管理員時不需要。                                                                                                                                      |
-| `ALLOWED_ORIGINS`                       | empty                               | Comma-separated CORS allowlist. When empty, the server falls back to localhost dev origins only.                                                                                                               |
-| `TRUSTED_PROXY`                         | empty                               | Comma-separated trusted proxy IP/CIDR allowlist. `X-Forwarded-For` is honored only when the TCP peer matches this list; keep empty for direct traffic.                                                         |
-| `APP_VERSION`                           | `package.json` version              | App release version returned by `/api/version` and `/api/app-version`. Leave empty to use the package version.                                                                                                 |
-| `APP_BUILD_ID`                          | `APP_VERSION`                       | Build identifier; keep it aligned with the `game` service.                                                                                                                                                     |
-| `GAME_RULES_VERSION`                    | `APP_VERSION`                       | Rules/calculation compatibility version; keep it aligned with the `game` service.                                                                                                                              |
-| `DECK_SHARING_ENABLED`                  | `false`                             | Feature flag for public/unlisted deck publishing, lobby discovery, likes, copying, reports, and moderation. Enable only after migration `000038_deck_sharing` is applied.                                      |
-| `LOG_LEVEL`                             | `info`                              | pino log level (`trace`/`debug`/`info`/`warn`/`error`/`fatal`).                                                                                                                                                |
-| `CHAT_TRANSLATION_ENDPOINT`             | empty                               | Optional HTTP LLM translation gateway. When empty, chat translation requests are persisted as `pending` rows instead of calling a provider.                                                                    |
-| `CHAT_TRANSLATION_API_KEY`              | empty                               | Optional bearer token sent to `CHAT_TRANSLATION_ENDPOINT`.                                                                                                                                                     |
-| `CHAT_TRANSLATION_PROVIDER`             | `http`                              | Provider label stored on ready/pending translation rows.                                                                                                                                                       |
-| `CHAT_TRANSLATION_MODEL`                | empty                               | Optional model label sent to the provider and stored with translation rows.                                                                                                                                    |
-| `CHAT_TRANSLATION_TIMEOUT_MS`           | `10000`                             | Provider request timeout, clamped between 1s and 60s.                                                                                                                                                          |
-| `TRANSLATION_ENDPOINT`                  | empty                               | Shared HTTP translation gateway used by official rulings, announcements, and chat. Falls back to `CHAT_TRANSLATION_ENDPOINT` for compatibility.                                                                |
-| `TRANSLATION_API_KEY`                   | empty                               | Optional bearer token sent to `TRANSLATION_ENDPOINT`.                                                                                                                                                          |
-| `TRANSLATION_PROVIDER`                  | `http`                              | Provider label persisted with generated official-rulings translations.                                                                                                                                         |
-| `TRANSLATION_MODEL`                     | empty                               | Optional model label sent to the shared provider and stored for review/audit.                                                                                                                                  |
-| `TRANSLATION_TIMEOUT_MS`                | `10000`                             | Shared provider timeout, clamped between 1s and 60s.                                                                                                                                                           |
-| `LOGTO_M2M_APP_ID`                      | required when recovery is enabled   | Dedicated M2M client used only to recover ambiguous account deletions after a crash. Inject at runtime.                                                                                                        |
-| `LOGTO_M2M_APP_SECRET`                  | required when recovery is enabled   | Runtime-only M2M secret. It must not appear in Docker build arguments, image layers, or frontend variables.                                                                                                    |
-| `LOGTO_MANAGEMENT_RESOURCE`             | required when recovery is enabled   | Absolute HTTPS resource identifier for the Logto Management API.                                                                                                                                               |
-| `LOGTO_MANAGEMENT_SCOPE`                | `delete:users` only                 | Production startup rejects `all`, additional scopes, or a missing value. Grant this client only user deletion.                                                                                                 |
-| `ACCOUNT_DELETION_RECOVERY_ENABLED`     | `true`                              | Set `false` only for a beta that intentionally disables Logto-linked account deletion and its recovery worker.                                                                                                 |
-| `ACCOUNT_DELETION_RECOVERY_INTERVAL_MS` | `60000`                             | Interval for retrying durable `provider_deleting` and `provider_deleted` requests; clamped to 10 seconds through one hour.                                                                                     |
-| `ACCOUNT_EXPORT_MAX_BYTES`              | `8388608`                           | Maximum serialized synchronous account export size; values are clamped to 64 KiB through 25 MiB.                                                                                                               |
+| Variable                                   | Default                             | Notes                                                                                                                                                                                                          |
+| ------------------------------------------ | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `API_PORT`                                 | `3001`                              | API service port inside the container.                                                                                                                                                                         |
+| `PG_HOST`                                  | `postgres`                          | PostgreSQL host. Use `localhost` for local dev outside Compose.                                                                                                                                                |
+| `PG_PORT`                                  | `5432`                              | PostgreSQL port.                                                                                                                                                                                               |
+| `PG_USER`                                  | `PG_API_USER` in Compose            | API data-plane role; it cannot perform DDL or modify migration history.                                                                                                                                        |
+| `PG_PASSWORD`                              | `PG_API_PASSWORD` in Compose        | API-only runtime password; never use the migration-owner password here.                                                                                                                                        |
+| `PG_DATABASE`                              | `zutomayo`                          | PostgreSQL database name. Source of truth for users, decks, matches, and leaderboard.                                                                                                                          |
+| `PGSSLMODE`                                | `verify-full` in production         | The server4 Compose requires the mounted trusted CA and does not permit a plaintext fallback.                                                                                                                  |
+| `REDIS_URL`                                | Compose-generated authenticated URL | Redis connection URL for refresh rotation, the compatibility queue, and rate limits. Production/staging require an authenticated TLS URL (`rediss://`).                                                        |
+| `REDIS_DB`                                 | `0`                                 | Redis DB index (0-15) for key isolation when sharing a Redis instance with other services. See [Reusing Existing PG/Redis](#reusing-existing-postgresql--redis).                                               |
+| `JWT_SECRET`                               | **required**                        | HMAC key for signed user/admin tokens. **Must be at least 32 characters.** Generate with `openssl rand -hex 32`. Set a stable secret in production or all tokens become invalid when the API process restarts. |
+| `ADMIN_TOTP_ENCRYPTION_KEY`                | **required**                        | Stable key of at least 32 characters used only to encrypt admin TOTP secrets. Rotating this key requires a separate envelope re-encryption procedure; replacing it directly locks out existing accounts.       |
+| `ADMIN_SESSION_TTL_SECONDS`                | `3600`                              | Persisted admin jti lifetime, clamped between five minutes and eight hours. Credential rotation/recovery revokes every still-active jti for that admin.                                                        |
+| `ALLOWED_ORIGINS`                          | empty                               | Comma-separated CORS allowlist. When empty, the server falls back to localhost dev origins only.                                                                                                               |
+| `TRUSTED_PROXY`                            | empty                               | Comma-separated trusted proxy IP/CIDR allowlist. `X-Forwarded-For` is honored only when the TCP peer matches this list; keep empty for direct traffic.                                                         |
+| `APP_VERSION`                              | `package.json` version              | App release version returned by `/api/version` and `/api/app-version`. Leave empty to use the package version.                                                                                                 |
+| `APP_BUILD_ID`                             | `APP_VERSION`                       | Build identifier; keep it aligned with the `game` service.                                                                                                                                                     |
+| `GAME_RULES_VERSION`                       | `APP_VERSION`                       | Rules/calculation compatibility version; keep it aligned with the `game` service.                                                                                                                              |
+| `LOG_LEVEL`                                | `info`                              | pino log level (`trace`/`debug`/`info`/`warn`/`error`/`fatal`).                                                                                                                                                |
+| `API_HTTP_DRAIN_TIMEOUT_MS`                | `10000`                             | After readiness turns `503`, stop new HTTP accepts and wait this long for in-flight API requests before force-closing sockets. Clamped to the hard shutdown deadline.                                          |
+| `SHUTDOWN_TIMEOUT_MS`                      | `30000`                             | Hard deadline for HTTP drain, background workers, PostgreSQL/Redis closure, and telemetry flush; Compose `stop_grace_period` must remain longer.                                                               |
+| `CHAT_TRANSLATION_ENDPOINT`                | empty                               | Optional HTTP LLM translation gateway. When empty, chat translation requests are persisted as `pending` rows instead of calling a provider.                                                                    |
+| `CHAT_TRANSLATION_API_KEY`                 | empty                               | Optional bearer token sent to `CHAT_TRANSLATION_ENDPOINT`.                                                                                                                                                     |
+| `CHAT_TRANSLATION_PROVIDER`                | `http`                              | Provider label stored on ready/pending translation rows.                                                                                                                                                       |
+| `CHAT_TRANSLATION_MODEL`                   | empty                               | Optional model label sent to the provider and stored with translation rows.                                                                                                                                    |
+| `CHAT_TRANSLATION_TIMEOUT_MS`              | `10000`                             | Provider request timeout, clamped between 1s and 60s.                                                                                                                                                          |
+| `LOGTO_M2M_APP_ID`                         | required with Logto in production   | Dedicated M2M client used only to recover ambiguous account deletions after a crash. Inject at runtime.                                                                                                        |
+| `LOGTO_M2M_APP_SECRET`                     | required with Logto in production   | Runtime-only M2M secret. It must not appear in Docker build arguments, image layers, or frontend variables.                                                                                                    |
+| `LOGTO_MANAGEMENT_RESOURCE`                | required with Logto in production   | Absolute HTTPS resource identifier for the Logto Management API.                                                                                                                                               |
+| `LOGTO_MANAGEMENT_SCOPE`                   | `delete:users` only                 | Production startup rejects `all`, additional scopes, or a missing value. Grant this client only user deletion.                                                                                                 |
+| `ACCOUNT_DELETION_RECOVERY_INTERVAL_MS`    | `60000`                             | Interval for retrying durable `provider_deleting` and `provider_deleted` requests; clamped to 10 seconds through one hour.                                                                                     |
+| `ACCOUNT_EXPORT_STORAGE_MODE`              | `s3` in production Compose          | Production/staging is fail-closed and cannot disable durable asynchronous export storage.                                                                                                                      |
+| `ACCOUNT_EXPORT_S3_BUCKET`                 | **required**                        | Private S3-compatible bucket dedicated to DSAR artifacts.                                                                                                                                                      |
+| `ACCOUNT_EXPORT_S3_REGION`                 | **required**                        | S3 region used by the AWS SDK client.                                                                                                                                                                          |
+| `ACCOUNT_EXPORT_S3_PREFIX`                 | `account-exports`                   | Least-privilege object-key prefix; the runtime rejects traversal and keys outside it.                                                                                                                          |
+| `ACCOUNT_EXPORT_S3_ENDPOINT`               | AWS default                         | Optional S3-compatible origin. Production accepts only an absolute HTTPS origin without credentials, query, fragment, or path.                                                                                 |
+| `ACCOUNT_EXPORT_S3_CREDENTIALS_MODE`       | **required**                        | `default` uses the AWS SDK workload/instance credential chain; `static` requires the dedicated access key and secret.                                                                                          |
+| `ACCOUNT_EXPORT_S3_SERVER_SIDE_ENCRYPTION` | `AES256`                            | Set `aws:kms` and `ACCOUNT_EXPORT_S3_KMS_KEY_ID` to use a customer-managed key.                                                                                                                                |
+| `ACCOUNT_EXPORT_S3_VERSIONING_MODE`        | **required**                        | `disabled` is recommended on server4; `required` fails upload/download/delete closed unless the exact VersionId is available.                                                                                  |
+| `ACCOUNT_EXPORT_S3_LIFECYCLE_CONFIRMED`    | **required `true`**                 | Operator attestation that an enforced lifecycle cleans orphan/expired objects under the configured prefix. Never set it before verifying the bucket policy.                                                    |
+| `ACCOUNT_EXPORT_PSEUDONYM_KEY`             | **required**                        | Independent HMAC key of at least 32 bytes; never reuse JWT, OAuth, TOTP, or storage credentials.                                                                                                               |
+| `ACCOUNT_EXPORT_TMP_DIR`                   | `/app/data/account-exports`         | Fixed production path backed by a node-owned `0700`, 256 MiB tmpfs; it must not be a persistent volume.                                                                                                        |
+| `ACCOUNT_EXPORT_INTERVAL_MS`               | `1000`                              | Worker polling interval.                                                                                                                                                                                       |
+| `ACCOUNT_EXPORT_LEASE_MS`                  | `300000`                            | Fenced job lease; heartbeat renews it while a stream/upload is active.                                                                                                                                         |
+| `ACCOUNT_EXPORT_BATCH_SIZE`                | `2`                                 | Maximum jobs claimed per worker tick.                                                                                                                                                                          |
+| `ACCOUNT_EXPORT_DOWNLOAD_CONCURRENCY`      | `1`                                 | Concurrent export download streams, clamped to 1–4; keep 1 on server4 to preserve tmpfs/network/process headroom.                                                                                              |
+| `ACCOUNT_EXPORT_EXPIRY_SECONDS`            | `604800`                            | Download availability, seven days by default.                                                                                                                                                                  |
+| `ACCOUNT_EXPORT_MAX_ATTEMPTS`              | `5`                                 | Per-job retry ceiling before permanent failure.                                                                                                                                                                |
+| `ACCOUNT_EXPORT_BASE_RETRY_MS`             | `5000`                              | Initial retry delay for artifact/storage failures.                                                                                                                                                             |
+| `ACCOUNT_EXPORT_MAX_RETRY_MS`              | `300000`                            | Maximum retry delay.                                                                                                                                                                                           |
+| `ACCOUNT_EXPORT_MAX_BYTES`                 | `104857600`                         | Maximum serialized JSON stream before gzip (100 MiB); the 256 MiB tmpfs leaves bounded compressed-file/filesystem headroom.                                                                                    |
 
-Cloudflare-fronted deployments must include every current CIDR from [Cloudflare IP Ranges](https://www.cloudflare.com/ips/) in `TRUSTED_PROXY`, in addition to the local ingress/container ranges.
+#### Admin bootstrap, rotation, and recovery
+
+Run the credential CLI as a controlled one-shot migration operation, with `PG_USER`/`DATABASE_URL` matching `PG_MIGRATION_USER` and the same stable `ADMIN_TOTP_ENCRYPTION_KEY` used by the API. Supply the password through an owner-only regular file whenever possible. If the TOTP secret is generated, an absolute `--totp-output-file` is mandatory; the CLI creates it with `O_EXCL`, mode `0600`, fsyncs it before changing PostgreSQL, and never writes the secret to ordinary stdout.
+
+```bash
+export ADMIN_BOOTSTRAP_PASSWORD_FILE=/run/secrets/admin-bootstrap-password
+
+npm run admin:create -- \
+  --username=operator \
+  --role=operator \
+  --totp-output-file=/run/secrets/admin-operator.totp
+
+npm run admin:rotate -- \
+  --username=operator \
+  --totp-output-file=/run/secrets/admin-operator-rotation.totp
+
+npm run admin:recover -- \
+  --username=operator \
+  --totp-output-file=/run/secrets/admin-operator-recovery.totp
+```
+
+`admin:create` fails if the username already exists. `admin:rotate` accepts only an active account, while `admin:recover` accepts only a disabled account and re-enables it. Omitting `--role` during rotation/recovery preserves the current role. To inject a pre-provisioned TOTP secret instead of generating one, set exactly one of `ADMIN_BOOTSTRAP_TOTP_SECRET` or `ADMIN_BOOTSTRAP_TOTP_SECRET_FILE` and omit the output flag; the file form must be a non-symlink regular file with no group/other permissions.
+
+Creation, rotation, and recovery serialize on the username and lock the admin row. Credential update, active-session revocation, and the durable `admin_audit_log` record commit in one database transaction. The API role has only `SELECT`/`INSERT` on this audit table; policy-driven deletion remains isolated to the retention role. Audit details contain only the operation, target username, previous/current role and disabled state, source, and revoked-session count; password hashes, salts, plaintext TOTP secrets, and encrypted TOTP envelopes are excluded. Move the TOTP material directly into the operator's authenticator, verify a new login, then securely delete the one-time output and password input files.
+
+Before production use, run `npm run smoke:admin-credentials-pg` with `ADMIN_CREDENTIAL_PG_SMOKE_URL` pointing to a disposable local PostgreSQL database. The smoke creates and drops only a random schema and proves all three operations, session revocation, stale-login rejection, secret-free audit contents, and transaction rollback on audit failure. It refuses `NODE_ENV=production`; a remote disposable database additionally requires `ADMIN_CREDENTIAL_PG_SMOKE_ALLOW_REMOTE=true`. Never point this contract at the production database.
+
+#### DSAR object-storage contract
+
+The export bucket is compliance storage, not a public download origin. Enable S3 Public Access Block (all four settings), disable ACL-based public access, deny requests where `aws:SecureTransport` is `false`, and require server-side encryption. The API streams downloads after checking ownership and integrity; do not expose bucket URLs or add a CDN/public bucket policy.
+
+Give the API identity access only to `ACCOUNT_EXPORT_S3_PREFIX`. The normal policy needs `s3:PutObject`, `s3:GetObject`, and `s3:DeleteObject` for `<bucket>/<prefix>/*`; restrict `s3:ListBucket`, if granted, with an `s3:prefix` condition. Do not grant bucket administration, policy changes, or unrelated prefixes. With SSE-KMS, scope KMS permissions to the selected key and workload. Static credentials may be passed directly or through the exclusive `*_FILE` inputs, but must never enter `.release.env`, source control, image layers, or logs; prefer `ACCOUNT_EXPORT_S3_CREDENTIALS_MODE=default` with an instance/workload role.
+
+Server4 should use `ACCOUNT_EXPORT_S3_VERSIONING_MODE=disabled` on a dedicated ephemeral bucket. If organizational policy mandates versioning, set `required`: every successful Put must return a VersionId and every Get/Delete must supply the persisted `object_version_id`. Grant only the additional `s3:GetObjectVersion` and `s3:DeleteObjectVersion` actions. A key-only delete or delete marker is not accepted as proof of physical deletion.
+
+An enforced lifecycle on the dedicated prefix is mandatory before setting `ACCOUNT_EXPORT_S3_LIFECYCLE_CONFIRMED=true`. It must expire orphan/expired objects after a window longer than `ACCOUNT_EXPORT_EXPIRY_SECONDS` (for example 14 days with the seven-day default), abort incomplete multipart uploads, and, when versioning is required, expire non-current versions and delete markers. The worker remains the primary version-aware purge mechanism and records retry/audit state; lifecycle is a safety net, not the only deletion mechanism, and must not remove still-downloadable objects early.
+
+Custom S3-compatible endpoints must present a trusted TLS certificate; production rejects plain HTTP. All production Compose files mount `/app/data/account-exports` as `noexec,nosuid,nodev`, `0700`, UID/GID 1000, with a 256 MiB hard capacity. Do not replace this tmpfs with a persistent volume; restart cleanup is part of the data-minimization contract.
 
 Cloudflare Web Analytics may inject its browser beacon for aggregate traffic and Web Vitals reporting. Production CSP allows only its documented script origin, `https://static.cloudflareinsights.com`; do not broaden this to a wildcard or enable unrelated script injection products without a separate security review. Umami remains the source of application funnel events through the same-origin `/analytics` proxy. Browser QA must treat any remaining analytics CSP violation as a failure.
 
@@ -275,7 +332,7 @@ Both rate limiters **fail open** (allow the request through) when Redis is unava
 
 ### Monitoring Stack (Grafana / Prometheus)
 
-A ready-to-use monitoring stack is defined in [docker-compose.monitoring.yml](../docker-compose.monitoring.yml). It launches Prometheus, Grafana, postgres-exporter, redis-exporter, a node-exporter textfile collector for backup, retention, restore, and synthetic metrics, and cAdvisor, and joins the app's default Docker network so scrapers can reach `game`, `api`, `platform`, `postgres`, and `redis` by service name.
+A ready-to-use monitoring stack is defined in [docker-compose.monitoring.yml](../docker-compose.monitoring.yml). It launches Prometheus, Grafana, postgres-exporter, redis-exporter, a node-exporter textfile collector for backup, retention, restore, and synthetic metrics, and cAdvisor. Prometheus and blackbox-exporter join both the legacy app network and the blue/green release-edge network. Legacy app targets use the dedicated `game-legacy`, `api-legacy`, and `platform-legacy` aliases; slot replicas are discovered from `game-<slot>`, `api-<slot>`, and `platform-<slot>-p[12]` DNS A records.
 
 **Dashboards** (`observability/grafana/dashboards/`) are provisioned automatically into a `Zutomayo` folder:
 
@@ -294,9 +351,15 @@ A ready-to-use monitoring stack is defined in [docker-compose.monitoring.yml](..
 # Ensure the app stack is running first (it creates the default network).
 docker compose up -d
 
+# The monitoring and blue/green slot Compose files share this external network.
+docker network inspect "${GATEWAY_EDGE_NETWORK:-zutomayo-release-edge}" >/dev/null 2>&1 || \
+  docker network create "${GATEWAY_EDGE_NETWORK:-zutomayo-release-edge}"
+
 # Launch the monitoring stack.
 docker compose -f docker-compose.monitoring.yml up -d
 ```
+
+When upgrading an existing server4 legacy stack, its running containers do not gain new network aliases merely because the Compose YAML changed. Recreate `game`, `api`, and `platform` under the reviewed legacy manifest before switching Prometheus to this config, then verify that `game-legacy`, `api-legacy`, and `platform-legacy` resolve from `${APP_NETWORK}`. Keep the existing monitoring config running until all three names resolve; this avoids a scrape blackout during the control-plane installation.
 
 Grafana is exposed on **port 3003** (avoids conflicts with game `3000`, api `3001`, platform `3002`). Default credentials are `admin / admin`; set `GRAFANA_PASSWORD` in `.env` to override.
 
@@ -312,7 +375,7 @@ Grafana is exposed on **port 3003** (avoids conflicts with game `3000`, api `300
 
 **Metrics token**: if `METRICS_TOKEN` is set on the app servers, create a file containing the token and add `bearer_token_file: /etc/prometheus/metrics_token` to each `zutomayo-*` scrape job in `prometheus.yml`, then mount the token file into the prometheus container.
 
-**Network**: the monitoring stack joins `${APP_NETWORK:-zutomayo-card-online_default}` as an external network. If your compose project name differs (e.g. running from a worktree directory), set `APP_NETWORK` in `.env` to match `docker compose ls` output.
+**Network**: the monitoring stack joins `${APP_NETWORK:-zutomayo-card-online_default}` and `${GATEWAY_EDGE_NETWORK:-zutomayo-release-edge}` as external networks. If your compose project name differs (e.g. running from a worktree directory), set `APP_NETWORK` in `.env` to match `docker compose ls` output. `GATEWAY_EDGE_NETWORK` must exactly match the network installed by the parallel server4 control plane.
 
 Install the one-minute homepage/login/create/join synthetic timer using [`docs/runbooks/synthetic-probe.md`](./runbooks/synthetic-probe.md). The timer writes into the same node-exporter textfile directory. Its local success proves the journey and metric contract only; verify Alertmanager delivery and recovery in staging before treating the alert path as operational.
 
@@ -332,8 +395,12 @@ Production backups must be encrypted, checksummed, copied off-site, monitored fo
 ```bash
 ./scripts/pg-backup.sh
 ./scripts/pg-base-backup.sh
-./scripts/pg-restore-drill.sh s3://bucket/path/zutomayo_<timestamp>.dump.age
+./scripts/pg-wal-operational-smoke.sh
+# Weekly runner consumes the recent immutable upload receipt and exact S3 versions.
+./scripts/run-pg-restore-drill-scheduled.sh
 ```
+
+The logical backup bucket must have versioning enabled. `pg-backup.sh` publishes a local read-only receipt only after both `put-object` responses return non-null immutable `VersionId` values. The weekly wrapper rejects stale, writable, symlinked, or malformed receipts and never resolves a mutable latest S3 object; it passes the exact artifact/checksum versions and receipt SHA-256 to `pg-restore-drill.sh`. The drill downloads both versions with `s3api get-object --version-id` and emits the release-bound `zutomayo-encrypted-offsite-restore-raw` artifact only after receipt/sidecar checksum binding, age decryption, isolated restore, expected migration/checksum, core-data, and legal-hold checks pass. Install and enable all three repository timers documented in the runbook, and verify both immediate run-failure alerts and stale alerts reach the on-call route.
 
 The repository Compose database remains single-instance and is not a production HA topology. See [`docs/runbooks/ha-capacity.md`](./runbooks/ha-capacity.md) before setting replica counts or claiming the documented RPO/RTO.
 
@@ -343,15 +410,34 @@ Schema changes are managed by [node-pg-migrate](https://github.com/salsita/node-
 
 ### Available scripts
 
-| Script                           | Purpose                                                                   |
-| -------------------------------- | ------------------------------------------------------------------------- |
-| `npm run db:migrate`             | Apply all pending migrations (up).                                        |
-| `npm run db:migrate:release`     | Apply migrations, then require `EXPECTED_SCHEMA_MIGRATION` to be applied. |
-| `npm run db:schema:gate`         | Verify the expected migration without changing schema.                    |
-| `npm run db:migrate:down`        | Roll back the most recent migration (down).                               |
-| `npm run db:migrate:make <name>` | Generate a new migration file under `migrations/`.                        |
+| Script                           | Purpose                                                                                       |
+| -------------------------------- | --------------------------------------------------------------------------------------------- |
+| `npm run db:migrate`             | Apply all pending migrations (up).                                                            |
+| `npm run db:migrate:release`     | Apply migrations, gated legacy tombstone backfill, signed card-data release, and schema gate. |
+| `npm run db:schema:gate`         | Verify the expected migration without changing schema.                                        |
+| `npm run db:card-data:gate`      | Verify all 422 official English card rows and the exact 12 reviewed errata rows.              |
+| `npm run db:migrate:down`        | Roll back the most recent migration (down).                                                   |
+| `npm run db:migrate:make <name>` | Generate a new migration file under `migrations/`.                                            |
 
 The wrapper [`scripts/db-migrate.cjs`](../scripts/db-migrate.cjs) bridges the project's `PG_*` environment variables to node-pg-migrate's `databaseUrl`. If `DATABASE_URL` is set it takes precedence; otherwise the wrapper assembles a `pg.ClientConfig` from `PG_HOST` / `PG_PORT` / `PG_USER` / `PG_PASSWORD` / `PG_DATABASE`.
+
+Server4 may keep using its existing `zutomayo_card` PostgreSQL database; this release does not require copying data to a new database or cluster. Bootstrap the migration owner, runtime-role ownership/ACLs, and migration history in place, then run the signed migration image against that same database.
+
+After the existing schema is baselined, [`000026_account_export_jobs.js`](../migrations/000026_account_export_jobs.js) adds the durable DSAR job/audit tables; [`000027_account_deletion_anonymization.js`](../migrations/000027_account_deletion_anonymization.js) makes retained season, export, deletion, and relationship evidence explicitly anonymizable; canonical append-only [`000028`](../migrations/000028_card_official_texts_i18n.js)–[`000030`](../migrations/000030_card_official_errata_english_source.js) add official/localized card text and errata schema; [`000031_user_linked_admins.js`](../migrations/000031_user_linked_admins.js) links normal accounts to revocable RBAC admin sessions; [`000032_announcements.js`](../migrations/000032_announcements.js) adds public announcements and versioned translations; [`000032_official_card_data_releases.js`](../migrations/000032_official_card_data_releases.js) records the signed extraction/errata/review-provenance digests and first applying release SHA; [`000033_admin_linked_auth_contract.js`](../migrations/000033_admin_linked_auth_contract.js) enforces mutually exclusive credential and linked-account authentication modes; [`000033_card_text_authority.js`](../migrations/000033_card_text_authority.js) makes `cards` the sole effective Japanese/English authority while keeping only derived languages in `card_texts_i18n`; [`000034_card_text_rollback_compat.js`](../migrations/000034_card_text_rollback_compat.js) temporarily restored NULL tombstone columns and a read-only projection for old runtime images; [`000035_remove_card_text_rollback_compat.js`](../migrations/000035_remove_card_text_rollback_compat.js) removes those temporary compatibility objects after the rollback window closes; and [`000036_harden_card_i18n_contract.js`](../migrations/000036_harden_card_i18n_contract.js) enforces the supported derived-language and review-status domains at the PostgreSQL boundary.
+
+The migration wrapper keeps the master-only legacy `000007`–`000009` chain and the superseded `000031_official_card_data_releases` filename visible only when each entry is already present in `schema_migrations`. It recognizes the reviewed card-first hardening backfill, announcement backfill, and master card-authority-first/admin-contract backfill histories. Each history is normalized once into canonical filename order before strict `checkOrder=true` resumes, without replacing pre-existing reviewed localized rows.
+
+The server4 migrate service sets `REQUIRE_OFFICIAL_CARD_DATA=true` and passes the manifest's full `RELEASE_SHA`. The reviewed source JSON is not tracked by Git and is not copied into the migration image. Before running Compose, place the six reviewed files in a private host directory, set `CARD_DATA_DIR` to its absolute path, and keep that directory outside the repository checkout. Compose mounts it read-only at `/run/card-data`; the migrate service reads `card-english-extraction.json`, `card-english-human-reviews.json`, `card-official-errata.json`, `card-english-ocr-overrides.json`, `official-rulings-translations.json`, and `official-rule-documents-20260721.json` from that mount. Restrict the host directory to the deployment operator and do not upload it as a CI artifact or include it in a Docker build context.
+
+After the canonical migrations and schema gate pass, both the single-slot staging deployer and the production canary slot deployer run `scripts/release-official-content.sh` inside the same verified `MIGRATE_IMAGE`. The script accepts sources only below `/run/card-data`, publishes Q&A/errata translations and rule documents through their serializable release transactions, and binds the Q&A release to `APP_VERSION` plus the manifest's full `RELEASE_SHA`. Missing files, source drift, incomplete translations, or a database failure stop the rollout before service readiness and deployment smoke; the normal verified rollback path remains responsible for restoring an already-active application release. Raw sources never enter Git, an image layer, or a release artifact.
+
+The same signed image audits the mounted extraction (422/422 human-reviewed names and 250/250 effect texts), requiring every `human_verified` value to match either the timestamped human-review ledger or a directly image-verified override. The dataset digest covers extraction, errata, human reviews, and overrides. The runner then serializes import with a PostgreSQL advisory transaction lock. For a new dataset digest it imports through the migration role using the production TLS/CA contract, records the ledger row, and checks every signed card/localized/errata value before the same transaction commits. A source/card-count/Japanese-text mismatch or exact-value gate failure rolls back both data and ledger.
+
+Reconciliation is digest-based: deploying the same signed dataset again does not rewrite card rows, so audited AdminPage edits are preserved; it still requires the ledger plus 422/250/12 completeness, reviewed statuses, and consistent card/errata flags. A deliberately changed signed dataset has a new digest and becomes the new official baseline in one transaction. This data step never moves or rewrites users, decks, matches, or the database location. Never delete a ledger row to force reconciliation, bypass the production flag, or run the importer from an unsigned checkout.
+
+Always run `npm run db:migrate:release` with the verified image and expected checksum rather than executing a migration or data file manually. Local/E2E Compose explicitly leaves `REQUIRE_OFFICIAL_CARD_DATA=false` because those stacks seed synthetic cards after migration; `NODE_ENV=production` refuses to skip the signed data path.
+
+Migration `000027` adds `users.identity_anonymized_at` and a partial pending-tombstone index. A release with no pre-existing deleted accounts needs no special approval. When a production-copy review finds accounts deleted before `000027`, record the exact result of `SELECT COUNT(*) FROM users WHERE deleted_at IS NOT NULL`, rehearse the release against that copy, and set both `LEGACY_TOMBSTONE_BACKFILL_APPROVED=true` and `LEGACY_TOMBSTONE_BACKFILL_EXPECTED_COUNT=<reviewed-count>` for the one release migration. The backfill serializes against retention/account mutations, respects active legal holds, anonymizes all retained identity domains, emits only hashed account references on failure, and does not publish a second account-deleted event. A missing approval, count drift, held account, failed invariant, or non-zero post-backfill count stops the migrate service. The final schema gate independently refuses application startup while any `deleted_at IS NOT NULL AND identity_anonymized_at IS NULL` row remains. Reset approval to `false` and expected count to `0` after the successful release.
 
 ### Docker Compose
 
@@ -367,6 +453,9 @@ migrate:
     PG_PASSWORD: <migration-password>
     EXPECTED_SCHEMA_MIGRATION: <latest migration basename>
     EXPECTED_SCHEMA_CHECKSUM: <64-character lowercase SHA-256>
+    LEGACY_TOMBSTONE_BACKFILL_APPROVED: 'false' # one-time true only after reviewed rehearsal
+    LEGACY_TOMBSTONE_BACKFILL_EXPECTED_COUNT: '0'
+    REQUIRE_OFFICIAL_CARD_DATA: 'true'
   depends_on:
     postgres:
       condition: service_healthy
@@ -430,7 +519,7 @@ Redis serves four roles simultaneously:
 - Colyseus room and presence backing for the `platform` service via `RedisDriver` and `RedisPresence`.
 - Rate-limit counters shared across API instances: Redis `INCR` + `EXPIRE` for cross-instance counting.
 
-To scale up, increase the replica count for `game`, `api`, and/or `platform`. Both `postgres` and `redis` should remain single instances. Ensure `JWT_SECRET` is identical across all three services; keep `ALLOWED_ORIGINS` identical across `game`/`api` instances. Platform replicas must run with `PLATFORM_REDIS_MODE=redis` so Colyseus room discovery and presence are shared.
+Game and API can be scaled by increasing their replica counts. Platform processes must be declared or injected with per-process configuration instead of blindly using `docker compose --scale platform=N`: every process needs a unique `PLATFORM_PUBLIC_ADDRESS` that the gateway routes back to that exact process, while all processes use `PLATFORM_REDIS_MODE=redis` for shared room discovery and presence. Reusing one advertised address across arbitrary platform replicas can send a reserved WebSocket seat to the wrong process. PostgreSQL and Redis remain shared services; keep `JWT_SECRET` and `ALLOWED_ORIGINS` consistent across their consumers.
 
 ## PgBouncer 連線池 / PgBouncer Connection Pooler
 
@@ -533,7 +622,7 @@ PG_PASSWORD=<strong-password>
 PG_DATABASE=zutomayo   # the dedicated database created above
 ```
 
-Schemas (`users`/`decks`/`matches`/`bjg_matches`) are applied automatically on startup via `node-pg-migrate` (see [Schema Migrations](#schema-migrations--資料表遷移)). The API falls back to `CREATE TABLE IF NOT EXISTS` when `node-pg-migrate` is unavailable.
+Schemas are applied by the one-shot migration image before application startup (see [Schema Migrations](#schema-migrations--資料表遷移)). Production/staging runtime DDL is disabled and does not fall back to application-owned `CREATE TABLE`.
 
 ### Redis — separate DB index
 
@@ -547,6 +636,12 @@ REDIS_DB=2
 ```
 
 The `REDIS_DB` option is applied to every ioredis connection (publish, subscribe, and `duplicate()`-d connections inherit it), so boardgame.io PubSub channels, Socket.IO adapter keys, Colyseus room/presence backing, authentication/event keys, and rate-limit counters all land in the same isolated DB index.
+
+At minimum, the API/relationship Redis ACL must permit connection selection plus the commands exercised by authentication, rate limiting, presence, relationship projection, and account-deletion purge: `SELECT`, `PING`, `GET`, `GETDEL`, `SET`, `DEL`, `MGET`, `SCAN`, `INCR`, `EXPIRE`, `EVAL`, `PUBLISH`, `SUBSCRIBE`, `HGET`, `HGETALL`, `HSET`, `HDEL`, `SADD`, `SREM`, `SISMEMBER`, `ZADD`, `ZREM`, `ZCARD`, `ZCOUNT`, and `ZREMRANGEBYSCORE`. Grant only the additional commands and key/channel patterns required by boardgame.io, Socket.IO, or Colyseus; do not grant `ACL`, `CONFIG`, `FLUSH*`, or other administrative commands to runtime users.
+
+Redis ACL key patterns apply across every logical DB, and granting `SELECT` does not restrict a user to the configured index. `REDIS_DB` prevents accidental key collisions; it is not a tenant security boundary. Prefer a dedicated Redis instance for production. If an instance must be shared, use a dedicated ACL user, constrain known application key/channel patterns where the libraries allow it, and treat every DB on that instance as the same trust boundary.
+
+`npm run db:roles:smoke` verifies this contract without requiring Redis administration privileges: its PostgreSQL/Redis smoke selects `REDIS_DB=7` by default and executes the actual data-structure, Lua, scan, publish, and subscribe operations. Override `REDIS_DB` to rehearse another isolated index. A `NOPERM`, unsupported `SELECT`, or missing Lua subcommand permission fails the smoke before deployment.
 
 Redis eviction policy is instance-wide (not per logical DB). The bundled Compose Redis is pinned to `noeviction`; an external Redis used by server4 must be configured and verified the same way before deploying:
 
@@ -616,11 +711,6 @@ curl http://localhost:3002/health
 curl http://localhost:3002/ready
 ```
 
-The immutable deploy smoke also requests a representative card through imgproxy in JPEG, WebP, and AVIF form. Each
-response must be HTTP 200, use the expected image content type, contain a non-empty payload, and expose decodable
-non-zero dimensions. An unset or unreachable imgproxy therefore fails deployment verification instead of leaving blank
-card artwork in a nominally healthy release.
-
 For application-level verification, run before building the image when possible:
 
 ```bash
@@ -632,11 +722,13 @@ npm run smoke:online
 ```
 
 `smoke:platform-deployment` checks the Colyseus platform HTTP readiness endpoints and performs a real guest lobby
-join/leave over websocket. It defaults to `http://127.0.0.1:3002`; override the target with:
+join/leave over websocket. The seat reservation must contain `publicAddress`, and the WebSocket connection follows
+that advertised process route. It defaults to `http://127.0.0.1:3002`; override the target with:
 
 ```bash
 PLATFORM_SMOKE_HTTP_URL=https://battle.zutomayocard.online/platform \
 PLATFORM_SMOKE_WS_URL=wss://battle.zutomayocard.online/platform \
+PLATFORM_SMOKE_EXPECTED_PUBLIC_ADDRESS=wss://battle.zutomayocard.online/platform \
 npm run smoke:platform-deployment
 ```
 
@@ -646,19 +738,22 @@ GitHub Actions workflow: [.github/workflows/ci.yml](../.github/workflows/ci.yml)
 
 Runner: `ubuntu-latest`, Node 22, with `npm` caching.
 
-The `Lint & Test` job runs these gates in order:
+Pipeline steps, in order:
 
-1. Node 24-runtime `actions/checkout` and `actions/setup-node`, pinned to full commit SHAs; project Node remains 22 with npm cache.
-2. `npm ci` — install dependencies from the lockfile.
-3. Release/operations configuration validation and both E2E/server4 Compose config checks.
+1. `actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0` (`v7.0.0`, Node 24 action runtime)
+2. `actions/setup-node@820762786026740c76f36085b0efc47a31fe5020` (`v7.0.0`, Node 24 action runtime; installs Node 22 with npm cache)
+3. `npm ci` — install dependencies from the lockfile.
 4. `npm run format:check:tracked` — Prettier check for Git-tracked files.
-5. `npm run data:policy` and `npm run image:policy` — reject tracked source JSON and player card-image delivery bypasses.
-6. `npm run version:check` — manifests, lockfiles, current-version README, CHANGELOG, plan marker, and managed fallback synchronization.
-7. `npm run lint`, both TypeScript typechecks, and `npm run i18n:check`.
-8. `npm run test:coverage` — the full Vitest suite plus coverage thresholds.
-9. `npm run build` — typechecks and the production/PWA bundle.
+5. `npm run version:check` — root/API version synchronization and managed fallback check.
+6. `npm run lint` — ESLint.
+7. `npm run typecheck` — `tsc --noEmit` for the app.
+8. `npm run typecheck:scripts` — `tsc --noEmit -p tsconfig.scripts.json`.
+9. `npm test` — vitest unit tests.
+10. `npm run build` — full production build (repeats both typechecks before `vite build`).
 
-After `Lint & Test`, the required `E2E Tests` job builds the isolated PostgreSQL/Redis/game/API/platform stack, applies migrations and deterministic card seed, then runs Chromium Playwright. Both jobs are protected `master` status checks. The five-browser Playwright matrix runs separately on schedule; service-backed `smoke:*` and production evidence drills remain explicit local/staging operations.
+CI、CD 與 browser matrix 的外部 Action 全部鎖定至已審核 allowlist 內的完整 40 字元 commit SHA；直接或 composite dependency graph 內的 JavaScript Action 均已驗證使用 Node 24 runtime。`npm run release:config` 會拒絕可變 tag、舊 Node 20 commit、任意其他 commit 與未列入 allowlist 的 Action。
+
+A failing step blocks the merge. The `smoke:*` scripts are intentionally not part of CI because they require a running API/boardgame.io server.
 
 ### Local pre-push checklist / 本機推送前檢查
 
@@ -763,44 +858,123 @@ npm run release:operational-evidence:hardening -- \
 
 ## CD / 持續部署
 
-### Server4 beta 部署（目前 `master` 的實際流程）
+Continuous Deployment pipeline: [.github/workflows/cd.yml](../.github/workflows/cd.yml).
 
-Server4 現階段由 `master` 原始碼在主機上建置，不使用下方延後中的 immutable image、
-Cosign、attestation、retention worker 或七角色矩陣。部署入口只有：
+### 觸發條件
+
+| 事件                | 動作                                                                                              |
+| ------------------- | ------------------------------------------------------------------------------------------------- |
+| push to `master`    | 同一 preflight、verify、Trivy、build、Cosign、provenance、digest gate                             |
+| push tag `v*`       | 上述 gate 後建立 semver alias 與 GitHub Release                                                   |
+| `workflow_dispatch` | 輸入 `release_ref`；staging 先 build/verify 七映像再部署，production 只 stage 指定 candidate slot |
+
+Tag push 與 production dispatch 都會將 `v<semver>` 精確解析為
+`refs/tags/<tag>`，不接受同名 branch；release commit 必須在
+`origin/master` ancestry 內，tag version 也必須和 `package.json` 一致。
+Master push 則始終使用 event 的完整 40 字元 commit SHA。
+
+Staging dispatch 接受完整 40 字元 SHA 或 `v<semver>` tag。若完整 SHA 尚未進入
+`origin/master`，它必須精確等於同倉庫 open PR 的 head SHA，且該 PR 的 base
+必須是 `master`；同一 SHA 還必須已有成功的 `ci.yml` run。Fork PR、closed PR、
+非 `master` PR、branch name 與 PR 內較舊的 commit 都會 fail closed。通過 preflight
+後，manual staging 會 build、scan、簽署並 attestation 七個 SHA-tagged image，全部
+成功後才解析 verified manifest 與部署。Staging tag 仍必須位於 `origin/master`
+ancestry 內；production 不適用 PR 例外，也不會在 dispatch 時重建 image。
+
+Production dispatch 還必須選擇 `production_slot=blue|green`。CD 僅在
+`/opt/zutomayo-card-runtime` 執行 `deploy-server4-canary.sh stage-slot`，
+確認 candidate replicas、build ID 與 immutable image digest；該 job 不執行
+`switch`、不修改 OpenResty，也不會改變公開流量。流量切換仍必須
+依 canary evidence gate 和 [deployment/rollback runbook](runbooks/deployment-rollback.md)
+另行執行。
+
+### GHCR Image 列表
+
+七個 release image 位於 GitHub Container Registry (`ghcr.io`)：
+
+| Service     | Image                                                 |
+| ----------- | ----------------------------------------------------- |
+| `game`      | `ghcr.io/lyangjyehaur/zutomayo-card-online-game`      |
+| `api`       | `ghcr.io/lyangjyehaur/zutomayo-card-online-api`       |
+| `platform`  | `ghcr.io/lyangjyehaur/zutomayo-card-online-platform`  |
+| `migrate`   | `ghcr.io/lyangjyehaur/zutomayo-card-online-migrate`   |
+| `retention` | `ghcr.io/lyangjyehaur/zutomayo-card-online-retention` |
+| `gateway`   | `ghcr.io/lyangjyehaur/zutomayo-card-online-gateway`   |
+| `ops`       | `ghcr.io/lyangjyehaur/zutomayo-card-online-ops`       |
+
+部署不可直接使用 tag。CD 會以完整 commit SHA 建立可追溯 tag，然後
+解析成 `image@sha256:<digest>`，驗證 Cosign keyless signature 與 GitHub
+build provenance，最後才寫入 `.release.env`。staging/production Compose
+只接受七個完整 digest；`latest`、`staging`、`rollback` 均被禁止。
+
+GHCR 登入使用內建 `GITHUB_TOKEN`（`packages: write` permission）。在 server 上手動 pull 時需 `docker login ghcr.io -u <github-username> -p <personal-access-token>`。
+
+### Build 快取
+
+CD pipeline 使用 GitHub Actions cache（`type=gha`）加速 build。game、api、platform、migrate、retention、gateway 與 ops 都使用獨立的 cache scope；game 與 platform 共用相同 Dockerfile，但 cache 仍分開管理。
+
+共用 Dockerfile 的 runtime stage 以 `npm ci --omit=dev --ignore-scripts` 安裝 production dependencies，避免在未安裝 devDependencies 的映像中觸發 Husky 等開發期 lifecycle scripts；builder stage 仍執行完整的 `npm ci`。
+
+### GitHub Release
+
+Push tag `v*` 時自動建立 GitHub Release（使用 `softprops/action-gh-release`），含自動產生的 changelog。預發布版本（tag 含 `-rc` / `-beta` / `-alpha`）標記為 prerelease。
+
+## Staging 環境 / Staging Environment
+
+Staging compose file: [docker-compose.staging.yml](../docker-compose.staging.yml).
+
+與 production（server4）的差異：
+
+| 項目           | Production (server4)           | Staging                                                                          |
+| -------------- | ------------------------------ | -------------------------------------------------------------------------------- |
+| DB 名稱        | `zutomayo_card`                | 外部 `PG_DATABASE`（建議 `zutomayo_staging`）                                    |
+| Redis DB       | `0`                            | `3`                                                                              |
+| game port      | `3000`                         | `4000`                                                                           |
+| api port       | `3001`（expose）               | `4001`                                                                           |
+| platform port  | `3002`                         | `4002`                                                                           |
+| image 來源     | GHCR verified digest（`pull`） | GHCR verified digest（`pull`）                                                   |
+| postgres/redis | 外部（1panel-network）         | 外部 PostgreSQL `verify-full` + CA secret；外部 Redis `rediss://` + ACL/password |
+
+### Staging 部署流程
+
+1. 先在 staging 基礎設施建立外部 PostgreSQL/Redis：PostgreSQL 必須提供
+   `verify-full` 與 CA，Redis 必須啟用 TLS、ACL 與密碼；建立 Docker external
+   secret `PG_CA_SECRET_NAME` 指向的 CA。不要以 bundled plaintext 服務替代。
+2. 在外部 PostgreSQL 以 bootstrap administrator 執行
+   `scripts/postgres-init-roles.sh`，再執行 migration role 的 migration/schema gate。
+3. CD pipeline 在 push 或手動 `workflow_dispatch` 時完成相同 preflight。未合併的
+   staging SHA 必須是同倉庫、base `master` 的 open PR 精確 head，且該 SHA 的 CI
+   已成功；workflow 會在部署前建立並驗證全部七個 image。
+4. 從 verified release artifact 取得 `.release.env`，其內容包含七個 digest、
+   `APP_VERSION`、`GAME_RULES_VERSION`、`EXPECTED_SCHEMA_MIGRATION` 與 migration file checksum：
 
 ```bash
+npm run release:card-dataset -- --output .release-evidence/production/card-dataset.json
+export VITE_CARD_DATASET_SHA256="$(node -p "require('./.release-evidence/production/card-dataset.json').datasetSha256")"
 ./scripts/deploy-server4.sh --confirm
 ```
 
-腳本只接受目前乾淨且已推送的本機 `master`，並要求本機 `HEAD`、`origin/master` 與
-server4 最終 checkout 三者完全一致；不支援 `--sha` 或 `--manifest`。Server4 的 `.env`
-至少需要：
+腳本只接受包含七個 immutable image digest、完整 release SHA、版本及 migration identity 的
+verified `.release.env`，並在上傳前驗證 Cosign signature 與 GitHub provenance；server4 不會
+checkout source 或現場 build image。Server4 的 `.env` 至少需要：
 
 - `PG_MIGRATION_USER` / `PG_MIGRATION_PASSWORD`：只供 migration 使用。
-- `PG_APP_USER` / `PG_APP_PASSWORD`：由 game、api、platform 共用。
+- `PG_API_USER` / `PG_API_PASSWORD`、`PG_GAME_USER` / `PG_GAME_PASSWORD`、
+  `PG_PLATFORM_USER` / `PG_PLATFORM_PASSWORD`：三個 runtime 各自使用最小權限角色。
 - `PG_DATABASE`、`PGSSLMODE=verify-full`、`PG_CA_FILE`、`PG_SSLROOTCERT` 與
   `NODE_EXTRA_CA_CERTS`。
 - `REDIS_URL`、三個 runtime 共用的 `REDIS_DB`，以及外部 Redis 的
   `REDIS_PASSWORD`（若 Redis 啟用密碼）。
 - 現有 runtime 所需的 `JWT_SECRET`、`METRICS_TOKEN` 與其他功能設定。
-- `ALLOWED_ORIGINS`：部署器會固定為 `SERVER4_ALLOWED_ORIGIN`，預設且正式環境應只使用
-  `https://battle.zutomayocard.online`。不保留 HTTP 或主機 IP 直連 origin。
-- `MEILI_MASTER_KEY`（至少 16 字元）；部署器會從 1Panel 管理的既有 `meilisearch` 容器安全同步到應用 `.env`，不在日誌輸出。`MEILI_HOST` 由 Compose 固定為 `http://meilisearch:7700`，不得把 7700 port 發布到公網。
-
-`VITE_CARD_DATASET_SHA256` 不需要由 operator 預先填寫。部署器在 migration 與卡牌資料發布完成後，
-對仍在運行的內部 API 執行完整 card dataset preflight，將通過的 SHA-256 寫入 `.env`，再建置
-game／api／platform。若 operator 顯式提供 `VITE_CARD_DATASET_SHA256`，它只作為期望值；與 preflight
-結果不同時部署會在 runtime build 前停止。原始 preflight 報告以 `0600` 留存在
-`.release-evidence/production/card-dataset-preflight-<release-sha>.json`。它是 Server4 Beta 的部署紀錄，
-不是下方 immutable-image hardening profile 的 release receipt。
+- `VITE_CARD_DATASET_SHA256`：必須來自本次 release 經驗證的 `card-dataset.json` receipt；部署器會寫入遠端 `.env`，Compose 再映射為 game runtime 的 `CARD_DATASET_SHA256`。
+- `MEILI_MASTER_KEY`（至少 16 字元）；`MEILI_HOST` 由 Compose 固定為
+  `http://meilisearch:7700`，不得把 7700 port 發布到公網。
 
 Server4 的 Meilisearch 不由應用 Compose 建立。預設容器名稱為 `meilisearch`、1Panel 應用目錄為
-`/opt/1panel/apps/meilisearch/meilisearch`，兩者可分別以 `MEILI_CONTAINER`、`MEILI_APP_DIR`
-覆寫。部署器會先備份其 `.env`、Compose 與 `config.toml`，要求映像為
-`getmeili/meilisearch:v1.51.0`，再設定 `env = "production"`、`http_addr = "0.0.0.0:7700"`
-及 `no_analytics = true` 後重建該容器。容器必須加入外部 `1panel-network`，主機 port 只能綁定
-`127.0.0.1`；部署器會從同網路的臨時容器驗證 service DNS 與健康端點，索引仍可完全由
-PostgreSQL 重建。
+`/opt/1panel/apps/meilisearch/meilisearch`。Operator 必須在部署前確認映像、master key、
+`env = "production"`、`http_addr = "0.0.0.0:7700"` 與 `no_analytics = true`；容器必須加入外部
+`1panel-network`，主機 port 只能綁定 `127.0.0.1`。搜尋索引是可丟棄的衍生資料，仍可由
+PostgreSQL 與 reviewed official content 完整重建。
 
 部署 shell 可另外設定 `CLOUDFLARE_API_TOKEN`、`CLOUDFLARE_ZONE_ID`、
 `CLOUDFLARE_CACHE_RULES_REQUIRED=true`、`PUBLIC_SMOKE_BASE_URL` 與
@@ -813,19 +987,15 @@ PostgreSQL 重建。
 `/opt/zutomayo-card-online/public/battle`。Game 容器以唯讀方式掛載該目錄到
 `/app/dist/battle`；`BATTLE_ASSET_DIR` 與 `REMOTE_BATTLE_ASSET_DIR` 只在需要覆蓋預設路徑時設定。
 
-部署順序固定為：備份 `.env`/Compose → 以 migration role 產生新的 `pg_dump -Fc`
-並寫入 SHA-256 → checkout `origin/master` → 同步 `APP_BUILD_ID`、`APP_VERSION`、
-`GAME_RULES_VERSION`、最新 migration basename、checksum 與單一 HTTPS `ALLOWED_ORIGINS` →
-備份、設定並驗證 1Panel Meilisearch → 實際檢查三服務 `REDIS_DB` 一致、Redis
-`maxmemory-policy=noeviction` 及 Docker ingress 已列入 `TRUSTED_PROXY` → 同步並校驗私有 battle 素材 →
-只建置 migration image 並 migrate → 發布卡牌、Q&A、勘誤與規則文件 → 對內部 API 執行 card dataset
-preflight、留存報告並將 SHA-256 寫入 `.env` → `npm run search:reindex` 原子重建及 `search:check` →
-建置 game／api／platform → 停止舊 API、清除其 Redis `search:index:rebuild` 租約（失敗時重新啟動舊 API）→
-`docker compose up --wait` → 透過 SSH tunnel 驗證三服務 `/health`、
-`/ready`、build ID、dataset SHA、卡牌／Q&A／規則搜尋及所有 battle 素材 → 視憑證設定同步
-Cloudflare Cache Rules → 透過正常 DNS 與香港直連驗證快取。`/api/app-version` 的 `datasetSha256`
-必須與 preflight 完全一致；不一致時 deployment smoke 失敗。Cache smoke 涵蓋 PWA 控制檔、
-公開／私人 API Header、battle 素材版本、真實 MIME、內容與缺失素材 404。
+部署順序固定為：驗證 release manifest 與七個 image attestation → 驗證並串流私有 battle 素材 →
+建立上一個 verified manifest、Compose、role bootstrap 與素材 snapshot → 安裝新的 immutable release
+設定並 pull image → 驗證 production role/TLS contract → migration → 發布 reviewed official content →
+role/TLS 與 WAL operational smoke → 停止舊 API、清除 Redis `search:index:rebuild` 租約
+（失敗時重新啟動舊 API）→ `docker compose up --wait` → 透過 SSH tunnel 驗證三服務
+`/health`、`/ready`、build ID、dataset SHA、卡牌／Q&A／規則搜尋及所有 battle 素材 →
+視憑證設定同步 Cloudflare Cache Rules → 透過正常 DNS 與香港直連驗證快取。
+`/api/app-version` 的 `datasetSha256` 必須與 receipt 完全一致；不一致時 deployment smoke 失敗。
+Cache smoke 涵蓋 PWA 控制檔、公開／私人 API Header、battle 素材版本、真實 MIME、內容與缺失素材 404。
 
 本地完整重建與唯讀狀態檢查分別使用：
 
@@ -836,23 +1006,36 @@ npm run search:check
 
 Meilisearch volume 是可丟棄的衍生資料，不是備份來源。災難復原以 PostgreSQL 與官方發布資料完成後重新執行 `search:reindex`；不要把搜尋 volume 當作唯一可恢復副本。
 
-`POSTGRES_CONTAINER`（預設 `postgresql`）、`REDIS_CONTAINER`（預設 `redis`）與
-`REMOTE_BACKUP_DIR` 可依 server4 的實際容器名稱或路徑覆寫。部署或健康驗證失敗時腳本會停止並保留現場，修正後直接發布下一版；不會切回舊 `.env`、Compose 或 runtime image。
+`REDIS_CONTAINER`（預設 `redis`）可依 server4 的實際容器名稱覆寫。部署、鎖交接、健康或
+cache 驗證失敗時，只要完整 rollback snapshot 已建立，腳本會恢復上一個 verified manifest、
+Compose、runtime image 與私有 battle 素材並重新執行 smoke；bootstrap 沒有可驗證的前一版時則
+停止並要求人工處理。
 
 部署完成且使用者已註冊一般帳號後，透過一次性 migration 容器指定完整管理權限：
 
 ```bash
-ssh -p 4649 root@149.104.6.238
-cd /opt/zutomayo-card-online
-docker compose -f docker-compose.server4.yml run --rm --no-deps migrate \
-  npm run admin:link -- --email='user@example.com' --role=admin
+DEPLOY_HOST=<staging-host> GAME_PORT=4000 API_PORT=4001 PLATFORM_PORT=4002 \
+  node scripts/deploy-smoke.mjs
 ```
 
-重新執行 `admin:link` 可變更角色；撤回權限及既有管理員 session 使用：
+需要配置 GitHub Environment 的 `STAGING_DEPLOY_HOST`、
+`STAGING_DEPLOY_USER`、`STAGING_DEPLOY_SSH_KEY` 與
+`STAGING_DEPLOY_KNOWN_HOSTS` secrets；production 使用 `DEPLOY_*` 對應值，
+並要求 exact `v<semver>` release tag 與 `production_slot`。Production parallel
+runtime 必須先以 runbook 的 `install` 流程建立，CD 不會自動執行首次
+OpenResty cutover，也不會代替 `activate-retention` 將既有 systemd timer 指向
+parallel runtime 的 stable manifest。`*_KNOWN_HOSTS` 必須是預先核對過的 server host key，
+部署流程不使用 `ssh-keyscan` 動態信任未知主機。
+
+### Private battle assets / 私有對戰素材
+
+The PNG/SVG files under `public/battle` are intentionally ignored by Git and are not present in release images. They are a required private deployment input, not optional source data. The tracked [`scripts/battle-assets.sha256`](../scripts/battle-assets.sha256) inventory is the deployment contract for the exact 22 required paths and bytes.
+
+Before a real deployment, provide the asset directory through `BATTLE_ASSET_DIR` or use the default `public/battle` in the deployment checkout. When deploying from the deferred-hardening worktree, point it at the private assets in the main worktree:
 
 ```bash
-docker compose -f docker-compose.server4.yml run --rm --no-deps migrate \
-  npm run admin:unlink -- --email='user@example.com'
+BATTLE_ASSET_DIR=/Users/danersaka/Projects/zutomayo-card-online/public/battle \
+  ./scripts/deploy-server4.sh --manifest .release.env --confirm
 ```
 
 可用角色為 `viewer`、`moderator`、`operator`、`admin`；卡牌 i18n 編輯至少需要
@@ -862,39 +1045,22 @@ docker compose -f docker-compose.server4.yml run --rm --no-deps migrate \
 第一位完整管理員必須用上述 CLI 啟動；之後可由 `admin` 在 `/admin` 的「使用者」分頁
 搜尋帳號、設定角色或撤回權限。頁面不允許管理員修改自己的角色。
 
-Server4 beta 部署器不提供 runtime 回滾。每次部署前仍會產生 custom-format dump 與
-`.sha256`，用途是資料損壞時的人工恢復，不是日常版本切換；它也不等同後期的 WAL/PITR
-或異地備份方案。migration 一旦套用即以向前修復為原則，禁止依賴舊 runtime 相容層。
+Before switching application traffic, deployment smoke must retrieve `/battle/chronos.svg` as SVG and `/battle/medal.png` as PNG with non-empty bodies. A normal rollout snapshots the active private asset directory beside the previous immutable manifest and Compose files. Automatic or manual rollback refuses to proceed without that snapshot and restores the previous application release and private assets together; the failed asset set is retained under `backups/battle-assets/failed` for diagnosis.
 
-#### 2026-07-16 live-copy migration rehearsal
+## Rollback 流程 / Rollback
 
-- 從 server4 `zutomayo_card` 以 `pg_dump -Fc --no-owner --no-privileges` 取得 dump；
-  遠端與本機 SHA-256 均為
-  `8ec2d749a7e08b87470f2d885edb434cd8cf1488d7042a315c471cafee926bd8`。
-- 隔離 clone 基線為 12 users、422 cards、12 errata、1844 localized card rows，且
-  不存在 `schema_migrations`／`schema_migration_checksums`，與 live 狀態一致。
-- 首次執行套用 `000001`–`000006`、`000010`–`000024` 與 canonical
-  `000028`–`000030`；相容層跳過已被取代的 `000007`–`000009`。第二次執行回報
-  `No migrations to run!`，結果為 24 筆 migration 與 24 筆 checksum。
-- `000030_card_official_errata_english_source` schema gate 通過；users/cards/errata/
-  localized rows/decks/matches 數量與 live 一致，既有 user identity/auth 欄位及卡牌、
-  errata、localized text 的逐欄／逐列 hash 均保持不變。
-- 422-card 規則審計為 267/267 lines parsed，unsupported/partial/false-draw 均為 0。
-- 前一版 API image 對升級後 clone 的 `/health`、`/ready`、`/api/version` 與
-  `/api/cards` 均回 200，卡牌數為 422。
+部署腳本 [scripts/deploy-server4.sh](../scripts/deploy-server4.sh) 會在遠端保留
+上一個 verified manifest、兩份 Compose 與 PostgreSQL role bootstrap script。
+只有完整 snapshot 建立後才允許自動 rollback；新版本 smoke 失敗時切回該組
+immutable release files，不建立或拉取 mutable rollback tag。
 
-## Deferred production hardening（不屬於目前 beta）
+### 手動 rollback
 
-Immutable GHCR image、七個 image digest（game、api、platform、migrate、retention、
-gateway、ops）、staging、Cosign/provenance、release 與 immutable rollback 等成熟度工作，
-保留在 `codex/deferred-production-hardening` 分支獨立開發。詳細規約與操作指令以該分支的
-`docs/DEPLOYMENT.md`、`.github/workflows/cd.yml` 與 `scripts/deploy-server4.sh` 為準，
-不複製到目前 beta 文件，避免兩邊規約漂移。
+```bash
+./scripts/deploy-server4.sh --rollback --confirm
+```
 
-目前 deferred 分支自己的 workflow 尚未改成監聽該分支 push，因此自動 push path
-尚未啟用；`master` push、`v*` tag 與 master 上的手動 dispatch 也不會執行 deferred
-部署或部署 server4。若後期要啟用，必須先在 deferred 分支同步並驗證 workflow，
-再經明確審查後合併。
+此指令會跳過 build，直接使用上一份已驗證 manifest 的 immutable digest 重啟服務並驗證。
 
 目前 `master`／server4 beta 部署器明確不支援 `--manifest`、`--sha` 或 `--rollback`；
 只部署已推送且與 `origin/master` 完全一致的目前版本。staging recovery drill 因此只證明

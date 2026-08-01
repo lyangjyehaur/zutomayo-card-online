@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
+import { cardDataHeaders } from './helpers/cardData';
 
 const sourceQa = {
   question: 'このカードはいつ使えますか？',
@@ -114,13 +115,19 @@ async function fulfillOfficialRoute(route: Route) {
 }
 
 async function preparePage(page: Page) {
+  const cardHeaders = await cardDataHeaders(page, 1);
   await page.addInitScript(() => {
     localStorage.setItem('zutomayo_deck_intro_seen', 'true');
     localStorage.setItem('zutomayo_locale', 'zh-TW');
   });
   await page.route('**/api/official/**', fulfillOfficialRoute);
-  await page.route('**/api/cards', (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([officialErrataCard]) }),
+  await page.route(
+    (url) => url.pathname === '/api/cards',
+    (route) => route.fulfill({ status: 200, headers: cardHeaders, body: JSON.stringify([officialErrataCard]) }),
+  );
+  await page.route(
+    (url) => url.pathname === '/api/cards/texts',
+    (route) => route.fulfill({ status: 200, headers: cardHeaders, body: '{}' }),
   );
   await page.route('**/api/config', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }),

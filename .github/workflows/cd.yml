@@ -2,9 +2,8 @@ name: CD
 
 on:
   push:
-    # Deferred production hardening is intentionally isolated from the
-    # server4 beta deployment sourced from master.
-    branches: [codex/deferred-production-hardening]
+    branches: [master]
+    tags: ['v*']
   workflow_dispatch:
     inputs:
       environment:
@@ -15,7 +14,15 @@ on:
           - production
         required: true
       release_ref:
-        description: '要部署的完整 commit SHA 或 release tag（production 必須是 v* tag）'
+        description: '要部署的完整 commit SHA 或 v<semver> tag（production 只接受已存在的 exact tag）'
+        required: true
+      production_slot:
+        description: 'Production only: stage candidate into this inactive slot; this does not switch traffic'
+        type: choice
+        options:
+          - blue
+          - green
+        default: green
         required: true
       staging_evidence_run_id:
         description: 'Production only: GitHub Actions run ID containing the verified staging evidence artifact'
@@ -28,6 +35,7 @@ permissions:
   contents: read
   packages: read
   actions: read
+  pull-requests: read
 
 concurrency:
   group: cd-${{ github.ref }}
@@ -41,7 +49,6 @@ jobs:
   preflight:
     name: Release preflight
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/codex/deferred-production-hardening'
     timeout-minutes: 20
     outputs:
       release_sha: ${{ steps.release.outputs.sha }}
@@ -50,9 +57,9 @@ jobs:
       release_ref: ${{ steps.release.outputs.ref }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_ref || github.sha }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.environment == 'production' && format('refs/tags/{0}', inputs.release_ref) || github.event_name == 'workflow_dispatch' && inputs.release_ref || github.ref_type == 'tag' && github.ref || github.sha }}
           fetch-depth: 0
 
       - name: Setup Node.js
@@ -70,21 +77,53 @@ jobs:
       - name: Resolve and validate release ref
         id: release
         env:
-          TARGET_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.release_ref || github.sha }}
-          TARGET_ENVIRONMENT: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || (startsWith(github.ref, 'refs/tags/v') && 'production' || 'staging') }}
+          GH_TOKEN: ${{ github.token }}
+          TARGET_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.release_ref || github.ref_type == 'tag' && github.ref_name || github.sha }}
+          TARGET_ENVIRONMENT: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || (github.ref_type == 'tag' && 'production' || 'staging') }}
         run: |
           set -euo pipefail
           REF="$TARGET_REF"
-          if [[ "$REF" == refs/tags/* ]]; then REF="${REF#refs/tags/}"; fi
-          if [[ "$TARGET_ENVIRONMENT" == production && ! "$REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
-            echo 'production releases require a semver v* tag' >&2
+          SEMVER_TAG_PATTERN='^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$'
+          TAG_REF=''
+          if [[ "$TARGET_ENVIRONMENT" == production ]]; then
+            [[ "$REF" =~ $SEMVER_TAG_PATTERN ]] || { echo 'production releases require a v<semver> tag name' >&2; exit 2; }
+            TAG_REF="refs/tags/$REF"
+            git show-ref --verify --quiet "$TAG_REF" || { echo "production tag does not exist: $TAG_REF" >&2; exit 2; }
+            SHA="$(git rev-parse "${TAG_REF}^{commit}")"
+          elif [[ "$REF" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            SHA="$(git rev-parse "${REF}^{commit}")"
+          elif [[ "$REF" =~ $SEMVER_TAG_PATTERN ]]; then
+            TAG_REF="refs/tags/$REF"
+            git show-ref --verify --quiet "$TAG_REF" || { echo "staging tag does not exist: $TAG_REF" >&2; exit 2; }
+            SHA="$(git rev-parse "${TAG_REF}^{commit}")"
+          else
+            echo 'staging release_ref must be a full commit SHA or v<semver> tag' >&2
             exit 2
           fi
-          if [[ "$TARGET_ENVIRONMENT" == staging && ! "$REF" =~ ^[0-9a-fA-F]{40}$ && ! "$REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
-            echo 'staging release_ref must be a full commit SHA or v* tag' >&2
+          [[ "$(git rev-parse HEAD)" == "$SHA" ]] || { echo 'checked out commit does not match the exact requested ref' >&2; exit 2; }
+          MASTER_REF='refs/remotes/origin/master'
+          git show-ref --verify --quiet "$MASTER_REF" || { echo 'origin/master is unavailable for release ancestry verification' >&2; exit 2; }
+          if git merge-base --is-ancestor "$SHA" "$MASTER_REF"; then
+            echo "release SHA $SHA is contained in master"
+          elif [[ "$TARGET_ENVIRONMENT" == staging && "$REF" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            PULL_REQUESTS="$(
+              gh api \
+                -H 'Accept: application/vnd.github+json' \
+                -H 'X-GitHub-Api-Version: 2022-11-28' \
+                "repos/${GITHUB_REPOSITORY}/commits/${SHA}/pulls"
+            )"
+            jq -e \
+              --arg repository "$GITHUB_REPOSITORY" \
+              --arg sha "$SHA" \
+              'any(.[]; .state == "open" and .base.ref == "master" and .base.repo.full_name == $repository and .head.repo.full_name == $repository and .head.sha == $sha)' \
+              <<<"$PULL_REQUESTS" >/dev/null || {
+                echo "staging SHA $SHA must be the head of an open same-repository PR targeting master" >&2
+                exit 2
+              }
+          else
+            echo "release SHA $SHA is not contained in master" >&2
             exit 2
           fi
-          SHA="$(git rev-parse "${REF}^{commit}")"
           if [[ "$REF" == v* ]]; then
             VERSION="${REF#v}"
             PACKAGE_VERSION="$(node -p "require('./package.json').version")"
@@ -132,6 +171,15 @@ jobs:
           PG_BACKUP_PASSWORD: cd-preflight-backup-password
           PG_WAL_USER: zutomayo_wal
           PG_WAL_PASSWORD: cd-preflight-wal-password
+          PG_WAL_OPERATOR_USER: zutomayo_wal_operator
+          PG_WAL_OPERATOR_PASSWORD: cd-preflight-wal-operator-password
+          PG_WAL_OPERATOR_DATABASE: zutomayo
+          PG_WAL_OPERATOR_PGPASS_FILE: /tmp/postgres-operator.pgpass
+          PG_WAL_AGE_IDENTITY_FILE: /tmp/wal-age-identity
+          PG_WAL_S3_CREDENTIALS_FILE: /tmp/wal-s3-credentials
+          PG_WAL_OFFSITE_URI: s3://zutomayo-cd-wal
+          PG_WAL_S3_REGION: us-east-1
+          POSTGRES_OPS_SECRETS_GID: '992'
           PG_HOST: staging-postgres.example.internal
           PG_DATABASE: zutomayo
           PG_CA_FILE: /tmp/zutomayo-service-ca.crt
@@ -140,7 +188,20 @@ jobs:
           PG_CA_SECRET_NAME: zutomayo-staging-postgres-ca
           REDIS_URL: rediss://:cd-preflight-redis-password@staging-redis.example.internal:6380
           JWT_SECRET: cd-preflight-jwt-secret-32chars-min
+          PLATFORM_SEAT_TOKEN_SECRET: cd-preflight-seat-token-secret-32chars-min
+          ADMIN_TOTP_ENCRYPTION_KEY: cd-preflight-admin-totp-key-32chars-min
+          OAUTH_TOKEN_ENCRYPTION_KEY: cd-preflight-oauth-token-key-32chars-min
+          PLATFORM_PUBLIC_ADDRESS: wss://game.example.invalid/_platform/p1
+          ACCOUNT_EXPORT_S3_BUCKET: zutomayo-cd-account-exports
+          ACCOUNT_EXPORT_S3_REGION: us-east-1
+          ACCOUNT_EXPORT_S3_CREDENTIALS_MODE: default
+          ACCOUNT_EXPORT_S3_VERSIONING_MODE: disabled
+          ACCOUNT_EXPORT_S3_LIFECYCLE_CONFIRMED: 'true'
+          ACCOUNT_EXPORT_PSEUDONYM_KEY: cd-preflight-export-pseudonym-key-32chars-min
+          PUBLIC_BASE_URL: https://game.example.invalid
+          OAUTH_PUBLIC_BASE_URL: https://game.example.invalid
           REDIS_PASSWORD: cd-preflight-redis-password
+          MEILI_HOST: https://search.example.invalid
           MEILI_MASTER_KEY: cd-preflight-meilisearch-master-key
           METRICS_TOKEN: cd-preflight-metrics-token
           PGSSLMODE: verify-full
@@ -159,6 +220,14 @@ jobs:
           PLATFORM_IMAGE: ghcr.io/example/platform@sha256:0000000000000000000000000000000000000000000000000000000000000000
           MIGRATE_IMAGE: ghcr.io/example/migrate@sha256:0000000000000000000000000000000000000000000000000000000000000000
           RETENTION_IMAGE: ghcr.io/example/retention@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          GATEWAY_IMAGE: ghcr.io/example/gateway@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          OPS_IMAGE: ghcr.io/example/ops@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          COLYSEUS_REDIS_IMAGE: redis@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          COLYSEUS_REDIS_PASSWORD: cd-preflight-colyseus-redis-password
+          FEEDBACK_UPLOADS_VOLUME: zutomayo-cd-feedback-uploads
+          PUBLIC_HOST: game.example.invalid
+          RELEASE_SLOT: blue
+          COMPOSE_PROJECT_NAME: zutomayo-blue
           RETENTION_METRICS_GID: '991'
           APP_VERSION: '0.2.0'
           RELEASE_SHA: ${{ steps.release.outputs.sha }}
@@ -170,9 +239,12 @@ jobs:
           docker compose -f docker-compose.yml -f docker-compose.e2e.yml config --quiet
           docker compose -f docker-compose.yml -f docker-compose.retention.yml config --quiet
           docker compose -f docker-compose.staging.yml config --no-env-resolution --quiet
-          docker compose -f docker-compose.server4.yml config --no-env-resolution --quiet
-          docker compose -f docker-compose.staging.yml config --no-env-resolution --format json | node scripts/verify-compose-role-env.mjs --require-pgsslmode=verify-full --require-rediss
-          docker compose -f docker-compose.server4.yml config --no-env-resolution --format json | node scripts/verify-compose-role-env.mjs --require-pgsslmode=verify-full --require-rediss
+          docker compose -f docker-compose.server4-slot.yml config --no-env-resolution --quiet
+          docker compose -f docker-compose.server4-gateway.yml config --no-env-resolution --quiet
+          docker compose -f docker-compose.postgres-ops.yml --profile postgres-ops config --quiet
+          docker compose -f docker-compose.postgres-role-smoke.yml config --no-interpolate --quiet
+          docker compose -f docker-compose.staging.yml config --no-env-resolution --format json | jq -c -f scripts/project-compose-role-env.jq | node scripts/verify-compose-role-env.mjs --require-pgsslmode=verify-full --require-rediss
+          docker compose -f docker-compose.server4-slot.yml config --no-env-resolution --format json | jq -c -f scripts/project-compose-role-env.jq | node scripts/verify-compose-role-env.mjs --require-pgsslmode=verify-full --require-rediss
           docker compose -f docker-compose.monitoring.yml config --quiet
 
   # ─────────────────────────────────────────────────────────────
@@ -181,7 +253,7 @@ jobs:
   build-and-push:
     name: Build & Push (${{ matrix.app }})
     runs-on: ubuntu-latest
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.environment == 'staging')
     needs: preflight
     permissions:
       contents: read
@@ -207,9 +279,15 @@ jobs:
           - app: retention
             context: .
             dockerfile: ./Dockerfile.retention
+          - app: gateway
+            context: .
+            dockerfile: ./Dockerfile.gateway
+          - app: ops
+            context: .
+            dockerfile: ./Dockerfile.ops
     steps:
       - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           ref: ${{ needs.preflight.outputs.release_sha }}
           fetch-depth: 0
@@ -219,10 +297,10 @@ jobs:
         run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -254,11 +332,11 @@ jobs:
         uses: sigstore/cosign-installer@d7d6bc7722e3daa8354c50bcb52f4837da5e9b6a
 
       - name: Set up Syft
-        uses: anchore/sbom-action/download-syft@d94f46e13c6c62f59525ac9a1e147a99dc0b9bf5
+        uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610
 
       - name: Build and push Docker image
         id: build
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
@@ -282,7 +360,10 @@ jobs:
             VITE_UMAMI_TELEMETRY_SCRIPT_URL=${{ secrets.VITE_UMAMI_TELEMETRY_SCRIPT_URL }}
             VITE_UMAMI_SECONDARY_WEBSITE_ID=${{ secrets.VITE_UMAMI_SECONDARY_WEBSITE_ID }}
             VITE_IMGPROXY_BASE_URL=${{ secrets.VITE_IMGPROXY_BASE_URL }}
-            VITE_PLATFORM_URL=${{ secrets.VITE_PLATFORM_URL }}
+            # Production/staging use the same-origin gateway. Keeping this
+            # empty makes the browser derive wss://<current-host> and prevents
+            # a mutable repository secret from changing an immutable image.
+            VITE_PLATFORM_URL=
           secrets: |
             sentry_auth_token=${{ secrets.SENTRY_AUTH_TOKEN }}
 
@@ -305,7 +386,7 @@ jobs:
           echo "${{ matrix.app }}=${IMAGE}@${DIGEST}" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publish build provenance attestation
-        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373
         with:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.app }}
           subject-digest: ${{ steps.build.outputs.digest }}
@@ -336,13 +417,13 @@ jobs:
       attestations: read
     steps:
       - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           ref: ${{ needs.preflight.outputs.release_sha }}
           fetch-depth: 0
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -369,9 +450,9 @@ jobs:
           set -euo pipefail
           while IFS='=' read -r key ref; do
             case "$key" in
-              GAME_IMAGE|API_IMAGE|PLATFORM_IMAGE|MIGRATE_IMAGE|RETENTION_IMAGE)
+              GAME_IMAGE|API_IMAGE|PLATFORM_IMAGE|MIGRATE_IMAGE|RETENTION_IMAGE|GATEWAY_IMAGE|OPS_IMAGE)
                 cosign verify --certificate-identity-regexp "https://github.com/${GH_REPOSITORY}/.github/workflows/cd\\.yml@refs/(heads/master|tags/v[0-9]+\\.[0-9]+\\.[0-9]+([.-][0-9A-Za-z.-]+)?)$" --certificate-oidc-issuer https://token.actions.githubusercontent.com "$ref" >/dev/null
-                gh attestation verify "oci://${ref}" --repo "$GH_REPOSITORY" >/dev/null
+                gh attestation verify "oci://${ref}" --repo "$GH_REPOSITORY" --source-digest "${{ needs.preflight.outputs.release_sha }}" >/dev/null
                 ;;
             esac
           done < .release.env
@@ -381,6 +462,7 @@ jobs:
         with:
           name: release-manifest-${{ needs.preflight.outputs.release_sha }}
           path: .release.env
+          if-no-files-found: error
           include-hidden-files: true
           retention-days: 30
 
@@ -396,10 +478,10 @@ jobs:
       contents: write
     steps:
       - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228
         with:
           generate_release_notes: true
           draft: false
@@ -408,20 +490,24 @@ jobs:
   manual-release:
     name: Resolve and verify manual release
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch'
-    needs: preflight
+    if: >-
+      always() &&
+      github.event_name == 'workflow_dispatch' &&
+      needs.preflight.result == 'success' &&
+      (inputs.environment == 'production' || needs.build-and-push.result == 'success')
+    needs: [preflight, build-and-push]
     permissions:
       contents: read
       packages: read
       attestations: read
     steps:
       - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           ref: ${{ needs.preflight.outputs.release_sha }}
           fetch-depth: 0
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -441,6 +527,7 @@ jobs:
         with:
           name: manual-release-manifest-${{ needs.preflight.outputs.release_sha }}
           path: .release.env
+          if-no-files-found: error
           include-hidden-files: true
           retention-days: 30
 
@@ -463,7 +550,7 @@ jobs:
       PGSSLMODE: disable
     steps:
       - name: Checkout exact release candidate
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           ref: ${{ needs.preflight.outputs.release_sha }}
           fetch-depth: 0
@@ -534,7 +621,7 @@ jobs:
       attestations: read
     steps:
       - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           ref: ${{ needs.preflight.outputs.release_sha }}
           fetch-depth: 0
@@ -601,7 +688,7 @@ jobs:
           retention-days: 30
 
   deploy:
-    name: Deploy immutable release (${{ inputs.environment }})
+    name: Deploy staging / stage production candidate (${{ inputs.environment }})
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch'
     needs: [preflight, manual-release, release-gate]
@@ -617,7 +704,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           ref: ${{ needs.preflight.outputs.release_sha }}
           fetch-depth: 0
@@ -626,8 +713,15 @@ jobs:
         with:
           name: manual-release-manifest-${{ needs.preflight.outputs.release_sha }}
           path: .
+      - name: Set up Node.js for deployment smoke
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - name: Install production smoke dependencies
+        run: npm ci --omit=dev --ignore-scripts
       - name: Configure SSH key
-        uses: webfactory/ssh-agent@a6f90b1f127823b31d4d4a8d96047790581349bd
+        uses: webfactory/ssh-agent@e83874834305fe9a4a2997156cb26c5de65a8555
         with:
           ssh-private-key: ${{ inputs.environment == 'staging' && secrets.STAGING_DEPLOY_SSH_KEY || secrets.DEPLOY_SSH_KEY }}
       - name: Configure pinned SSH host key
@@ -640,26 +734,54 @@ jobs:
           chmod 0600 ~/.ssh/known_hosts
       - name: Set up Cosign
         uses: sigstore/cosign-installer@d7d6bc7722e3daa8354c50bcb52f4837da5e9b6a
-      - name: Validate manifest and deploy with smoke checks
+      - name: Deploy staging immutable release with smoke checks
+        if: inputs.environment == 'staging'
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-          SERVER_HOST: ${{ inputs.environment == 'staging' && secrets.STAGING_DEPLOY_HOST || inputs.environment == 'production' && secrets.DEPLOY_HOST || '' }}
-          SERVER_PORT: ${{ inputs.environment == 'staging' && secrets.STAGING_DEPLOY_PORT || inputs.environment == 'production' && secrets.DEPLOY_PORT || '' }}
-          SERVER_USER: ${{ inputs.environment == 'staging' && secrets.STAGING_DEPLOY_USER || inputs.environment == 'production' && secrets.DEPLOY_USER || '' }}
-          REMOTE_DIR: ${{ inputs.environment == 'staging' && secrets.STAGING_REMOTE_DIR || inputs.environment == 'production' && secrets.PRODUCTION_REMOTE_DIR || '' }}
-          COMPOSE_FILE: ${{ inputs.environment == 'staging' && 'docker-compose.staging.yml' || 'docker-compose.server4.yml' }}
-          GAME_PORT: ${{ inputs.environment == 'staging' && '4000' || '3000' }}
-          API_PORT: ${{ inputs.environment == 'staging' && '4001' || '3001' }}
-          PLATFORM_PORT: ${{ inputs.environment == 'staging' && '4002' || '3002' }}
+          SERVER_HOST: ${{ secrets.STAGING_DEPLOY_HOST }}
+          SERVER_PORT: ${{ secrets.STAGING_DEPLOY_PORT }}
+          SERVER_USER: ${{ secrets.STAGING_DEPLOY_USER }}
+          REMOTE_DIR: ${{ secrets.STAGING_REMOTE_DIR }}
+          COMPOSE_FILE: docker-compose.staging.yml
+          GAME_PORT: '4000'
+          API_PORT: '4001'
+          PLATFORM_PORT: '4002'
+          VITE_CARD_DATASET_SHA256: ${{ vars.VITE_CARD_DATASET_SHA256 }}
+          PUBLIC_SMOKE_BASE_URL: ${{ vars.STAGING_E2E_BASE_URL }}
+          DIRECT_SMOKE_ADDRESS: ${{ secrets.STAGING_DEPLOY_HOST }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+          CLOUDFLARE_CACHE_RULES_REQUIRED: ${{ vars.CLOUDFLARE_CACHE_RULES_REQUIRED }}
         run: |
-          test -n "$SERVER_HOST" || { echo 'environment deploy host secret is required' >&2; exit 1; }
-          test -n "$SERVER_USER" || { echo 'environment deploy user secret is required' >&2; exit 1; }
-          test -n "$REMOTE_DIR" || { echo 'environment remote directory secret is required' >&2; exit 1; }
+          test -n "$SERVER_HOST" || { echo 'staging deploy host secret is required' >&2; exit 1; }
+          test -n "$SERVER_USER" || { echo 'staging deploy user secret is required' >&2; exit 1; }
+          test -n "$REMOTE_DIR" || { echo 'staging remote directory secret is required' >&2; exit 1; }
           SERVER_PORT="${SERVER_PORT:-22}"
           export SERVER_PORT
           chmod +x scripts/deploy-server4.sh
           ./scripts/deploy-server4.sh --manifest .release.env
+
+      - name: Stage production candidate slot (no traffic switch)
+        if: inputs.environment == 'production'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          SERVER_HOST: ${{ secrets.DEPLOY_HOST }}
+          SERVER_PORT: ${{ secrets.DEPLOY_PORT }}
+          SERVER_USER: ${{ secrets.DEPLOY_USER }}
+          REMOTE_DIR: /opt/zutomayo-card-runtime
+          PRODUCTION_SLOT: ${{ inputs.production_slot }}
+        run: |
+          set -euo pipefail
+          test -n "$SERVER_HOST" || { echo 'production deploy host secret is required' >&2; exit 1; }
+          test -n "$SERVER_USER" || { echo 'production deploy user secret is required' >&2; exit 1; }
+          [[ "$PRODUCTION_SLOT" == blue || "$PRODUCTION_SLOT" == green ]] || { echo 'production_slot must be blue or green' >&2; exit 1; }
+          SERVER_PORT="${SERVER_PORT:-22}"
+          export SERVER_PORT
+          chmod +x scripts/deploy-server4-canary.sh
+          ./scripts/deploy-server4-canary.sh stage-slot --slot "$PRODUCTION_SLOT" --manifest .release.env --confirm
+          echo 'Candidate slot staged and verified. This job does not switch gateway traffic or mutate OpenResty.'
 
   authenticated-staging-evidence:
     name: Player and trust staging evidence
@@ -673,7 +795,7 @@ jobs:
     timeout-minutes: 35
     steps:
       - name: Checkout exact release candidate
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           ref: ${{ needs.preflight.outputs.release_sha }}
           fetch-depth: 0

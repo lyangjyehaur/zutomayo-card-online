@@ -6,6 +6,7 @@ const {
   createRelationshipChange,
   parseRelationshipChange,
 } = require('./relationshipEvents.cjs');
+const { acquireAccountMutationLocks } = require('./accountMutationLock.cjs');
 
 const DEFAULT_BATCH_SIZE = 50;
 const DEFAULT_LEASE_MS = 30_000;
@@ -46,8 +47,15 @@ function retryDelayMs(attemptCount, config) {
   return Math.max(1, Math.round(baseDelay * (1 - jitterRatio + random * jitterRatio * 2)));
 }
 
+function hashIdempotencyKey(value) {
+  const clean = String(value || '').trim();
+  if (!clean) return null;
+  return crypto.createHash('sha256').update(`relationship-outbox:v1:${clean}`).digest('hex');
+}
+
 async function enqueueRelationshipChange(client, kind, userIds, { idempotencyKey, actorUserId } = {}) {
   const event = createRelationshipChange(kind, userIds, { actorUserId });
+  const storedIdempotencyKey = hashIdempotencyKey(idempotencyKey);
   const result = await client.query(
     `INSERT INTO relationship_change_outbox
        (event_id, idempotency_key, version, kind, user_ids, actor_user_id, occurred_at, status, next_attempt_at)
@@ -56,7 +64,7 @@ async function enqueueRelationshipChange(client, kind, userIds, { idempotencyKey
      RETURNING event_id`,
     [
       event.eventId,
-      idempotencyKey || null,
+      storedIdempotencyKey,
       event.version,
       event.kind,
       event.userIds,
@@ -65,6 +73,29 @@ async function enqueueRelationshipChange(client, kind, userIds, { idempotencyKey
     ],
   );
   return { ...event, enqueued: Number(result.rowCount) > 0 };
+}
+
+async function redactRelationshipChangesForDeletedUser(client, userId) {
+  const result = await client.query(
+    `UPDATE relationship_change_outbox
+        SET user_ids = ARRAY(
+              SELECT CASE WHEN value = $1 THEN 'redacted' ELSE value END
+                FROM unnest(user_ids) AS value
+            ),
+            actor_user_id = CASE WHEN actor_user_id = $1 THEN 'redacted' ELSE actor_user_id END,
+            idempotency_key = 'redacted:' || event_id,
+            status = 'delivered',
+            delivered_at = COALESCE(delivered_at, NOW()),
+            locked_at = NULL,
+            lock_token = NULL,
+            lease_expires_at = NULL,
+            last_error = '',
+            identities_redacted_at = COALESCE(identities_redacted_at, NOW()),
+            updated_at = NOW()
+      WHERE $1 = ANY(user_ids)`,
+    [userId],
+  );
+  return Number(result.rowCount) || 0;
 }
 
 async function withTransaction(pool, operation) {
@@ -127,12 +158,28 @@ async function markDelivered(pool, eventId, lockToken) {
   const result = await pool.query(
     `UPDATE relationship_change_outbox
         SET status = 'delivered', delivered_at = COALESCE(delivered_at, NOW()),
+            user_ids = CASE
+              WHEN kind = 'account_deleted' THEN ARRAY(SELECT 'redacted' FROM unnest(user_ids))
+              ELSE user_ids
+            END,
+            actor_user_id = CASE
+              WHEN kind = 'account_deleted' AND actor_user_id IS NOT NULL THEN 'redacted'
+              ELSE actor_user_id
+            END,
+            idempotency_key = CASE
+              WHEN kind = 'account_deleted' THEN 'redacted:' || event_id
+              ELSE idempotency_key
+            END,
+            identities_redacted_at = CASE
+              WHEN kind = 'account_deleted' THEN COALESCE(identities_redacted_at, NOW())
+              ELSE identities_redacted_at
+            END,
             locked_at = NULL, lock_token = NULL, lease_expires_at = NULL,
             last_error = '', updated_at = NOW()
       WHERE event_id = $1 AND status = 'processing' AND lock_token = $2`,
     [eventId, lockToken],
   );
-  if (Number(result.rowCount) !== 1) throw new Error('Relationship outbox delivery lease was lost');
+  return Number(result.rowCount) === 1;
 }
 
 async function markFailed(pool, row, error, config) {
@@ -163,8 +210,34 @@ async function markFailed(pool, row, error, config) {
       permanent ? 1 : 0,
     ],
   );
-  if (Number(result.rowCount) !== 1) throw new Error('Relationship outbox failure lease was lost');
+  if (Number(result.rowCount) !== 1) return 'superseded';
   return deadLetter ? 'dead_letter' : 'retry';
+}
+
+async function deliverClaimedRelationshipChange({ pool, row, redis, projectEvent }) {
+  return withTransaction(pool, async (client) => {
+    await acquireAccountMutationLocks(client, row.user_ids, { requireLiveUsers: false });
+    const current = (
+      await client.query(
+        `SELECT *
+           FROM relationship_change_outbox
+          WHERE event_id = $1 AND status = 'processing' AND lock_token = $2
+          FOR UPDATE`,
+        [row.event_id, row.lock_token],
+      )
+    ).rows[0];
+    if (!current) return 'superseded';
+
+    const event = eventFromOutboxRow(current);
+    if (!event) throw new RelationshipOutboxPermanentError('Relationship outbox row is malformed');
+    await projectEvent?.(event);
+    const subscriberCount = Number(await redis.publish(RELATIONSHIP_CHANGE_CHANNEL, JSON.stringify(event)));
+    if (!Number.isFinite(subscriberCount) || subscriberCount < 1) {
+      throw new Error('Relationship event has no active subscribers');
+    }
+    if (!(await markDelivered(client, current.event_id, current.lock_token))) return 'superseded';
+    return 'delivered';
+  });
 }
 
 async function deliverRelationshipOutboxBatch({
@@ -177,22 +250,21 @@ async function deliverRelationshipOutboxBatch({
   if (!redis || typeof redis.publish !== 'function')
     throw new Error('Relationship outbox Redis publisher is unavailable');
   const rows = await claimRelationshipChanges(pool, config);
-  const result = { claimed: rows.length, delivered: 0, retried: 0, deadLettered: 0 };
+  const result = { claimed: rows.length, delivered: 0, retried: 0, deadLettered: 0, superseded: 0 };
   for (const row of rows) {
     try {
-      const event = eventFromOutboxRow(row);
-      if (!event) throw new RelationshipOutboxPermanentError('Relationship outbox row is malformed');
-      await projectEvent?.(event);
-      const subscriberCount = Number(await redis.publish(RELATIONSHIP_CHANGE_CHANNEL, JSON.stringify(event)));
-      if (!Number.isFinite(subscriberCount) || subscriberCount < 1) {
-        throw new Error('Relationship event has no active subscribers');
+      const status = await deliverClaimedRelationshipChange({ pool, row, redis, projectEvent });
+      if (status === 'superseded') {
+        result.superseded += 1;
+        onResult?.('superseded');
+      } else {
+        result.delivered += 1;
+        onResult?.('delivered');
       }
-      await markDelivered(pool, row.event_id, row.lock_token);
-      result.delivered += 1;
-      onResult?.('delivered');
     } catch (error) {
       const status = await markFailed(pool, row, error, config);
       if (status === 'dead_letter') result.deadLettered += 1;
+      else if (status === 'superseded') result.superseded += 1;
       else result.retried += 1;
       onResult?.(status);
     }
@@ -286,8 +358,11 @@ module.exports = {
   claimRelationshipChanges,
   createRelationshipOutboxWorker,
   deliverRelationshipOutboxBatch,
+  deliverClaimedRelationshipChange,
   enqueueRelationshipChange,
   eventFromOutboxRow,
+  hashIdempotencyKey,
+  redactRelationshipChangesForDeletedUser,
   relationshipOutboxConfig,
   relationshipOutboxStats,
   redriveRelationshipChange,

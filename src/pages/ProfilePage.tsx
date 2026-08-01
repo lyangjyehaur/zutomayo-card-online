@@ -4,6 +4,7 @@ import {
   Ban,
   Download,
   ExternalLink,
+  Gift,
   KeyRound,
   Link2,
   Mail,
@@ -20,8 +21,11 @@ import {
   ApiError,
   addFriend,
   blockUser,
+  createAccountExport,
   deleteAccount,
-  exportAccountData,
+  claimSeasonReward,
+  getAccountExport,
+  getAccountExportDownloadUrl,
   getBlocks,
   getFriendRequests,
   getFriends,
@@ -30,7 +34,9 @@ import {
   getLogtoAccountCenter,
   getOAuthStartUrl,
   getProfile,
+  getSeasonRewards,
   isLoggedIn,
+  listAccountExports,
   removeFriend,
   requestEmailVerification,
   respondToFriendRequest,
@@ -41,6 +47,8 @@ import {
   updateProfile,
   verifyLogtoPassword,
   type LogtoAccountCenterResponse,
+  type AccountExportJob,
+  type AccountExportStatus,
   type BlockedProfile,
   type FriendProfile,
   type FriendRequest,
@@ -48,10 +56,11 @@ import {
   type OAuthIdentity,
   type OAuthProvider,
   type ProfileResponse,
+  type SeasonReward,
 } from '../api/client';
 import { UserAvatar } from '../components/UserAvatar';
 import { AuthSection } from '../components/lobby/AuthSection';
-import { t } from '../i18n';
+import { getLocale, t } from '../i18n';
 import {
   Alert,
   AppHeader,
@@ -92,6 +101,68 @@ function accountValue(value: unknown): string {
   return typeof value === 'string' && value.trim() ? value : '-';
 }
 
+function rewardPayloadSummary(payload: Record<string, unknown>): string {
+  return Object.entries(payload)
+    .map(([key, value]) => `${key}: ${typeof value === 'object' ? JSON.stringify(value) : String(value)}`)
+    .join(' · ');
+}
+
+function accountExportStatusLabel(status: AccountExportStatus): string {
+  switch (status) {
+    case 'queued':
+      return t('profile.exportStatusQueued');
+    case 'processing':
+      return t('profile.exportStatusProcessing');
+    case 'ready':
+      return t('profile.exportStatusReady');
+    case 'failed':
+      return t('profile.exportStatusFailed');
+    case 'expired':
+      return t('profile.exportStatusExpired');
+  }
+}
+
+function accountExportStatusDescription(status: AccountExportStatus): string {
+  switch (status) {
+    case 'queued':
+      return t('profile.exportQueuedDescription');
+    case 'processing':
+      return t('profile.exportProcessingDescription');
+    case 'ready':
+      return t('profile.exportReadyDescription');
+    case 'failed':
+      return t('profile.exportFailedDescription');
+    case 'expired':
+      return t('profile.exportExpiredDescription');
+  }
+}
+
+function accountExportStatusTone(status: AccountExportStatus): 'neutral' | 'gold' | 'jade' | 'vermilion' {
+  if (status === 'ready') return 'jade';
+  if (status === 'failed') return 'vermilion';
+  if (status === 'queued' || status === 'processing') return 'gold';
+  return 'neutral';
+}
+
+function formatAccountExportDate(value: string): string {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return '-';
+  return new Intl.DateTimeFormat(getLocale(), { dateStyle: 'medium', timeStyle: 'short' }).format(date);
+}
+
+function formatAccountExportSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return '-';
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ['KB', 'MB', 'GB'];
+  let value = bytes / 1024;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  return `${new Intl.NumberFormat(getLocale(), { maximumFractionDigits: 1 }).format(value)} ${units[unitIndex]}`;
+}
+
 export function ProfilePage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -117,6 +188,8 @@ export function ProfilePage() {
   const [unlinkingProvider, setUnlinkingProvider] = useState<OAuthProviderId | null>(null);
   const [sendingVerification, setSendingVerification] = useState(false);
   const [exportingAccount, setExportingAccount] = useState(false);
+  const [accountExportJob, setAccountExportJob] = useState<AccountExportJob | null>(null);
+  const [accountExportError, setAccountExportError] = useState('');
   const [deletePromptOpen, setDeletePromptOpen] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [deletePassword, setDeletePassword] = useState('');
@@ -127,6 +200,10 @@ export function ProfilePage() {
   const [friendUserId, setFriendUserId] = useState('');
   const [socialLoading, setSocialLoading] = useState(true);
   const [socialActionId, setSocialActionId] = useState('');
+  const [seasonRewards, setSeasonRewards] = useState<SeasonReward[]>([]);
+  const [seasonRewardsLoading, setSeasonRewardsLoading] = useState(true);
+  const [seasonRewardAction, setSeasonRewardAction] = useState('');
+  const [seasonRewardError, setSeasonRewardError] = useState('');
   const [authRevision, setAuthRevision] = useState(0);
 
   // Credential availability belongs to the account, not the deployment. The
@@ -144,8 +221,14 @@ export function ProfilePage() {
     }
 
     let cancelled = false;
-    Promise.all([getProfile(), getAuthConfig().catch(() => null), getLinkedOAuthIdentities().catch(() => [])])
-      .then(async ([data, authConfig, identities]) => {
+    Promise.all([
+      getProfile(),
+      getAuthConfig().catch(() => null),
+      getLinkedOAuthIdentities().catch(() => []),
+      getSeasonRewards().catch(() => null),
+      listAccountExports().catch(() => null),
+    ])
+      .then(async ([data, authConfig, identities, rewards, accountExports]) => {
         const shouldLoadAccountCenter = Boolean(
           (data.hasLogtoIdentity || identities.some((identity) => identity.provider === 'logto')) && authConfig,
         );
@@ -169,6 +252,11 @@ export function ProfilePage() {
         setFriendRequests(requestList);
         setBlocks(blockList);
         setSocialLoading(false);
+        setSeasonRewards(rewards || []);
+        setSeasonRewardError(rewards === null ? t('profile.seasonRewardError') : '');
+        setSeasonRewardsLoading(false);
+        setAccountExportJob(accountExports?.[0] || null);
+        setAccountExportError(accountExports === null ? t('profile.exportLoadError') : '');
         if (accountCenter instanceof Error) {
           setLogtoAccountCenter(null);
           setLogtoAccountError(accountCenter.message);
@@ -187,6 +275,7 @@ export function ProfilePage() {
         if (!cancelled) {
           setError(t('auth.profileUnavailable'));
           setSocialLoading(false);
+          setSeasonRewardsLoading(false);
         }
       })
       .finally(() => {
@@ -197,6 +286,83 @@ export function ProfilePage() {
       cancelled = true;
     };
   }, [authRevision, location.search]);
+
+  const accountExportJobId = accountExportJob?.id || '';
+  const accountExportJobStatus = accountExportJob?.status;
+  const accountExportExpiresAt = accountExportJob?.expiresAt || '';
+
+  useEffect(() => {
+    if (!accountExportJobId || (accountExportJobStatus !== 'queued' && accountExportJobStatus !== 'processing')) {
+      return;
+    }
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let refreshInFlight = false;
+    const scheduleRefresh = () => {
+      if (cancelled || document.visibilityState === 'hidden') return;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => void refresh(), 2_000);
+    };
+    const refresh = async () => {
+      if (cancelled || refreshInFlight || document.visibilityState === 'hidden') return;
+      refreshInFlight = true;
+      try {
+        const job = await getAccountExport(accountExportJobId);
+        if (cancelled) return;
+        setAccountExportJob(job);
+        setAccountExportError('');
+        if (job.status === 'queued' || job.status === 'processing') {
+          scheduleRefresh();
+        }
+      } catch {
+        if (cancelled) return;
+        setAccountExportError(t('profile.exportStatusError'));
+        scheduleRefresh();
+      } finally {
+        refreshInFlight = false;
+      }
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        if (timer) clearTimeout(timer);
+        timer = undefined;
+        return;
+      }
+      void refresh();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    scheduleRefresh();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [accountExportJobId, accountExportJobStatus]);
+
+  useEffect(() => {
+    if (!accountExportJobId || accountExportJobStatus !== 'ready' || !accountExportExpiresAt) return;
+    const expiresAt = new Date(accountExportExpiresAt).getTime();
+    if (!Number.isFinite(expiresAt)) return;
+
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const markExpiredWhenDue = () => {
+      const remainingMs = expiresAt - Date.now();
+      if (remainingMs > 0) {
+        timer = setTimeout(markExpiredWhenDue, Math.min(remainingMs + 250, 2_147_483_647));
+        return;
+      }
+      setAccountExportJob((current) =>
+        current?.id === accountExportJobId && current.status === 'ready' ? { ...current, status: 'expired' } : current,
+      );
+    };
+
+    markExpiredWhenDue();
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [accountExportExpiresAt, accountExportJobId, accountExportJobStatus]);
 
   const handleProfileSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -301,25 +467,31 @@ export function ProfilePage() {
     }
   };
 
-  const handleExportAccount = async () => {
+  const handleCreateAccountExport = async () => {
     setExportingAccount(true);
-    setError('');
+    setAccountExportError('');
     setProfileStatus('');
     try {
-      const data = await exportAccountData();
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `zutomayo-account-${profile?.id || 'export'}.json`;
-      link.click();
-      URL.revokeObjectURL(url);
-      setProfileStatus(t('profile.exported'));
+      setAccountExportJob(await createAccountExport());
     } catch {
-      setError(t('profile.saveError'));
+      setAccountExportError(t('profile.exportCreateError'));
     } finally {
       setExportingAccount(false);
     }
+  };
+
+  const handleDownloadAccountExport = () => {
+    if (!accountExportJob || accountExportJob.status !== 'ready') return;
+    const link = document.createElement('a');
+    link.href = getAccountExportDownloadUrl(accountExportJob.id);
+    link.download = `zutomayo-account-${accountExportJob.id}.json.gz`;
+    link.rel = 'noopener';
+    link.target = '_blank';
+    link.hidden = true;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setProfileStatus(t('profile.exported'));
   };
 
   const handleDeleteAccount = async () => {
@@ -348,6 +520,19 @@ export function ProfilePage() {
     }
   };
 
+  const handleClaimSeasonReward = async (seasonId: string) => {
+    setSeasonRewardAction(seasonId);
+    setSeasonRewardError('');
+    try {
+      await claimSeasonReward(seasonId);
+      setSeasonRewards(await getSeasonRewards());
+      setProfileStatus(t('profile.seasonRewardClaimSuccess'));
+    } catch {
+      setSeasonRewardError(t('profile.seasonRewardError'));
+    } finally {
+      setSeasonRewardAction('');
+    }
+  };
   const handleOAuthLink = (provider: OAuthProvider) => {
     window.location.assign(getOAuthStartUrl(provider.provider, 'link', '/profile'));
   };
@@ -434,13 +619,22 @@ export function ProfilePage() {
                 <Badge className="mt-2" tone={profile.emailVerified ? 'jade' : 'neutral'}>
                   {profile.emailVerified ? t('profile.emailVerified') : t('profile.emailUnverified')}
                 </Badge>
-                <Badge className="mt-3" tone="jade">
-                  {profile.winRate}% {t('auth.winRate')}
-                </Badge>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Badge tone="gold">ELO {profile.elo}</Badge>
+                  <Badge tone="jade">
+                    {profile.winRate}% {t('auth.winRate')}
+                  </Badge>
+                </div>
               </div>
             </div>
 
-            <dl className="mt-5 grid grid-cols-2 gap-2">
+            <dl className="mt-5 grid grid-cols-3 gap-2">
+              <div className="rounded-sm bg-surface-canvas/45 p-3">
+                <dt className="font-mono text-minutia uppercase tracking-[var(--tracking-compact)] text-content-dim">
+                  ELO
+                </dt>
+                <dd className="mt-1 font-display text-title-sm font-bold text-accent-primary">{profile.elo}</dd>
+              </div>
               <div className="rounded-sm bg-surface-canvas/45 p-3">
                 <dt className="font-mono text-minutia uppercase tracking-[var(--tracking-compact)] text-content-dim">
                   {t('auth.wins')}
@@ -464,6 +658,65 @@ export function ProfilePage() {
             )}
             {profileStatus && <Alert tone="success">{profileStatus}</Alert>}
             {passwordStatus && <Alert tone="success">{passwordStatus}</Alert>}
+
+            <Panel size="lg">
+              <div className="mb-4 flex items-center gap-2">
+                <Gift className="size-5 text-accent-action" aria-hidden="true" />
+                <h2 className="font-display text-title-sm font-bold">{t('profile.seasonRewards')}</h2>
+              </div>
+              {seasonRewardError && (
+                <Alert className="mb-3" tone="danger" role="alert">
+                  {seasonRewardError}
+                </Alert>
+              )}
+              {seasonRewardsLoading ? (
+                <LoadingState label={t('profile.loading')} />
+              ) : seasonRewards.length === 0 ? (
+                <p className="text-body-sm text-content-muted">{t('common.empty')}</p>
+              ) : (
+                <div className="grid gap-2">
+                  {seasonRewards.map((reward) => {
+                    const payload = rewardPayloadSummary(reward.rewardPayload);
+                    return (
+                      <div
+                        key={reward.seasonId}
+                        className="flex flex-col gap-3 border-b border-border-soft py-3 last:border-b-0 sm:flex-row sm:items-center sm:justify-between"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <strong className="text-body-sm">{reward.seasonName}</strong>
+                            <Badge tone="gold">{reward.rewardTier}</Badge>
+                            {reward.claimedAt && <Badge tone="jade">{t('profile.seasonRewardClaimed')}</Badge>}
+                          </div>
+                          <p className="mt-1 text-caption text-content-muted">
+                            {t('profile.seasonRewardRank')} {reward.finalRank} · ELO {reward.finalRating}
+                          </p>
+                          {payload && (
+                            <p className="mt-1 break-words text-caption text-content-muted">
+                              {t('profile.seasonRewardPayload')}: {payload}
+                            </p>
+                          )}
+                        </div>
+                        {!reward.claimedAt && (
+                          <Button
+                            className="shrink-0"
+                            size="sm"
+                            variant="primary"
+                            disabled={Boolean(seasonRewardAction)}
+                            leftIcon={<Gift className="size-4" aria-hidden="true" />}
+                            onClick={() => void handleClaimSeasonReward(reward.seasonId)}
+                          >
+                            {seasonRewardAction === reward.seasonId
+                              ? t('auth.submitting')
+                              : t('profile.seasonRewardClaim')}
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </Panel>
 
             <Panel size="lg">
               <div className="mb-4 flex items-center gap-2">
@@ -887,15 +1140,66 @@ export function ProfilePage() {
                     </Button>
                   )}
                 </div>
-                <FormActions>
-                  <Button
-                    variant="secondary"
-                    disabled={exportingAccount}
-                    leftIcon={<Download className="size-4" aria-hidden="true" />}
-                    onClick={handleExportAccount}
+                {accountExportError && (
+                  <Alert tone="danger" role="alert">
+                    {accountExportError}
+                  </Alert>
+                )}
+                {accountExportJob && (
+                  <div
+                    className="grid gap-2 rounded-sm border border-border-soft bg-surface-canvas/45 p-3"
+                    role="status"
+                    aria-live="polite"
+                    aria-atomic="true"
                   >
-                    {exportingAccount ? t('auth.submitting') : t('profile.exportData')}
-                  </Button>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <strong className="text-body-sm">{t('profile.exportData')}</strong>
+                      <Badge tone={accountExportStatusTone(accountExportJob.status)}>
+                        {accountExportStatusLabel(accountExportJob.status)}
+                      </Badge>
+                    </div>
+                    <p className="text-caption text-content-muted">
+                      {accountExportStatusDescription(accountExportJob.status)}
+                    </p>
+                    {accountExportJob.status === 'ready' && accountExportJob.expiresAt && (
+                      <p className="text-caption text-content-muted">
+                        {t('profile.exportExpiresAt')}: {formatAccountExportDate(accountExportJob.expiresAt)}
+                      </p>
+                    )}
+                    {accountExportJob.status === 'ready' && accountExportJob.sizeBytes !== null && (
+                      <p className="text-caption text-content-muted">
+                        {t('profile.exportFileSize')}: {formatAccountExportSize(accountExportJob.sizeBytes)}
+                      </p>
+                    )}
+                  </div>
+                )}
+                <FormActions>
+                  {accountExportJob?.status === 'ready' ? (
+                    <Button
+                      variant="secondary"
+                      leftIcon={<Download className="size-4" aria-hidden="true" />}
+                      onClick={handleDownloadAccountExport}
+                    >
+                      {t('profile.exportDownload')}
+                    </Button>
+                  ) : accountExportJob?.status === 'queued' || accountExportJob?.status === 'processing' ? (
+                    <Button variant="secondary" disabled leftIcon={<Download className="size-4" aria-hidden="true" />}>
+                      {t('profile.exportPreparing')}
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="secondary"
+                      disabled={exportingAccount}
+                      leftIcon={<Download className="size-4" aria-hidden="true" />}
+                      onClick={handleCreateAccountExport}
+                    >
+                      {exportingAccount
+                        ? t('auth.submitting')
+                        : accountExportJob
+                          ? t('profile.exportRetry')
+                          : t('profile.exportData')}
+                    </Button>
+                  )}
                   <Button
                     variant="danger"
                     leftIcon={<Trash2 className="size-4" aria-hidden="true" />}

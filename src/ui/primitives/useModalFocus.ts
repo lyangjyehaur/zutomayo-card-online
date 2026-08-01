@@ -82,7 +82,12 @@ export function useModalFocus(
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
       restoreSiblings.forEach((restore) => restore());
-      previousFocus?.focus();
+      previousFocus?.focus({ preventScroll: true });
+      window.requestAnimationFrame(() => {
+        if (previousFocus?.isConnected && document.activeElement === document.body) {
+          previousFocus.focus({ preventScroll: true });
+        }
+      });
     };
   }, [dialogRef, modalRootRef, open]);
 }

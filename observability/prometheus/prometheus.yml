@@ -20,37 +20,120 @@ scrape_configs:
     metrics_path: /metrics
     bearer_token_file: /etc/prometheus/metrics_token
     static_configs:
-      - targets: ['game:3000']
+      - targets: ['game-legacy:3000']
         labels:
           service: game
+          release_slot: legacy
+          process: legacy
+    dns_sd_configs:
+      - names: ['game-blue', 'game-green']
+        type: A
+        port: 3000
+        refresh_interval: 15s
+    relabel_configs:
+      - source_labels: [__meta_dns_name]
+        regex: 'game-(blue|green)'
+        target_label: release_slot
+        replacement: '$1'
+      - source_labels: [__meta_dns_name]
+        regex: 'game-(blue|green)'
+        target_label: service
+        replacement: game
+      - source_labels: [__meta_dns_name]
+        regex: 'game-(blue|green)'
+        target_label: process
+        replacement: replica
 
   - job_name: 'zutomayo-api'
     metrics_path: /metrics
     bearer_token_file: /etc/prometheus/metrics_token
     static_configs:
-      - targets: ['api:3001']
+      - targets: ['api-legacy:3001']
         labels:
           service: api
+          release_slot: legacy
+          process: legacy
+    dns_sd_configs:
+      - names: ['api-blue', 'api-green']
+        type: A
+        port: 3001
+        refresh_interval: 15s
+    relabel_configs:
+      - source_labels: [__meta_dns_name]
+        regex: 'api-(blue|green)'
+        target_label: release_slot
+        replacement: '$1'
+      - source_labels: [__meta_dns_name]
+        regex: 'api-(blue|green)'
+        target_label: service
+        replacement: api
+      - source_labels: [__meta_dns_name]
+        regex: 'api-(blue|green)'
+        target_label: process
+        replacement: replica
 
   - job_name: 'zutomayo-platform'
     metrics_path: /metrics
     bearer_token_file: /etc/prometheus/metrics_token
     static_configs:
-      - targets: ['platform:3002']
+      - targets: ['platform-legacy:3002']
         labels:
           service: platform
+          release_slot: legacy
+          process: legacy
+    dns_sd_configs:
+      - names: ['platform-blue-p1', 'platform-blue-p2', 'platform-green-p1', 'platform-green-p2']
+        type: A
+        port: 3002
+        refresh_interval: 15s
+    relabel_configs:
+      - source_labels: [__meta_dns_name]
+        regex: 'platform-(blue|green)-(p[12])'
+        target_label: release_slot
+        replacement: '$1'
+      - source_labels: [__meta_dns_name]
+        regex: 'platform-(blue|green)-(p[12])'
+        target_label: service
+        replacement: platform
+      - source_labels: [__meta_dns_name]
+        regex: 'platform-(blue|green)-(p[12])'
+        target_label: process
+        replacement: '$2'
 
   - job_name: 'zutomayo-platform-health'
     metrics_path: /probe
     params:
       module: [http_2xx]
     static_configs:
-      - targets: ['http://platform:3002/health']
+      - targets: ['http://platform-legacy:3002/health']
         labels:
           service: platform
+          release_slot: legacy
+          process: legacy
+    dns_sd_configs:
+      - names: ['platform-blue-p1', 'platform-blue-p2', 'platform-green-p1', 'platform-green-p2']
+        type: A
+        port: 3002
+        refresh_interval: 15s
     relabel_configs:
+      - source_labels: [__meta_dns_name]
+        regex: 'platform-(blue|green)-(p[12])'
+        target_label: release_slot
+        replacement: '$1'
+      - source_labels: [__meta_dns_name]
+        regex: 'platform-(blue|green)-(p[12])'
+        target_label: service
+        replacement: platform
+      - source_labels: [__meta_dns_name]
+        regex: 'platform-(blue|green)-(p[12])'
+        target_label: process
+        replacement: '$2'
       - source_labels: [__address__]
         target_label: __param_target
+      - source_labels: [__meta_dns_name, __address__]
+        regex: '.+;(.+)'
+        target_label: __param_target
+        replacement: 'http://$1/health'
       - source_labels: [__param_target]
         target_label: instance
       - target_label: __address__
@@ -61,18 +144,77 @@ scrape_configs:
     params:
       module: [http_2xx]
     static_configs:
-      - targets: ['http://game:3000/ready']
+      - targets: ['http://game-legacy:3000/ready']
         labels:
           service: game
-      - targets: ['http://api:3001/ready']
+          release_slot: legacy
+          process: legacy
+      - targets: ['http://api-legacy:3001/ready']
         labels:
           service: api
-      - targets: ['http://platform:3002/ready']
+          release_slot: legacy
+          process: legacy
+      - targets: ['http://platform-legacy:3002/ready']
         labels:
           service: platform
+          release_slot: legacy
+          process: legacy
+    dns_sd_configs:
+      - names: ['game-blue', 'game-green']
+        type: A
+        port: 3000
+        refresh_interval: 15s
+      - names: ['api-blue', 'api-green']
+        type: A
+        port: 3001
+        refresh_interval: 15s
+      - names: ['platform-blue-p1', 'platform-blue-p2', 'platform-green-p1', 'platform-green-p2']
+        type: A
+        port: 3002
+        refresh_interval: 15s
     relabel_configs:
+      - source_labels: [__meta_dns_name]
+        regex: 'game-(blue|green)'
+        target_label: release_slot
+        replacement: '$1'
+      - source_labels: [__meta_dns_name]
+        regex: 'game-(blue|green)'
+        target_label: service
+        replacement: game
+      - source_labels: [__meta_dns_name]
+        regex: 'game-(blue|green)'
+        target_label: process
+        replacement: replica
+      - source_labels: [__meta_dns_name]
+        regex: 'api-(blue|green)'
+        target_label: release_slot
+        replacement: '$1'
+      - source_labels: [__meta_dns_name]
+        regex: 'api-(blue|green)'
+        target_label: service
+        replacement: api
+      - source_labels: [__meta_dns_name]
+        regex: 'api-(blue|green)'
+        target_label: process
+        replacement: replica
+      - source_labels: [__meta_dns_name]
+        regex: 'platform-(blue|green)-(p[12])'
+        target_label: release_slot
+        replacement: '$1'
+      - source_labels: [__meta_dns_name]
+        regex: 'platform-(blue|green)-(p[12])'
+        target_label: service
+        replacement: platform
+      - source_labels: [__meta_dns_name]
+        regex: 'platform-(blue|green)-(p[12])'
+        target_label: process
+        replacement: '$2'
       - source_labels: [__address__]
         target_label: __param_target
+      - source_labels: [__meta_dns_name, __address__]
+        regex: '.+;(.+)'
+        target_label: __param_target
+        replacement: 'http://$1/ready'
       - source_labels: [__param_target]
         target_label: instance
       - target_label: __address__

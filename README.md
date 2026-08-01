@@ -147,7 +147,7 @@ docker compose ps
 
 Compose 包含七個單元：`postgres`、`redis`、內網 `meilisearch`、一次性的 `migrate`、`game`、`api` 與 `platform`。Meilisearch 不發布 host port；正式環境必須設定獨立的 `MEILI_MASTER_KEY`。
 
-另提供 `docker-compose.e2e.yml`、`docker-compose.load-test.yml` 與隔離 port／資料庫的 `docker-compose.staging.yml`。Production-hardening CD 目前隔離在 `codex/deferred-production-hardening`；staging／production SSH 部署由 `workflow_dispatch` 以已驗證 artifacts 明確觸發。
+另提供 `docker-compose.e2e.yml`、`docker-compose.load-test.yml` 與隔離 port／資料庫的 `docker-compose.staging.yml`。CD workflow 會在 master 更新或手動 staging dispatch 時建置並驗證七個 immutable GHCR images，版本 tag 建置 production images；未合併的 staging SHA 只接受同倉庫、base `master` 的 open PR 精確 head，SSH 部署由 `workflow_dispatch` 控制。
 
 | Port   | 服務     | 說明                                            |
 | ------ | -------- | ----------------------------------------------- |

@@ -36,7 +36,7 @@ test.describe('認證 UI', () => {
     });
   });
 
-  test('登入按鈕可在首頁看到', async ({ page }) => {
+  test('首頁提供符合 viewport 的登入入口', async ({ page }) => {
     await page.goto('/');
     await expect(page.getByRole('heading', { level: 1 })).toContainText('ZUTOMAYO', { timeout: 30_000 });
 

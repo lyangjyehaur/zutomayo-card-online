@@ -15,8 +15,10 @@ import {
 import { CardImage } from './CardImage';
 import { TutorialBattlefieldPreview } from './TutorialBattlefieldPreview';
 import {
+  TUTORIAL_CHAPTER_CARD_ASSETS,
   TUTORIAL_SHOWCASE_CARDS,
   TUTORIAL_SHOWCASE_CARD_TEXTS,
+  type TutorialChapterCardId,
   type TutorialShowcaseCardId,
 } from '../data/tutorialShowcaseCards';
 import { getLocalizedCardEffect, getLocalizedCardName } from '../game/cards/i18n';
@@ -494,7 +496,7 @@ function CardsChapter({
     ['2nd_86', 'tutorial.chapter.cards.area.title'],
   ] as const;
   const locale = useLocale();
-  const [selectedId, setSelectedId] = useState<TutorialShowcaseCardId>('2nd_40');
+  const [selectedId, setSelectedId] = useState<TutorialChapterCardId>('2nd_40');
   const [selectedHotspot, setSelectedHotspot] = useState<CardHotspotId>('type');
   const factDetailRef = useRef<HTMLDivElement>(null);
   const selectedCard = getShowcaseCard(selectedId);
@@ -507,7 +509,7 @@ function CardsChapter({
   const selectedHotspotParagraphs = splitCardFactParagraphs(
     getCardHotspotDescription(selectedCard, selectedHotspotData.id, locale),
   );
-  const selectCard = (id: TutorialShowcaseCardId) => {
+  const selectCard = (id: TutorialChapterCardId) => {
     setSelectedId(id);
     setSelectedHotspot('type');
     onExploreCardType(id);
@@ -592,7 +594,9 @@ function CardsChapter({
             data-testid="tutorial-card-hotspot-map"
           >
             <CardImage
-              src={selectedCard.image}
+              src={TUTORIAL_CHAPTER_CARD_ASSETS[selectedId]}
+              bundledAsset
+              bundledAssetReason="Reviewed fixed CH.02 tutorial example"
               alt={`${t(selectedCardType?.[1] ?? 'tutorial.chapter.cards.character.title')} — ${selectedCardText.name}`}
               context="detail"
               className="h-full w-full rounded-sm object-cover shadow-floating"

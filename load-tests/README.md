@@ -119,10 +119,10 @@ docker compose -f docker-compose.yml -f docker-compose.load-test.yml up \
 
 | 變數                    | 預設值                                                     | 說明                                                                                                       |
 | ----------------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `BASE_URL`              | `http://localhost:3001`                                    | API server 位址（`api-load`、`auth`、`matchmaking` 使用）。                                                |
+| `BASE_URL`              | `http://localhost:3001`                                    | API server 位址（`api-load`、`auth` 使用）。                                                               |
 | `WS_URL`                | `ws://localhost:3000/socket.io/?EIO=4&transport=websocket` | game server WebSocket 位址（`websocket-load` 使用）。                                                      |
 | `WS_HOLD_MS`            | `90000`                                                    | 每條 WebSocket 連線持有的毫秒數。                                                                          |
-| `LOGIN_EMAIL`           | _(空)_                                                     | 認證 / 配對測試共用的登入 email；未設則每個 VU 註冊臨時帳號。                                              |
+| `LOGIN_EMAIL`           | _(空)_                                                     | 認證測試使用的登入 email；未設則每個 VU 註冊臨時帳號。                                                     |
 | `LOGIN_PASSWORD`        | `loadtest123`                                              | 登入密碼。                                                                                                 |
 | `DEBUG`                 | _(空)_                                                     | 設為任意值時印出 WebSocket 除錯訊息。                                                                      |
 | `OBSERVED_PEAK_RPS`     | _(required)_                                               | 從 telemetry 取得的實測 peak；`operational-soak` 用它乘上 `PEAK_MULTIPLIER`。                              |

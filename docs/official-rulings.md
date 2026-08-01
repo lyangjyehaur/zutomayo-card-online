@@ -33,7 +33,8 @@ Q&A 同步只接受 `public === '公開'`。parser、筆數或必要欄位不符
 2. 匯入／seed 正式卡牌資料與官方卡牌文本，例如 `npm run seed:cards`、`npm run import:card-official-texts`。
 3. 將本機已複核、受 `.gitignore` 保護的 `data/official-rulings-translations.json` 與 `data/official-rule-documents-*.json` 放好。
 4. 以 `release:official-rulings` 及 `release:official-rule-documents` 完成即時來源驗證、五語匯入、完整性檢查及 active pointer 切換。
-5. 啟動或重啟 API，檢查 `/api/official/status` 的 `buildId`，並抽查 Grand Rules、基本 Floor Rules、Q&A 與勘誤六種語言。
+
+Immutable staging/server4 部署會從 `CARD_DATA_DIR` 的唯讀 `/run/card-data` mount 讀取同一組來源，並在 verified `MIGRATE_IMAGE` 中執行 `scripts/release-official-content.sh`。候選服務只有在 migration、官方內容發布及 role/TLS gates 全部成功後才會啟動；原始 JSON 不會複製進 Git、Docker image 或 CI artifact。5. 啟動或重啟 API，檢查 `/api/official/status` 的 `buildId`，並抽查 Grand Rules、基本 Floor Rules、Q&A 與勘誤六種語言。
 
 Grand Rules 的發布來源必須保存官方 PDF 的完整正文，不得只提供章節摘要。發布器會驗證第 1 至 10 章、足夠的日文原文長度、190 項以上編號內容，以及每種譯文是否逐項保留完全相同的條文編號。純章／節標題可以使用空正文作為結構節點，API 仍會把其已複核標題視為完整翻譯。官方 PDF 本身缺少 `3.9`，並同時以 `10.2` 編號「優先プレイヤー」與「公開情報と非公開情報」；資料必須忠實保留，不得自行改號。
 

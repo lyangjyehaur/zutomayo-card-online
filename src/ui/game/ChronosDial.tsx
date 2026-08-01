@@ -117,7 +117,11 @@ export function ChronosDial({
       data-face-art={hasFaceArt}
       data-selectable={selectable}
       role={selectable ? 'group' : 'img'}
-      aria-label={`${t('chronos.title')} · ${timeLabel}`}
+      aria-label={
+        selectable
+          ? `${t('chronos.title')} · ${timeLabel}`
+          : `${t('chronos.title')} ${position}/${POSITIONS} · ${timeLabel}`
+      }
     >
       <img
         className="chronosdial-face-art"

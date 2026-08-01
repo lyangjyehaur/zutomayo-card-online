@@ -108,8 +108,7 @@ async function addAccountMatchObjects(client, objects, subjectId) {
 }
 
 async function resolveAccountObjects(client, objects, subjectId) {
-  const account = (await client.query('SELECT id FROM users WHERE id = $1 AND deleted_at IS NULL LIMIT 1', [subjectId]))
-    .rows[0];
+  const account = (await client.query('SELECT id FROM users WHERE id = $1 LIMIT 1', [subjectId])).rows[0];
   if (!account) return false;
   addObject(objects, 'account', subjectId);
 

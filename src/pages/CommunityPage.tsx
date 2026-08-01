@@ -357,7 +357,7 @@ export function CommunityPage({ onAuthChanged }: { onAuthChanged: () => void | P
 
             <section
               className="grid min-h-[65vh] min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] border border-border-soft bg-surface-base/45"
-              data-chat-surface={conversationType}
+              data-chat-surface={view}
               data-chat-subject={subjectId}
             >
               <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border-soft p-3">

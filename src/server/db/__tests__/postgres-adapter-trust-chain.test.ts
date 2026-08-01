@@ -14,7 +14,7 @@ function mockClient(
 ): MockClient {
   return {
     query: vi.fn(async (sql: string, params?: unknown[]) => {
-      if (sql === 'SELECT * FROM users WHERE id = $1 FOR UPDATE') {
+      if (sql === 'SELECT id, deleted_at, elo, match_count, wins FROM users WHERE id = $1 FOR UPDATE') {
         const row = accountRow ? { id: params?.[0], ...accountRow } : null;
         return { rows: row ? [row] : [], rowCount: row ? 1 : 0 };
       }
@@ -427,7 +427,7 @@ describe('PostgresAdapter trust-chain transactions', () => {
 
     await adapter.setMetadata('match_1', { ...metadata(), updatedAt: 123 } as never);
 
-    const write = transactionClient.query.mock.calls.find(([sql]) => String(sql).startsWith('INSERT INTO bjg_matches'));
+    const write = transactionClient.query.mock.calls.find(([sql]) => String(sql).startsWith('UPDATE bjg_matches'));
     expect(write).toBeDefined();
     const persisted = JSON.parse(String(write?.[1]?.[1])) as typeof reservedMetadata & { updatedAt: number };
     expect(persisted.updatedAt).toBe(123);
@@ -498,7 +498,7 @@ describe('PostgresAdapter trust-chain transactions', () => {
   it('writes terminal state and canonical outbox row in the same transaction', async () => {
     const schemaClient = mockClient();
     const transactionClient = mockClient(async (sql) => {
-      if (sql.startsWith('SELECT metadata, initial_state FROM bjg_matches')) {
+      if (sql.startsWith('SELECT match_id, state, initial_state, metadata FROM bjg_matches')) {
         return {
           rows: [
             {
@@ -572,7 +572,7 @@ describe('PostgresAdapter trust-chain transactions', () => {
   it('marks eligible results unrated when ranked delivery is disabled', async () => {
     const schemaClient = mockClient();
     const transactionClient = mockClient(async (sql) => {
-      if (sql.startsWith('SELECT metadata, initial_state FROM bjg_matches')) {
+      if (sql.startsWith('SELECT match_id, state, initial_state, metadata FROM bjg_matches')) {
         return {
           rows: [{ metadata: { setupData: { rulesVersion: 'legacy' } }, initial_state: initialStateForAnalytics() }],
           rowCount: 1,
@@ -605,7 +605,7 @@ describe('PostgresAdapter trust-chain transactions', () => {
     let integritySha256 = '';
     const schemaClient = mockClient();
     const transactionClient = mockClient(async (sql, params) => {
-      if (sql.startsWith('SELECT metadata, initial_state FROM bjg_matches')) {
+      if (sql.startsWith('SELECT match_id, state, initial_state, metadata FROM bjg_matches')) {
         return {
           rows: [{ metadata: { setupData: { rulesVersion: 'legacy' } }, initial_state: initialStateForAnalytics() }],
           rowCount: 1,
@@ -636,7 +636,7 @@ describe('PostgresAdapter trust-chain transactions', () => {
   it('rolls back terminal state when anonymous analytics capture fails', async () => {
     const schemaClient = mockClient();
     const transactionClient = mockClient(async (sql) => {
-      if (sql.startsWith('SELECT metadata, initial_state FROM bjg_matches')) {
+      if (sql.startsWith('SELECT match_id, state, initial_state, metadata FROM bjg_matches')) {
         return {
           rows: [{ metadata: { setupData: { rulesVersion: 'legacy' } }, initial_state: initialStateForAnalytics() }],
           rowCount: 1,

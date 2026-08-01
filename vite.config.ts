@@ -19,6 +19,7 @@ function versionEnv(name: string, fallback: string): string {
 const appVersion = versionEnv('APP_VERSION', packageVersion);
 const appBuildId = versionEnv('APP_BUILD_ID', appVersion);
 const gameRulesVersion = versionEnv('GAME_RULES_VERSION', appVersion);
+const cardDataCacheKey = `${appBuildId}-${gameRulesVersion}`.replace(/[^a-zA-Z0-9._-]/g, '_');
 const imgproxyDevProxyTarget = process.env.IMGPROXY_DEV_PROXY_TARGET?.trim();
 const apiDevProxyTarget = process.env.API_DEV_PROXY_TARGET?.trim() || 'http://127.0.0.1:3001';
 const battleAssetVersionPlugin: Plugin = {
@@ -114,6 +115,20 @@ export default defineConfig({
         navigateFallback: 'index.html',
         navigateFallbackDenylist: [/^\/api/],
         runtimeCaching: [
+          {
+            urlPattern: ({ url }) =>
+              url.origin === globalThis.location.origin && ['/api/cards', '/api/cards/texts'].includes(url.pathname),
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: `card-data-${cardDataCacheKey}`,
+              networkTimeoutSeconds: 3,
+              cacheableResponse: { statuses: [200] },
+              expiration: {
+                maxEntries: 3,
+                maxAgeSeconds: 30 * 24 * 60 * 60,
+              },
+            },
+          },
           {
             urlPattern: /\/api\/official\/(?:qa|errata|rules)(?:\/[^/?]+)?(?:\?.*)?$/i,
             handler: 'NetworkFirst',
