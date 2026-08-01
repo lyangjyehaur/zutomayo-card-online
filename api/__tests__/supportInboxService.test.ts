@@ -130,13 +130,14 @@ describe('support inbox service', () => {
         text: '您好，請先建立帳號後進入線上大廳。',
         adminUserId: 'admin_1',
         apiKey: 're_test',
-        from: 'ZUTOMAYO CARD <contact@mail.zutomayocard.online>',
+        from: 'ZTMYCardOnline <contact@mail.zutomayocard.online>',
         fetchImpl,
       }),
     ).resolves.toMatchObject({ resendEmailId: 'sent_1', recipients: ['reply@example.com'], subject: 'Re: 網站詢問' });
 
     const sendBody = JSON.parse(String(fetchImpl.mock.calls[0]?.[1]?.body)) as Record<string, unknown>;
     expect(sendBody).toMatchObject({
+      from: 'ZTMYCardOnline <contact@mail.zutomayocard.online>',
       to: ['reply@example.com'],
       subject: 'Re: 網站詢問',
       headers: {
