@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Client } from 'pg';
 import {
   contentSecurityScriptSources,
+  gameCorsOrigins,
   postgresConnectionString,
   postgresSslConfig,
   requireSecret,
@@ -30,6 +31,18 @@ describe('runtime security connection contracts', () => {
       "'self'",
       "'unsafe-inline'",
       'https://static.cloudflareinsights.com',
+    ]);
+  });
+
+  it('keeps localhost CORS origins out of production', () => {
+    expect(gameCorsOrigins({ NODE_ENV: 'production', ALLOWED_ORIGINS: ' https://battle.example.com ' })).toEqual([
+      'https://battle.example.com',
+    ]);
+    expect(gameCorsOrigins({ NODE_ENV: 'production' })).toEqual([]);
+    expect(gameCorsOrigins({ NODE_ENV: 'development' })).toEqual([
+      'http://localhost:3000',
+      /localhost:\d+/,
+      /127\.0\.0\.1:\d+/,
     ]);
   });
 

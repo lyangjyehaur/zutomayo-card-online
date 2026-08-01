@@ -769,8 +769,6 @@ Server4 現階段由 `master` 原始碼在主機上建置，不使用下方延�
 Cosign、attestation、retention worker 或七角色矩陣。部署入口只有：
 
 ```bash
-npm run release:card-dataset -- --output .release-evidence/production/card-dataset.json
-export VITE_CARD_DATASET_SHA256="$(node -p "require('./.release-evidence/production/card-dataset.json').datasetSha256")"
 ./scripts/deploy-server4.sh --confirm
 ```
 
@@ -785,8 +783,16 @@ server4 最終 checkout 三者完全一致；不支援 `--sha` 或 `--manifest`�
 - `REDIS_URL`、三個 runtime 共用的 `REDIS_DB`，以及外部 Redis 的
   `REDIS_PASSWORD`（若 Redis 啟用密碼）。
 - 現有 runtime 所需的 `JWT_SECRET`、`METRICS_TOKEN` 與其他功能設定。
-- `VITE_CARD_DATASET_SHA256`：必須來自本次 release 經驗證的 `card-dataset.json` receipt；部署器會寫入遠端 `.env`，Compose 再映射為 game runtime 的 `CARD_DATASET_SHA256`。
+- `ALLOWED_ORIGINS`：部署器會固定為 `SERVER4_ALLOWED_ORIGIN`，預設且正式環境應只使用
+  `https://battle.zutomayocard.online`。不保留 HTTP 或主機 IP 直連 origin。
 - `MEILI_MASTER_KEY`（至少 16 字元）；部署器會從 1Panel 管理的既有 `meilisearch` 容器安全同步到應用 `.env`，不在日誌輸出。`MEILI_HOST` 由 Compose 固定為 `http://meilisearch:7700`，不得把 7700 port 發布到公網。
+
+`VITE_CARD_DATASET_SHA256` 不需要由 operator 預先填寫。部署器在 migration 與卡牌資料發布完成後，
+對仍在運行的內部 API 執行完整 card dataset preflight，將通過的 SHA-256 寫入 `.env`，再建置
+game／api／platform。若 operator 顯式提供 `VITE_CARD_DATASET_SHA256`，它只作為期望值；與 preflight
+結果不同時部署會在 runtime build 前停止。原始 preflight 報告以 `0600` 留存在
+`.release-evidence/production/card-dataset-preflight-<release-sha>.json`。它是 Server4 Beta 的部署紀錄，
+不是下方 immutable-image hardening profile 的 release receipt。
 
 Server4 的 Meilisearch 不由應用 Compose 建立。預設容器名稱為 `meilisearch`、1Panel 應用目錄為
 `/opt/1panel/apps/meilisearch/meilisearch`，兩者可分別以 `MEILI_CONTAINER`、`MEILI_APP_DIR`
@@ -809,9 +815,16 @@ PostgreSQL 重建。
 
 部署順序固定為：備份 `.env`/Compose → 以 migration role 產生新的 `pg_dump -Fc`
 並寫入 SHA-256 → checkout `origin/master` → 同步 `APP_BUILD_ID`、`APP_VERSION`、
-`GAME_RULES_VERSION`、`EXPECTED_SCHEMA_MIGRATION=000049_match_replay_summaries`
-及 migration checksum → 備份、設定並驗證 1Panel Meilisearch → 實際檢查三服務 `REDIS_DB` 一致且 Redis
-`maxmemory-policy=noeviction` → 同步並校驗私有 battle 素材 → build／migration → 發布卡牌、Q&A、勘誤與規則文件 → `npm run search:reindex` 原子重建及 `search:check` → `docker compose up --wait` → 透過 SSH tunnel 驗證三服務 `/health`、`/ready`、build ID、dataset SHA、卡牌／Q&A／規則搜尋及所有 battle 素材 → 視憑證設定同步 Cloudflare Cache Rules → 透過正常 DNS 與香港直連驗證快取。`/api/app-version` 的 `datasetSha256` 必須與 receipt 完全一致；不一致時 deployment smoke 失敗。Cache smoke 涵蓋 PWA 控制檔、公開／私人 API Header、battle 素材版本、真實 MIME、內容與缺失素材 404。
+`GAME_RULES_VERSION`、最新 migration basename、checksum 與單一 HTTPS `ALLOWED_ORIGINS` →
+備份、設定並驗證 1Panel Meilisearch → 實際檢查三服務 `REDIS_DB` 一致、Redis
+`maxmemory-policy=noeviction` 及 Docker ingress 已列入 `TRUSTED_PROXY` → 同步並校驗私有 battle 素材 →
+只建置 migration image 並 migrate → 發布卡牌、Q&A、勘誤與規則文件 → 對內部 API 執行 card dataset
+preflight、留存報告並將 SHA-256 寫入 `.env` → `npm run search:reindex` 原子重建及 `search:check` →
+建置 game／api／platform → `docker compose up --wait` → 透過 SSH tunnel 驗證三服務 `/health`、
+`/ready`、build ID、dataset SHA、卡牌／Q&A／規則搜尋及所有 battle 素材 → 視憑證設定同步
+Cloudflare Cache Rules → 透過正常 DNS 與香港直連驗證快取。`/api/app-version` 的 `datasetSha256`
+必須與 preflight 完全一致；不一致時 deployment smoke 失敗。Cache smoke 涵蓋 PWA 控制檔、
+公開／私人 API Header、battle 素材版本、真實 MIME、內容與缺失素材 404。
 
 本地完整重建與唯讀狀態檢查分別使用：
 
