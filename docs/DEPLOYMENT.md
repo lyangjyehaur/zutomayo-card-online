@@ -795,8 +795,9 @@ Cosign、attestation、retention worker 或七角色矩陣。部署入口只有�
 
 `--runtime-only` 仍要求乾淨且與 `origin/master` 完全一致的本機 `master`，並執行遠端設定快照、
 新的 PostgreSQL `pg_dump -Fc`、最新 migration、runtime image 建置、服務健康檢查、battle 素材 smoke、
-公開／香港直連 cache smoke。它會沿用 server4 現有的 `VITE_CARD_DATASET_SHA256`，以唯讀 preflight
-確認目前 API 的資料集完全一致後才建置。此模式不讀取本機卡牌／規則私有來源，不發布卡牌、Q&A、
+公開／香港直連 cache smoke。它會沿用 server4 現有的 `VITE_CARD_DATASET_SHA256` 與官方內容 release
+build ID，以唯讀 preflight 確認目前 API 的資料集完全一致後才建置；部署 smoke 也會要求官方內容
+仍精確綁定部署前鎖定的 release build ID。此模式不讀取本機卡牌／規則私有來源，不發布卡牌、Q&A、
 勘誤或規則文件，不同步 battle 素材，不重設搜尋 rebuild lease，也不顯式重建或重建置 Meilisearch。
 只可用於資料契約向後相容、且不需要同步發布內容的 release；任何卡牌、規則或搜尋 schema 變更仍須
 使用完整部署。
@@ -857,7 +858,7 @@ Cloudflare Cache Rules → 透過正常 DNS 與香港直連驗證快取。`/api/
 公開／私人 API Header、battle 素材版本、真實 MIME、內容與缺失素材 404。
 
 runtime-only 的順序則固定為：相同備份與 checkout → 唯讀驗證既有 Meilisearch 與 runtime 設定 →
-只建置 migration image 並 migrate → 讀取既有 dataset SHA 並以目前 API preflight 驗證 →
+只建置 migration image 並 migrate → 讀取既有 dataset SHA 與官方 release build ID，並以目前 API preflight 驗證 →
 建置 game／api／platform → 不觸碰搜尋 lease 直接 `docker compose up --wait` → 執行相同 smoke。
 
 本地完整重建與唯讀狀態檢查分別使用：

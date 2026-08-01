@@ -37,6 +37,7 @@ SERVER4_ALLOWED_ORIGIN="${SERVER4_ALLOWED_ORIGIN:-https://battle.zutomayocard.on
 DIRECT_SMOKE_ADDRESS="${DIRECT_SMOKE_ADDRESS:-$SERVER_HOST}"
 DEPLOY_SMOKE_REPORT_PATH="${DEPLOY_SMOKE_REPORT_PATH:-}"
 CARD_DATASET_SHA256="${VITE_CARD_DATASET_SHA256:-}"
+OFFICIAL_RELEASE_BUILD_ID="${OFFICIAL_RELEASE_BUILD_ID:-}"
 CLOUDFLARE_CACHE_RULES_REQUIRED="${CLOUDFLARE_CACHE_RULES_REQUIRED:-false}"
 OFFICIAL_TRANSLATIONS_SOURCE="${OFFICIAL_TRANSLATIONS_SOURCE:-$PROJECT_DIR/data/official-rulings-translations.json}"
 OFFICIAL_RULE_DOCUMENTS_SOURCE="${OFFICIAL_RULE_DOCUMENTS_SOURCE:-$PROJECT_DIR/data/official-rule-documents-20260721.json}"
@@ -97,6 +98,8 @@ ssh_run() { ssh -p "$SERVER_PORT" "$SERVER_USER@$SERVER_HOST" "$@"; }
 [[ "$DEPLOY_WAIT_SECONDS" =~ ^[0-9]+$ ]] || die 'DEPLOY_WAIT_SECONDS must be an integer'
 [[ -z "$CARD_DATASET_SHA256" || "$CARD_DATASET_SHA256" =~ ^[a-f0-9]{64}$ ]] || \
   die 'VITE_CARD_DATASET_SHA256 must be a lowercase SHA-256 digest'
+[[ -z "$OFFICIAL_RELEASE_BUILD_ID" || "$OFFICIAL_RELEASE_BUILD_ID" =~ ^[a-f0-9]{40}$ ]] || \
+  die 'OFFICIAL_RELEASE_BUILD_ID must be a 40-character Git SHA'
 [[ "$SERVER4_ALLOWED_ORIGIN" =~ ^https://[A-Za-z0-9.-]+(:[0-9]+)?$ ]] || \
   die 'SERVER4_ALLOWED_ORIGIN must be one HTTPS origin without a path'
 [[ -z "$PUBLIC_SMOKE_BASE_URL" || "$PUBLIC_SMOKE_BASE_URL" =~ ^https?://[A-Za-z0-9._:-]+/?$ ]] || \
@@ -357,6 +360,32 @@ load_remote_card_dataset_sha256() {
   log "preserving server4 card dataset SHA-256: $CARD_DATASET_SHA256"
 }
 
+load_remote_official_release_build_id() {
+  local report_file derived_build_id
+  report_file="$(mktemp)"
+  if ! ssh_run "curl --fail --silent http://127.0.0.1:$API_PORT/api/official/status" >"$report_file"; then
+    rm -f "$report_file"
+    return 1
+  fi
+  derived_build_id="$(node -e '
+    const fs = require("node:fs");
+    const report = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+    if (!/^[a-f0-9]{40}$/.test(report.buildId || "")) {
+      throw new Error("official-rulings status returned an invalid build ID");
+    }
+    process.stdout.write(report.buildId);
+  ' "$report_file")" || {
+    rm -f "$report_file"
+    return 1
+  }
+  rm -f "$report_file"
+  if [[ -n "$OFFICIAL_RELEASE_BUILD_ID" && "$OFFICIAL_RELEASE_BUILD_ID" != "$derived_build_id" ]]; then
+    die "operator-provided official release build ID does not match server4: expected=$OFFICIAL_RELEASE_BUILD_ID actual=$derived_build_id"
+  fi
+  OFFICIAL_RELEASE_BUILD_ID="$derived_build_id"
+  log "preserving server4 official-rulings release build ID: $OFFICIAL_RELEASE_BUILD_ID"
+}
+
 sync_battle_assets() {
   local remote_stage="${REMOTE_BATTLE_ASSET_DIR}.next"
   awk 'NF { print $2 }' "$BATTLE_ASSET_CHECKSUMS" \
@@ -611,6 +640,7 @@ run_smoke() {
     --platform-port "$SMOKE_LOCAL_PLATFORM_PORT"
     --expected-build-id "$expected_build_id"
     --expected-dataset-sha256 "$CARD_DATASET_SHA256"
+    --expected-official-build-id "${OFFICIAL_RELEASE_BUILD_ID:-$expected_build_id}"
     --check-battle-assets true
   )
   if [[ -n "$PUBLIC_SMOKE_BASE_URL" ]]; then
@@ -677,6 +707,7 @@ if [[ "$DRY_RUN" == true ]]; then
   log "[dry-run] schema=$EXPECTED_SCHEMA_MIGRATION checksum=$EXPECTED_SCHEMA_CHECKSUM"
   if [[ "$DEPLOY_MODE" == runtime-only ]]; then
     log '[dry-run] would preserve and verify the existing card dataset SHA-256'
+    log '[dry-run] would preserve and verify the existing official-rulings release build ID'
     log '[dry-run] would preserve published cards, official content, private battle assets, and the search index'
     log '[dry-run] would verify the external 1Panel Meilisearch service without reconfiguring or recreating it'
   else
@@ -735,6 +766,7 @@ if [[ "$DEPLOY_MODE" == full ]]; then
   reindex_knowledge_search || die 'knowledge search reindex failed; the running application release was not replaced'
 else
   load_remote_card_dataset_sha256
+  load_remote_official_release_build_id || die 'existing official-rulings release build ID could not be preserved'
   log 'verifying the preserved public card dataset identity against the running API'
   preflight_card_dataset || die 'preserved public card dataset preflight failed; runtime images were not built'
 fi

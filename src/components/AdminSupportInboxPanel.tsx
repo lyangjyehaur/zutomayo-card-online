@@ -173,7 +173,7 @@ export function AdminSupportInboxPanel({ token }: { token: string }) {
           ) : emails.length === 0 ? (
             <EmptyState title="目前沒有郵件" description="切換狀態或同步 Resend 再查看。" />
           ) : (
-            <DataListTable className="admin-responsive-table">
+            <DataListTable className="admin-responsive-table admin-support-inbox-table">
               <thead>
                 <tr>
                   <th>寄件者／主旨</th>
@@ -186,7 +186,12 @@ export function AdminSupportInboxPanel({ token }: { token: string }) {
                 {emails.map((email) => (
                   <tr key={email.id} className={selectedId === email.id ? 'bg-accent-primary/5' : undefined}>
                     <DataListCell label="寄件者／主旨">
-                      <div className="grid min-w-0 gap-1">
+                      <button
+                        type="button"
+                        className="grid min-h-touch w-full min-w-0 gap-1 rounded-sm p-1 text-left transition hover:bg-accent-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--focus-ring-color]"
+                        aria-pressed={selectedId === email.id}
+                        onClick={() => void loadDetail(email.id)}
+                      >
                         <strong className="truncate text-content-primary">{email.sender}</strong>
                         <span className="truncate text-body-sm text-content-muted">{email.subject || '(無主旨)'}</span>
                         {email.attachmentCount > 0 && (
@@ -194,7 +199,7 @@ export function AdminSupportInboxPanel({ token }: { token: string }) {
                             <Paperclip className="size-3" /> {email.attachmentCount} 個附件
                           </span>
                         )}
-                      </div>
+                      </button>
                     </DataListCell>
                     <DataListCell label="狀態">{statusBadge(email.status)}</DataListCell>
                     <DataListCell label="收到時間" className="text-body-sm">
