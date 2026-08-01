@@ -35,6 +35,7 @@ import type { IncomingHttpHeaders, IncomingMessage } from 'http';
 import { createPlatformSeatToken } from './platform/seatToken';
 import {
   contentSecurityScriptSources,
+  gameCorsOrigins,
   postgresConnectionString,
   postgresSslConfig,
   requireSecret,
@@ -45,7 +46,12 @@ import {
 } from './runtimeSecurityConfig';
 import { createServiceReadiness } from './operational/serviceLifecycle';
 import { drainNetwork } from './operational/networkDrain';
-import { resolveSocketIoRuntime, type SocketNamespaceRuntime } from './operational/socketIoRuntime';
+import {
+  resolveSocketClientIp,
+  resolveSocketIoRuntime,
+  type SocketHandshakeRuntime,
+  type SocketNamespaceRuntime,
+} from './operational/socketIoRuntime';
 import { replayJsonRequestBody } from './server/requestBodyReplay';
 import { createOnlineRematchSetupData } from './server/onlineRematch';
 import { CACHE_CONTROL, frontendCacheControl } from './server/cachePolicy';
@@ -189,11 +195,6 @@ if (process.env.SENTRY_DSN) {
     },
   });
 }
-
-const configuredOrigins =
-  process.env.ALLOWED_ORIGINS?.split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean) ?? [];
 
 const METRICS_TOKEN = process.env.METRICS_TOKEN ?? '';
 function checkMetricsAuth(authorization: string | undefined): boolean {
@@ -425,7 +426,7 @@ const server = Server({
   games: [ZutomayoOnlineCard],
   db: db as unknown as NonNullable<ServerOpts['db']>,
   transport,
-  origins: ['http://localhost:3000', /localhost:\d+/, /127\.0\.0\.1:\d+/, ...configuredOrigins],
+  origins: gameCorsOrigins(),
   authenticateCredentials: authenticateVersionedCredentials,
 });
 
@@ -1136,7 +1137,7 @@ function startBackgroundWorkers(): void {
 type RunningServers = Awaited<ReturnType<typeof server.run>>;
 type SocketLike = {
   id: string;
-  handshake: { address: string };
+  handshake: SocketHandshakeRuntime;
   on: (event: string, cb: (err?: Error) => void) => void;
   disconnect: (close?: boolean) => void;
 };
@@ -1248,7 +1249,7 @@ async function bootstrap(): Promise<void> {
         const connectionsPerIp = new Map<string, number>();
         namespace.on('connection', (runtimeSocket) => {
           const socket = runtimeSocket as SocketLike;
-          const ip = socket.handshake.address;
+          const ip = resolveSocketClientIp(socket.handshake) || 'unknown';
           const current = connectionsPerIp.get(ip) ?? 0;
           if (current >= MAX_CONN_PER_IP) {
             socket.disconnect(true);

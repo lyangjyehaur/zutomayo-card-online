@@ -66,9 +66,16 @@ COPY scripts/cardDerivedEffects.ts ./scripts/cardDerivedEffects.ts
 COPY scripts/import-card-derived-effects-pg.ts ./scripts/import-card-derived-effects-pg.ts
 COPY scripts/reviewedUnlistedCardRelease.ts ./scripts/reviewedUnlistedCardRelease.ts
 COPY scripts/release-reviewed-unlisted-cards.ts ./scripts/release-reviewed-unlisted-cards.ts
-COPY src/game/effects/parser.ts ./src/game/effects/parser.ts
-COPY src/game/effects/types.ts ./src/game/effects/types.ts
-COPY src/game/types.ts ./src/game/types.ts
+COPY scripts/cardDatasetGate.ts ./scripts/cardDatasetGate.ts
+COPY scripts/rule-audit.ts ./scripts/rule-audit.ts
+COPY scripts/effect-dispatch-coverage.ts ./scripts/effect-dispatch-coverage.ts
+COPY scripts/cardSource.ts ./scripts/cardSource.ts
+COPY scripts/game-smoke.ts ./scripts/game-smoke.ts
+COPY scripts/public-card-dataset-preflight.ts ./scripts/public-card-dataset-preflight.ts
+COPY src/game ./src/game
+COPY src/sentry.ts ./src/sentry.ts
+COPY src/version.ts ./src/version.ts
+COPY src/runtimeSecurityConfig.ts ./src/runtimeSecurityConfig.ts
 COPY src/rulesTerminology.ts ./src/rulesTerminology.ts
 
 USER node
