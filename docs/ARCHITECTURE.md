@@ -220,6 +220,7 @@ match_analytics_events(source_match_digest, sequence, typed_allowlisted_event)
 match-shell 座位生命週期寫入，只保留可信的配對來源、traffic class 與每席 disconnect／reconnect
 次數，隨來源 match `ON DELETE CASCADE`。它不接受 client 自稱的 mode/test flag，也不保存 room、session、
 socket、user ID 或 IP。`/resume` 另在 `bjg_match_seats.resume_count` 計數，避免與 WebSocket reconnect 混淆。
+首次成功 seat proof 只設定 `last_resumed_at`；同一座位後續再次成功取得 proof 才增加 `resume_count`。
 
 三張 `match_analytics*` 表是不依附 `bjg_matches` foreign key
 的去識別永久分析層。原始 match ID 先做 SHA-256 digest，兩副牌只保存排序後的卡牌定義 ID，事件由

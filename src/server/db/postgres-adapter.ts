@@ -837,9 +837,9 @@ export class PostgresAdapter {
         const rankedEligible = playerData.rankedEligible === true;
         await client.query(
           `INSERT INTO bjg_match_seats (
-             match_id, player_id, user_id, ranked_eligible, credential_hash, reserved_at, last_resumed_at
+             match_id, player_id, user_id, ranked_eligible, credential_hash, reserved_at
            )
-           VALUES ($1, $2, $3, $4, $5, NOW(), NOW())`,
+           VALUES ($1, $2, $3, $4, $5, NOW())`,
           [input.matchID, input.playerID, userId, rankedEligible, expectedHash],
         );
         seat = {
@@ -860,7 +860,7 @@ export class PostgresAdapter {
       await client.query(
         `UPDATE bjg_match_seats
             SET last_resumed_at = NOW(),
-                resume_count = resume_count + 1
+                resume_count = resume_count + CASE WHEN last_resumed_at IS NULL THEN 0 ELSE 1 END
           WHERE match_id = $1 AND player_id = $2`,
         [input.matchID, input.playerID],
       );

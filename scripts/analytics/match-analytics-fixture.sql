@@ -93,7 +93,8 @@ SELECT lpad(to_hex(201), 64, '0'), sequence, 1, 'effectOrder', 0,
        'timeoutAdvance', 'effectOrder', '{"timedOutStep":"effectOrder"}'::jsonb
 FROM generate_series(0, 2) AS events(sequence);
 
--- One abandoned session validates funnel/length handling.
+-- One never-formed room validates that the funnel separates empty shells from
+-- gameplay abandonment while the operational length report still retains it.
 INSERT INTO match_analytics (
   source_match_digest, environment, traffic_class, match_mode, rating_mode,
   app_version, build_id, rules_version, dataset_sha256, started_at, completed_at,
@@ -104,7 +105,8 @@ INSERT INTO match_analytics (
   lpad(to_hex(202), 64, '0'), 'test', 'production', 'quick_match', 'unrated',
   'fixture-app', 'analytics-fixture', 'fixture-rules', 'fixture-dataset-a',
   '2026-07-31 04:00:00+00', '2026-07-31 04:10:00+00', 600, 2, 'abandoned',
-  'inactive-room', ARRAY[100, 100], ARRAY['registered', 'unknown'], ARRAY['abandoned'],
+  'inactive-room', ARRAY[100, 100], ARRAY['registered', 'unknown'],
+  ARRAY['abandoned', 'missing-seat-reservation'],
   0, 0, ARRAY[0, 0], ARRAY[0, 0], ARRAY[0, 0], 2, 0,
   lpad(to_hex(1202), 64, '0')
 );

@@ -1,8 +1,8 @@
-day,environment,traffic_class,match_mode,seat_classes,app_version,rules_version,dataset_sha256,sessions,completed_sessions,abandoned_sessions,completion_rate,abandonment_rate
-2026-07-31 00:00:00+00,test,operator,direct,"{registered,registered}",fixture-app,fixture-rules,fixture-dataset-a,1,1,0,1,0
-2026-07-31 00:00:00+00,test,production,custom_room,"{guest,registered}",fixture-app,fixture-rules,fixture-dataset-b,1,1,0,1,0
-2026-07-31 00:00:00+00,test,production,quick_match,"{registered,unknown}",fixture-app,fixture-rules,fixture-dataset-a,1,0,1,0,1
-2026-07-31 00:00:00+00,test,production,quick_match,"{registered,registered}",fixture-app,fixture-rules,fixture-dataset-a,101,101,0,1,0
+day,environment,traffic_class,match_mode,seat_classes,app_version,rules_version,dataset_sha256,sessions,unformed_sessions,formed_sessions,completed_sessions,abandoned_sessions,room_formation_rate,completion_rate,abandonment_rate
+2026-07-31 00:00:00+00,test,operator,direct,"{registered,registered}",fixture-app,fixture-rules,fixture-dataset-a,1,0,1,1,0,1,1,0
+2026-07-31 00:00:00+00,test,production,custom_room,"{guest,registered}",fixture-app,fixture-rules,fixture-dataset-b,1,0,1,1,0,1,1,0
+2026-07-31 00:00:00+00,test,production,quick_match,"{registered,unknown}",fixture-app,fixture-rules,fixture-dataset-a,1,1,0,0,0,0,,
+2026-07-31 00:00:00+00,test,production,quick_match,"{registered,registered}",fixture-app,fixture-rules,fixture-dataset-a,101,0,101,101,0,1,1,0
 app_version,rules_version,dataset_sha256,match_mode,connection_class,step,actor_seat,matches,timeout_affected_matches,timeout_affected_rate,timeout_events,affected_matches
 fixture-app,fixture-rules,fixture-dataset-a,quick_match,disconnected,effectOrder,0,6,6,1,5,3
 fixture-app,fixture-rules,fixture-dataset-a,quick_match,disconnected,effectOrder,1,6,6,1,3,3

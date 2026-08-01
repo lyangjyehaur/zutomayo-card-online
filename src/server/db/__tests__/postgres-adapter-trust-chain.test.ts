@@ -492,7 +492,54 @@ describe('PostgresAdapter trust-chain transactions', () => {
     ]);
     expect(
       transactionClient.query.mock.calls.find(([sql]) => String(sql).includes('UPDATE bjg_match_seats'))?.[0],
-    ).toContain('resume_count = resume_count + 1');
+    ).toContain('resume_count = resume_count + CASE WHEN last_resumed_at IS NULL THEN 0 ELSE 1 END');
+  });
+
+  it('does not count the initial proof for a backfilled seat as a resume', async () => {
+    const credentialHash = crypto.createHash('sha256').update('credential-a').digest('hex');
+    const schemaClient = mockClient();
+    const transactionClient = mockClient(async (sql) => {
+      if (sql.includes('FROM bjg_matches') && sql.includes('FOR UPDATE')) {
+        return {
+          rows: [
+            {
+              metadata: {
+                ...metadata(),
+                players: {
+                  '0': {
+                    name: 'Alice',
+                    credentials: 'credential-a',
+                    data: { userId: 'u_alice', identitySource: 'server', rankedEligible: true },
+                  },
+                  '1': {},
+                },
+              },
+            },
+          ],
+          rowCount: 1,
+        };
+      }
+      if (sql.includes('FROM bjg_match_seats')) return { rows: [], rowCount: 0 };
+      return { rows: [], rowCount: 1 };
+    });
+    const pool = mockPool([schemaClient, transactionClient]);
+    const adapter = new PostgresAdapter({ pool: pool as never, createIndexes: false });
+
+    await adapter.resumeMatchSeat({
+      matchID: 'match_1',
+      playerID: '0',
+      credentials: 'credential-a',
+      authenticatedUserId: 'u_alice',
+    });
+
+    const insert = transactionClient.query.mock.calls.find(([sql]) =>
+      String(sql).includes('INSERT INTO bjg_match_seats'),
+    );
+    expect(insert?.[0]).not.toContain('last_resumed_at');
+    expect(insert?.[1]).toEqual(['match_1', '0', 'u_alice', true, credentialHash]);
+    expect(
+      transactionClient.query.mock.calls.find(([sql]) => String(sql).includes('UPDATE bjg_match_seats'))?.[0],
+    ).toContain('CASE WHEN last_resumed_at IS NULL THEN 0 ELSE 1 END');
   });
 
   it('writes terminal state and canonical outbox row in the same transaction', async () => {

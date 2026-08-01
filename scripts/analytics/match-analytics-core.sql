@@ -17,15 +17,34 @@ WITH daily AS (
     rules_version,
     dataset_sha256,
     COUNT(*) AS sessions,
+    COUNT(*) FILTER (
+      WHERE outcome = 'abandoned'
+        AND action_count = 0
+        AND quality_flags @> ARRAY['missing-seat-reservation']::text[]
+    ) AS unformed_sessions,
+    COUNT(*) FILTER (
+      WHERE NOT (
+        outcome = 'abandoned'
+        AND action_count = 0
+        AND quality_flags @> ARRAY['missing-seat-reservation']::text[]
+      )
+    ) AS formed_sessions,
     COUNT(*) FILTER (WHERE outcome <> 'abandoned') AS completed_sessions,
-    COUNT(*) FILTER (WHERE outcome = 'abandoned') AS abandoned_sessions
+    COUNT(*) FILTER (
+      WHERE outcome = 'abandoned'
+        AND NOT (
+          action_count = 0
+          AND quality_flags @> ARRAY['missing-seat-reservation']::text[]
+        )
+    ) AS abandoned_sessions
   FROM match_analytics
   GROUP BY 1, 2, 3, 4, 5, 6, 7, 8
 )
 SELECT
   *,
-  completed_sessions::double precision / NULLIF(sessions, 0) AS completion_rate,
-  abandoned_sessions::double precision / NULLIF(sessions, 0) AS abandonment_rate
+  formed_sessions::double precision / NULLIF(sessions, 0) AS room_formation_rate,
+  completed_sessions::double precision / NULLIF(formed_sessions, 0) AS completion_rate,
+  abandoned_sessions::double precision / NULLIF(formed_sessions, 0) AS abandonment_rate
 FROM daily
 ORDER BY day DESC, environment, traffic_class, match_mode;
 
