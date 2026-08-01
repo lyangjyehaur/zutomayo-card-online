@@ -787,6 +787,20 @@ Cosign、attestation、retention worker 或七角色矩陣。部署入口只有�
 ./scripts/deploy-server4.sh --confirm
 ```
 
+需要只上線已合併的 runtime、migration 或管理介面，而不發布仍在複核中的卡牌與規則資料時，使用：
+
+```bash
+./scripts/deploy-server4.sh --runtime-only --confirm
+```
+
+`--runtime-only` 仍要求乾淨且與 `origin/master` 完全一致的本機 `master`，並執行遠端設定快照、
+新的 PostgreSQL `pg_dump -Fc`、最新 migration、runtime image 建置、服務健康檢查、battle 素材 smoke、
+公開／香港直連 cache smoke。它會沿用 server4 現有的 `VITE_CARD_DATASET_SHA256`，以唯讀 preflight
+確認目前 API 的資料集完全一致後才建置。此模式不讀取本機卡牌／規則私有來源，不發布卡牌、Q&A、
+勘誤或規則文件，不同步 battle 素材，不重設搜尋 rebuild lease，也不顯式重建或重建置 Meilisearch。
+只可用於資料契約向後相容、且不需要同步發布內容的 release；任何卡牌、規則或搜尋 schema 變更仍須
+使用完整部署。
+
 腳本只接受目前乾淨且已推送的本機 `master`，並要求本機 `HEAD`、`origin/master` 與
 server4 最終 checkout 三者完全一致；不支援 `--sha` 或 `--manifest`。Server4 的 `.env`
 至少需要：
@@ -841,6 +855,10 @@ preflight、留存報告並將 SHA-256 寫入 `.env` → `npm run search:reindex
 Cloudflare Cache Rules → 透過正常 DNS 與香港直連驗證快取。`/api/app-version` 的 `datasetSha256`
 必須與 preflight 完全一致；不一致時 deployment smoke 失敗。Cache smoke 涵蓋 PWA 控制檔、
 公開／私人 API Header、battle 素材版本、真實 MIME、內容與缺失素材 404。
+
+runtime-only 的順序則固定為：相同備份與 checkout → 唯讀驗證既有 Meilisearch 與 runtime 設定 →
+只建置 migration image 並 migrate → 讀取既有 dataset SHA 並以目前 API preflight 驗證 →
+建置 game／api／platform → 不觸碰搜尋 lease 直接 `docker compose up --wait` → 執行相同 smoke。
 
 本地完整重建與唯讀狀態檢查分別使用：
 
