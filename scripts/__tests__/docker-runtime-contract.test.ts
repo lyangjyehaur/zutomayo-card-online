@@ -87,6 +87,13 @@ describe('game runtime image contract', () => {
     expect(dockerfile).toContain('COPY scripts/cardDerivedEffects.ts');
     expect(dockerfile).toContain('COPY scripts/import-card-derived-effects-pg.ts');
     expect(dockerfile).toContain('COPY scripts/release-reviewed-unlisted-cards.ts');
+    expect(dockerfile).toContain('COPY scripts/cardDatasetGate.ts ./scripts/cardDatasetGate.ts');
+    expect(dockerfile).toContain('COPY scripts/game-smoke.ts ./scripts/game-smoke.ts');
+    expect(dockerfile).toContain(
+      'COPY scripts/public-card-dataset-preflight.ts ./scripts/public-card-dataset-preflight.ts',
+    );
+    expect(dockerfile).toContain('COPY src/game ./src/game');
+    expect(dockerfile).toContain('COPY src/runtimeSecurityConfig.ts ./src/runtimeSecurityConfig.ts');
     expect(dockerfile).toContain('COPY src/rulesTerminology.ts');
     expect(dockerignore).toContain('data/official-rulings-*.json');
     expect(dockerfile).toContain('COPY api/runtimeSecurityConfig.cjs ./api/runtimeSecurityConfig.cjs');
