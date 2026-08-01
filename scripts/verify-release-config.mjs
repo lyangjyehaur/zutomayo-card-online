@@ -135,7 +135,7 @@ function assertRuntimeEnvironmentInventory() {
   }
 
   const game = serviceBlock(SERVER4_COMPOSE, 'game');
-  for (const fragment of ['DEPLOYMENT_ENV=production', 'CARD_DATASET_SHA256=${VITE_CARD_DATASET_SHA256:?']) {
+  for (const fragment of ['DEPLOYMENT_ENV=production', 'CARD_DATASET_SHA256=${VITE_CARD_DATASET_SHA256:-}']) {
     if (!game.includes(fragment)) {
       throw new Error(`${SERVER4_COMPOSE} game runtime is missing ${fragment}`);
     }
@@ -253,7 +253,9 @@ function assertServer4DeployScript() {
     'APP_BUILD_ID',
     'APP_VERSION',
     'GAME_RULES_VERSION',
-    'VITE_CARD_DATASET_SHA256:?',
+    'VITE_CARD_DATASET_SHA256:-',
+    'SERVER4_ALLOWED_ORIGIN',
+    'ALLOWED_ORIGINS must contain only the production HTTPS origin',
     '--expected-dataset-sha256',
     'EXPECTED_SCHEMA_MIGRATION',
     'EXPECTED_SCHEMA_CHECKSUM',
@@ -265,7 +267,10 @@ function assertServer4DeployScript() {
     'CONFIG GET maxmemory-policy',
     'noeviction',
     'docker compose -f',
-    'build --pull migrate game api platform',
+    'build --pull migrate',
+    'public-card-dataset-preflight.ts',
+    'record_card_dataset_sha256',
+    'build --pull game api platform',
     'up -d --wait',
     'deploy-smoke.mjs',
     'battle-assets.sha256',
@@ -293,6 +298,16 @@ function assertServer4DeployScript() {
   ];
   for (const fragment of requiredFragments) {
     if (!deploy.includes(fragment)) throw new Error(`${relativePath} is missing beta safety step: ${fragment}`);
+  }
+
+  const migrationBuild = deploy.indexOf('remote_build_migration ||');
+  const datasetPreflight = deploy.indexOf('preflight_card_dataset ||');
+  const datasetRecord = deploy.indexOf('record_card_dataset_sha256 ||');
+  const runtimeBuild = deploy.indexOf('remote_build_runtime ||');
+  if (!(migrationBuild < datasetPreflight && datasetPreflight < datasetRecord && datasetRecord < runtimeBuild)) {
+    throw new Error(
+      `${relativePath} must migrate and derive/record the public dataset SHA-256 before building runtime images`,
+    );
   }
 
   for (const forbidden of [

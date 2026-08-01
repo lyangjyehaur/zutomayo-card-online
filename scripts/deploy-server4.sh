@@ -32,9 +32,10 @@ SMOKE_LOCAL_GAME_PORT="${SMOKE_LOCAL_GAME_PORT:-13000}"
 SMOKE_LOCAL_API_PORT="${SMOKE_LOCAL_API_PORT:-13001}"
 SMOKE_LOCAL_PLATFORM_PORT="${SMOKE_LOCAL_PLATFORM_PORT:-13002}"
 PUBLIC_SMOKE_BASE_URL="${PUBLIC_SMOKE_BASE_URL:-https://battle.zutomayocard.online}"
+SERVER4_ALLOWED_ORIGIN="${SERVER4_ALLOWED_ORIGIN:-https://battle.zutomayocard.online}"
 DIRECT_SMOKE_ADDRESS="${DIRECT_SMOKE_ADDRESS:-$SERVER_HOST}"
 DEPLOY_SMOKE_REPORT_PATH="${DEPLOY_SMOKE_REPORT_PATH:-}"
-CARD_DATASET_SHA256="${VITE_CARD_DATASET_SHA256:?Set VITE_CARD_DATASET_SHA256 from the verified card-dataset receipt}"
+CARD_DATASET_SHA256="${VITE_CARD_DATASET_SHA256:-}"
 CLOUDFLARE_CACHE_RULES_REQUIRED="${CLOUDFLARE_CACHE_RULES_REQUIRED:-false}"
 OFFICIAL_TRANSLATIONS_SOURCE="${OFFICIAL_TRANSLATIONS_SOURCE:-$PROJECT_DIR/data/official-rulings-translations.json}"
 OFFICIAL_RULE_DOCUMENTS_SOURCE="${OFFICIAL_RULE_DOCUMENTS_SOURCE:-$PROJECT_DIR/data/official-rule-documents-20260721.json}"
@@ -91,8 +92,10 @@ ssh_run() { ssh -p "$SERVER_PORT" "$SERVER_USER@$SERVER_HOST" "$@"; }
 [[ "$MEILI_EXPECTED_IMAGE" =~ ^[A-Za-z0-9._/:@-]+$ ]] || die 'MEILI_EXPECTED_IMAGE is invalid'
 [[ "$MEILI_APP_DIR" =~ ^/[A-Za-z0-9._/-]+$ ]] || die 'MEILI_APP_DIR contains unsupported characters'
 [[ "$DEPLOY_WAIT_SECONDS" =~ ^[0-9]+$ ]] || die 'DEPLOY_WAIT_SECONDS must be an integer'
-[[ "$CARD_DATASET_SHA256" =~ ^[a-f0-9]{64}$ ]] || \
+[[ -z "$CARD_DATASET_SHA256" || "$CARD_DATASET_SHA256" =~ ^[a-f0-9]{64}$ ]] || \
   die 'VITE_CARD_DATASET_SHA256 must be a lowercase SHA-256 digest'
+[[ "$SERVER4_ALLOWED_ORIGIN" =~ ^https://[A-Za-z0-9.-]+(:[0-9]+)?$ ]] || \
+  die 'SERVER4_ALLOWED_ORIGIN must be one HTTPS origin without a path'
 [[ -z "$PUBLIC_SMOKE_BASE_URL" || "$PUBLIC_SMOKE_BASE_URL" =~ ^https?://[A-Za-z0-9._:-]+/?$ ]] || \
   die 'PUBLIC_SMOKE_BASE_URL must be an HTTP(S) origin URL'
 
@@ -320,8 +323,8 @@ remote_sync_master_and_env() {
     upsert_env GAME_RULES_VERSION '$PACKAGE_VERSION'
     upsert_env EXPECTED_SCHEMA_MIGRATION '$EXPECTED_SCHEMA_MIGRATION'
     upsert_env EXPECTED_SCHEMA_CHECKSUM '$EXPECTED_SCHEMA_CHECKSUM'
-    upsert_env VITE_CARD_DATASET_SHA256 '$CARD_DATASET_SHA256'
-    grep -E '^(APP_BUILD_ID|APP_VERSION|GAME_RULES_VERSION|EXPECTED_SCHEMA_MIGRATION|EXPECTED_SCHEMA_CHECKSUM|VITE_CARD_DATASET_SHA256)=' .env"
+    upsert_env ALLOWED_ORIGINS '$SERVER4_ALLOWED_ORIGIN'
+    grep -E '^(APP_BUILD_ID|APP_VERSION|GAME_RULES_VERSION|EXPECTED_SCHEMA_MIGRATION|EXPECTED_SCHEMA_CHECKSUM|ALLOWED_ORIGINS|VITE_CARD_DATASET_SHA256)=' .env"
 }
 
 sync_battle_assets() {
@@ -356,6 +359,15 @@ verify_remote_runtime_config() {
     : \"\${PG_APP_PASSWORD:?PG_APP_PASSWORD is required}\"
     : \"\${REDIS_URL:?REDIS_URL is required}\"
     : \"\${MEILI_MASTER_KEY:?MEILI_MASTER_KEY is required}\"
+    : \"\${TRUSTED_PROXY:?TRUSTED_PROXY is required}\"
+    test \"\${ALLOWED_ORIGINS:-}\" = '$SERVER4_ALLOWED_ORIGIN' || {
+      echo 'ALLOWED_ORIGINS must contain only the production HTTPS origin' >&2
+      exit 1
+    }
+    case \",\$TRUSTED_PROXY,\" in
+      *,172.16.0.0/12,*) ;;
+      *) echo 'TRUSTED_PROXY must include the Docker ingress range 172.16.0.0/12' >&2; exit 1 ;;
+    esac
     test \"\${#MEILI_MASTER_KEY}\" -ge 16 || { echo 'MEILI_MASTER_KEY must contain at least 16 characters' >&2; exit 1; }
     test \"\${PGSSLMODE:-}\" = verify-full || { echo 'PGSSLMODE must be verify-full' >&2; exit 1; }
     test -r \"\${PG_CA_FILE:?PG_CA_FILE is required}\" || { echo 'PG_CA_FILE is not readable' >&2; exit 1; }
@@ -387,11 +399,67 @@ verify_remote_runtime_config() {
     echo 'Redis eviction policy: noeviction'"
 }
 
-remote_build_and_migrate() {
+remote_build_migration() {
   ssh_run "set -euo pipefail
     cd '$REMOTE_DIR'
-    docker compose -f '$COMPOSE_FILE' build --pull migrate game api platform
+    docker compose -f '$COMPOSE_FILE' build --pull migrate
     docker compose -f '$COMPOSE_FILE' run --rm migrate"
+}
+
+preflight_card_dataset() {
+  local report_file derived_hash remote_report
+  report_file="$(mktemp)"
+  if ! ssh_run "set -euo pipefail
+    cd '$REMOTE_DIR'
+    docker compose -f '$COMPOSE_FILE' run --rm -T migrate \
+      node --import tsx scripts/public-card-dataset-preflight.ts \
+      --base-url http://api:3001/api/" >"$report_file"; then
+    rm -f "$report_file"
+    return 1
+  fi
+  derived_hash="$(node -e '
+    const fs = require("node:fs");
+    const report = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+    if (report.status !== "passed") throw new Error("card dataset preflight did not pass");
+    if (!/^[a-f0-9]{64}$/.test(report.datasetSha256 || "")) throw new Error("card dataset preflight returned an invalid SHA-256 digest");
+    process.stdout.write(report.datasetSha256);
+  ' "$report_file")" || {
+    rm -f "$report_file"
+    return 1
+  }
+  if [[ -n "$CARD_DATASET_SHA256" && "$CARD_DATASET_SHA256" != "$derived_hash" ]]; then
+    rm -f "$report_file"
+    die "operator-provided card dataset SHA-256 does not match preflight: expected=$CARD_DATASET_SHA256 actual=$derived_hash"
+  fi
+  CARD_DATASET_SHA256="$derived_hash"
+  remote_report="$REMOTE_DIR/.release-evidence/production/card-dataset-preflight-$TARGET_SHA.json"
+  if ! ssh -p "$SERVER_PORT" "$SERVER_USER@$SERVER_HOST" "set -euo pipefail
+      umask 077
+      mkdir -p '$REMOTE_DIR/.release-evidence/production'
+      cat > '$remote_report'" <"$report_file"; then
+    rm -f "$report_file"
+    return 1
+  fi
+  rm -f "$report_file"
+  log "verified public card dataset SHA-256: $CARD_DATASET_SHA256"
+}
+
+record_card_dataset_sha256() {
+  ssh_run "set -euo pipefail
+    cd '$REMOTE_DIR'
+    if grep -q '^VITE_CARD_DATASET_SHA256=' .env; then
+      sed -i 's|^VITE_CARD_DATASET_SHA256=.*|VITE_CARD_DATASET_SHA256=$CARD_DATASET_SHA256|' .env
+    else
+      printf '%s\n' 'VITE_CARD_DATASET_SHA256=$CARD_DATASET_SHA256' >> .env
+    fi
+    grep -qx 'VITE_CARD_DATASET_SHA256=$CARD_DATASET_SHA256' .env"
+}
+
+remote_build_runtime() {
+  ssh_run "set -euo pipefail
+    cd '$REMOTE_DIR'
+    docker compose -f '$COMPOSE_FILE' config --quiet
+    docker compose -f '$COMPOSE_FILE' build --pull game api platform"
 }
 
 reindex_knowledge_search() {
@@ -557,6 +625,8 @@ if [[ "$DRY_RUN" == true ]]; then
   log "[dry-run] would stream and transactionally import reviewed card-derived names"
   log "[dry-run] would stream and transactionally publish reviewed unlisted cards"
   log "[dry-run] would back up, configure, and verify the external 1Panel Meilisearch service"
+  log "[dry-run] would set ALLOWED_ORIGINS=$SERVER4_ALLOWED_ORIGIN"
+  log '[dry-run] would derive and record the card dataset SHA-256 after publishing data and before building runtime images'
   log "[dry-run] would atomically rebuild and verify the Meilisearch knowledge index"
   log "[dry-run] would synchronize and verify $BATTLE_ASSET_COUNT private battle assets"
   log "[dry-run] would verify every battle asset through origin and $PUBLIC_SMOKE_BASE_URL"
@@ -580,7 +650,7 @@ verify_remote_runtime_config
 log 'synchronizing private battle assets outside GitHub'
 sync_battle_assets
 
-remote_build_and_migrate || die 'build or migration failed; the running release was not replaced'
+remote_build_migration || die 'migration image build or schema migration failed; the running release was not replaced'
 log 'streaming and transactionally publishing reviewed unlisted cards'
 release_reviewed_unlisted_cards || die 'reviewed unlisted-card release gate failed; the running release was not replaced'
 log 'streaming and transactionally importing reviewed card-derived names'
@@ -591,8 +661,13 @@ log 'synchronizing and atomically activating current official Q&A, errata, and f
 release_official_rulings || die 'official-rulings release gate failed; the running release was not replaced'
 log 'synchronizing and atomically activating Grand Rules and Floor Rules in five reviewed locales'
 release_official_rule_documents || die 'official rule documents release gate failed; the running release was not replaced'
+log 'deriving the public card dataset identity from the imported data'
+preflight_card_dataset || die 'public card dataset preflight failed; runtime images were not built'
+record_card_dataset_sha256 || die 'card dataset SHA-256 could not be recorded; runtime images were not built'
 log 'atomically rebuilding and verifying the public knowledge search index'
 reindex_knowledge_search || die 'knowledge search reindex failed; the running application release was not replaced'
+log 'building runtime images with the verified dataset identity'
+remote_build_runtime || die 'runtime image build failed; the running release was not replaced'
 remote_start || die 'deployment failed; inspect the server4 Compose logs before retrying'
 
 run_smoke "$TARGET_SHA" || die 'health verification failed; inspect the deployed release before retrying'

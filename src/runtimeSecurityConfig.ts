@@ -25,6 +25,7 @@ export interface RedisConnectionConfig {
 }
 
 export type PostgresSslConfig = false | { rejectUnauthorized: boolean; ca?: string };
+export type GameCorsOrigin = string | RegExp;
 
 const POSTGRES_SSL_QUERY_KEYS = new Set([
   'ssl',
@@ -53,6 +54,15 @@ export function contentSecurityScriptSources(env: RuntimeEnvironment = process.e
   const sources = ["'self'", "'unsafe-inline'"];
   if (isProduction(env)) sources.push('https://static.cloudflareinsights.com');
   return sources;
+}
+
+export function gameCorsOrigins(env: RuntimeEnvironment = process.env): GameCorsOrigin[] {
+  const configured =
+    env.ALLOWED_ORIGINS?.split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean) ?? [];
+  if (isProduction(env)) return configured;
+  return ['http://localhost:3000', /localhost:\d+/, /127\.0\.0\.1:\d+/, ...configured];
 }
 
 function isLocalRedisHost(hostname: string): boolean {

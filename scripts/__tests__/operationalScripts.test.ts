@@ -153,7 +153,13 @@ describe('operational shell scripts', () => {
     expect(deploy).toContain('extract_redis_db');
     expect(deploy).toContain('CONFIG GET maxmemory-policy');
     expect(deploy).toContain('noeviction');
-    expect(deploy).toContain('build --pull migrate game api platform');
+    expect(deploy).toContain('build --pull migrate');
+    expect(deploy).toContain('build --pull game api platform');
+    expect(deploy.indexOf('build --pull migrate')).toBeLessThan(deploy.indexOf('build --pull game api platform'));
+    expect(deploy).toContain('public-card-dataset-preflight.ts');
+    expect(deploy).toContain('record_card_dataset_sha256');
+    expect(deploy).toContain('operator-provided card dataset SHA-256 does not match preflight');
+    expect(deploy.indexOf('preflight_card_dataset ||')).toBeLessThan(deploy.indexOf('remote_build_runtime ||'));
     expect(deploy).toContain('up -d --wait');
     expect(deploy).toContain('battle-assets.sha256');
     expect(deploy).toContain('sync_battle_assets');
@@ -200,9 +206,11 @@ describe('operational shell scripts', () => {
     expect(deploy).toContain('cache-policy-smoke.ts');
     expect(deploy).toContain('DIRECT_SMOKE_ADDRESS');
     expect(deploy).toContain('DEPLOY_SMOKE_REPORT_PATH');
-    expect(deploy).toContain('VITE_CARD_DATASET_SHA256:?');
+    expect(deploy).toContain('VITE_CARD_DATASET_SHA256:-');
+    expect(deploy).toContain("upsert_env ALLOWED_ORIGINS '$SERVER4_ALLOWED_ORIGIN'");
+    expect(deploy).toContain('ALLOWED_ORIGINS must contain only the production HTTPS origin');
     expect(deploy).toContain('--expected-dataset-sha256');
-    expect(compose).toContain('CARD_DATASET_SHA256=${VITE_CARD_DATASET_SHA256:?');
+    expect(compose).toContain('CARD_DATASET_SHA256=${VITE_CARD_DATASET_SHA256:-}');
     expect(compose).toContain('MATCH_ANALYTICS_TRAFFIC_CLASS=production');
     const stagingCompose = readFileSync(resolve('docker-compose.staging.yml'), 'utf8');
     expect(stagingCompose).toContain('CARD_DATASET_SHA256=${VITE_CARD_DATASET_SHA256:?');
