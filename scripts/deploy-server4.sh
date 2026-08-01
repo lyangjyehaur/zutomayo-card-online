@@ -546,6 +546,32 @@ remote_start() {
     docker compose -f '$COMPOSE_FILE' ps"
 }
 
+remote_handoff_knowledge_search_lock() {
+  ssh_run "set -euo pipefail
+    cd '$REMOTE_DIR'
+    set -a
+    . ./.env
+    set +a
+    redis_db=\"\${REDIS_DB:-0}\"
+    case \"\$redis_db\" in
+      ''|*[!0-9]*) echo 'REDIS_DB must be a non-negative integer' >&2; exit 1 ;;
+    esac
+    docker compose -f '$COMPOSE_FILE' stop api
+    if ! removed=\$(docker exec -e REDISCLI_AUTH=\"\${REDIS_PASSWORD:-}\" '$REDIS_CONTAINER' \
+      redis-cli --no-auth-warning -n \"\$redis_db\" DEL search:index:rebuild); then
+      docker compose -f '$COMPOSE_FILE' start api >/dev/null || true
+      echo 'failed to clear the knowledge-search rebuild lease; restored the previous API container' >&2
+      exit 1
+    fi
+    case \"\$removed\" in
+      0|1) ;;
+      *) docker compose -f '$COMPOSE_FILE' start api >/dev/null || true
+         echo 'unexpected Redis response while clearing the knowledge-search rebuild lease' >&2
+         exit 1 ;;
+    esac
+    printf 'knowledge-search rebuild lease handed off (removed=%s, redisDb=%s)\n' \"\$removed\" \"\$redis_db\""
+}
+
 run_smoke() {
   local expected_build_id="$1" tunnel_pid status
   local smoke_args=(
@@ -668,6 +694,8 @@ log 'atomically rebuilding and verifying the public knowledge search index'
 reindex_knowledge_search || die 'knowledge search reindex failed; the running application release was not replaced'
 log 'building runtime images with the verified dataset identity'
 remote_build_runtime || die 'runtime image build failed; the running release was not replaced'
+log 'stopping the previous API and handing off the knowledge search rebuild lease'
+remote_handoff_knowledge_search_lock || die 'knowledge search lock handoff failed; inspect the server4 API container'
 remote_start || die 'deployment failed; inspect the server4 Compose logs before retrying'
 
 run_smoke "$TARGET_SHA" || die 'health verification failed; inspect the deployed release before retrying'

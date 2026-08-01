@@ -160,6 +160,14 @@ describe('operational shell scripts', () => {
     expect(deploy).toContain('record_card_dataset_sha256');
     expect(deploy).toContain('operator-provided card dataset SHA-256 does not match preflight');
     expect(deploy.indexOf('preflight_card_dataset ||')).toBeLessThan(deploy.indexOf('remote_build_runtime ||'));
+    expect(deploy).toContain('redis-cli --no-auth-warning -n');
+    expect(deploy).toContain('DEL search:index:rebuild');
+    expect(deploy).toContain("docker compose -f '$COMPOSE_FILE' stop api");
+    expect(deploy).toContain("docker compose -f '$COMPOSE_FILE' start api >/dev/null || true");
+    expect(deploy.indexOf('remote_build_runtime ||')).toBeLessThan(
+      deploy.indexOf('remote_handoff_knowledge_search_lock ||'),
+    );
+    expect(deploy.indexOf('remote_handoff_knowledge_search_lock ||')).toBeLessThan(deploy.indexOf('remote_start ||'));
     expect(deploy).toContain('up -d --wait');
     expect(deploy).toContain('battle-assets.sha256');
     expect(deploy).toContain('sync_battle_assets');
