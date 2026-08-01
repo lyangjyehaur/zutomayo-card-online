@@ -1,4 +1,4 @@
-import type { GameState, HpChangeBreakdown, HpChangeReason, PlayerIndex } from './types';
+import type { GameNotice, GameState, HpChangeBreakdown, HpChangeReason, PlayerIndex } from './types';
 import { pushGameNotice } from './gameNotices';
 import { recordAction } from './actionLog';
 
@@ -17,6 +17,7 @@ export const MAX_HP_CHANGES_KEPT = 20;
  * - reason 區分戰鬥傷害、直接傷害、回復等，讓提示能標註成因。
  * - sourceCardDefId 為觸發效果之卡牌定義 ID（戰鬥傷害時為 undefined），
  *   供 UI 顯示卡名（若有）。
+ * - sourceCardInstanceId 讓場上動畫能精確指向同名卡牌中的實際觸發來源。
  *
  * 抽成獨立模組以避免 GameLogic ↔ effects/executor 之間的循環依賴。
  */
@@ -27,8 +28,21 @@ export function pushHpChange(
   reason: HpChangeReason,
   sourceCardDefId?: string,
   breakdown?: HpChangeBreakdown,
+  noticeSnapshot?: Pick<
+    GameNotice,
+    | 'winner'
+    | 'winnerAttack'
+    | 'loserAttack'
+    | 'damage'
+    | 'battleCards'
+    | 'damageReductionSources'
+    | 'attackModifierSources'
+  >,
+  sourceCardInstanceId?: string,
 ): void {
   if (delta === 0) return;
+  const hpAfter = Math.round(G.players[player].hp);
+  const hpBefore = Math.round(hpAfter - delta);
   if (!Array.isArray(G.recentHpChanges)) G.recentHpChanges = [];
   const id =
     G.recentHpChanges.reduce((max, entry) => (Number.isInteger(entry.id) ? Math.max(max, entry.id) : max), 0) + 1;
@@ -36,8 +50,11 @@ export function pushHpChange(
     id,
     player,
     delta,
+    hpBefore,
+    hpAfter,
     reason,
     ...(sourceCardDefId ? { sourceCardDefId } : {}),
+    ...(sourceCardInstanceId ? { sourceCardInstanceId } : {}),
     ...(breakdown ? { breakdown } : {}),
     turn: G.turnNumber,
     timestamp: Date.now(),
@@ -50,12 +67,13 @@ export function pushHpChange(
   recordAction(G, player, 'hpChange', {
     delta,
     reason,
-    before: Math.round(G.players[player].hp - delta),
-    after: Math.round(G.players[player].hp),
+    before: hpBefore,
+    after: hpAfter,
     ...(sourceCardDefId ? { sourceCardDefId } : {}),
+    ...(sourceCardInstanceId ? { sourceCardInstanceId } : {}),
     ...(breakdown ? { breakdown } : {}),
   });
-  // 同步推一筆 hpChange GameNotice，由統一 overlay 置中顯示。
+  // 同步推一筆 hpChange GameNotice，由統一播放時間線依序顯示。
   // titleKey 使用 `board.hpChange.<reason>`，與 i18n 既有 key 命名一致。
   pushGameNotice(G, {
     kind: 'hpChange',
@@ -63,8 +81,12 @@ export function pushHpChange(
     titleKey: `board.hpChange.${reason}`,
     player,
     delta,
+    hpBefore,
+    hpAfter,
     reason,
     ...(sourceCardDefId ? { sourceCardDefId } : {}),
+    ...(sourceCardInstanceId ? { sourceCardInstanceId } : {}),
     ...(breakdown ? { breakdown } : {}),
+    ...(noticeSnapshot ?? {}),
   });
 }

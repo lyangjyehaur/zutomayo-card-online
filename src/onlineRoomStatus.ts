@@ -24,6 +24,14 @@ export type OnlineStatusPanelCopy = {
   tone: 'neutral' | 'waiting' | 'success' | 'error';
 };
 
+export function hasOnlineOpponent(
+  players: Array<{ id: number; name?: string } | undefined> | undefined,
+  playerID: '0' | '1',
+): boolean {
+  const opponentID = playerID === '0' ? 1 : 0;
+  return Boolean(players?.some((player) => player?.id === opponentID && player.name));
+}
+
 export function isOnlineRoomErrorKey(value: string): value is OnlineRoomErrorKey {
   return (
     value === 'online.roomFull' ||
@@ -31,6 +39,12 @@ export function isOnlineRoomErrorKey(value: string): value is OnlineRoomErrorKey
     value === 'online.versionMismatch' ||
     value === 'online.connectionFailed'
   );
+}
+
+export function onlineRoomErrorDetail(error: unknown): string | undefined {
+  if (!(error instanceof Error) || !('detail' in error)) return undefined;
+  const detail = (error as Error & { detail?: unknown }).detail;
+  return typeof detail === 'string' && detail.trim() ? detail.trim() : undefined;
 }
 
 export function onlineErrorStatus(error: unknown): OnlineRoomStatus {

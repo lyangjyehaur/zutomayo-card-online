@@ -43,6 +43,28 @@ function setHp(state: GameState, player: 0 | 1, hp: number): void {
   state.players[player].hp = hp;
 }
 
+function resolutionNoticesForPhase(state: GameState, phase: string, secondHpCalculation: boolean) {
+  const resolutionTurn = phase === 'reveal-clock' || secondHpCalculation ? 2 : 1;
+  const notices = state.recentGameNotices ?? [];
+  const selected =
+    phase === 'clock-advance' || phase === 'reveal-clock'
+      ? notices.filter(
+          (notice) =>
+            notice.resolutionTurn === resolutionTurn &&
+            notice.kind === 'chronosChange' &&
+            notice.chronosSourceKind !== 'cardEffect',
+        )
+      : phase === 'hp-calc'
+        ? notices.filter(
+            (notice) =>
+              notice.resolutionTurn === resolutionTurn &&
+              (notice.kind === 'battleResult' || (notice.kind === 'hpChange' && notice.reason === 'battle')),
+          )
+        : [];
+  const replayTimestamp = Date.now();
+  return selected.map((notice) => ({ ...notice, timestamp: replayTimestamp }));
+}
+
 /**
  * The production engine resolves a full turn atomically. The tutorial explains
  * that resolution in smaller moments, so the visible player board receives a
@@ -75,12 +97,13 @@ export function buildTutorialPresentationState({
         ? (snapshots.postTurn2 ?? authoritative)
         : authoritative;
   const display = cloneTutorialGameState(source);
+  display.recentGameNotices = resolutionNoticesForPhase(display, phase, secondHpCalculation);
 
   if (earlyTurnOne) {
     display.turnNumber = 1;
     display.chronos.position = phase === 'flow-recap' ? 0 : 3;
     display.chronosAtTurnStart = 0;
-    setHp(display, 0, phase === 'hp-calc' ? 80 : 100);
+    setHp(display, 0, phase === 'flow-recap' || phase === 'clock-advance' ? 100 : 80);
     setHp(display, 1, 100);
   }
 

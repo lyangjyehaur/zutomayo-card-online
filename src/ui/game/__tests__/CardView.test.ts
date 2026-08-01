@@ -1,56 +1,33 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { initCards } from '../../../game/cards/loader';
-import type { CardDef, CardInstance } from '../../../game/types';
-import { t } from '../../../i18n';
-import { CardView } from '../CardView';
+import { describe, expect, it, vi } from 'vitest';
+import type { CardInstance } from '../../../game/types';
+import { CardCostTag } from '../CardView';
 
-const definition: CardDef = {
-  id: 'a11y_card',
-  name: 'Accessible Card',
-  pack: 'test',
-  song: 'test',
-  illustrator: 'test',
-  rarity: 'N',
-  element: '闇',
-  type: 'Character',
-  clock: 1,
-  attack: { night: 10, day: 10 },
-  powerCost: 3,
-  sendToPower: 1,
-  effect: '',
-  image: 'https://example.invalid/a11y-card.jpg',
-  errata: '',
-};
-const card: CardInstance = { instanceId: 'instance-1', defId: definition.id, faceUp: true };
+vi.mock('../../../game/cards/loader', () => ({
+  getCardDef: (id: string) => (id === 'known-card' ? { id, powerCost: 7 } : undefined),
+}));
 
-describe('CardView accessibility', () => {
-  afterEach(() => initCards([]));
+const card: CardInstance = { instanceId: 'known-instance', defId: 'known-card', faceUp: true };
 
-  it('gives duplicate selectable cards a cost, position, and pressed state', () => {
-    initCards([definition]);
-    const markup = renderToStaticMarkup(
-      createElement(CardView, {
-        card,
-        state: 'selected',
-        onActivate: vi.fn(),
-        positionInSet: { index: 1, total: 4 },
-        ariaPressed: true,
-      }),
-    );
+describe('CardCostTag', () => {
+  it('renders the original cost outside the card with an accessible label', () => {
+    const markup = renderToStaticMarkup(createElement(CardCostTag, { card }));
 
-    expect(markup).toContain('<button');
-    expect(markup).toContain(`aria-label="Accessible Card · ${t('card.energy')} 3 · 2/4"`);
-    expect(markup).toContain('aria-pressed="true"');
+    expect(markup).toContain('class="card-cost-tag"');
+    expect(markup).toContain('>COST</span>');
+    expect(markup).toContain('>7</strong>');
+    expect(markup).toMatch(/aria-label="[^"]*: 7"/);
   });
 
-  it('does not expose a toggle state for non-selectable card images', () => {
-    initCards([definition]);
-    const markup = renderToStaticMarkup(createElement(CardView, { card }));
+  it('marks insufficient power without changing the displayed cost', () => {
+    const markup = renderToStaticMarkup(createElement(CardCostTag, { card, insufficient: true }));
 
-    expect(markup).toContain('role="img"');
-    expect(markup).toContain(`aria-label="Accessible Card · ${t('card.energy')} 3"`);
-    expect(markup).not.toContain('aria-pressed');
+    expect(markup).toContain('data-insufficient="true"');
+    expect(markup).toContain('>7</strong>');
+  });
+
+  it('does not reveal cost for a facedown card', () => {
+    expect(renderToStaticMarkup(createElement(CardCostTag, { card: { ...card, faceUp: false } }))).toBe('');
   });
 });

@@ -14,6 +14,7 @@ import { postgresConnectionString, postgresSslConfig } from '../src/runtimeSecur
 
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
 const RELEASE_SHA_PATTERN = /^[a-f0-9]{40}$/;
+const IMAGE_DIGEST_PATTERN = /^\S+@sha256:[a-f0-9]{64}$/;
 const IMAGE_NAMES = ['game', 'api', 'platform', 'migrate', 'retention'] as const;
 
 function git(args: string[]): string {
@@ -48,6 +49,15 @@ function poolFromEnv(): Pool {
   });
 }
 
+function deckSharingEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  const configured = String(env.DECK_SHARING_ENABLED || '')
+    .trim()
+    .toLowerCase();
+  if (['true', '1', 'yes'].includes(configured)) return true;
+  if (['false', '0', 'no'].includes(configured)) return false;
+  return env.NODE_ENV !== 'production';
+}
+
 async function loadSnapshot(): Promise<CardDatasetSnapshot> {
   const [cards, databaseSnapshot] = await Promise.all([
     loadCardsFromDatabase(),
@@ -58,7 +68,10 @@ async function loadSnapshot(): Promise<CardDatasetSnapshot> {
           pool.query(
             `SELECT card_id AS "cardId", lang, name_text AS "nameText",
                     effect_text AS "effectText", review_status AS "reviewStatus"
-             FROM card_texts_i18n ORDER BY card_id, lang`,
+             FROM card_texts_i18n AS texts
+             JOIN cards ON cards.id = texts.card_id
+             WHERE cards.publication_status = 'published' AND cards.play_status = 'playable'
+             ORDER BY card_id, lang`,
           ),
           pool.query('SELECT id, name, card_ids AS "cardIds" FROM preset_decks ORDER BY id'),
           pool.query('SELECT key, value FROM game_config ORDER BY key'),
@@ -66,10 +79,10 @@ async function loadSnapshot(): Promise<CardDatasetSnapshot> {
         return {
           translations: translationResult.rows as CardTranslationSnapshot[],
           presetDecks: presetResult.rows as PresetDeckSnapshot[],
-          gameConfig: Object.fromEntries(configResult.rows.map((row) => [String(row.key), row.value])) as Record<
-            string,
-            unknown
-          >,
+          gameConfig: {
+            ...Object.fromEntries(configResult.rows.map((row) => [String(row.key), row.value])),
+            deck_sharing_enabled: deckSharingEnabled(),
+          } as Record<string, unknown>,
         };
       } finally {
         await pool.end();
@@ -130,7 +143,7 @@ async function main(): Promise<void> {
 
   const snapshot = await loadSnapshot();
   const smoke = runGameSmoke();
-  const expectedCardCount = Number(process.env.EXPECTED_CARD_COUNT || 422);
+  const expectedCardCount = Number(process.env.EXPECTED_CARD_COUNT || 479);
   if (!Number.isInteger(expectedCardCount) || expectedCardCount <= 0) {
     throw new Error('EXPECTED_CARD_COUNT must be a positive integer');
   }
@@ -162,6 +175,12 @@ async function main(): Promise<void> {
   const imageDigests = Object.fromEntries(
     IMAGE_NAMES.map((name) => [name, process.env[`${name.toUpperCase()}_IMAGE`] || '']),
   );
+  const evidenceFailures = [...gate.failures];
+  for (const name of IMAGE_NAMES) {
+    if (!IMAGE_DIGEST_PATTERN.test(imageDigests[name])) {
+      evidenceFailures.push(`${name.toUpperCase()}_IMAGE must be an immutable @sha256 reference`);
+    }
+  }
   const runId = process.env.GITHUB_RUN_ID;
   const repository = process.env.GITHUB_REPOSITORY;
   const serverUrl = process.env.GITHUB_SERVER_URL;
@@ -169,7 +188,7 @@ async function main(): Promise<void> {
   const checkedAt = finishedAt.toISOString();
   const evidence = {
     schemaVersion: 1,
-    status: gate.failures.length === 0 ? 'passed' : 'failed',
+    status: evidenceFailures.length === 0 ? 'passed' : 'failed',
     environment: process.env.RELEASE_ENVIRONMENT || 'local',
     evidenceType: 'card-dataset',
     releaseSha,
@@ -185,6 +204,10 @@ async function main(): Promise<void> {
       effectCardCount: gate.metrics.effectCards,
       effectLineCount: gate.metrics.effectLines,
       parsedEffectLineCount: gate.metrics.parsedEffectLines,
+      registeredRuntimeEffectCount: gate.effectDispatchCoverage.registered,
+      dispatchedRuntimeEffectCount: gate.effectDispatchCoverage.dispatched,
+      missingRuntimeEffectCount: gate.effectDispatchCoverage.missingCount,
+      effectDispatchCoveragePercent: gate.effectDispatchCoverage.coveragePercent,
       ruleAuditFailures: gate.ruleAudit.unparsedLines + gate.ruleAudit.parsedButPartial + gate.ruleAudit.falseDraw,
       verifiedTranslationRows: gate.metrics.verifiedTranslationRows,
       presetDeckCount: gate.metrics.presetDecks,
@@ -193,6 +216,7 @@ async function main(): Promise<void> {
       minCardCount: expectedCardCount,
       maxCardCount: expectedCardCount,
       maxRuleAuditFailures: 0,
+      minEffectDispatchCoveragePercent: 100,
       minVerifiedTranslationRows: expectedCardCount * 4,
       minPresetDeckCount: 4,
     },
@@ -207,12 +231,14 @@ async function main(): Promise<void> {
       gameConfigValid: gate.checks.gameConfigValid,
       serializationRoundTrip: gate.checks.serializationRoundTrip,
       ruleAuditPassed: gate.checks.ruleAuditPassed,
+      effectDispatchCoveragePassed: gate.checks.effectDispatchCoveragePassed,
       gameSmokePassed: gate.checks.gameSmokePassed,
     },
     artifacts,
     ...(runId && repository && runUrl ? { provenance: { runId, repository, runUrl }, source: runUrl } : {}),
     ruleAudit: gate.ruleAudit,
-    failures: gate.failures,
+    effectDispatchCoverage: gate.effectDispatchCoverage,
+    failures: evidenceFailures,
     gameSmokeOutput: smoke.output,
   };
   const serialized = `${JSON.stringify(evidence, null, 2)}\n`;
@@ -222,7 +248,7 @@ async function main(): Promise<void> {
   } else {
     console.log(serialized.trimEnd());
   }
-  if (gate.failures.length > 0) process.exitCode = 1;
+  if (evidenceFailures.length > 0) process.exitCode = 1;
 }
 
 main().catch((error) => {

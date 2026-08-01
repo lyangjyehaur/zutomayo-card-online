@@ -82,7 +82,7 @@ artifacts/release-gate/
 artifacts/pg-pitr-drill/
 
 # Standalone admin HTML (replaced by React admin)
-admin/
+/admin/
 
 # Meta-tooling
 .omh/

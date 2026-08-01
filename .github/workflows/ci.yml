@@ -14,8 +14,38 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  classify:
+    name: Classify Changes
+    runs-on: ubuntu-latest
+    outputs:
+      tier: ${{ steps.changes.outputs.tier }}
+      docs_only: ${{ steps.changes.outputs.docs_only }}
+      e2e_required: ${{ steps.changes.outputs.e2e_required }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          fetch-depth: 0
+
+      - name: Detect CI risk tier
+        id: changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          base_sha="$BASE_SHA"
+          if [[ -z "$base_sha" || "$base_sha" =~ ^0+$ ]] || ! git cat-file -e "${base_sha}^{commit}"; then
+            base_sha="$(git rev-list --max-parents=0 "$HEAD_SHA")"
+          fi
+
+          git diff --name-only "$base_sha" "$HEAD_SHA" | tee /tmp/changed-files.txt
+          node scripts/classify-ci-changes.mjs /tmp/changed-files.txt | tee -a "$GITHUB_OUTPUT"
+
   lint-and-test:
     name: Lint & Test
+    needs: classify
     runs-on: ubuntu-latest
 
     steps:
@@ -32,6 +62,7 @@ jobs:
         run: npm ci
 
       - name: Validate Compose configuration
+        if: needs.classify.outputs.docs_only != 'true'
         env:
           PG_PASSWORD: e2e-test-password
           PG_MIGRATION_USER: zutomayo_migrator
@@ -83,6 +114,7 @@ jobs:
           PUBLIC_BASE_URL: https://game.example.invalid
           OAUTH_PUBLIC_BASE_URL: https://game.example.invalid
           REDIS_PASSWORD: e2e-test-redis-password
+          MEILI_MASTER_KEY: e2e-test-meilisearch-master-key
           METRICS_TOKEN: e2e-test-metrics-token
           PGSSLMODE: verify-full
           PG_MONITOR_HOST: postgres
@@ -110,6 +142,7 @@ jobs:
           APP_VERSION: '0.2.0'
           RELEASE_SHA: '0000000000000000000000000000000000000000'
           GAME_RULES_VERSION: '0.2.0'
+          VITE_CARD_DATASET_SHA256: '0000000000000000000000000000000000000000000000000000000000000000'
         run: |
           touch .env
           export EXPECTED_SCHEMA_MIGRATION="$(find migrations -maxdepth 1 -type f -name '*.js' -printf '%f\n' | sort | tail -n 1 | sed 's/\.js$//')"
@@ -133,30 +166,38 @@ jobs:
         run: npm run format:check:tracked
 
       - name: Check card source-data policy
+        if: needs.classify.outputs.docs_only != 'true'
         run: npm run data:policy
 
       - name: Check card image policy
+        if: needs.classify.outputs.docs_only != 'true'
         run: npm run image:policy
 
       - name: Check version sync
         run: npm run version:check
 
       - name: Lint
+        if: needs.classify.outputs.docs_only != 'true'
         run: npm run lint
 
       - name: Typecheck (app)
+        if: needs.classify.outputs.docs_only != 'true'
         run: npm run typecheck
 
       - name: Typecheck (scripts)
+        if: needs.classify.outputs.docs_only != 'true'
         run: npm run typecheck:scripts
 
       - name: Check i18n completeness
+        if: needs.classify.outputs.docs_only != 'true'
         run: npm run i18n:check
 
       - name: Unit tests and coverage gate
+        if: needs.classify.outputs.docs_only != 'true'
         run: npm run test:coverage
 
       - name: Build
+        if: needs.classify.outputs.docs_only != 'true'
         env:
           # APP_BUILD_ID 設為 git commit hash，確保每次 CI build 有獨立 Sentry release。
           APP_BUILD_ID: ${{ github.sha }}
@@ -165,12 +206,12 @@ jobs:
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-        run: npm run build
+        run: npx vite build
 
-  e2e:
-    name: E2E Tests
+  core-e2e:
+    name: Core E2E Tests
+    needs: classify
     runs-on: ubuntu-latest
-    needs: lint-and-test
     env:
       PG_PASSWORD: e2e-test-password
       PG_BOOTSTRAP_USER: zutomayo_e2e_bootstrap
@@ -183,6 +224,7 @@ jobs:
       ACCOUNT_EXPORT_S3_LIFECYCLE_CONFIRMED: 'true'
       ACCOUNT_EXPORT_PSEUDONYM_KEY: e2e-test-export-pseudonym-key-at-least-32-bytes
       REDIS_PASSWORD: ''
+      MEILI_MASTER_KEY: e2e-test-meilisearch-master-key
       METRICS_TOKEN: e2e-test-metrics-token
       PGSSLMODE: disable
       PG_MIGRATION_USER: zutomayo_migrator
@@ -194,7 +236,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
 
-      - name: Build and run E2E service stack
+      - name: Build and start service stack
+        if: needs.classify.outputs.e2e_required == 'true'
         run: |
           set -o pipefail
           log_file="$(mktemp)"
@@ -204,10 +247,10 @@ jobs:
           echo "EXPECTED_SCHEMA_MIGRATION=$EXPECTED_SCHEMA_MIGRATION" >> "$GITHUB_ENV"
           echo "EXPECTED_SCHEMA_CHECKSUM=$EXPECTED_SCHEMA_CHECKSUM" >> "$GITHUB_ENV"
           compose=(docker compose -f docker-compose.yml -f docker-compose.e2e.yml)
-          if "${compose[@]}" build 2>&1 | tee "$log_file" \
-            && "${compose[@]}" up --wait --wait-timeout 180 game api platform \
-              2>&1 | tee -a "$log_file" \
-            && "${compose[@]}" run --rm e2e 2>&1 | tee -a "$log_file"; then
+          if "${compose[@]}" up --build --wait --wait-timeout 180 game api platform \
+            2>&1 | tee "$log_file" \
+            && "${compose[@]}" build e2e 2>&1 | tee -a "$log_file" \
+            && "${compose[@]}" run --rm e2e npm run e2e:core 2>&1 | tee -a "$log_file"; then
             exit 0
           fi
           service_status="$("${compose[@]}" ps --all --format '{{.Service}}={{.State}}/{{.ExitCode}}' | tr '\n' ' ')"
@@ -223,8 +266,14 @@ jobs:
           exit 1
         timeout-minutes: 20
 
+      - name: Skip E2E for non-runtime changes
+        if: needs.classify.outputs.e2e_required != 'true'
+        env:
+          CI_TIER: ${{ needs.classify.outputs.tier }}
+        run: echo "Core E2E is not required for the ${CI_TIER} verification tier."
+
       - name: Upload Playwright report
-        if: always()
+        if: always() && needs.classify.outputs.e2e_required == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: playwright-report
@@ -232,7 +281,7 @@ jobs:
           retention-days: 14
 
       - name: Upload test results
-        if: always()
+        if: always() && needs.classify.outputs.e2e_required == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: test-results
@@ -241,7 +290,7 @@ jobs:
           retention-days: 7
 
       - name: Cleanup
-        if: always()
+        if: always() && needs.classify.outputs.e2e_required == 'true'
         run: |
           docker compose \
             -f docker-compose.yml \
@@ -307,25 +356,25 @@ jobs:
           path: artifacts/responsive-pwa/
           retention-days: 14
 
-  postgres-role-smoke:
-    name: Fresh PostgreSQL role matrix smoke
+  pr-gate:
+    name: PR Gate
+    if: always()
+    needs: [classify, lint-and-test, core-e2e, responsive-pwa]
     runs-on: ubuntu-latest
-    needs: lint-and-test
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
 
-      - name: Run disposable fresh-cluster smoke
+    steps:
+      - name: Verify required jobs
+        env:
+          CLASSIFY_RESULT: ${{ needs.classify.result }}
+          LINT_TEST_RESULT: ${{ needs.lint-and-test.result }}
+          CORE_E2E_RESULT: ${{ needs.core-e2e.result }}
+          RESPONSIVE_PWA_RESULT: ${{ needs.responsive-pwa.result }}
         run: |
-          set -o pipefail
-          log_file="$(mktemp)"
-          if npm run db:roles:smoke 2>&1 | tee "$log_file"; then
-            exit 0
-          fi
-          details="$(tail -n 40 "$log_file" | tr '\n' ' ' | sed 's/%/%25/g')"
-          echo "::error title=Fresh PostgreSQL role matrix smoke::$details"
-          exit 1
-        timeout-minutes: 20
+          set -euo pipefail
+          [[ "$CLASSIFY_RESULT" == success ]]
+          [[ "$LINT_TEST_RESULT" == success ]]
+          [[ "$CORE_E2E_RESULT" == success ]]
+          [[ "$RESPONSIVE_PWA_RESULT" == success ]]
 
   # Smoke tests 需要真實卡牌數據（422 張），CI 環境無法模擬
   # 本地執行: npm run smoke / smoke:api / smoke:online

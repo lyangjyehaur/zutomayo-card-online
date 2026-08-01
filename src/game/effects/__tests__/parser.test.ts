@@ -28,6 +28,13 @@ describe('Effect Parser', () => {
       expect(result?.action.params.value).toBe(10);
     });
 
+    it('應該解析促銷卡省略助詞的自己回復', () => {
+      const result = parseEffect('横浜中華街の肉まんによりHP10を回復');
+      expect(result).not.toBeNull();
+      expect(result?.action.type).toBe('heal');
+      expect(result?.action.params.value).toBe(10);
+    });
+
     it('應該解析相手回復', () => {
       const result = parseEffect('相手のHPを5回復させる。');
       expect(result).not.toBeNull();
@@ -89,6 +96,52 @@ describe('Effect Parser', () => {
           expect(result.expiry.action.type).toBe('directDamage');
         }
       }
+    });
+
+    it('解析 4th SE 三張卡牌的完整效果', () => {
+      expect(
+        parseEffect('アビスのカードを４枚選び、裏向きにして混ぜ、デッキの底に置く。そうしない場合、ゲームに敗北する。'),
+      ).toMatchObject({
+        action: {
+          type: 'requestChoice',
+          params: {
+            choiceType: 'abyssToDeckBottomOrLose',
+            min: 4,
+            max: 4,
+            faceDown: true,
+            shuffle: true,
+            moveAllPowerChargersToAbyss: false,
+          },
+        },
+      });
+
+      const abyssReset = parseEffect(
+        'アビスのカードを8枚選び、裏向きにして混ぜ、デッキの底に置く。そうしない場合、ゲームに敗北する。お互いのパワーチャージャーのカードをすべてアビスに置く。',
+      );
+      expect(abyssReset).toMatchObject({
+        action: {
+          type: 'requestChoice',
+          params: {
+            choiceType: 'abyssToDeckBottomOrLose',
+            min: 8,
+            max: 8,
+            faceDown: true,
+            shuffle: true,
+            moveAllPowerChargersToAbyss: true,
+          },
+        },
+      });
+
+      expect(parseEffect('クロノスの時計を9つ進ませる')).toMatchObject({
+        action: { type: 'clockAdvance', params: { value: 9 } },
+      });
+
+      expect(parseEffect('相手のエリアエンチャントを、相手のアビスに置く')).toMatchObject({
+        action: {
+          type: 'moveOpponentAreaEnchant',
+          params: { target: 'opponent', destination: 'abyss' },
+        },
+      });
     });
   });
 

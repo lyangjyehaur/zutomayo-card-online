@@ -275,10 +275,6 @@ body {
   }
 }
 
-.app-shell.has-nav {
-  grid-template-rows: auto minmax(0, 1fr);
-}
-
 .app-shell.play-shell {
   grid-template-rows: minmax(0, 1fr);
 }
@@ -345,52 +341,6 @@ body {
     opacity: 1;
     transform: translateX(0);
   }
-}
-
-.app-shell.has-nav .route-content > .app-screen,
-.app-shell.has-nav .route-content > .lobby {
-  height: 100%;
-}
-
-.nav-bar {
-  position: relative;
-  z-index: 20;
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  min-height: 3.25rem;
-  padding: 0.45rem clamp(0.8rem, 2vw, 1.4rem);
-  border-bottom: 1px solid rgba(245, 211, 104, 0.2);
-  background: rgba(6, 9, 23, 0.94);
-  box-shadow: 0 0.6rem 1.4rem rgba(0, 0, 0, 0.22);
-}
-
-.nav-link {
-  flex: 0 0 auto;
-  border: 1px solid transparent;
-  border-radius: var(--radius);
-  min-height: 2.25rem;
-  padding: 0.45rem 0.8rem;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  font-weight: 800;
-  transition:
-    border-color 160ms ease,
-    background 160ms ease,
-    color 160ms ease;
-}
-
-.nav-link:hover,
-.nav-link.active {
-  border-color: rgba(245, 211, 104, 0.34);
-  background: rgba(245, 211, 104, 0.09);
-  color: var(--text);
-}
-
-.nav-link.tutorial {
-  margin-left: auto;
-  color: var(--gold);
 }
 
 .legacy-primary,
@@ -5067,6 +5017,9 @@ button.zone:focus-visible {
 }
 
 .mulligan-hand {
+  /* 橫向捲動會連帶裁切 Y 軸；預留卡牌 hover 上浮與選取光暈的空間。 */
+  margin-top: -0.875rem;
+  padding-top: 0.875rem;
   overscroll-behavior-x: contain;
   scroll-snap-type: x proximity;
   scrollbar-width: thin;
@@ -5186,8 +5139,8 @@ button.zone:focus-visible {
   position: relative;
 }
 
-/* HP 變化浮動提示（置中面板風格，淡入後穩定停留再淡出） */
-@keyframes hp-change-float {
+/* 一般回合提示淡入後短暫停留。HP／Chronos／戰鬥事件使用各自的場上動畫。 */
+@keyframes timed-resolution-notice-float {
   0% {
     opacity: 0;
     transform: translateY(0.4rem) scale(0.96);
@@ -5206,49 +5159,15 @@ button.zone:focus-visible {
   }
 }
 
-.hp-change-float {
+.timed-resolution-notice {
   pointer-events: none;
-  animation: hp-change-float 5s ease-out forwards;
+  animation: timed-resolution-notice-float 5s ease-out forwards;
   will-change: transform, opacity;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .hp-change-float {
+  .timed-resolution-notice {
     animation-duration: 3s;
-  }
-}
-
-/* 需手動確認的 notice（時鐘推進、HP 計算明細）：
-   全屏遮罩聚焦彈框，入場動畫後保持顯示，點確定按鈕才關閉 */
-.game-notice-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(8, 8, 12, 0.82);
-  backdrop-filter: blur(4px);
-  pointer-events: auto;
-  z-index: -1;
-}
-
-@keyframes hp-change-confirm {
-  0% {
-    opacity: 0;
-    transform: translateY(0.4rem) scale(0.96);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-.hp-change-confirm {
-  pointer-events: auto;
-  animation: hp-change-confirm 250ms ease-out forwards;
-  will-change: transform, opacity;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .hp-change-confirm {
-    animation-duration: 120ms;
   }
 }
 
@@ -5350,6 +5269,192 @@ button.zone:focus-visible {
 .pending-choice-panel {
   max-height: min(72dvh, 36rem) !important;
   overflow: hidden !important;
+}
+
+.pending-choice-panel-visual {
+  position: relative;
+  right: auto;
+  bottom: auto;
+  width: 100%;
+  max-height: min(82dvh, 46rem) !important;
+  padding: 1rem;
+}
+
+.pending-choice-search {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 2.75rem;
+  border: 1px solid color-mix(in oklch, var(--color-border-subtle) 78%, var(--color-accent-primary));
+  border-radius: var(--radius-xs);
+  padding: 0 0.75rem;
+  background: color-mix(in oklch, var(--surface-canvas) 84%, transparent);
+  color: var(--color-content-muted);
+}
+
+.pending-choice-search > svg {
+  width: 1rem;
+}
+
+.pending-choice-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--color-content-primary);
+  font: inherit;
+}
+
+.pending-choice-search span {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+}
+
+.pending-choice-panel .pending-choice-card-grid {
+  grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr));
+  align-content: start;
+  overflow: auto;
+  padding: 0.2rem 0.35rem 0.5rem 0;
+}
+
+.pending-choice-card-option {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  padding: 0.5rem;
+  background: color-mix(in oklch, var(--surface-raised) 82%, transparent);
+}
+
+.pending-choice-card-option[data-selected] {
+  border-color: var(--color-accent-primary);
+  background: color-mix(in oklch, var(--color-accent-primary) 12%, var(--surface-raised));
+}
+
+.pending-choice-card-frame {
+  position: relative;
+  width: min(100%, var(--card-width-md));
+}
+
+.pending-choice-card-frame > .cardview {
+  width: 100%;
+}
+
+.pending-choice-card-order {
+  position: absolute;
+  top: -0.35rem;
+  right: -0.35rem;
+  display: grid;
+  width: 1.75rem;
+  height: 1.75rem;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--color-accent-primary);
+  color: var(--color-surface-base);
+  box-shadow: var(--shadow-raised);
+  font-family: var(--font-mono);
+}
+
+.pending-choice-card-caption {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.pending-choice-card-caption > span {
+  overflow: hidden;
+  color: var(--color-content-primary);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pending-choice-card-caption > small {
+  grid-column: 1;
+  color: var(--color-content-muted);
+  font-size: var(--font-size-micro);
+}
+
+.pending-choice-card-caption > button,
+.pending-choice-order button {
+  display: grid;
+  width: 1.75rem;
+  height: 1.75rem;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: color-mix(in oklch, var(--color-content-primary) 10%, transparent);
+  color: var(--color-content-muted);
+  cursor: pointer;
+}
+
+.pending-choice-card-caption svg,
+.pending-choice-order svg {
+  width: 0.9rem;
+  height: 0.9rem;
+}
+
+.pending-choice-order {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  border-left: 2px solid var(--color-accent-primary);
+  padding-left: 0.65rem;
+}
+
+.pending-choice-order > strong {
+  margin-right: 0.25rem;
+  color: var(--color-accent-primary);
+  font-size: var(--font-size-xs);
+}
+
+.pending-choice-order > div {
+  display: grid;
+  grid-template-columns: auto minmax(0, 8rem) auto auto;
+  align-items: center;
+  gap: 0.25rem;
+  border-radius: var(--radius-xs);
+  padding: 0.25rem 0.35rem;
+  background: color-mix(in oklch, var(--surface-raised) 90%, transparent);
+}
+
+.pending-choice-order > div > span {
+  color: var(--color-accent-primary);
+  font-family: var(--font-mono);
+}
+
+.pending-choice-order b {
+  overflow: hidden;
+  color: var(--color-content-primary);
+  font-size: var(--font-size-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pending-choice-order button:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+
+.pending-choice-empty {
+  grid-column: 1 / -1;
+  padding: 2rem;
+  text-align: center;
+}
+
+.pending-choice-clock-hint {
+  color: var(--gold) !important;
+  font-weight: 800;
 }
 
 .pending-choice-panel .effect-order-list {
@@ -5456,20 +5561,6 @@ button.zone:focus-visible {
 }
 
 @media (max-width: 768px) {
-  .nav-bar {
-    gap: 0.35rem;
-    overflow-x: auto;
-    padding: 0.4rem 0.65rem;
-  }
-
-  .nav-link {
-    padding: 0.42rem 0.65rem;
-  }
-
-  .nav-link.tutorial {
-    margin-left: 0;
-  }
-
   .ai-setup,
   .admin-page,
   .not-found-page,
@@ -5556,11 +5647,6 @@ button.zone:focus-visible {
 }
 
 /* ===== 新首頁主選單樣式 ===== */
-
-/* 非遊戲頁面允許滾動（新首頁用 min-h-screen 不再固定 100vh） */
-.app-shell.has-nav .route-content {
-  overflow-y: auto;
-}
 
 /* 主選單卡片：置中、大尺寸、hover 效果 */
 .lobby-menu-cards {
@@ -6206,10 +6292,8 @@ button.zone:focus-visible {
   pointer-events: none;
 }
 
-/* GameNoticeOverlay 專用：強制 fixed + 高 z-index，避免被祖先 overflow:hidden 裁掉。
-   針對 .phase-message-overlay 的多處衝突定義（L6528 absolute vs L8170 fixed）
-   用 !important 確保置中面板真正覆蓋全螢幕。 */
-.game-notice-overlay {
+/* 一般回合提示必須跨出戰場 overflow 邊界。 */
+.timed-resolution-overlay {
   position: fixed !important;
   inset: 0 !important;
   display: flex !important;
@@ -6759,5 +6843,288 @@ button.zone:focus-visible {
     max-width: 22rem;
     padding-top: 0.6rem !important;
     padding-bottom: 0.6rem !important;
+  }
+}
+
+section.pending-choice-panel-clock {
+  position: fixed !important;
+  inset: auto max(1rem, env(safe-area-inset-right, 0px)) max(1rem, env(safe-area-inset-bottom, 0px)) auto !important;
+  width: min(21rem, calc(100vw - 2rem)) !important;
+}
+
+/* 位於舊版 effect-order-list 規則之後，確保視覺選牌維持卡牌網格。 */
+.pending-choice-panel.pending-choice-panel-visual .pending-choice-card-grid {
+  display: grid;
+  min-height: 0;
+  max-height: min(52dvh, 30rem);
+  flex: 1 1 auto;
+  grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr));
+  overflow: auto;
+}
+
+.pending-choice-panel-visual .pending-choice-card-frame {
+  width: min(100%, 7.5rem);
+}
+
+/* 暫時公開手牌：效果流程暫停至查看方明確確認。 */
+.revealed-hand-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: grid;
+  place-items: center;
+  padding: clamp(1rem, 3vw, 2rem);
+  background: color-mix(in oklch, var(--surface-canvas) 72%, transparent);
+  backdrop-filter: blur(6px);
+}
+
+.revealed-hand-source-highlight {
+  position: fixed;
+  z-index: 1;
+  border: 2px solid var(--color-accent-primary);
+  border-radius: var(--radius-xs);
+  box-shadow:
+    0 0 0 4px color-mix(in oklch, var(--color-accent-primary) 20%, transparent),
+    0 0 24px color-mix(in oklch, var(--color-accent-primary) 42%, transparent);
+  pointer-events: none;
+}
+
+.revealed-hand-panel {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  width: min(68rem, calc(100vw - 2rem));
+  max-height: min(80dvh, 46rem);
+  min-height: 18rem;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid color-mix(in oklch, var(--color-accent-primary) 28%, var(--color-border-subtle));
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--surface-base) 96%, transparent);
+  box-shadow: var(--shadow-raised);
+  color: var(--color-content-primary);
+}
+
+.revealed-hand-heading,
+.revealed-hand-footer {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+}
+
+.revealed-hand-heading {
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.revealed-hand-heading span,
+.revealed-hand-footer > span {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-micro);
+  color: var(--color-content-muted);
+}
+
+.revealed-hand-heading h2 {
+  margin: var(--space-1) 0 0;
+  font-family: var(--font-display);
+  font-size: var(--font-size-xl);
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.revealed-hand-heading > strong {
+  display: grid;
+  min-width: 2.5rem;
+  min-height: 2.5rem;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--color-accent-primary);
+  color: var(--color-surface-base);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-lg);
+}
+
+.revealed-hand-description {
+  margin: 0;
+  padding: var(--space-3) var(--space-5) 0;
+  color: var(--color-content-muted);
+  font-size: var(--font-size-sm);
+}
+
+.revealed-hand-result {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  margin: var(--space-3) var(--space-5) 0;
+  border-left: 3px solid var(--color-content-muted);
+  padding: var(--space-2) var(--space-3);
+  background: color-mix(in oklch, var(--surface-raised) 88%, transparent);
+}
+
+.revealed-hand-result[data-matched] {
+  border-left-color: var(--color-accent-primary);
+}
+
+.revealed-hand-result > span {
+  min-width: 0;
+  flex: 1 1 14rem;
+  color: var(--color-content-muted);
+  font-size: var(--font-size-sm);
+}
+
+.revealed-hand-result > b {
+  color: var(--color-accent-primary);
+}
+
+.revealed-hand-result > code {
+  color: var(--color-content-primary);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-md);
+  font-weight: 800;
+}
+
+.revealed-hand-cards {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  gap: var(--space-3);
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: var(--space-4) var(--space-5);
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+}
+
+.revealed-hand-card {
+  display: flex;
+  width: var(--card-width-md);
+  flex: 0 0 var(--card-width-md);
+  flex-direction: column;
+  gap: var(--space-2);
+  scroll-snap-align: start;
+}
+
+.revealed-hand-card > .cardview {
+  width: 100%;
+}
+
+.revealed-hand-card > span {
+  overflow: hidden;
+  color: var(--color-content-muted);
+  font-size: var(--font-size-xs);
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.revealed-hand-footer {
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.revealed-hand-empty,
+.revealed-hand-waiting {
+  display: grid;
+  min-height: 10rem;
+  flex: 1 1 auto;
+  place-items: center;
+  margin: 0;
+  padding: var(--space-6);
+  color: var(--color-content-muted);
+  text-align: center;
+}
+
+@media (max-width: 767px) {
+  .pending-choice-panel.pending-choice-panel-visual .pending-choice-card-grid {
+    max-height: min(44dvh, 24rem);
+    grid-template-columns: repeat(auto-fill, minmax(6.25rem, 1fr));
+  }
+
+  .pending-choice-panel-visual .pending-choice-card-frame {
+    width: min(100%, 6.5rem);
+  }
+
+  .effect-order-panel.pending-choice-panel-visual {
+    position: fixed !important;
+    inset: auto 0 0 !important;
+    width: 100%;
+    max-height: min(76dvh, 42rem) !important;
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+    padding: 0.75rem 0.75rem calc(0.75rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .pending-choice-panel .pending-choice-card-grid {
+    grid-template-columns: repeat(auto-fill, minmax(6.25rem, 1fr));
+  }
+
+  .pending-choice-card-option {
+    padding: 0.35rem;
+  }
+
+  .pending-choice-order {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+
+  .pending-choice-order > div {
+    flex: 0 0 auto;
+  }
+
+  .revealed-hand-overlay {
+    place-items: end stretch;
+    padding: 0;
+    background: color-mix(in oklch, var(--surface-canvas) 58%, transparent);
+  }
+
+  .revealed-hand-panel {
+    width: 100%;
+    max-height: min(66dvh, 38rem);
+    min-height: min(56dvh, 30rem);
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .revealed-hand-heading,
+  .revealed-hand-footer {
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .revealed-hand-description {
+    padding: var(--space-3) var(--space-4) 0;
+  }
+
+  .revealed-hand-result {
+    margin: var(--space-2) var(--space-4) 0;
+  }
+
+  .revealed-hand-cards {
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .revealed-hand-card {
+    width: clamp(6.75rem, 34vw, 8.5rem);
+    flex-basis: clamp(6.75rem, 34vw, 8.5rem);
+  }
+
+  .revealed-hand-footer > span {
+    max-width: 45%;
+  }
+}
+
+@media (max-width: 767px) {
+  section.pending-choice-panel-clock {
+    inset: auto 0.75rem 0.75rem auto !important;
+    width: min(18rem, calc(100vw - 1.5rem)) !important;
+    padding: 0.75rem !important;
   }
 }

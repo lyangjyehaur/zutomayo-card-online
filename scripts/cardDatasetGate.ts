@@ -3,6 +3,11 @@ import { initCards } from '../src/game/cards/loader';
 import { validateConstructedDeckIds } from '../src/game/cards/deckBuilder';
 import type { CardDef } from '../src/game/types';
 import { auditRuleEffects, ruleAuditFailures, type RuleAuditReport } from './rule-audit';
+import {
+  buildEffectDispatchCoverage,
+  effectDispatchCoverageFailures,
+  type EffectDispatchCoverageReport,
+} from './effect-dispatch-coverage';
 
 export const DERIVED_CARD_LANGUAGES = ['zh-TW', 'zh-CN', 'zh-HK', 'ko'] as const;
 
@@ -47,9 +52,11 @@ export interface CardDatasetGateReport {
     gameConfigValid: boolean;
     serializationRoundTrip: boolean;
     ruleAuditPassed: boolean;
+    effectDispatchCoveragePassed: boolean;
     gameSmokePassed: boolean;
   };
   ruleAudit: RuleAuditReport;
+  effectDispatchCoverage: EffectDispatchCoverageReport;
   failures: string[];
 }
 
@@ -228,6 +235,10 @@ export function evaluateCardDataset(
   const ruleFailures = ruleAuditFailures(ruleAudit);
   failures.push(...ruleFailures);
   const ruleAuditPassed = ruleFailures.length === 0;
+  const effectDispatchCoverage = buildEffectDispatchCoverage(snapshot.cards);
+  const dispatchFailures = effectDispatchCoverageFailures(effectDispatchCoverage);
+  failures.push(...dispatchFailures);
+  const effectDispatchCoveragePassed = dispatchFailures.length === 0;
   if (!options.gameSmokePassed) failures.push('game smoke failed against the release dataset');
 
   return {
@@ -250,9 +261,11 @@ export function evaluateCardDataset(
       gameConfigValid,
       serializationRoundTrip,
       ruleAuditPassed,
+      effectDispatchCoveragePassed,
       gameSmokePassed: options.gameSmokePassed,
     },
     ruleAudit,
+    effectDispatchCoverage,
     failures,
   };
 }

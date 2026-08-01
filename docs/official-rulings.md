@@ -21,7 +21,7 @@
 - `npm run sync:official-rulings -- --fixture-dir=<path>`：改讀固定 Q&A JSON 與勘誤 HTML，供 parser／CLI 測試使用。
 - `npm run sync:official-rulings -- --report=<path>`：輸出含 `added`、`updated`、`removed` 的 machine-readable JSON diff。
 
-Q&A 同步只接受 `public === '公開'`。parser、筆數或必要欄位不符合預期時會整批中止；官方消失的 Q&A 只標記 `inactive`，不刪除歷史資料。
+Q&A 同步只接受 `public === '公開'`。parser、筆數或必要欄位不符合預期時會整批中止；官方消失的 Q&A 只標記 `inactive`，不刪除目前資料或歷史 revision。
 
 `.github/workflows/official-rulings-sync.yml` 每日 03:15 UTC 透過已部署 API 取得 PostgreSQL baseline 後執行唯讀 check。有差異時會建立或更新 GitHub issue，並保存 30 天 diff artifact；排程不會自動寫入資料庫。
 
@@ -36,6 +36,10 @@ Q&A 同步只接受 `public === '公開'`。parser、筆數或必要欄位不符
 
 Immutable staging/server4 部署會從 `CARD_DATA_DIR` 的唯讀 `/run/card-data` mount 讀取同一組來源，並在 verified `MIGRATE_IMAGE` 中執行 `scripts/release-official-content.sh`。候選服務只有在 migration、官方內容發布及 role/TLS gates 全部成功後才會啟動；原始 JSON 不會複製進 Git、Docker image 或 CI artifact。5. 啟動或重啟 API，檢查 `/api/official/status` 的 `buildId`，並抽查 Grand Rules、基本 Floor Rules、Q&A 與勘誤六種語言。
 
+Grand Rules 的發布來源必須保存官方 PDF 的完整正文，不得只提供章節摘要。發布器會驗證第 1 至 10 章、足夠的日文原文長度、190 項以上編號內容，以及每種譯文是否逐項保留完全相同的條文編號。純章／節標題可以使用空正文作為結構節點，API 仍會把其已複核標題視為完整翻譯。官方 PDF 本身缺少 `3.9`，並同時以 `10.2` 編號「優先プレイヤー」與「公開情報と非公開情報」；資料必須忠實保留，不得自行改號。
+
+基本 Floor Rules 同樣必須保存官方 PDF 全文，不得以章節摘要替代。當前 `floorrule_260721.pdf` 的受控來源包含第 1 至 10 章、38 個已複核資料節點（overview 加 37 個正文節點）及 145 個清單／編號步驟標記；五種譯文必須逐節保留相同標記序列，並通過各語言全文長度門檻。賽事角色、用品規範、洗牌程序、BO3 時間到處理、退賽、結果操作及五級處分均屬必要內容，缺少任何已複核章節或只保留概要都會在資料庫 transaction 開始前失敗。
+
 內容 JSON 不得提交 GitHub，也不會複製進 API 或 migration image。內容發布須從持有本機受控來源檔的維護環境執行；server4 部署透過 SSH stdin 將內容直接送進一次性 migration container。
 
 ```bash
@@ -44,7 +48,7 @@ npm run export:official-rulings-translations -- \
   --output=data/official-rulings-translations.json
 
 cat data/official-rulings-translations.json | npm run release:official-rulings -- \
-  --translations=- --app-version=0.2.3 --build-id="$(git rev-parse HEAD)"
+  --translations=- --app-version=0.2.6 --build-id="$(git rev-parse HEAD)"
 
 OFFICIAL_RULE_DOCUMENTS_FILE=data/official-rule-documents-20260721.json \
   npm run release:official-rule-documents
@@ -53,6 +57,27 @@ OFFICIAL_RULE_DOCUMENTS_FILE=data/official-rule-documents-20260721.json \
 發布命令會驗證所有 Q&A 關聯卡牌 ID、勘誤卡牌 ID、修正後日文、卡牌資料集 hash，以及每筆當前內容版本的五語完整翻譯。Q&A 日文原文出現關聯卡名時，英文必須使用 `cards.en_name_official`，繁中、簡中、粵語與韓文必須使用 `card_texts_i18n` 中 `review_status='verified'` 的卡名；翻譯來源也可填入 `[[CARD:<id>]]`，由 release gate 以該語言 canonical 卡名解析。缺少已複核卡名、保留未解析 token 或自行重譯卡名都會 rollback。全形／半形括號與空白會先正規化後再核對卡名。
 
 每次成功發布會建立 `official_rulings_releases` manifest、兩張不可變內容 snapshot，並更新 `official_rulings_active_release`。公開 API 只讀 active snapshot；要回復前一份內容時可在資料庫 transaction 內將舊 manifest 改回 `active` 並切換 pointer，不需刪除新版內容。
+
+### Candidate 與卡牌歷史
+
+`official_qa_item_revisions`、`card_official_errata_revisions` 與 `card_revisions` 保存完整資料列，而不是只保存 diff。`000045_content_revision_history` 會先從既有 release snapshots 回填已發布版本，再保存目前 candidate／卡牌狀態；之後所有 `INSERT`、有意義的 `UPDATE` 與 `DELETE` 都由資料庫 trigger 自動追加 revision。純 `last_seen_at`／`updated_at` 心跳不會建立新 revision。
+
+Q&A 或勘誤的日文內容與 `content_hash` 變更時，`content_version` 必須恰好增加一；只改 publication status、來源 URL 或審核 metadata 則保留原內容版本，但仍會留下狀態 revision。勘誤 revision 會另外保存當時從 `cards.name`／`cards.effect` 解析出的 `corrected_japanese_text`，因此後續卡牌修正不會改寫舊勘誤的語義。
+
+三張 revision table 均拒絕 `UPDATE`／`DELETE`。runtime API 角色只有 `SELECT`；追加由 migration owner 擁有、固定 `search_path` 的 `SECURITY DEFINER` trigger 完成。要調查或回溯時先唯讀查詢 revision；正式公開內容仍應以既有 release manifest／snapshot 與 active pointer 回復，不應直接改寫 revision table。
+
+```sql
+SELECT revision, operation, content_version, publication_status,
+       answer_ja, recorded_from, recorded_at
+  FROM official_qa_item_revisions
+ WHERE qa_id = 'qa_70'
+ ORDER BY revision;
+
+SELECT revision, operation, name, effect, recorded_at
+  FROM card_revisions
+ WHERE card_id = '4th_76'
+ ORDER BY revision;
+```
 
 ## 產生與審核翻譯
 
@@ -99,7 +124,7 @@ generator 只寫入 `machine`，不會覆蓋 `verified`。卡名會先轉為 `[[
 - `GET /api/official/errata/:errataId?lang=`
 - `GET /api/official/rules/:documentId?lang=`，其中 `documentId` 為 `grand` 或 `floor`
 
-成功回應包含日文 `source`、實際顯示的 `localized`、`requestedLocale`、`effectiveLocale`、翻譯狀態、官方來源與同步時間。Q&A 另同時回傳官方日文 `tagIds` 與本地化 `tags`；前端以 `tagIds` 保留篩選狀態，以 `tags` 顯示文字，因此切換語言不會丟失分類篩選。公開回應使用五分鐘快取、stale-while-revalidate 與內容雜湊 ETag。
+成功回應包含日文 `source`、實際顯示的 `localized`、`requestedLocale`、`effectiveLocale`、翻譯狀態、官方來源、同步時間與 active snapshot 的 `contentHash`。來源檢查以 `contentHash` 比對官方原始內容，不會從 canonical 卡牌投影重新計算勘誤 hash。Q&A 另同時回傳官方日文 `tagIds` 與本地化 `tags`；前端以 `tagIds` 保留篩選狀態，以 `tags` 顯示文字，因此切換語言不會丟失分類篩選。公開回應使用五分鐘快取、stale-while-revalidate 與內容雜湊 ETag。
 
 PWA 對四類公開清單／詳情 API 使用 `NetworkFirst`：4 秒 network timeout、最多 200 筆、保留 7 天。已成功讀取的規則可在 API 暫時中斷時由 service worker cache 回傳；管理 API 不進入離線快取。
 

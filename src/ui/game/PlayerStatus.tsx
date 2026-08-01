@@ -13,6 +13,9 @@ export interface PlayerStatusProps {
   damageAmount?: number;
   tutId?: string;
   className?: string;
+  /** 前端結算動畫定位用，不承載規則狀態。 */
+  animationZone?: string;
+  statuses?: Array<{ label: string; value?: string; tone?: 'neutral' | 'warning' }>;
 }
 
 function hpLevel(hp: number): 'healthy' | 'warning' | 'danger' {
@@ -21,7 +24,17 @@ function hpLevel(hp: number): 'healthy' | 'warning' | 'danger' {
   return 'healthy';
 }
 
-export function PlayerStatus({ side, name, hp, meta, damageAmount, tutId, className }: PlayerStatusProps) {
+export function PlayerStatus({
+  side,
+  name,
+  hp,
+  meta,
+  damageAmount,
+  tutId,
+  className,
+  animationZone,
+  statuses = [],
+}: PlayerStatusProps) {
   const percent = Math.max(0, Math.min(100, hp));
   return (
     <div
@@ -29,25 +42,43 @@ export function PlayerStatus({ side, name, hp, meta, damageAmount, tutId, classN
       data-hp={hpLevel(hp)}
       data-hit={damageAmount ? 'true' : undefined}
       data-tut={tutId}
+      data-anim-zone={animationZone}
       aria-label={`${name} · ${t('board.hp')} ${hp}/100`}
     >
       <div className="playerstatus-head">
         <span className="playerstatus-name">{name}</span>
-        {damageAmount ? (
-          <span className="playerstatus-damage" key={`${side}-${damageAmount}`} aria-hidden="true">
-            -{damageAmount}
+        <span className="playerstatus-head-values">
+          {damageAmount ? (
+            <span className="playerstatus-damage" key={`${side}-${damageAmount}`} aria-hidden="true">
+              -{damageAmount}
+            </span>
+          ) : null}
+          <span className="playerstatus-hp-readout" aria-hidden="true">
+            <span className="playerstatus-hp-label">{t('board.hp')}</span>
+            <strong>{hp}</strong>
+            <span>/100</span>
           </span>
-        ) : null}
+        </span>
       </div>
       <div className="playerstatus-bar" aria-hidden="true">
-        <div className="playerstatus-bar-fill" style={{ width: `${percent}%` }} />
+        <span className="playerstatus-bar-fill" style={{ width: `${percent}%` }} />
+        <span className="playerstatus-bar-ticks" />
       </div>
-      <div className="playerstatus-meta" aria-hidden="true">
-        <span>
-          {t('board.hp')} {hp}/100
-        </span>
-        {meta && <span>{meta}</span>}
-      </div>
+      {meta && (
+        <div className="playerstatus-meta" aria-hidden="true">
+          <span>{meta}</span>
+        </div>
+      )}
+      {statuses.length > 0 && (
+        <div className="playerstatus-effects" aria-label={t('board.status.active' as never)}>
+          {statuses.map((status, index) => (
+            <span data-tone={status.tone} key={`${status.label}-${status.value ?? ''}-${index}`}>
+              {status.label}
+              {status.value && <strong>{status.value}</strong>}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

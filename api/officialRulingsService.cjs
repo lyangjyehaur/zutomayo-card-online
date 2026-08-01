@@ -171,6 +171,7 @@ function mapQaRow(row, requestedLocale) {
     translationStatus: translated ? text(row.translation_status) : 'source',
     sourceUrl: text(row.source_url),
     lastSyncedAt: isoDate(row.last_seen_at),
+    contentHash: text(row.content_hash),
     contentVersion: Number(row.content_version) || 1,
   };
 }
@@ -327,6 +328,7 @@ function mapErrataRow(row, requestedLocale) {
     translationStatus: translated ? text(row.translation_status) : 'source',
     sourceUrl: text(row.source_url),
     lastSyncedAt: isoDate(row.last_seen_at),
+    contentHash: text(row.content_hash),
     contentVersion: Number(row.content_version) || 1,
   };
 }

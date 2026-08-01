@@ -167,11 +167,24 @@ function successfulQuery(users: Record<string, string> = roleUsers, override?: Q
 describe('PostgreSQL runtime role gate', () => {
   it('includes official source-check history in the application role matrix', () => {
     expect(APPLICATION_TABLES).toContain('official_rulings_sync_runs');
+    expect(APPLICATION_TABLES).toContain('official_qa_item_revisions');
+    expect(APPLICATION_TABLES).toContain('card_official_errata_revisions');
+    expect(APPLICATION_TABLES).toContain('card_revisions');
     expect(APPLICATION_TABLES).toContain('official_rule_documents');
     expect(APPLICATION_TABLES).toContain('official_rule_sections');
     expect(APPLICATION_TABLES).toContain('official_rule_section_translations');
     expect(APPLICATION_TABLES).toContain('official_rule_active_versions');
+    expect(APPLICATION_TABLES).toContain('knowledge_search_zero_results');
     expect(REQUIRED_RUNTIME_TABLES).toContain('official_rulings_sync_runs');
+    expect(REQUIRED_RUNTIME_TABLES).toContain('knowledge_search_zero_results');
+    expect(APPLICATION_TABLES).toEqual(
+      expect.arrayContaining([
+        'bjg_match_telemetry',
+        'match_analytics',
+        'match_analytics_decks',
+        'match_analytics_events',
+      ]),
+    );
   });
 
   it('quotes identifiers and rejects empty role names', () => {
@@ -226,20 +239,39 @@ describe('PostgreSQL runtime role gate', () => {
     );
     expect(statements).not.toContain('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public."matches" TO "z_retention"');
     expect(statements).toContain('GRANT SELECT ON TABLE public."users" TO "z_backup"');
+    expect(statements).toContain(
+      'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public."user_card_collection" TO "z_api"',
+    );
+    expect(statements).toContain('GRANT SELECT ON TABLE public."user_card_collection" TO "z_backup"');
+    expect(statements).toContain(
+      'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public."knowledge_search_zero_results" TO "z_api"',
+    );
+    expect(statements).toContain(
+      'GRANT SELECT, DELETE ON TABLE public."knowledge_search_zero_results" TO "z_retention"',
+    );
+    expect(statements).toContain('GRANT SELECT ON TABLE public."knowledge_search_zero_results" TO "z_backup"');
     expect(statements).toContain('GRANT SELECT ON TABLE public."card_texts_i18n" TO "z_game"');
     expect(statements).toContain('GRANT SELECT ON TABLE public."card_official_errata" TO "z_game"');
-    for (const roleName of [roleUsers.api, roleUsers.game, roleUsers.platform, roleUsers.retention, roleUsers.backup]) {
-      expect(statements).toContain(`GRANT SELECT ON TABLE public."official_card_data_releases" TO "${roleName}"`);
-    }
-    expect(
-      statements.some(
-        (statement) =>
-          statement.startsWith('GRANT ') &&
-          statement.includes('public."official_card_data_releases"') &&
-          /\b(?:INSERT|UPDATE|DELETE|TRUNCATE|REFERENCES|TRIGGER)\b/.test(statement),
-      ),
-    ).toBe(false);
+    expect(statements).toContain('GRANT SELECT, INSERT ON TABLE public."match_analytics" TO "z_game"');
+    expect(statements).toContain('GRANT SELECT ON TABLE public."match_analytics" TO "z_retention"');
+    expect(statements).toContain('GRANT SELECT ON TABLE public."match_analytics_events" TO "z_backup"');
+    expect(statements).toContain('GRANT SELECT ON TABLE public."bjg_match_telemetry" TO "z_game"');
+    expect(statements).toContain('GRANT SELECT, INSERT, UPDATE ON TABLE public."bjg_match_telemetry" TO "z_platform"');
+    expect(statements).toContain('GRANT SELECT ON TABLE public."bjg_match_telemetry" TO "z_retention"');
+    expect(statements).toContain('GRANT SELECT ON TABLE public."bjg_match_telemetry" TO "z_backup"');
+    expect(statements).not.toContain(
+      'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public."bjg_match_telemetry" TO "z_api"',
+    );
+    expect(statements).not.toContain(
+      'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public."match_analytics_events" TO "z_api"',
+    );
     expect(statements).toContain('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public."official_qa_items" TO "z_api"');
+    expect(statements).toContain('GRANT SELECT ON TABLE public."official_qa_item_revisions" TO "z_api"');
+    expect(statements).toContain('GRANT SELECT ON TABLE public."card_official_errata_revisions" TO "z_api"');
+    expect(statements).toContain('GRANT SELECT ON TABLE public."card_revisions" TO "z_api"');
+    expect(statements).not.toContain(
+      'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public."official_qa_item_revisions" TO "z_api"',
+    );
     expect(statements).toContain(
       'GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public."official_qa_translations" TO "z_api"',
     );

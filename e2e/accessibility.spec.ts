@@ -177,6 +177,7 @@ test.describe('核心頁面無障礙 @a11y', () => {
 
 test.describe('登入 dialog 無障礙 @a11y', () => {
   test('登入 dialog 通過 axe 並維持焦點循環與背景 inert', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
     await page.addInitScript(() => {
       localStorage.setItem('zutomayo_deck_intro_seen', 'true');
       localStorage.setItem('zutomayo_locale', 'zh-TW');
@@ -192,9 +193,20 @@ test.describe('登入 dialog 無障礙 @a11y', () => {
     await page.goto('/');
     await expect(page.getByRole('heading', { level: 1 })).toContainText('ZUTOMAYO', { timeout: 30_000 });
 
-    const { dialog, entryTrigger, presentation } = await openAuthSurface(page, { keyboard: true });
-    await waitForModalAnimations(dialog);
-    await expectNoBlockingAxeViolations(page, `登入 ${presentation}`);
+    const trigger = page.getByRole('button', { name: /^登入$/ }).first();
+    await trigger.focus();
+    await page.keyboard.press('Enter');
+
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await expect
+      .poll(() =>
+        dialog.evaluate((element) =>
+          element.getAnimations({ subtree: true }).every((animation) => animation.playState === 'finished'),
+        ),
+      )
+      .toBe(true);
+    await expectNoBlockingAxeViolations(page, '登入 dialog');
 
     const root = page.locator('#root');
     await expect(root).toHaveAttribute('aria-hidden', 'true');

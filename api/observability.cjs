@@ -150,6 +150,55 @@ const officialRulingsTranslationFailuresTotal = new promClient.Counter({
   labelNames: ['resource_type', 'locale', 'operation'],
   registers: [register],
 });
+
+const knowledgeSearchQueriesTotal = new promClient.Counter({
+  name: 'knowledge_search_queries_total',
+  help: 'Public knowledge search queries by serving engine',
+  labelNames: ['engine'],
+  registers: [register],
+});
+
+const knowledgeSearchDuration = new promClient.Histogram({
+  name: 'knowledge_search_duration_seconds',
+  help: 'Public knowledge search duration by serving engine',
+  labelNames: ['engine'],
+  registers: [register],
+  buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5],
+});
+
+const knowledgeSearchSyncTotal = new promClient.Counter({
+  name: 'knowledge_search_sync_total',
+  help: 'Knowledge search index synchronization results',
+  labelNames: ['result'],
+  registers: [register],
+});
+
+const knowledgeSearchDocuments = new promClient.Gauge({
+  name: 'knowledge_search_documents',
+  help: 'Documents in the latest successfully generated knowledge index',
+  registers: [register],
+});
+
+const knowledgeSearchLastSuccess = new promClient.Gauge({
+  name: 'knowledge_search_last_success_unixtime_seconds',
+  help: 'Unix timestamp of the latest successful knowledge index synchronization',
+  registers: [register],
+});
+
+const knowledgeSearchZeroResultsTotal = new promClient.Counter({
+  name: 'knowledge_search_zero_results_total',
+  help: 'Public knowledge searches returning no results without storing query text in metrics',
+  labelNames: ['engine', 'scope', 'stored'],
+  registers: [register],
+});
+
+const knowledgeSearchSuggestionsTotal = new promClient.Counter({
+  name: 'knowledge_search_suggestions_total',
+  help: 'Public knowledge search suggestion requests by serving engine',
+  labelNames: ['engine'],
+  registers: [register],
+});
+
 function normalizePath(path) {
   return path
     .replace(/\/api\/imgproxy\/.+/i, '/api/imgproxy/:path')
@@ -229,6 +278,13 @@ module.exports = {
   officialRulingsSyncChangesTotal,
   officialRulingsTranslationWritesTotal,
   officialRulingsTranslationFailuresTotal,
+  knowledgeSearchQueriesTotal,
+  knowledgeSearchDuration,
+  knowledgeSearchSyncTotal,
+  knowledgeSearchDocuments,
+  knowledgeSearchLastSuccess,
+  knowledgeSearchZeroResultsTotal,
+  knowledgeSearchSuggestionsTotal,
   rateLimitedTotal,
   attachRequestObservability,
   metricsResponse,

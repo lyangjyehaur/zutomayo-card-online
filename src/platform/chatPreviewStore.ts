@@ -40,14 +40,7 @@ export function createPostgresPlatformChatPreviewStore(
       const boardgameMatchID = cleanIdentifier(input.boardgameMatchID, 128);
       const messageId = cleanIdentifier(input.messageId, 128);
       const authorUserId = normalizePlatformUserId(input.authorUserId);
-      if (
-        !conversationId ||
-        !boardgameMatchID ||
-        !messageId ||
-        !authorUserId ||
-        authorUserId.startsWith('guest:') ||
-        authorUserId.startsWith('anon:')
-      ) {
+      if (!conversationId || !boardgameMatchID || !messageId || !authorUserId || authorUserId.startsWith('anon:')) {
         return false;
       }
 
@@ -57,7 +50,10 @@ export function createPostgresPlatformChatPreviewStore(
          JOIN chat_conversations c ON c.id = m.conversation_id
          WHERE m.id = $1
            AND m.conversation_id = $2
-           AND m.author_user_id = $3
+           AND (
+             m.author_user_id = $3
+             OR (m.author_user_id IS NULL AND m.metadata->>'guestSeatUserId' = $3)
+           )
            AND c.type = 'match'
            AND c.subject_id = $4
            AND m.deleted_at IS NULL

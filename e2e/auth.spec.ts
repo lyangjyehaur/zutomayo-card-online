@@ -1,5 +1,21 @@
-import { test, expect } from '@playwright/test';
-import { openAuthSurface } from './helpers/authUi';
+import { test, expect, type Locator, type Page } from '@playwright/test';
+
+async function authEntryButton(page: Page): Promise<Locator> {
+  const desktopEntry = page.getByRole('button', { name: /^登入$/ }).first();
+  if (await desktopEntry.isVisible()) return desktopEntry;
+
+  await page.getByRole('button', { name: '主選單' }).click();
+  const mobileEntry = page.getByRole('button', { name: '登入 / 註冊', exact: true });
+  await expect(mobileEntry).toBeVisible();
+  return mobileEntry;
+}
+
+async function openAuthForm(page: Page): Promise<Locator> {
+  await (await authEntryButton(page)).click();
+  const form = page.locator('form[aria-label="登入表單"]');
+  await expect(form).toBeVisible();
+  return form;
+}
 
 /**
  * 認證流程 E2E 測試。
@@ -23,32 +39,33 @@ test.describe('認證 UI', () => {
   test('首頁提供符合 viewport 的登入入口', async ({ page }) => {
     await page.goto('/');
     await expect(page.getByRole('heading', { level: 1 })).toContainText('ZUTOMAYO', { timeout: 30_000 });
-    const { dialog } = await openAuthSurface(page);
-    await expect(dialog.getByRole('form', { name: '登入表單' })).toBeVisible();
+
+    await expect(await authEntryButton(page)).toBeVisible();
   });
 
-  test('點擊登入開啟認證介面', async ({ page }) => {
+  test('點擊登入開啟認證介面 @core', async ({ page }) => {
     await page.goto('/');
     await expect(page.getByRole('heading', { level: 1 })).toContainText('ZUTOMAYO', { timeout: 30_000 });
-    const { dialog } = await openAuthSurface(page);
-    await expect(dialog).toBeVisible();
-    await expect(dialog.getByRole('tablist', { name: '登入 / 註冊' })).toBeVisible();
+
+    const form = await openAuthForm(page);
+    await expect(form.getByRole('tab', { name: '登入' })).toBeVisible();
+    await expect(form.getByRole('tab', { name: '註冊' })).toBeVisible();
   });
 
   test('登入表單包含 email 與 password 欄位', async ({ page }) => {
     await page.goto('/');
     await expect(page.getByRole('heading', { level: 1 })).toContainText('ZUTOMAYO', { timeout: 30_000 });
 
-    const { dialog } = await openAuthSurface(page);
+    const form = await openAuthForm(page);
 
     // email 欄位
-    const emailInput = dialog.getByLabel(/電子郵件/);
+    const emailInput = form.getByLabel(/電子郵件/);
     await expect(emailInput).toBeVisible();
     await expect(emailInput).toHaveAttribute('type', 'email');
     await expect(emailInput).toHaveAttribute('required', '');
 
     // password 欄位
-    const passwordInput = dialog.getByLabel(/密碼/);
+    const passwordInput = form.getByLabel(/密碼/);
     await expect(passwordInput).toBeVisible();
     await expect(passwordInput).toHaveAttribute('required', '');
   });
@@ -57,13 +74,15 @@ test.describe('認證 UI', () => {
     await page.goto('/');
     await expect(page.getByRole('heading', { level: 1 })).toContainText('ZUTOMAYO', { timeout: 30_000 });
 
-    const { dialog } = await openAuthSurface(page);
+    const form = await openAuthForm(page);
 
     // 切換到註冊分頁
-    await dialog.getByRole('tab', { name: '註冊' }).click();
+    await form.getByRole('tab', { name: '註冊' }).click();
 
     // 註冊模式多了暱稱欄位
-    const nicknameInput = dialog.getByLabel(/暱稱/);
+    const registerForm = page.locator('form[aria-label="註冊表單"]');
+    await expect(registerForm).toBeVisible();
+    const nicknameInput = registerForm.getByLabel(/暱稱/);
     await expect(nicknameInput).toBeVisible();
     await expect(nicknameInput).toHaveAttribute('required', '');
   });
@@ -72,7 +91,7 @@ test.describe('認證 UI', () => {
     await page.goto('/');
     await expect(page.getByRole('heading', { level: 1 })).toContainText('ZUTOMAYO', { timeout: 30_000 });
 
-    const { dialog } = await openAuthSurface(page);
+    const form = await openAuthForm(page);
 
     // 攔截 API 呼叫，確認空表單不會觸發
     let apiCalled = false;
@@ -81,14 +100,13 @@ test.describe('認證 UI', () => {
     });
 
     // 直接點擊提交按鈕（欄位皆為空 + required）
-    await dialog.getByRole('button', { name: /^登入$/ }).click();
+    await form.getByRole('button', { name: /^登入$/ }).click();
 
     // 等待一小段時間確認沒有 API 呼叫
     await page.waitForTimeout(500);
     expect(apiCalled).toBe(false);
 
-    // 對話框仍開啟（未成功提交）
-    await expect(dialog).toBeVisible();
+    await expect(form).toBeVisible();
   });
 });
 
@@ -106,16 +124,16 @@ test.describe('認證流程 @requires-backend', () => {
     await page.goto('/');
     await expect(page.getByRole('heading', { level: 1 })).toContainText('ZUTOMAYO', { timeout: 30_000 });
 
-    const { dialog } = await openAuthSurface(page);
+    const form = await openAuthForm(page);
 
     // 只填 email，不填 password
-    await dialog.getByLabel(/電子郵件/).fill('test@example.com');
+    await form.getByLabel(/電子郵件/).fill('test@example.com');
 
     // 嘗試提交
-    await dialog.getByRole('button', { name: /^登入$/ }).click();
+    await form.getByRole('button', { name: /^登入$/ }).click();
 
     // password 欄位應為 invalid（瀏覽器原生驗證）
-    const passwordInput = dialog.getByLabel(/密碼/);
+    const passwordInput = form.getByLabel(/密碼/);
     const isValid = await passwordInput.evaluate((el: HTMLInputElement) => el.checkValidity());
     expect(isValid).toBe(false);
   });

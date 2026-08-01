@@ -16,6 +16,7 @@ import {
   updateDeckShareSearchParam,
 } from '../deckShareUi';
 import { t, useLocale } from '../i18n';
+import { useDebouncedSearchQuery } from '../hooks/useDebouncedSearchQuery';
 import { Alert, AppHeader, Button, EmptyState, LoadingState, PageShell, SearchInput, Select, cn } from '../ui';
 
 const ELEMENT_COLORS: Record<string, string> = {
@@ -42,7 +43,6 @@ export function DeckShareLobbyPage() {
   const loggedIn = isLoggedIn();
   const [searchParams, setSearchParams] = useSearchParams();
   const { sort, element, query } = readDeckShareLobbyState(searchParams);
-  const [searchDraft, setSearchDraft] = useState(query);
   const [shares, setShares] = useState<DeckShareSummary[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -58,17 +58,14 @@ export function DeckShareLobbyPage() {
     },
     [setSearchParams],
   );
-
-  useEffect(() => {
-    setSearchDraft(query);
-  }, [query]);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      if (searchDraft.trim() !== query) setParam('q', searchDraft.trim());
-    }, 300);
-    return () => window.clearTimeout(timer);
-  }, [query, searchDraft, setParam]);
+  const {
+    draft: searchDraft,
+    setDraft: setSearchDraft,
+    inputBindings,
+  } = useDebouncedSearchQuery({
+    value: query,
+    onCommit: (value) => setParam('q', value.trim()),
+  });
 
   const loadFirstPage = useCallback(async () => {
     const requestId = ++requestIdRef.current;
@@ -78,6 +75,7 @@ export function DeckShareLobbyPage() {
       const remotePage = await listDeckShares({
         sort,
         q: query || undefined,
+        lang: locale,
         element: element || undefined,
         limit: 24,
       });
@@ -124,6 +122,7 @@ export function DeckShareLobbyPage() {
       const page = await listDeckShares({
         sort,
         q: query || undefined,
+        lang: locale,
         element: element || undefined,
         cursor: nextCursor,
         limit: 24,
@@ -163,8 +162,7 @@ export function DeckShareLobbyPage() {
           <div className="relative">
             <SearchInput
               icon={<Search className="size-4 text-content-dim" aria-hidden="true" />}
-              value={searchDraft}
-              onChange={(event) => setSearchDraft(event.target.value)}
+              {...inputBindings}
               placeholder={t('deckShare.searchPlaceholder')}
               aria-label={t('deckShare.searchPlaceholder')}
               className="pr-10"

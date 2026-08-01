@@ -43,7 +43,7 @@
     },
     {
       "title": "Active Connections",
-      "description": "Active Colyseus WebSocket connections. Requires a custom platform_active_connections gauge.",
+      "description": "Active Colyseus WebSocket connections reported by platform_connected_clients.",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
@@ -57,15 +57,15 @@
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } },
       "targets": [
         {
-          "expr": "platform_active_connections{job=\"zutomayo-platform\"}",
+          "expr": "platform_connected_clients{job=\"zutomayo-platform\"}",
           "legendFormat": "connections",
           "refId": "A"
         }
       ]
     },
     {
-      "title": "Match Participants",
-      "description": "Current match participants across match_shell & quick_match rooms. Requires a custom platform_match_participants gauge.",
+      "title": "Accepted Reconnects",
+      "description": "Accepted same-user reconnects by bounded room type.",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
@@ -79,21 +79,21 @@
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } },
       "targets": [
         {
-          "expr": "platform_match_participants{job=\"zutomayo-platform\"}",
-          "legendFormat": "participants",
+          "expr": "sum by (room_type) (rate(platform_reconnects_total{job=\"zutomayo-platform\"}[5m]))",
+          "legendFormat": "{{room_type}}",
           "refId": "A"
         }
       ]
     },
     {
-      "title": "Chat Messages Rate",
-      "description": "Chat messages per second. Requires a custom platform_chat_messages_total counter.",
+      "title": "HTTP Error Ratio",
+      "description": "Ratio of Platform HTTP 5xx responses over all Platform HTTP responses.",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
       "fieldConfig": {
         "defaults": {
-          "unit": "reqps",
+          "unit": "percentunit",
           "custom": { "drawStyle": "bars", "fillOpacity": 50 }
         },
         "overrides": []
@@ -101,15 +101,15 @@
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } },
       "targets": [
         {
-          "expr": "sum(rate(platform_chat_messages_total{job=\"zutomayo-platform\"}[5m]))",
-          "legendFormat": "messages/s",
+          "expr": "sum(rate(platform_http_requests_total{job=\"zutomayo-platform\",status=~\"5..\"}[5m])) / clamp_min(sum(rate(platform_http_requests_total{job=\"zutomayo-platform\"}[5m])), 1e-9)",
+          "legendFormat": "5xx ratio",
           "refId": "A"
         }
       ]
     },
     {
-      "title": "Redis Operations Latency",
-      "description": "Redis operation latency histogram quantiles. Requires a custom platform_redis_operation_duration_seconds histogram.",
+      "title": "Platform HTTP Latency",
+      "description": "Platform HTTP request latency histogram quantiles.",
       "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 16 },
@@ -123,19 +123,63 @@
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } },
       "targets": [
         {
-          "expr": "histogram_quantile(0.50, sum by (le) (rate(platform_redis_operation_duration_seconds_bucket{job=\"zutomayo-platform\"}[5m])))",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(platform_http_request_duration_seconds_bucket{job=\"zutomayo-platform\"}[5m])))",
           "legendFormat": "P50",
           "refId": "A"
         },
         {
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(platform_redis_operation_duration_seconds_bucket{job=\"zutomayo-platform\"}[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(platform_http_request_duration_seconds_bucket{job=\"zutomayo-platform\"}[5m])))",
           "legendFormat": "P95",
           "refId": "B"
         },
         {
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(platform_redis_operation_duration_seconds_bucket{job=\"zutomayo-platform\"}[5m])))",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(platform_http_request_duration_seconds_bucket{job=\"zutomayo-platform\"}[5m])))",
           "legendFormat": "P99",
           "refId": "C"
+        }
+      ]
+    },
+    {
+      "title": "Quick-Match Outcomes",
+      "description": "Matched and cancelled quick-match rooms by bounded terminal outcome.",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": { "drawStyle": "bars", "fillOpacity": 35 }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (increase(platform_quick_match_outcomes_total{job=\"zutomayo-platform\"}[1h]))",
+          "legendFormat": "{{outcome}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Quick-Match Wait",
+      "description": "Quick-match wait duration by terminal outcome.",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "fillOpacity": 5 }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, outcome) (rate(platform_quick_match_wait_duration_seconds_bucket{job=\"zutomayo-platform\"}[5m])))",
+          "legendFormat": "P95 {{outcome}}",
+          "refId": "A"
         }
       ]
     }
@@ -160,6 +204,6 @@
   "timezone": "",
   "title": "Platform Server (Colyseus)",
   "uid": "platform-server",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }

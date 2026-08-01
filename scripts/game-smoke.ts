@@ -33,6 +33,8 @@ import { collectTurnEffects, executeEffect, processTurnEffects } from '../src/ga
 import { parseAllEffects, parseEffect } from '../src/game/effects/parser';
 import { CHRONOS_MAPPING, type CardInstance, type GameState, type TimingEvent } from '../src/game/types';
 import { normalizeChronosPosition } from '../src/game/chronos';
+import { restoreHiddenInformation } from '../src/game/hiddenInformation';
+import { defaultPendingChoiceOptionIds } from '../src/game/pendingChoices';
 import type { ParsedEffect } from '../src/game/effects';
 import { ZutomayoCard, resetParsedEffects } from '../src/game/Game';
 import { aiSelectCards } from '../src/game/ai';
@@ -125,7 +127,7 @@ const lethalPendingDamage: ParsedEffect = {
 };
 
 function preparedState(): GameState {
-  const G = setupGame();
+  const G = setupGame({ rngSeed: 'release-game-smoke-v1' });
   resolveJanken(G, 'rock', 'scissors');
   finishMulligan(G, 0, []);
   finishMulligan(G, 1, []);
@@ -240,7 +242,10 @@ function fivePowerCards() {
   );
   assert.notEqual(player0.getState()?.G.players[0].battleZone?.defId, '__hidden__');
   assert.equal(player1.getState()?.G.players[0].battleZone?.defId, '__hidden__');
-  assert.equal(player1.getState()?.G.players[0].battleZone?.instanceId, 'hidden-p0-battle');
+  const ownerBattleCard = player0.getState()?.G.players[0].battleZone;
+  const hiddenBattleCard = player1.getState()?.G.players[0].battleZone;
+  assert.match(hiddenBattleCard?.instanceId ?? '', /^hidden-p0-card-\d+$/);
+  assert.notEqual(hiddenBattleCard?.instanceId, ownerBattleCard?.instanceId);
   player1.moves.setInitialCard(0);
   player0.moves.confirmReady();
   const opponentSetLog = (player1.getState()?.G.actionLog ?? []).find(
@@ -256,7 +261,9 @@ function fivePowerCards() {
       const client = pendingChoicePlayer === 0 ? player0 : player1;
       const choice = client.getState()?.G.pendingChoice;
       assert.ok(choice);
-      client.moves.submitPendingChoice(choice.options.slice(0, choice.min).map((option) => option.id));
+      const optionIds = defaultPendingChoiceOptionIds(choice);
+      assert.ok(optionIds);
+      client.moves.submitPendingChoice(optionIds);
       continue;
     }
     const pendingPlayer = globalState?.pendingEffectPlayer;
@@ -914,6 +921,13 @@ function fivePowerCards() {
     playerID: '0',
   }) as GameState;
   assert.equal(revealedHandView.players[1].hand[0].defId, hiddenOpponentHandCard.defId);
+  restoreHiddenInformation(revealOpponentHandState);
+  const restoredHandView = ZutomayoCard.playerView!({
+    G: revealOpponentHandState,
+    ctx: {} as Ctx,
+    playerID: '0',
+  }) as GameState;
+  assert.equal(restoredHandView.players[1].hand[0].defId, '__hidden__');
 
   const handAbyssSwap = parseEffect('手札１枚とアビスの好きなカード１枚を入れ替える');
   assert.deepEqual(handAbyssSwap?.action, { type: 'requestChoice', params: { choiceType: 'handAbyssSwap' } });
@@ -1130,6 +1144,9 @@ function fivePowerCards() {
   // 被公開的卡留在對手牌庫頂（不消耗）
   assert.equal(opponentDeckTopPowerState.players[1].deck[0].instanceId, costlyDeckTop.instanceId);
   assert.equal(costlyDeckTop.faceUp, true);
+  assert.equal(opponentDeckTopPowerState.pendingChoice?.type, 'acknowledgeRevealedHand');
+  assert.equal(submitPendingChoice(opponentDeckTopPowerState, 0, []), true);
+  assert.equal(costlyDeckTop.faceUp, false);
   // 厳戒態勢自身移到擁有者的 powerCharger
   assert.equal(opponentDeckTopPowerState.players[0].setZoneC, null);
   assert.equal(opponentDeckTopPowerState.players[0].powerCharger.at(-1)?.instanceId, areaEnchant.instanceId);
@@ -1470,7 +1487,7 @@ function fivePowerCards() {
   assert.equal(submitPendingChoice(opponentAbyssReturnState, 0, [returnedAbyssCard.instanceId], noEffects), true);
   assert.equal(opponentAbyssReturnState.players[1].abyss.length, 1);
   assert.equal(opponentAbyssReturnState.players[1].deck.at(-1)?.instanceId, returnedAbyssCard.instanceId);
-  assert.equal(returnedAbyssCard.faceUp, true);
+  assert.equal(returnedAbyssCard.faceUp, false);
 
   const optionalStudyDraw = parsedCardEffect('4th_53');
   assert.deepEqual(optionalStudyDraw.action, {
@@ -1712,8 +1729,8 @@ function fivePowerCards() {
     new Set(optionalDeckState.players[0].deck.map((card) => card.instanceId)),
     new Set([deckPaymentA.instanceId, deckPaymentB.instanceId]),
   );
-  assert.equal(deckPaymentA.faceUp, true);
-  assert.equal(deckPaymentB.faceUp, true);
+  assert.equal(deckPaymentA.faceUp, false);
+  assert.equal(deckPaymentB.faceUp, false);
   assert.equal(deckDrawA.faceUp, true);
   assert.equal(deckDrawB.faceUp, true);
   assert.equal(optionalDeckState.winner, null);
@@ -1861,6 +1878,7 @@ function fivePowerCards() {
       max: 4,
       faceDown: true,
       shuffle: true,
+      moveAllPowerChargersToAbyss: false,
     },
   });
   assert.deepEqual(parsedCardEffect('4th_6').action, abyssFourPayment.action);
@@ -1898,6 +1916,7 @@ function fivePowerCards() {
       max: 'available',
       faceDown: true,
       shuffle: true,
+      moveAllPowerChargersToAbyss: false,
     },
   });
   assert.deepEqual(parsedCardEffect('4th_27').action, abyssVariablePayment.action);
@@ -1924,6 +1943,7 @@ function fivePowerCards() {
       max: 6,
       faceDown: true,
       shuffle: true,
+      moveAllPowerChargersToAbyss: false,
     },
   });
   assert.deepEqual(parsedCardEffect('4th_28').action, abyssSixPayment.action);
@@ -1940,6 +1960,7 @@ function fivePowerCards() {
       max: 1,
       faceDown: false,
       shuffle: false,
+      moveAllPowerChargersToAbyss: false,
       followUpChoiceType: 'reorderOpponentDeckTop',
       followUpCount: 3,
     },
@@ -2132,6 +2153,40 @@ function fivePowerCards() {
     selectedCountRemainingDeckIds,
   );
   assert.equal(selectedCountSequenceState.lastChoiceSelectionCount[0], null);
+
+  const selectedCountShortfallState = preparedState();
+  const selectedCountShortfallAbyssCards = [createInstance('1st_9', true), createInstance('1st_17', true)];
+  selectedCountShortfallState.players[0].abyss = selectedCountShortfallAbyssCards;
+  selectedCountShortfallState.players[1].deck = [createInstance('2nd_1', false)];
+  selectedCountShortfallState.step = 'effectOrder';
+  selectedCountShortfallState.pendingEffectPlayer = 0;
+  selectedCountShortfallState.pendingEffects[0] = [
+    {
+      id: '4th_27-shortfall-follow-up',
+      player: 0,
+      cardInstanceId: '4th_27-shortfall-instance',
+      cardDefId: '4th_27',
+      rawText: selectedCountMill.rawText,
+      effect: selectedCountMill,
+      source: 'played',
+    },
+  ];
+  assert.equal(executeEffect(abyssVariablePayment, selectedCountShortfallState, 0).success, true);
+  assert.equal(
+    submitPendingChoice(
+      selectedCountShortfallState,
+      0,
+      selectedCountShortfallAbyssCards.map((card) => card.instanceId),
+      noEffects,
+    ),
+    true,
+  );
+  assert.equal(executeEffect(selectedCountMill, selectedCountShortfallState, 0).success, false);
+  assert.equal(selectedCountShortfallState.players[1].deck.length, 0);
+  assert.equal(selectedCountShortfallState.players[1].abyss.length, 1);
+  assert.equal(selectedCountShortfallState.step, 'gameOver');
+  assert.equal(selectedCountShortfallState.winner, 0);
+  assert.equal(selectedCountShortfallState.lastChoiceSelectionCount[0], null);
 
   const missingSelectedCountState = preparedState();
   const missingSelectedCountDeck = [createInstance('2nd_1', false), createInstance('2nd_2', false)];
@@ -2450,6 +2505,18 @@ function fivePowerCards() {
   const realMillTwo = parsedCardEffect('4th_57');
   assert.deepEqual(realMillTwo.conditions, [{ type: 'abyssCount', value: 3 }]);
   assert.deepEqual(realMillTwo.action, { type: 'millDeckToAbyss', params: { target: 'opponent', count: 2 } });
+  const realMillTwoShortfallState = preparedState();
+  realMillTwoShortfallState.players[0].abyss = [
+    createInstance('1st_9', true),
+    createInstance('1st_17', true),
+    createInstance('1st_1', true),
+  ];
+  realMillTwoShortfallState.players[1].deck = [createInstance('2nd_1', false)];
+  assert.equal(executeEffect(realMillTwo, realMillTwoShortfallState, 0).success, false);
+  assert.equal(realMillTwoShortfallState.players[1].deck.length, 0);
+  assert.equal(realMillTwoShortfallState.players[1].abyss.length, 1);
+  assert.equal(realMillTwoShortfallState.step, 'gameOver');
+  assert.equal(realMillTwoShortfallState.winner, 0);
 
   assert.deepEqual(parsedCardEffect('3rd_14').action, {
     type: 'returnAreaEnchantToDeck',
@@ -2505,10 +2572,13 @@ function fivePowerCards() {
   G.players[1].powerCharger = fivePowerCards();
 
   const choices = aiSelectCards(G, 1, 'hard');
-  assert.deepEqual(choices, [
-    { handIndex: 1, slot: 'A' },
-    { handIndex: 0, slot: 'B' },
-  ]);
+  assert.deepEqual(
+    [...choices].sort((left, right) => left.slot.localeCompare(right.slot)),
+    [
+      { handIndex: 1, slot: 'A' },
+      { handIndex: 0, slot: 'B' },
+    ],
+  );
 }
 
 {
@@ -2973,8 +3043,10 @@ function fivePowerCards() {
     rawText: 'partial mill',
     action: { type: 'millDeckToAbyss', params: { target: 'opponent', count: 2 } },
   };
-  assert.equal(executeEffect(millTwo, G, 0).success, true);
-  assert.equal(G.step, 'initialSet');
+  assert.equal(executeEffect(millTwo, G, 0).success, false);
+  assert.equal(G.step, 'gameOver');
+  assert.equal(G.winner, 0);
+  assert.match(G.gameoverReason ?? '', /not enough cards to move 2 from deck to Abyss/);
   assert.deepEqual(
     G.players[1].abyss.map((card) => card.instanceId),
     [top.instanceId],
@@ -3000,7 +3072,7 @@ function fivePowerCards() {
     G.players[1].deck.map((card) => card.instanceId),
     [area.instanceId, deckCard.instanceId],
   );
-  assert.equal(area.faceUp, true);
+  assert.equal(area.faceUp, false);
 }
 
 {
@@ -3021,7 +3093,7 @@ function fivePowerCards() {
     G.players[1].deck.map((card) => card.instanceId),
     [deckCard.instanceId, area.instanceId],
   );
-  assert.equal(area.faceUp, true);
+  assert.equal(area.faceUp, false);
 }
 
 {
@@ -3141,6 +3213,35 @@ function fivePowerCards() {
   assert.equal(submitPendingChoice(useFromAbyssState, 0, [copiedEnchant.instanceId], parsedEffects), true);
   assert.ok(useFromAbyssState.pendingEffects[0].some((effect) => effect.cardDefId === '1st_92'));
 
+  // 官方 QA Q48：只需滿足「木っ手男・インク猫（正義）」自身的 Power Cost 2，
+  // 被複製的 Power Cost 3 Enchant 仍應正常發動。
+  const copiedHighCostState = preparedState();
+  copiedHighCostState.players[0].powerCharger = [createInstance('1st_9', true), createInstance('1st_9', true)];
+  const highCostEnchant = createInstance('1st_30', true);
+  copiedHighCostState.players[0].abyss = [highCostEnchant];
+  assert.equal(
+    executeEffect(parsedCardEffect('1st_6'), copiedHighCostState, 0, {
+      cardInstanceId: '1st_6-source-instance',
+      cardDefId: '1st_6',
+    }).success,
+    true,
+  );
+  assert.equal(submitPendingChoice(copiedHighCostState, 0, [highCostEnchant.instanceId], parsedEffects), true);
+  assert.equal(copiedHighCostState.step, 'effectOrder');
+  assert.equal(copiedHighCostState.pendingEffects[0][0]?.cardDefId, '1st_30');
+  assert.equal(copiedHighCostState.pendingEffects[0][0]?.rulesSourceCardDefId, '1st_6');
+  copiedHighCostState.pendingEffects[0].push({
+    id: 'q48-hold-effect-window',
+    player: 0,
+    cardInstanceId: 'q48-hold-effect-window',
+    cardDefId: 'q48-hold-effect-window',
+    rawText: 'hold effect window',
+    effect: { trigger: 'onUse', conditions: [], action: { type: 'noEffect', params: {} }, rawText: 'hold' },
+    source: 'played',
+  });
+  assert.equal(resolvePendingEffect(copiedHighCostState, 0, 0, parsedEffects), true);
+  assert.equal(copiedHighCostState.modifiers.attack[0], 30);
+
   const battleHandSizeState = preparedState();
   const battleHandSize = parseEffect('※このカードを使用後、手札の数はバトル終了まで１枚増える');
   assert.ok(battleHandSize);
@@ -3213,6 +3314,9 @@ function fivePowerCards() {
   assert.equal(executeEffect(parsedCardEffect('3rd_103'), deckTopSendToPowerBoostState, 0).success, true);
   assert.equal(deckTopSendToPowerBoostState.modifiers.attack[0], 30);
   assert.equal(deckTopSendToPowerBoostState.players[1].deck[0].faceUp, true);
+  assert.equal(deckTopSendToPowerBoostState.pendingChoice?.type, 'acknowledgeRevealedHand');
+  assert.equal(submitPendingChoice(deckTopSendToPowerBoostState, 0, []), true);
+  assert.equal(deckTopSendToPowerBoostState.players[1].deck[0].faceUp, false);
 
   const deckTopSendToPowerMoveState = preparedState();
   const sendToPowerArea = createInstance('3rd_103', true);
@@ -3407,13 +3511,19 @@ function fivePowerCards() {
     [],
   ];
   assert.equal(executeEffect(parsedCardEffect('3rd_47'), nameGuessState, 0).success, true);
-  const guessOption = nameGuessState.pendingChoice?.options.find(
-    (option) => option.id === `hand:0:guess:${guessedCard.defId}`,
+  const declarationOption = nameGuessState.pendingChoice?.options.find(
+    (option) => option.id === `declare:${guessedCard.defId}`,
   );
-  assert.ok(guessOption);
-  assert.equal(submitPendingChoice(nameGuessState, 0, [guessOption.id], noEffects), true);
+  assert.ok(declarationOption);
+  assert.equal(submitPendingChoice(nameGuessState, 0, [declarationOption.id], noEffects), true);
+  assert.equal(nameGuessState.pendingChoice?.type, 'selectOpponentHandCard');
+  const positionOption = nameGuessState.pendingChoice.options.find((option) => option.id === 'hand-position:0');
+  assert.ok(positionOption);
+  assert.equal(submitPendingChoice(nameGuessState, 0, [positionOption.id], noEffects), true);
+  assert.equal(nameGuessState.pendingChoice?.type, 'acknowledgeRevealedHand');
   assert.equal(nameGuessState.modifiers.attack[0], 50);
   assert.deepEqual(nameGuessState.revealedHandCardIds[1], [guessedCard.instanceId]);
+  assert.equal(submitPendingChoice(nameGuessState, 0, [], noEffects), true);
 
   const delayedDamageState = preparedState();
   delayedDamageState.players[0].battleZone = createInstance('1st_12', true);

@@ -1,5 +1,9 @@
 # REST API
 
+> `bjg_match_telemetry` 與三張 `match_analytics*` 表都是內部資料，不提供 public REST endpoint，API
+> runtime role 無權讀取。前者由 platform server 短期保存可信來源與每席連線計數；後者由 game server
+> 在權威終局 transaction 或 stale cleanup 的 abandoned 流程永久保存去識別投影。
+
 The API service runs from [api/server.cjs](../api/server.cjs). In Docker, the game server proxies `/api/*` to the `api` service; the API is also exposed directly on port `3001`.
 
 Base URLs:
@@ -137,6 +141,18 @@ Rules:
 Response: same shape as `GET /api/profile`.
 
 Errors: `400`, `401`.
+
+### Card collection / 實體卡收藏
+
+All collection endpoints require an authenticated account. Only published cards visible in the public catalog may be stored.
+
+| Method | Path                                   | Body                            | Description                                               |
+| ------ | -------------------------------------- | ------------------------------- | --------------------------------------------------------- |
+| `GET`  | `/api/profile/card-collection`         | —                               | Return `{ "cardIds": [...] }` for the signed-in user.     |
+| `PUT`  | `/api/profile/card-collection/:cardId` | `{ "owned": true \| false }`    | Add or remove one physical-card ownership mark.           |
+| `POST` | `/api/profile/card-collection/merge`   | `{ "cardIds": ["1st_1", ...] }` | Merge up to 1,000 local ownership marks into the account. |
+
+The merge operation is additive and idempotent. It does not remove cards already stored on the account.
 
 ## Friends / 好友
 
@@ -284,7 +300,76 @@ Official Japanese Q&A and errata are read from the active PostgreSQL content-rel
 
 Public responses use five-minute cache headers, stale-while-revalidate, and content ETags. Activation requires all five reviewed translations for every current source version, so a published non-Japanese release never relies on fallback. Repository JSON is never a runtime source. Source synchronization and release operations are documented in [official-rulings.md](official-rulings.md).
 
-Grand Rules and Floor Rules are stored as versioned PostgreSQL documents and ordered sections. The public document endpoint returns Japanese source text beside the requested reviewed translation, section hierarchy, source page numbers, the official PDF URL, and the PDF SHA-256 fingerprint.
+Grand Rules and Floor Rules are stored as versioned PostgreSQL documents and ordered sections. The public document endpoint returns Japanese source text beside the requested reviewed translation, section hierarchy, source page numbers, the official PDF URL, and the PDF SHA-256 fingerprint. Structural chapter and section headings may have an empty body; content-bearing sections preserve the complete source text. Grand Rules translations retain the exact numbered-rule sequence, while Floor Rules translations retain every ordered list, bullet, note, and numbered procedural step from the Japanese source.
+
+## Knowledge Search / 統一全文搜尋
+
+### `GET /api/search`
+
+Searches public cards, official Q&A, Grand/Floor Rules sections, errata, and public deck shares. PostgreSQL remains the source of truth; the API queries the internal Meilisearch index and transparently uses a cached PostgreSQL-derived substring search when the index is unavailable.
+
+Query parameters:
+
+| Parameter          | Contract                                                                                   |
+| ------------------ | ------------------------------------------------------------------------------------------ |
+| `q`                | Search text, up to 240 characters. An empty query returns no hits.                         |
+| `scope`            | `all` or a comma-separated allowlist of `card`, `qa`, `rule`, `errata`, and `deck`.        |
+| `lang`             | `ja`, `zh-TW`, `zh-CN`, `zh-HK`, `en`, or `ko`; defaults to `zh-TW`.                       |
+| `limit`, `offset`  | `limit` is 1–100; `offset` is 0–10,000.                                                    |
+| structured filters | `pack`, `rarity`, `element`, `cardType`, `distributionType`, `documentId`, `tag`, `cardId` |
+
+Example:
+
+```http
+GET /api/search?q=Chronos&scope=card,qa&lang=zh-TW&limit=24&offset=0
+```
+
+Response:
+
+```json
+{
+  "hits": [
+    {
+      "uid": "card__4th_106__zh-TW",
+      "type": "card",
+      "sourceId": "4th_106",
+      "title": "海膽栗子",
+      "titleHighlights": [{ "start": 0, "end": 2 }],
+      "snippet": "將 Chronos 回溯一格。",
+      "snippetHighlights": [{ "start": 2, "end": 9 }],
+      "url": "/cards/4th_106",
+      "relatedCardIds": ["4th_106"]
+    }
+  ],
+  "estimatedTotalHits": 1,
+  "limit": 24,
+  "offset": 0,
+  "processingTimeMs": 2,
+  "engine": "meilisearch"
+}
+```
+
+`engine` is diagnostic and is either `meilisearch` or `postgres-fallback`. Deck-share page searches use a larger, server-only candidate window, then reapply PostgreSQL publication, moderation, visibility, block, element, cursor, and sort checks before returning any share.
+
+`titleHighlights` and `snippetHighlights` are zero-based UTF-16 text ranges (`start` inclusive, `end` exclusive). The API removes Meilisearch markers before responding. Clients must render the returned plain text and ranges as text nodes; they must not interpret either value as HTML.
+
+### `GET /api/search/suggest`
+
+Returns up to eight compact autocomplete suggestions from the same public index and PostgreSQL fallback. It accepts `q` (required, 1–120 characters), optional `scope`/`lang`, and `limit` (1–8). Each suggestion contains only `uid`, `type`, `sourceId`, `title`, `titleHighlights`, `subtitle`, and `url`; private or administrative fields are never returned.
+
+### `GET /api/search/ids`
+
+Page-local filtering uses this reduced-payload endpoint. It requires exactly one non-deck `scope`, accepts the same structured filters, limits results to 500 public source IDs, and returns `{ ids, estimatedTotalHits, engine }`. The full result endpoint remains capped at 100. Authorized administrative screens set `analytics=0` so searches over drafts or review notes are never included in public zero-result aggregation; public page searches default to analytics enabled.
+
+### `GET /api/search/status`
+
+Returns index enablement, logical index UID, last successful sync, public document count, last sync error, and fallback readiness. It never returns the Meilisearch host or master key.
+
+The index includes only published/reviewed card text, active official content, and `public + published + visible` deck shares. Private/unlisted decks, pending translations, ownership data, and administrative notes are excluded.
+
+### `GET /api/admin/search/zero-results`
+
+Requires an administrator session with `audit:read`. Returns privacy-filtered zero-result query aggregates ordered by count, with `limit` 1–200 and `days` 1–90. The aggregate stores no user ID, IP, or request ID. Queries resembling email addresses, URLs, credentials/tokens, secrets, or values longer than 120 characters increment only a low-cardinality Prometheus counter and are not stored in plaintext.
 
 ## Matches / 對戰
 
@@ -343,6 +428,7 @@ Notes:
 - Safe trace fields are preserved: `id`, `chronosPosition`, `hp`, `pendingEffectCardDefId`, `pendingChoiceType`, `result.ok`, and `result.message`.
 - Supported sanitized payloads include janken, mulligan, set-card actions, effect resolution summaries, pending choice summaries, and game-over reason.
 - The stored trace is an explainable audit log, not a deterministic replay format.
+- Completed authoritative matches also derive a schema-v1 `replay_summary` from server-owned state. It stores ordered decisions, phase/effect summaries, explicitly revealed hand cards, the result, and the sanitized timeline; raw state, unrevealed hands, decks, RNG, and replay manifests are excluded.
 - Guest placeholder IDs such as `guest-player-1` are accepted for match records but do not update ELO or leaderboard stats.
 
 Errors: `400`, `401`, `403`.
@@ -371,6 +457,8 @@ Response:
       "loserEloChange": -16,
       "turns": 12,
       "duration": 420,
+      "replayAvailable": true,
+      "replaySearchText": "battle resolvependingeffect 1st_9 clockadvance",
       "createdAt": "2026-06-26 00:00:00"
     }
   ]
@@ -378,6 +466,8 @@ Response:
 ```
 
 Only matches where the authenticated user is `player0_id` or `player1_id` are returned, newest first.
+
+`replaySearchText` is a bounded, lower-cased token index for the authenticated history UI. Full decisions and timeline entries are not embedded in the list response.
 
 Errors: `401`.
 
@@ -416,6 +506,35 @@ Response:
 ```
 
 Requires authentication and match participation. A non-participant receives `403` even when the match ID exists. Errors: `401`, `403`.
+
+### `GET /api/matches/:id/replay`
+
+Return the completed match's searchable replay summary. The response contains the final result, contiguous phase spans, ordered server decision records, ordered effect resolutions, explicitly revealed hand card definitions, and the sanitized action timeline.
+
+```json
+{
+  "matchId": "m_...",
+  "rulesVersion": "0.2.6",
+  "replay": {
+    "schemaVersion": 1,
+    "traceComplete": true,
+    "result": {
+      "winner": 0,
+      "reason": "hp",
+      "turns": 12,
+      "finalHp": [18, 0],
+      "finalChronos": 6
+    },
+    "phases": [{ "step": "battle", "fromTurn": 1, "toTurn": 1, "actionCount": 4 }],
+    "decisions": [{ "sequence": 1, "player": 0, "move": "janken", "args": ["rock"] }],
+    "effects": [{ "order": 1, "turn": 1, "cardDefId": "1st_9", "choiceType": null }],
+    "revealedHands": [{ "player": 1, "cardDefIds": ["1st_20"] }],
+    "timeline": []
+  }
+}
+```
+
+Requires authentication and match participation. A non-participant receives `403`; a pre-migration or legacy match without a replay summary receives `404`. The endpoint is never used for active match state. Errors: `401`, `403`, `404`.
 
 ## Chat / 聊天
 
@@ -490,7 +609,7 @@ npm run admin:link -- --email=user@example.com --role=admin
 ```
 
 Supported roles are `viewer`, `moderator`, `operator`, and `admin`.
-The CLI is the bootstrap path for the first full administrator. After that, an `admin` can search registered users and manage linked roles from the **使用者** tab in `/admin`; lower roles cannot see or call the role-management controls.
+The Refine 5 console under `/admin/*` maps navigation resources to these backend permissions and hides unavailable resources. The CLI is the bootstrap path for the first full administrator. After that, an `admin` can search registered users and manage linked roles from `/admin/users`; lower roles cannot see or call the role-management controls. Frontend access control is only a UX boundary; every endpoint continues to enforce its own permission.
 
 ### Deck sharing and official-content administration
 

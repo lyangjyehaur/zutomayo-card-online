@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   applyCanonicalQaCardNames,
   errataHashInput,
@@ -19,6 +19,7 @@ import {
 } from '../officialRulingsData';
 import {
   contentChanges,
+  fetchBaselineApiSnapshot,
   fixtureFileForUrl,
   parseErrataDetail,
   parseErrataList,
@@ -31,7 +32,7 @@ describe('official rulings source normalization', () => {
   });
 
   it('matches bilingual corrected names across full-width punctuation and spacing', () => {
-    expect(officialCorrectedNameMatches('グレくまくん（形） GUREKUMA-KUN (Pain Give Form)', 'グレくまくん (形)')).toBe(
+    expect(officialCorrectedNameMatches('グレくまくん (形) GUREKUMA-KUN (Pain Give Form)', 'グレくまくん（形）')).toBe(
       true,
     );
     expect(officialCorrectedNameMatches('グレくまくん（形）', '別のカード')).toBe(false);
@@ -221,16 +222,78 @@ describe('official rulings source normalization', () => {
     expect(shouldFailSyncCheck({ check: true, changed: true, apply: true })).toBe(false);
   });
 
-  it('compares PostgreSQL source hashes instead of reconstructed canonical card text', () => {
-    const remote = { errataId: '011', correctedText: 'グレくまくん（形） GUREKUMA-KUN (Pain Give Form)' };
-    const sourceHash = officialContentHash(remote);
+  it('compares source hashes instead of reconstructed canonical card text', () => {
+    const remote = [
+      {
+        errataId: '006',
+        correctedText: '劇・うにぐり（ハゼ馳せる果てるまで） GEKI-UNIGURI-KUN (Haze Haseru Haterumade)',
+      },
+      { errataId: '009', correctedText: 'regardless of its Power' },
+      { errataId: '011', correctedText: 'グレくまくん（形） GUREKUMA-KUN (Pain Give Form)' },
+    ];
+    const local = [
+      { errataId: '006', correctedText: '劇・うにぐり（ハゼ馳せる果てるまで）' },
+      {
+        errataId: '009',
+        correctedText: '手札からパワーの有無に関わらずカード１枚を選び、アビスに置く。',
+      },
+      { errataId: '011', correctedText: 'グレくまくん（形）' },
+    ].map((row) => ({
+      ...row,
+      contentHash: officialContentHash(remote.find((item) => item.errataId === row.errataId)),
+    }));
     expect(
-      contentChanges<{ errataId: string; correctedText: string; contentHash?: string }>(
-        [{ errataId: '011', correctedText: 'グレくまくん (形)', contentHash: sourceHash }],
-        [remote],
-        (row) => row,
-      ),
+      contentChanges<{ errataId: string; correctedText: string; contentHash?: string }>(local, remote, (row) => row),
     ).toEqual({ added: [], removed: [], updated: [] });
+  });
+
+  it('preserves active release hashes from the public API baseline', async () => {
+    const qaHash = 'a'.repeat(64);
+    const errataHash = 'b'.repeat(64);
+    const fetchImpl = vi.fn(async (input: URL | RequestInfo) => {
+      const url = String(input);
+      const body = url.includes('/qa?')
+        ? {
+            items: [
+              {
+                id: 'qa_1',
+                number: 1,
+                publishedAt: '2026-02-17',
+                source: { question: '質問', answer: '回答' },
+                tags: [],
+                relatedCardIds: [],
+                contentHash: qaHash,
+              },
+            ],
+          }
+        : {
+            items: [
+              {
+                errataId: '011',
+                cardId: '4th_76',
+                publishedAt: '2026-04-04',
+                cardNameJa: 'グレくまくん（形）',
+                rarity: 'N',
+                pack: 'Fantasy Is Reality',
+                cardNumber: '076/104',
+                source: {
+                  incorrectText: '誤り',
+                  correctedText: 'グレくまくん（形）',
+                  reason: '理由',
+                  replacementPolicy: '交換',
+                  usagePolicy: '使用',
+                },
+                sourceUrl: 'https://zutomayocard.net/errata/011/',
+                contentHash: errataHash,
+              },
+            ],
+          };
+      return { ok: true, status: 200, json: async () => body } as Response;
+    });
+
+    const snapshot = await fetchBaselineApiSnapshot('https://battle.example/api/', fetchImpl as typeof fetch);
+    expect(snapshot.qa[0].contentHash).toBe(qaHash);
+    expect(snapshot.errata[0].contentHash).toBe(errataHash);
   });
 
   it('maps official URLs to deterministic fixture files', () => {

@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react';
+
 /**
  * PhaseIndicator — 當前階段與「我現在該做什麼」的唯一提示來源。
  * 桌面：頂欄下方置中橫幅；行動端：緊湊單行（樣式見 battle.css）。
@@ -9,15 +11,21 @@ export interface PhaseInstructionView {
   meta: { text: string; done: boolean }[];
 }
 
-export function PhaseIndicator({ instruction, compact }: { instruction: PhaseInstructionView; compact?: boolean }) {
+export function PhaseIndicator({
+  instruction,
+  compact,
+  action,
+}: {
+  instruction: PhaseInstructionView;
+  compact?: boolean;
+  action?: ReactNode;
+}) {
   return (
     <section
-      className={`phaseindicator board-phase-instruction ${compact ? 'phaseindicator-compact' : ''}`}
-      role="status"
-      aria-live="polite"
+      className={`phaseindicator board-phase-instruction ${compact ? 'phaseindicator-compact' : ''} ${action ? 'phaseindicator-with-action' : ''}`}
     >
       <div className="phaseindicator-panel">
-        <div className="phaseindicator-text">
+        <div className="phaseindicator-text" role="status" aria-live="polite">
           <div className="phaseindicator-title">{instruction.title}</div>
           <p className="phaseindicator-body">{instruction.body}</p>
         </div>
@@ -30,6 +38,7 @@ export function PhaseIndicator({ instruction, compact }: { instruction: PhaseIns
             ))}
           </div>
         )}
+        {action && <div className="phaseindicator-action">{action}</div>}
       </div>
     </section>
   );

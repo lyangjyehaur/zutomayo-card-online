@@ -56,6 +56,21 @@ services:
       retries: 10
     restart: unless-stopped
 
+  meilisearch:
+    image: getmeili/meilisearch:v1.51.0@sha256:a9eb29ee09ab4943db3b4c68620bd6f3382e6b2b0ac4431c0e607b48dbcd4c14
+    environment:
+      - MEILI_ENV=development
+      - MEILI_NO_ANALYTICS=true
+      - MEILI_MASTER_KEY=${MEILI_MASTER_KEY:-local-meilisearch-master-key}
+    volumes:
+      - meili-data:/meili_data
+    healthcheck:
+      test: ['CMD-SHELL', 'curl --fail --silent http://localhost:7700/health >/dev/null || exit 1']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
   jaeger:
     image: jaegertracing/all-in-one:1.59
     ports:
@@ -96,6 +111,8 @@ services:
       - LEGACY_TOMBSTONE_BACKFILL_APPROVED=${LEGACY_TOMBSTONE_BACKFILL_APPROVED:-false}
       - LEGACY_TOMBSTONE_BACKFILL_EXPECTED_COUNT=${LEGACY_TOMBSTONE_BACKFILL_EXPECTED_COUNT:-0}
       - REQUIRE_OFFICIAL_CARD_DATA=${REQUIRE_OFFICIAL_CARD_DATA:-false}
+      - MEILI_HOST=http://meilisearch:7700
+      - MEILI_MASTER_KEY=${MEILI_MASTER_KEY:-local-meilisearch-master-key}
     depends_on:
       postgres:
         condition: service_healthy
@@ -131,6 +148,8 @@ services:
     environment:
       - PORT=3000
       - NODE_ENV=production
+      - DEPLOYMENT_ENV=${DEPLOYMENT_ENV:-development}
+      - CARD_DATASET_SHA256=${VITE_CARD_DATASET_SHA256:-}
       - UMAMI_UPSTREAM_URL=${UMAMI_UPSTREAM_URL:-}
       - PG_HOST=${PG_HOST:-postgres}
       - PG_PORT=${PG_PORT:-5432}
@@ -264,6 +283,13 @@ services:
       - TRANSLATION_PROVIDER=${TRANSLATION_PROVIDER:-}
       - TRANSLATION_MODEL=${TRANSLATION_MODEL:-}
       - TRANSLATION_TIMEOUT_MS=${TRANSLATION_TIMEOUT_MS:-10000}
+      - MEILI_HOST=http://meilisearch:7700
+      - MEILI_MASTER_KEY=${MEILI_MASTER_KEY:-local-meilisearch-master-key}
+      - MEILI_INDEX_UID=${MEILI_INDEX_UID:-zutomayo_knowledge}
+      - MEILI_TIMEOUT_MS=${MEILI_TIMEOUT_MS:-2500}
+      - SEARCH_REINDEX_INTERVAL_MS=${SEARCH_REINDEX_INTERVAL_MS:-300000}
+      - SEARCH_REINDEX_DEBOUNCE_MS=${SEARCH_REINDEX_DEBOUNCE_MS:-2000}
+      - SEARCH_FALLBACK_CACHE_MS=${SEARCH_FALLBACK_CACHE_MS:-60000}
       - SENTRY_DSN=${SENTRY_DSN:-}
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - API_HTTP_DRAIN_TIMEOUT_MS=${API_HTTP_DRAIN_TIMEOUT_MS:-10000}
@@ -305,6 +331,8 @@ services:
       - PLATFORM_PORT=3002
       - PLATFORM_PUBLIC_ADDRESS=${PLATFORM_PUBLIC_ADDRESS:-ws://localhost:3002}
       - NODE_ENV=production
+      - DEPLOYMENT_ENV=${DEPLOYMENT_ENV:-development}
+      - MATCH_ANALYTICS_TRAFFIC_CLASS=${MATCH_ANALYTICS_TRAFFIC_CLASS:-synthetic}
       - PG_HOST=${PG_HOST:-postgres}
       - PG_PORT=${PG_PORT:-5432}
       - PG_USER=${PG_PLATFORM_USER:-${PG_APP_USER:-zutomayo_app}}
@@ -381,3 +409,4 @@ services:
 volumes:
   pg-data:
   redis-data:
+  meili-data:

@@ -53,6 +53,14 @@ function cardDefToDbParams(card) {
     Boolean(card.officialErrataAffectsName),
     Boolean(card.officialErrataAffectsEffect),
     card.officialErrataUrl || '',
+    card.catalogStatus || 'listed',
+    card.distributionType || 'standard',
+    card.publicationStatus || 'draft',
+    card.playStatus || 'disabled',
+    card.playStatusReason || '',
+    card.sourceUrl || '',
+    card.sourceNote || '',
+    card.sourceSha256 || '',
   ];
 }
 
@@ -102,6 +110,15 @@ function normalizeCardForUpsert(id, body, baseCard) {
     officialErrataAffectsName: Boolean(baseCard?.officialErrataAffectsName),
     officialErrataAffectsEffect: Boolean(baseCard?.officialErrataAffectsEffect),
     officialErrataUrl: typeof baseCard?.officialErrataUrl === 'string' ? baseCard.officialErrataUrl : undefined,
+    catalogStatus:
+      typeof candidate.catalogStatus === 'string' ? candidate.catalogStatus : baseCard ? 'listed' : 'unlisted',
+    distributionType: typeof candidate.distributionType === 'string' ? candidate.distributionType : 'standard',
+    publicationStatus: typeof candidate.publicationStatus === 'string' ? candidate.publicationStatus : 'draft',
+    playStatus: typeof candidate.playStatus === 'string' ? candidate.playStatus : 'disabled',
+    playStatusReason: typeof candidate.playStatusReason === 'string' ? candidate.playStatusReason : '',
+    sourceUrl: typeof candidate.sourceUrl === 'string' ? candidate.sourceUrl : '',
+    sourceNote: typeof candidate.sourceNote === 'string' ? candidate.sourceNote : '',
+    sourceSha256: typeof candidate.sourceSha256 === 'string' ? candidate.sourceSha256 : '',
   };
 }
 
@@ -196,10 +213,12 @@ async function upsertCard(pool, cardId, body, adminUserId) {
        id, name, en_name_official, pack, song, illustrator, rarity, element, type, clock,
        attack_night, attack_day, power_cost, send_to_power, effect,
        en_effect_official, image, errata, has_official_errata, official_errata_id,
-       official_errata_affects_name, official_errata_affects_effect, official_errata_url
+       official_errata_affects_name, official_errata_affects_effect, official_errata_url,
+       catalog_status, distribution_type, publication_status, play_status, play_status_reason,
+       source_url, source_note, source_sha256
      )
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18,
-             $19, $20, $21, $22, $23)
+             $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31)
      ON CONFLICT (id) DO UPDATE SET
        name = EXCLUDED.name,
        en_name_official = EXCLUDED.en_name_official,
@@ -223,6 +242,14 @@ async function upsertCard(pool, cardId, body, adminUserId) {
        official_errata_affects_name = EXCLUDED.official_errata_affects_name,
        official_errata_affects_effect = EXCLUDED.official_errata_affects_effect,
        official_errata_url = EXCLUDED.official_errata_url,
+       catalog_status = EXCLUDED.catalog_status,
+       distribution_type = EXCLUDED.distribution_type,
+       publication_status = EXCLUDED.publication_status,
+       play_status = EXCLUDED.play_status,
+       play_status_reason = EXCLUDED.play_status_reason,
+       source_url = EXCLUDED.source_url,
+       source_note = EXCLUDED.source_note,
+       source_sha256 = EXCLUDED.source_sha256,
        updated_at = NOW()`,
     cardDefToDbParams(card),
   );

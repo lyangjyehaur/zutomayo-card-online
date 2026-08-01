@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Client } from 'pg';
 import {
+  contentSecurityScriptSources,
   postgresConnectionString,
   postgresSslConfig,
   requireSecret,
@@ -21,6 +22,15 @@ describe('runtime security connection contracts', () => {
   it('allows plaintext browser transports only outside production', () => {
     expect(websocketConnectSources({ NODE_ENV: 'test' })).toEqual(['ws:', 'wss:', 'http:', 'https:']);
     expect(websocketConnectSources({ NODE_ENV: 'production' })).toEqual(['wss:', 'https:']);
+  });
+
+  it('allows only the Cloudflare Insights script origin in production', () => {
+    expect(contentSecurityScriptSources({ NODE_ENV: 'test' })).toEqual(["'self'", "'unsafe-inline'"]);
+    expect(contentSecurityScriptSources({ NODE_ENV: 'production' })).toEqual([
+      "'self'",
+      "'unsafe-inline'",
+      'https://static.cloudflareinsights.com',
+    ]);
   });
 
   it('measures secret entropy by UTF-8 bytes and rejects short values', () => {

@@ -19,6 +19,13 @@ sha256_file() {
     shasum -a 256 "$1" | awk '{print $1}'
   fi
 }
+sha256_text() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    printf '%s' "$1" | sha256sum | awk '{print $1}'
+  else
+    printf '%s' "$1" | shasum -a 256 | awk '{print $1}'
+  fi
+}
 docker compose version >/dev/null 2>&1 || {
   echo 'ERROR: Docker Compose v2 is required for the PostgreSQL role smoke' >&2
   exit 2
@@ -472,6 +479,101 @@ if "${compose[@]}" exec --no-TTY --env PGPASSWORD="$PG_GAME_PASSWORD" postgres \
   psql --host 127.0.0.1 --username "$PG_GAME_USER" --dbname "$PG_DATABASE" --set=ON_ERROR_STOP=1 \
   --command "UPDATE users SET auth_version = auth_version WHERE id = 'role-smoke-missing'" >/dev/null 2>&1; then
   echo 'ERROR: GAME role can update auth_version' >&2
+  exit 1
+fi
+
+# Exercise trusted short-lived telemetry: GAME owns the authoritative match,
+# PLATFORM may classify/update counters, readers may inspect it, and API may not.
+"${compose[@]}" exec --no-TTY --env PGPASSWORD="$PG_GAME_PASSWORD" postgres \
+  psql --host 127.0.0.1 --username "$PG_GAME_USER" --dbname "$PG_DATABASE" --set=ON_ERROR_STOP=1 \
+  <<'SQL' >/dev/null
+DELETE FROM bjg_matches WHERE match_id = 'role-smoke-telemetry';
+INSERT INTO bjg_matches (match_id, metadata, log)
+VALUES ('role-smoke-telemetry', '{"players":{}}'::jsonb, '[]'::jsonb);
+SQL
+"${compose[@]}" exec --no-TTY --env PGPASSWORD="$PG_PLATFORM_PASSWORD" postgres \
+  psql --host 127.0.0.1 --username "$PG_PLATFORM_USER" --dbname "$PG_DATABASE" --set=ON_ERROR_STOP=1 \
+  <<'SQL' >/dev/null
+INSERT INTO bjg_match_telemetry (source_match_id, match_mode, traffic_class)
+VALUES ('role-smoke-telemetry', 'quick_match', 'synthetic');
+UPDATE bjg_match_telemetry
+SET player0_disconnect_count = player0_disconnect_count + 1,
+    player0_reconnect_count = player0_reconnect_count + 1
+WHERE source_match_id = 'role-smoke-telemetry';
+SQL
+"${compose[@]}" exec --no-TTY --env PGPASSWORD="$PG_GAME_PASSWORD" postgres \
+  psql --host 127.0.0.1 --username "$PG_GAME_USER" --dbname "$PG_DATABASE" --set=ON_ERROR_STOP=1 \
+  --command 'SELECT COUNT(*) FROM bjg_match_telemetry' >/dev/null
+"${compose[@]}" exec --no-TTY --env PGPASSWORD="$PG_RETENTION_PASSWORD" postgres \
+  psql --host 127.0.0.1 --username "$PG_RETENTION_USER" --dbname "$PG_DATABASE" --set=ON_ERROR_STOP=1 \
+  --command 'SELECT COUNT(*) FROM bjg_match_telemetry' >/dev/null
+"${compose[@]}" exec --no-TTY --env PGPASSWORD="$PG_BACKUP_PASSWORD" postgres \
+  psql --host 127.0.0.1 --username "$PG_BACKUP_USER" --dbname "$PG_DATABASE" --set=ON_ERROR_STOP=1 \
+  --command 'SELECT COUNT(*) FROM bjg_match_telemetry' >/dev/null
+if "${compose[@]}" exec --no-TTY --env PGPASSWORD="$PG_API_PASSWORD" postgres \
+  psql --host 127.0.0.1 --username "$PG_API_USER" --dbname "$PG_DATABASE" --set=ON_ERROR_STOP=1 \
+  --command 'SELECT COUNT(*) FROM bjg_match_telemetry' >/dev/null 2>&1; then
+  echo 'ERROR: API role can read operational match telemetry' >&2
+  exit 1
+fi
+"${compose[@]}" exec --no-TTY --env PGPASSWORD="$PG_GAME_PASSWORD" postgres \
+  psql --host 127.0.0.1 --username "$PG_GAME_USER" --dbname "$PG_DATABASE" --set=ON_ERROR_STOP=1 \
+  --command "DELETE FROM bjg_matches WHERE match_id = 'role-smoke-telemetry'" >/dev/null
+
+# Exercise the permanent analytics grant matrix against the real migration,
+# including the two child tables used by archive-before-delete reconciliation.
+analytics_digest="$(sha256_text 'role-smoke-analytics')"
+analytics_integrity="$(sha256_text 'role-smoke-integrity')"
+"${compose[@]}" exec --no-TTY --env PGPASSWORD="$PG_GAME_PASSWORD" postgres \
+  psql --host 127.0.0.1 --username "$PG_GAME_USER" --dbname "$PG_DATABASE" --set=ON_ERROR_STOP=1 \
+  --set=analytics_digest="$analytics_digest" --set=analytics_integrity="$analytics_integrity" \
+  <<'SQL' >/dev/null
+BEGIN;
+INSERT INTO match_analytics (
+  source_match_digest, environment, traffic_class, match_mode, rating_mode,
+  app_version, build_id, rules_version, started_at, completed_at,
+  duration_seconds, turns, outcome, gameover_reason_code, final_hp,
+  seat_classes, action_count, timeout_count, deck_count, event_count,
+  integrity_sha256
+) VALUES (
+  :'analytics_digest', 'test', 'synthetic', 'direct', 'unrated',
+  '0.0.0', 'role-smoke', 'role-smoke', NOW(), NOW(), 0, 0, 'abandoned',
+  'inactive-room', ARRAY[100, 100], ARRAY['registered', 'unknown'], 0, 0, 2, 0,
+  :'analytics_integrity'
+);
+INSERT INTO match_analytics_decks (
+  source_match_digest, seat, card_ids, deck_hash, deck_source, deck_validation
+) VALUES
+  (:'analytics_digest', 0, array_fill('role-smoke-card-0'::text, ARRAY[20]), :'analytics_integrity', 'unknown', 'valid'),
+  (:'analytics_digest', 1, array_fill('role-smoke-card-1'::text, ARRAY[20]), :'analytics_integrity', 'unknown', 'valid');
+ROLLBACK;
+SQL
+"${compose[@]}" exec --no-TTY --env PGPASSWORD="$PG_RETENTION_PASSWORD" postgres \
+  psql --host 127.0.0.1 --username "$PG_RETENTION_USER" --dbname "$PG_DATABASE" --set=ON_ERROR_STOP=1 \
+  --command 'SELECT COUNT(*) FROM match_analytics; SELECT COUNT(*) FROM match_analytics_decks' >/dev/null
+"${compose[@]}" exec --no-TTY --env PGPASSWORD="$PG_BACKUP_PASSWORD" postgres \
+  psql --host 127.0.0.1 --username "$PG_BACKUP_USER" --dbname "$PG_DATABASE" --set=ON_ERROR_STOP=1 \
+  --command 'SELECT COUNT(*) FROM match_analytics; SELECT COUNT(*) FROM match_analytics_events' >/dev/null
+if "${compose[@]}" exec --no-TTY --env PGPASSWORD="$PG_API_PASSWORD" postgres \
+  psql --host 127.0.0.1 --username "$PG_API_USER" --dbname "$PG_DATABASE" --set=ON_ERROR_STOP=1 \
+  --command 'SELECT COUNT(*) FROM match_analytics' >/dev/null 2>&1; then
+  echo 'ERROR: API role can read permanent analytics tables' >&2
+  exit 1
+fi
+
+# Run the MA-08 query pack against deterministic fixtures and compare the
+# complete PostgreSQL CSV output with the reviewed expected results.
+"${compose[@]}" exec --no-TTY --env PGPASSWORD="$PG_MIGRATION_PASSWORD" postgres \
+  psql --username "$PG_MIGRATION_USER" --dbname "$PG_DATABASE" --set=ON_ERROR_STOP=1 \
+  < scripts/analytics/match-analytics-fixture.sql >/dev/null
+analytics_report="$(
+  "${compose[@]}" exec --no-TTY --env PGPASSWORD="$PG_BACKUP_PASSWORD" postgres \
+    psql --host 127.0.0.1 --username "$PG_BACKUP_USER" --dbname "$PG_DATABASE" \
+    --set=ON_ERROR_STOP=1 --csv --quiet \
+    < scripts/analytics/match-analytics-core.sql
+)"
+if ! diff -u scripts/analytics/match-analytics-expected.csv <(printf '%s\n' "$analytics_report"); then
+  echo 'ERROR: match analytics fixture results differ from the reviewed baseline' >&2
   exit 1
 fi
 

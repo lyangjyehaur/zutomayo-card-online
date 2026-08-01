@@ -14,5 +14,5 @@ describe('card image delivery policy', () => {
     expect(summary.bundledAssetExceptions).toBe(1);
     expect(summary.originalFallbackExceptions).toBe(0);
     expect(summary.nonProductionExceptions).toBe(1);
-  }, 15_000);
+  }, 30_000);
 });

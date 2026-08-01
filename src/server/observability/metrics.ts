@@ -60,6 +60,45 @@ export const gameMatchCompletionsTotal = new Counter({
   registers: [register],
 });
 
+export const matchAnalyticsCaptureTotal = new Counter({
+  name: 'match_analytics_capture_total',
+  help: 'New anonymous terminal match captures grouped by outcome and traffic class',
+  labelNames: ['outcome', 'traffic_class'] as const,
+  registers: [register],
+});
+
+export const matchAnalyticsCaptureFailuresTotal = new Counter({
+  name: 'match_analytics_capture_failures_total',
+  help: 'Anonymous terminal match capture failures grouped by stage',
+  labelNames: ['stage'] as const,
+  registers: [register],
+});
+
+export const matchAnalyticsCleanupBlockedTotal = new Counter({
+  name: 'match_analytics_cleanup_blocked_total',
+  help: 'Terminal runtime cleanup attempts blocked to preserve an incomplete source',
+  labelNames: ['reason'] as const,
+  registers: [register],
+});
+
+export const matchAnalyticsUnarchivedTerminal = new Gauge({
+  name: 'match_analytics_unarchived_terminal',
+  help: 'Current terminal runtime rows without a reconciled anonymous analytics archive',
+  registers: [register],
+});
+
+export const matchAnalyticsOldestUnarchivedSeconds = new Gauge({
+  name: 'match_analytics_oldest_unarchived_seconds',
+  help: 'Age in seconds of the oldest terminal runtime row without a reconciled analytics archive',
+  registers: [register],
+});
+
+export const matchAnalyticsRecentMissingMetadata = new Gauge({
+  name: 'match_analytics_recent_missing_metadata',
+  help: 'Anonymous match facts captured in the last 24 hours without complete release metadata',
+  registers: [register],
+});
+
 export const matchResultOutboxMetricsRefreshSuccess = new Gauge({
   name: 'match_result_outbox_metrics_refresh_success',
   help: 'Whether the most recent durable outbox metrics refresh succeeded',
@@ -104,12 +143,17 @@ function normalizePath(path: string): string {
 export function metricsMiddleware(): ObsMiddleware {
   return async (ctx, next) => {
     const start = Date.now();
+    let errorStatus: number | undefined;
     try {
       await next();
+    } catch (error) {
+      const status = (error as { status?: unknown })?.status;
+      if (typeof status === 'number') errorStatus = status;
+      throw error;
     } finally {
       const duration = (Date.now() - start) / 1000;
       const path = normalizePath(ctx.path);
-      const status = String(ctx.status);
+      const status = String(errorStatus ?? ctx.status);
       httpRequestDuration.labels(ctx.method, path, status).observe(duration);
       httpRequestsTotal.labels(ctx.method, path, status).inc();
     }

@@ -19,7 +19,7 @@ test.describe('牌組編輯器頁面', () => {
     });
   });
 
-  test('牌組編輯器頁面能載入', async ({ page }) => {
+  test('牌組編輯器頁面能載入 @core', async ({ page }) => {
     await page.goto('/deck-builder');
 
     // 等待頁面載入完成（boot loader 結束）
@@ -51,13 +51,11 @@ test.describe('牌組編輯器頁面', () => {
     await page.goto('/deck-builder');
     await expect(page.getByRole('button', { name: '新牌組' })).toBeVisible({ timeout: 30_000 });
 
-    let packFilter = page.getByLabel('彈數').filter({ visible: true });
-    if ((await packFilter.count()) === 0) {
+    const visiblePackFilter = page.getByText('彈數', { exact: true }).filter({ visible: true });
+    if ((await visiblePackFilter.count()) === 0) {
       await page.getByRole('button', { name: '篩選' }).click();
-      await expect(page.getByRole('dialog', { name: '篩選' })).toBeVisible();
-      packFilter = page.getByLabel('彈數').filter({ visible: true });
     }
-    await expect(packFilter).toBeVisible();
+    await expect(page.getByRole('group', { name: '彈數' })).toBeVisible();
   });
 
   test('導入與導出按鈕存在', async ({ page }) => {
@@ -88,8 +86,9 @@ test.describe('牌組編輯 — 卡牌操作 @requires-backend', () => {
     await expect(cardPool).toBeVisible();
   });
 
-  test('桌面右側牌組詳細可獨立滾動', async ({ page, isMobile }) => {
-    test.skip(isMobile, '桌面右側牌組面板不會在手機版佈局顯示');
+  test('桌面右側牌組詳細可獨立滾動', async ({ page }, testInfo) => {
+    test.skip(Boolean(testInfo.project.use.isMobile), '手機版使用底部牌組操作列，不顯示桌面右側 aside');
+
     await page.goto('/deck-builder');
     await expect(page.getByRole('button', { name: '新牌組' })).toBeVisible({ timeout: 30_000 });
 

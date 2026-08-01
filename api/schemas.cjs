@@ -69,6 +69,9 @@ const deckReservationSchema = z.object({
   rulesVersion: z.string().min(1).max(120).optional(),
 });
 
+const cardOwnershipUpdateSchema = z.object({ owned: z.boolean() }).strict();
+const cardOwnershipMergeSchema = z.object({ cardIds: z.array(z.string().min(1).max(80)).max(1000) }).strict();
+
 const deckShareIdSchema = z.string().regex(/^ds_[A-Za-z0-9_-]{8,128}$/);
 
 const deckShareCreateSchema = z
@@ -94,9 +97,62 @@ const deckShareListQuerySchema = z
   .object({
     sort: z.enum(['newest', 'popular', 'most-copied']).optional(),
     q: z.string().trim().max(120).optional(),
+    lang: z.enum(['ja', 'zh-TW', 'zh-CN', 'zh-HK', 'en', 'ko']).optional(),
     element: z.enum(['闇', '炎', '電気', '風', 'カオス']).optional(),
     cursor: z.string().max(512).optional(),
     limit: z.coerce.number().int().min(1).max(48).optional(),
+  })
+  .strict();
+
+const knowledgeSearchQuerySchema = z
+  .object({
+    q: z.string().trim().max(240).default(''),
+    scope: z.string().trim().max(80).optional(),
+    lang: z.enum(['ja', 'zh-TW', 'zh-CN', 'zh-HK', 'en', 'ko']).optional(),
+    pack: z.string().trim().max(120).optional(),
+    rarity: z.string().trim().max(16).optional(),
+    element: z.string().trim().max(32).optional(),
+    cardType: z.string().trim().max(32).optional(),
+    distributionType: z.string().trim().max(32).optional(),
+    documentId: z.enum(['grand', 'floor']).optional(),
+    tag: z.string().trim().max(120).optional(),
+    cardId: z.string().trim().max(120).optional(),
+    limit: z.coerce.number().int().min(1).max(100).optional(),
+    offset: z.coerce.number().int().min(0).max(10000).optional(),
+  })
+  .strict();
+
+const knowledgeSearchIdsQuerySchema = z
+  .object({
+    q: z.string().trim().min(1).max(240),
+    scope: z.enum(['card', 'qa', 'rule', 'errata']),
+    lang: z.enum(['ja', 'zh-TW', 'zh-CN', 'zh-HK', 'en', 'ko']).optional(),
+    pack: z.string().trim().max(120).optional(),
+    rarity: z.string().trim().max(16).optional(),
+    element: z.string().trim().max(32).optional(),
+    cardType: z.string().trim().max(32).optional(),
+    distributionType: z.string().trim().max(32).optional(),
+    documentId: z.enum(['grand', 'floor']).optional(),
+    tag: z.string().trim().max(120).optional(),
+    cardId: z.string().trim().max(120).optional(),
+    limit: z.coerce.number().int().min(1).max(500).optional(),
+    analytics: z.enum(['0', '1']).optional(),
+  })
+  .strict();
+
+const knowledgeSearchSuggestQuerySchema = z
+  .object({
+    q: z.string().trim().min(1).max(120),
+    scope: z.string().trim().max(80).optional(),
+    lang: z.enum(['ja', 'zh-TW', 'zh-CN', 'zh-HK', 'en', 'ko']).optional(),
+    limit: z.coerce.number().int().min(1).max(8).optional(),
+  })
+  .strict();
+
+const adminKnowledgeSearchZeroResultsQuerySchema = z
+  .object({
+    limit: z.coerce.number().int().min(1).max(200).optional(),
+    days: z.coerce.number().int().min(1).max(90).optional(),
   })
   .strict();
 
@@ -352,6 +408,47 @@ const legalHoldListQuerySchema = z
   })
   .strict();
 
+const cardSynergyCategorySchema = z.enum([
+  'named_card_song',
+  'element',
+  'zone_resource',
+  'chronos',
+  'hp_damage',
+  'hand_draw',
+  'card_stats_type',
+  'deck_flow',
+  'area_enchant',
+  'event_trigger',
+  'other',
+]);
+const cardSynergyWriteSchema = z
+  .object({
+    groupId: z.string().trim().max(160).optional().default(''),
+    sourceCardId: z.string().trim().min(1).max(80),
+    targetCardId: z.string().trim().min(1).max(80),
+    kind: z.enum(['enables', 'conflicts']),
+    primaryCategory: cardSynergyCategorySchema,
+    categories: z.array(cardSynergyCategorySchema).max(12).default([]),
+    confidence: z.enum(['high', 'medium', 'low']),
+    score: z.coerce.number().int().min(-1000).max(1000),
+    rationaleJa: z.string().trim().min(1).max(3000),
+    rationaleI18n: z.record(z.string(), z.string().max(3000)).default({}),
+    evidence: z.array(z.unknown()).max(100).default([]),
+    reviewStatus: z.enum(['candidate', 'approved', 'rejected', 'needs_changes']),
+    recommendationEligible: z.boolean(),
+    sourceVersion: z.string().trim().min(1).max(120),
+    rulesVersion: z.string().trim().min(1).max(120),
+  })
+  .strict();
+const cardSynergyListQuerySchema = z
+  .object({
+    status: z.enum(['candidate', 'approved', 'rejected', 'needs_changes']).optional(),
+    category: cardSynergyCategorySchema.optional(),
+    query: z.string().trim().max(200).optional(),
+    limit: z.coerce.number().int().min(1).max(500).optional(),
+  })
+  .strict();
+
 // ===== Feedback =====
 const feedbackPostCreateSchema = z
   .object({
@@ -402,10 +499,16 @@ module.exports = {
   accountCenterPasswordSchema,
   deckCreateSchema,
   deckReservationSchema,
+  cardOwnershipUpdateSchema,
+  cardOwnershipMergeSchema,
   deckShareIdSchema,
   deckShareCreateSchema,
   deckShareUpdateSchema,
   deckShareListQuerySchema,
+  knowledgeSearchQuerySchema,
+  knowledgeSearchIdsQuerySchema,
+  knowledgeSearchSuggestQuerySchema,
+  adminKnowledgeSearchZeroResultsQuerySchema,
   deckShareCopySchema,
   deckShareReportCreateSchema,
   adminDeckShareReportListSchema,
@@ -438,6 +541,8 @@ module.exports = {
   legalHoldCreateSchema,
   legalHoldReleaseSchema,
   legalHoldListQuerySchema,
+  cardSynergyWriteSchema,
+  cardSynergyListQuerySchema,
   feedbackPostCreateSchema,
   feedbackCommentCreateSchema,
   feedbackStatusSchema,

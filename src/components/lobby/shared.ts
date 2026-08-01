@@ -10,6 +10,7 @@ import {
 import { PRESET_DECKS } from '../../game/cards/presetDecks';
 import { COUNTER_DECK_NAME, isValidConstructedDeck, RANDOM_DECK_NAME } from '../../game/cards/deckBuilder';
 import { t } from '../../i18n';
+import { QUICK_MATCH_LOCAL_DECK_NAME } from '../../platform/quickMatchDeck';
 
 export type DeckOption = {
   id: string;
@@ -40,6 +41,10 @@ export function serverDeckOptionId(deckId: string): string {
 
 export function serverDeckIdFromOption(optionId: string): string | null {
   return optionId.startsWith(SERVER_DECK_PREFIX) ? optionId.slice(SERVER_DECK_PREFIX.length) : null;
+}
+
+export function platformQuickMatchDeckName(optionId: string): string {
+  return optionId === CUSTOM_DECK_NAME || customDeckIdFromOption(optionId) ? QUICK_MATCH_LOCAL_DECK_NAME : optionId;
 }
 
 /**
@@ -80,6 +85,12 @@ export function canStartAI({
   deck1Name?: string;
 }): boolean {
   return cardsReady && !!deck0Name;
+}
+
+export function aiOpponentDeckSetup(deckName: string, serverDecks: DeckResponse[]): ZutomayoSetupData {
+  const resolvedName = deckName || RANDOM_DECK_NAME;
+  if (resolvedName === COUNTER_DECK_NAME) return { deck1Name: COUNTER_DECK_NAME };
+  return onlineDeckName(1, resolvedName, serverDecks);
 }
 
 export function onlineDeckName(player: PlayerIndex, deckName: string, serverDecks: DeckResponse[]): ZutomayoSetupData {
@@ -139,31 +150,20 @@ export function buildDeckOptions(customDeckAvailable: boolean): DeckOption[] {
 }
 
 /**
- * AI 對手專用牌組選項：移除自訂牌組與伺服器牌組（AI 不該用玩家自訂牌組），新增克制牌組。
+ * AI 對手專用牌組選項：沿用玩家可用的本機牌組，並新增克制牌組。
+ * 伺服器牌組由呼叫端分組加入，避免這個純本機選項 builder 依賴登入狀態。
  * 克制牌組會在開局時分析玩家牌組特性，從卡池組出克制牌組。
  */
-export function buildAIOpponentDeckOptions(): DeckOption[] {
-  const presetOptions = Object.entries(PRESET_DECKS).map(([id, deck]) => {
-    const copy = DECK_COPY[id];
-    return {
-      id,
-      name: copy ? t(copy.nameKey) : deck.name,
-      description: copy ? t(copy.descKey) : deck.name,
-    };
-  });
-
+export function buildAIOpponentDeckOptions(customDeckAvailable: boolean): DeckOption[] {
+  const playerOptions = buildDeckOptions(customDeckAvailable);
   return [
-    {
-      id: RANDOM_DECK_NAME,
-      name: t('deck.random'),
-      description: t('deck.randomDesc'),
-    },
+    playerOptions[0],
     {
       id: COUNTER_DECK_NAME,
       name: t('deck.counter'),
       description: t('deck.counterDesc'),
     },
-    ...presetOptions,
+    ...playerOptions.slice(1),
   ];
 }
 

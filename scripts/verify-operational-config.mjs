@@ -127,6 +127,10 @@ export function validateOperationalConfig() {
     'fixture_deck',
     'fixture_match_history',
     'fixture_leaderboard',
+    'fixture_chat_message',
+    'fixture_feedback_post',
+    'fixture_boardgame_match',
+    'invalid_bjg_match_payload',
     'schema_gate',
   ]);
   requireFragments('scripts/run-pg-restore-drill-scheduled.sh', [
@@ -201,6 +205,25 @@ export function validateOperationalConfig() {
   requireFragments('package.json', ['"synthetic:probe"']);
   requireFragments('package.json', ['"relationship:outbox:redrive"']);
   requireFragments('package.json', ['"relationship:outbox:pg-smoke"']);
+  requireFragments('package.json', ['"cloudflare:cache:plan"', '"cloudflare:cache:apply"', '"smoke:cache-policy"']);
+  requireFragments('scripts/cloudflare-cache-rules.ts', [
+    'zutomayo-cache-',
+    'http_request_cache_settings',
+    'CLOUDFLARE_API_TOKEN',
+    "mode: 'respect_origin'",
+  ]);
+  requireFragments('scripts/cache-policy-smoke.ts', [
+    'direct-address',
+    'servername: url.hostname',
+    'cf-cache-status',
+    '/battle/__cache-smoke-missing-',
+  ]);
+  requireFragments('scripts/deploy-server4.sh', [
+    'CLOUDFLARE_CACHE_RULES_REQUIRED',
+    'cloudflare:cache:apply',
+    'cache-policy-smoke.ts',
+    'DIRECT_SMOKE_ADDRESS',
+  ]);
   requireFragments('scripts/redrive-relationship-outbox.cjs', [
     'assertPostgresExpectedRole',
     "'PG_API_USER'",
@@ -352,38 +375,16 @@ export function validateOperationalConfig() {
     'PostgresBaseBackupRunFailed',
     'RetentionJobMissingOrStale',
     'ReadinessProbeFailed',
+    'PostgresExporterDown',
+    'RedisExporterDown',
+    'PlatformReconnectSpike',
     'SyntheticPlayerJourneyFailed',
     'SyntheticPlayerJourneyStale',
     'RelationshipChangeOutboxBacklog',
     'RelationshipChangeOutboxOldestRow',
     'RelationshipChangeOutboxDeadLetter',
     'RelationshipChangeOutboxMetricsStale',
-    'AccountExportOldestJob',
-    'AccountExportJobFailed',
-    'AccountExportPurgeDelayed',
-    'AccountExportPurgeRetrying',
-    'AccountExportOrphanCleanupFailed',
-    'AccountExportMetricsStale',
-  ]);
-  requireFragments('docs/DEPLOYMENT.md', [
-    'ACCOUNT_EXPORT_STORAGE_MODE',
-    'ACCOUNT_EXPORT_S3_VERSIONING_MODE',
-    'ACCOUNT_EXPORT_S3_LIFECYCLE_CONFIRMED',
-    'Public Access Block',
-    's3:DeleteObjectVersion',
-    '000032_announcements',
-    '000035_remove_card_text_rollback_compat',
-    '000036_harden_card_i18n_contract',
-    'LEGACY_TOMBSTONE_BACKFILL_APPROVED',
-    'identity_anonymized_at IS NULL',
-    '256 MiB',
-  ]);
-  requireFragments('docs/DATA_RETENTION.md', [
-    'account_export_jobs',
-    'account_export_audit',
-    'object_version_id',
-    '365 天',
-    'orphan',
+    'MatchAnalyticsMissingMetadata',
   ]);
   requireFragments('observability/prometheus/alertmanager.yml', ['api_url_file: /etc/alertmanager/slack_webhook']);
   if (read('docker-compose.monitoring.yml').includes("content: '${SLACK_ALERT_WEBHOOK:-")) {
@@ -420,12 +421,32 @@ export function validateOperationalConfig() {
     "!= '149.104.6.238'",
     'stop game api platform',
     'deploy-server4.sh',
+    'RECOVERY_DATASET_SHA256',
+    'RECOVERY_MATCH_IMPACT_REPORT',
+    'preDeployBackupVerified',
     'sourceCheckoutVerified',
+    'datasetIdentityVerified',
     'schemaCompatible',
     'healthReady',
+    'buildIdentityVerified',
+    'battleAssetsVerified',
+    'websocketOutcomeVerified',
     'smokePassed',
   ]);
   requireFragments('package.json', ['"release:operational-evidence"']);
+  requireFragments('package.json', ['"e2e:authenticated-staging"', '"e2e:trust-staging"']);
+  requireFragments('scripts/trust-surface-gate.ts', [
+    'KNOWN_PRODUCTION_HOSTNAMES',
+    'PRODUCTION_HOSTNAME',
+    'REQUIRED_LS10_EVIDENCE',
+    "evidenceType: 'trust-surface'",
+    'datasetSha256',
+  ]);
+  requireFragments('.github/workflows/cd.yml', [
+    'npm run e2e:authenticated-staging',
+    'npm run e2e:trust-staging',
+    'staging-player-trust-evidence-',
+  ]);
   requireFragments('load-tests/operational-soak.js', [
     'OBSERVED_PEAK_RPS must be the measured',
     'PEAK_MULTIPLIER || 2',

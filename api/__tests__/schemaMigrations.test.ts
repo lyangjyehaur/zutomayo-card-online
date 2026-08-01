@@ -17,6 +17,92 @@ function readMigrations(): string {
 }
 
 describe('schema migrations', () => {
+  it('persists de-identified terminal match analytics independently from runtime state', () => {
+    const migration = readRepoFile('migrations/000048_match_analytics.js');
+    const gameFallback = readRepoFile('src/server/db/postgres-adapter.ts');
+    const schemaGate = readRepoFile('api/schemaGate.cjs');
+    for (const artifact of [
+      'match_analytics',
+      'match_analytics_decks',
+      'match_analytics_events',
+      'bjg_match_telemetry',
+      'resume_count',
+      'disconnect_counts',
+      'reconnect_counts',
+      'seat_resume_counts',
+      'source_match_digest',
+      'integrity_sha256',
+      'idx_match_analytics_completed_at',
+    ]) {
+      expect(migration).toContain(artifact);
+      expect(gameFallback).toContain(artifact);
+      expect(schemaGate).toContain(artifact);
+    }
+    expect(migration).toContain("onDelete: 'RESTRICT'");
+    expect(migration).toContain('export const down = false');
+  });
+
+  it('keeps privacy-filtered zero-result analytics aligned with the development fallback', () => {
+    const migration = readRepoFile('migrations/000047_knowledge_search_zero_results.js');
+    const initSchema = readRepoFile('api/server.cjs');
+    const schemaGate = readRepoFile('api/schemaGate.cjs');
+    for (const artifact of [
+      'knowledge_search_zero_results',
+      'normalized_query',
+      'occurrence_count',
+      'first_seen_at',
+      'last_seen_at',
+      'knowledge_search_zero_results_id_check',
+      'knowledge_search_zero_results_count_check',
+      'idx_knowledge_search_zero_results_popular',
+    ]) {
+      expect(migration).toContain(artifact);
+      expect(initSchema).toContain(artifact);
+      expect(schemaGate).toContain(artifact);
+    }
+    expect(migration).toContain('export const down = false');
+  });
+
+  it('stores completed replay summaries without coupling them to live boardgame state', () => {
+    const migration = readRepoFile('migrations/000049_match_replay_summaries.js');
+    const initSchema = readRepoFile('api/server.cjs');
+    const schemaGate = readRepoFile('api/schemaGate.cjs');
+    for (const artifact of ['replay_summary', 'ck_matches_replay_summary_object']) {
+      expect(migration).toContain(artifact);
+    }
+    expect(initSchema).toContain('replay_summary');
+    expect(schemaGate).toContain('replay_summary');
+  });
+
+  it('persists physical card ownership for signed-in users', () => {
+    const migration = readRepoFile('migrations/000046_user_card_collection.js');
+    const initSchema = readRepoFile('api/server.cjs');
+    const schemaGate = readRepoFile('api/schemaGate.cjs');
+    for (const artifact of ['user_card_collection', 'user_id', 'card_id', 'acquired_at', 'updated_at']) {
+      expect(migration).toContain(artifact);
+      expect(initSchema).toContain(artifact);
+      expect(schemaGate).toContain(artifact);
+    }
+  });
+
+  it('persists reviewed card synergy groups and recommendation relations', () => {
+    const migration = readRepoFile('migrations/000044_card_synergies.js');
+    const initSchema = readRepoFile('api/server.cjs');
+    const schemaGate = readRepoFile('api/schemaGate.cjs');
+    for (const artifact of [
+      'card_synergy_groups',
+      'card_synergy_relations',
+      'recommendation_eligible',
+      'rationale_i18n',
+      'source_version',
+      'rules_version',
+    ]) {
+      expect(migration).toContain(artifact);
+      expect(initSchema).toContain(artifact);
+      expect(schemaGate).toContain(artifact);
+    }
+  });
+
   it('keeps durable chat and platform evidence schema aligned with initSchema fallback', () => {
     const initSchema = readRepoFile('api/server.cjs');
     const migrations = readMigrations();
@@ -165,6 +251,32 @@ describe('schema migrations', () => {
     expect(migration).toContain('export const down = false');
   });
 
+  it('keeps immutable candidate and card revision history', () => {
+    const migration = readRepoFile('migrations/000045_content_revision_history.js');
+    const schemaGate = readRepoFile('api/schemaGate.cjs');
+    const initSchema = readRepoFile('api/server.cjs');
+    for (const artifact of [
+      'official_qa_item_revisions',
+      'card_official_errata_revisions',
+      'card_revisions',
+      'reject_immutable_revision_mutation',
+      'validate_official_qa_content_version',
+      'validate_official_errata_content_version',
+      'corrected_japanese_text',
+      'release_snapshot',
+    ]) {
+      expect(migration).toContain(artifact);
+      expect(initSchema).toContain(artifact);
+    }
+    for (const table of ['official_qa_item_revisions', 'card_official_errata_revisions', 'card_revisions']) {
+      expect(schemaGate).toContain(table);
+    }
+    expect(migration).toContain('SECURITY DEFINER');
+    expect(migration).toContain('AFTER INSERT OR UPDATE OR DELETE ON official_qa_items');
+    expect(migration).toContain('BEFORE UPDATE OR DELETE ON card_revisions');
+    expect(migration).toContain('export const down = false');
+  });
+
   it('stores Grand Rules and Floor Rules as versioned translated PostgreSQL documents', () => {
     const migration = readRepoFile('migrations/000041_official_rule_documents.js');
     const schemaGate = readRepoFile('api/schemaGate.cjs');
@@ -185,6 +297,25 @@ describe('schema migrations', () => {
     expect(migration).toContain("document_id IN ('grand', 'floor')");
     expect(migration).toContain("locale IN ('zh-TW', 'zh-CN', 'zh-HK', 'en', 'ko')");
     expect(migration).toContain('export const down = false');
+  });
+
+  it('keeps card catalog and playability metadata aligned across migration and runtime schema', () => {
+    const migration = readRepoFile('migrations/000043_card_catalog_sources.js');
+    const schemaGate = readRepoFile('api/schemaGate.cjs');
+    const initSchema = readRepoFile('api/server.cjs');
+    for (const artifact of [
+      'catalog_status',
+      'distribution_type',
+      'publication_status',
+      'play_status',
+      'play_status_reason',
+      'source_sha256',
+    ]) {
+      expect(migration).toContain(artifact);
+      expect(schemaGate).toContain(artifact);
+      expect(initSchema).toContain(artifact);
+    }
+    expect(migration).toContain("play_status IN ('playable', 'display_only', 'disabled')");
   });
 
   it('backfills the reward entitlement ledger for every existing grant', () => {
@@ -395,12 +526,17 @@ describe('schema migrations', () => {
 
   it('keeps reviewed card-source validation in explicit local import workflows', () => {
     const officialImport = readRepoFile('scripts/import-card-official-texts-pg.ts');
+    const cardSeed = readRepoFile('scripts/seed-cards-pg.ts');
     const derivedImport = readRepoFile('scripts/import-card-derived-effects-pg.ts');
     const derivedAudit = readRepoFile('scripts/cardDerivedEffects.ts');
 
     expect(officialImport).toContain('every printed English name/effect must be human-reviewed');
     expect(officialImport).toContain('official errata source must contain 12 unique cards');
     expect(officialImport).toContain('corrected Japanese does not match official card data');
+    expect(officialImport).toContain('ON CONFLICT (errata_id) DO UPDATE');
+    expect(cardSeed).toContain('ON CONFLICT (errata_id) DO UPDATE');
+    expect(officialImport).not.toContain('DELETE FROM card_official_errata');
+    expect(cardSeed).not.toContain('DELETE FROM card_official_errata');
     expect(derivedImport).toContain('PostgreSQL English effect differs from the effective official text');
     expect(derivedAudit).toContain('legacy en is forbidden');
   });

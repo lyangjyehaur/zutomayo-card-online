@@ -17,6 +17,7 @@ function qaItem(number: number, publishedAt: string, tag: string, question: stri
     translationStatus: 'verified',
     sourceUrl: 'https://example.com',
     lastSyncedAt: '2026-07-21T00:00:00.000Z',
+    contentHash: 'a'.repeat(64),
     contentVersion: 1,
   };
 }
@@ -56,6 +57,7 @@ function errataItem(
     translationStatus: 'verified',
     sourceUrl: 'https://example.com',
     lastSyncedAt: '2026-07-21T00:00:00.000Z',
+    contentHash: 'b'.repeat(64),
     contentVersion: 1,
   };
 }

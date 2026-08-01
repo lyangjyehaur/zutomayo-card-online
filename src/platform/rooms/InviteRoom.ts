@@ -2,6 +2,7 @@ import { Room, type AuthContext } from '@colyseus/core';
 import { createEmptyPlatformBlockStore, type PlatformBlockStore } from '../blockStore';
 import { createEmptyPlatformFriendStore, type PlatformFriendStore } from '../friendStore';
 import { platformLogger as logger } from '../logger';
+import { createEmptyPlatformMatchParticipantStore, type PlatformMatchParticipantStore } from '../matchParticipantStore';
 import { recordPlatformReconnect } from '../metrics';
 import { assertPlatformAuthCurrent, authenticatePlatformClientCurrent } from './auth';
 import type {
@@ -41,6 +42,7 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
   static friendStore: PlatformFriendStore = createEmptyPlatformFriendStore();
   static blockStore: PlatformBlockStore = createEmptyPlatformBlockStore();
   static enforceFriendship = false;
+  private static participantStore: PlatformMatchParticipantStore = createEmptyPlatformMatchParticipantStore();
   private static readonly activeRooms = new Set<InviteRoom>();
 
   maxClients = 8;
@@ -64,6 +66,10 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
 
   static configureBlockStore(blockStore: PlatformBlockStore | null): void {
     InviteRoom.blockStore = blockStore ?? createEmptyPlatformBlockStore();
+  }
+
+  static configureParticipantStore(store: PlatformMatchParticipantStore | null): void {
+    InviteRoom.participantStore = store ?? createEmptyPlatformMatchParticipantStore();
   }
 
   static async handleRelationshipChange(change: PlatformRelationshipChange): Promise<void> {
@@ -121,12 +127,21 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
       void this.cancel(optionalText(message.reason, 80) ?? 'cancelled');
     });
 
-    this.onMessage<BoardgameMatchReadyMessage>('boardgameMatchReady', (client, message) => {
-      void this.finishBoardgameMatch(client, message);
+    this.onMessage<BoardgameMatchReadyMessage>('boardgameMatchReady', async (client, message) => {
+      await this.finishBoardgameMatch(client, message);
     });
 
     await this.refreshMetadata();
+    if (this.boardgameMatchID) void this.recordMatchProvenance(this.boardgameMatchID);
     InviteRoom.activeRooms.add(this);
+  }
+
+  private async recordMatchProvenance(boardgameMatchID: string): Promise<void> {
+    try {
+      await InviteRoom.participantStore.recordMatchProvenance({ boardgameMatchID, matchMode: 'invite' });
+    } catch (err) {
+      logger.warn({ err, matchMode: 'invite' }, 'failed to record match provenance');
+    }
   }
 
   onDispose(): void {
@@ -171,8 +186,12 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
       role: 'player',
       joinedAt: Date.now(),
     };
-    if (reconnectingInviter) recordPlatformReconnect('invite');
-    if (!this.inviter && this.canBecomeInviter(client.userData)) this.inviter = client.userData;
+    if (reconnectingInviter) {
+      recordPlatformReconnect('invite');
+      this.inviter = client.userData;
+    } else if (!this.inviter && this.canBecomeInviter(client.userData)) {
+      this.inviter = client.userData;
+    }
     await this.refreshMetadata();
     this.clock.setTimeout(() => client.send('inviteSnapshot', this.snapshot()), 50);
     const readyBoardgameMatchID = this.status === 'finished' ? this.boardgameMatchID : undefined;
@@ -195,6 +214,12 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
         await this.cancel('inviter_left');
         return;
       }
+    }
+
+    if (client.userData && this.isInviter(client.userData) && this.inviter?.sessionId !== client.sessionId) {
+      await this.refreshMetadata();
+      this.broadcastSnapshot();
+      return;
     }
 
     await this.refreshMetadata();
@@ -300,6 +325,7 @@ export class InviteRoom extends Room<{ metadata: InviteRoomMetadata; client: Pla
         return;
       }
 
+      await this.recordMatchProvenance(boardgameMatchID);
       await this.refreshMetadata();
       this.broadcast('boardgameMatchReady', { boardgameMatchID });
       this.broadcastSnapshot();

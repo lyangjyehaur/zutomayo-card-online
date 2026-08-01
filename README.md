@@ -1,8 +1,8 @@
 # ZUTOMAYO CARD Online — 線上對戰卡牌遊戲
 
-**語言 / Languages：** [繁體中文](README.md) | [日本語](README.ja.md) | [English](README.en.md)
+**語言 / Languages：** [繁體中文](README.md) | [日本語](README.ja.md) | [English](README.en.md) | [한국어](README.ko.md)
 
-目前版本：**0.2.3**
+目前版本：**0.2.6**
 
 > ZUTOMAYO CARD（ずっと真夜中でいいのに。官方 TCG）的非官方數位化對戰平台。
 > 支援本機雙人、AI 練習、互動式教學與即時線上對戰。
@@ -11,20 +11,20 @@
 
 0.2.0 將專案從單一對戰應用擴充為多人平台：`boardgame.io` 繼續掌管權威卡牌狀態，Colyseus 負責大廳、配對、房間、邀請與觀戰 presence，ChatService 負責可持久化聊天、未讀、翻譯、舉報與管理審核。
 
-0.2.3 進一步整合官方 Grand Rules／基本 Floor Rules 五語閱讀頁與 PostgreSQL 原子發布流程，並補完整 AI 賽後導航、對戰記錄、首訪教學入口和牌組建立體驗。
+0.2.6 建立線上服務穩定化基線與永久匿名對戰分析，在 runtime state 清理前封存權威終局、牌組與 allowlisted 規則事件；同時加入確定性決策軌跡、僅供參賽者查詢的隱私過濾重播摘要，以及部署、復原、告警與信任面的驗收閘門。
 
 ### 遊戲與對戰
 
-- 本機雙人與簡單／普通／困難 AI；困難 AI 使用 lookahead 模擬。
-- 422 張卡牌、4 個卡包，267 行效果文字完整解析。
+- 本機雙人與簡單／普通／困難 AI；支援策略重抽、效果與目標評分，困難 AI 以規則驅動的有限回合模擬規劃。
+- 479 張可遊玩卡與 7 張僅展示卡，322 行可遊玩效果文字完整解析；增量限定卡均經獨立圖片、官方日英文字及規則稽核。
 - 猜拳、重抽、初始設置、效果順序、玩家選擇、戰鬥與 Chronos 晝夜流程。
 - 權威階段計時與逾時恢復，斷線或無回應玩家不再永久卡住對局。
-- 對戰動畫、響應式戰場、手機觸控操作與重新設計的新手教學遮罩。
+- 逐卡 Chronos 推進、HP／攻擊／減傷／恢復結算動畫、響應式戰場與手機觸控操作；新手教學共用正式戰場呈現。
 - 結算頁可重試 ELO／戰績提交；伺服器提交具冪等性，本地歷史可去重並保存賽後聊天來源。
 
 ### 多人平台
 
-- Colyseus 快速配對、自訂房、好友邀請、觀戰與大廳好友 presence。
+- Colyseus 公開房間列表、自訂房、好友邀請、觀戰與大廳好友 presence；暫未開放的快速配對入口預設隱藏。
 - 穩定的房間轉交與斷線恢復；線上 session 保存平台身份、座位憑證與 boardgame.io credentials。
 - 生產環境使用 Redis driver/presence，開發環境可使用 memory mode。
 - Colyseus 僅保存平台殼狀態，不接觸手牌、牌組、效果或其他權威遊戲資料。
@@ -40,10 +40,11 @@
 ### 其他產品能力
 
 - 六語 UI：繁中、粵語、簡中、日文、英文、韓文。
-- 牌組編輯器、卡組分享大廳、排行榜、跨裝置戰績、個人頁、OAuth 身份與反饋看板。
+- 牌組編輯器、帶有卡牌中繼資料與搭配推薦的卡組分享／圖鑑、排行榜、跨裝置戰績、個人頁、OAuth 身份與反饋看板。
+- 全站與頁面內的多語全文搜尋，涵蓋卡牌名稱／效果／歌名、官方 Q&A、規則章節、勘誤與公開牌組；IME 組字期間不送請求。
 - 官方 Grand Rules／基本 Floor Rules、日文 Q&A／勘誤、在地化閱讀頁面，以及人工校訂與來源同步後台。
 - PWA 安裝／更新提示與 app、build、rules 三層版本相容檢查。
-- 卡牌、翻譯、使用者、ELO、聊天證據、處分與反饋管理後台。
+- Refine 5 管理後台，統一維護卡牌／限定卡、翻譯、使用者、ELO、聊天證據、處分、公告與官方裁定。
 - Playwright 核心 E2E、k6 API／WebSocket／認證／配對負載測試，以及 staging／production CD pipeline。
 
 ## 架構
@@ -59,7 +60,8 @@ Browser / PWA
 
 game / api / platform
   ├─ PostgreSQL：持久資料、對局狀態、參與者與聊天證據
-  └─ Redis：Pub/Sub、Colyseus presence/driver、限流與暫態協調
+  ├─ Redis：Pub/Sub、Colyseus presence/driver、限流與暫態協調
+  └─ Meilisearch：由 PostgreSQL 原子重建的公開知識全文索引
 ```
 
 ### 權威邊界
@@ -122,6 +124,7 @@ npm run dev
 | `npm run db:migrate`                           | 套用 PostgreSQL migrations                                  |
 | `npm run import:official-rulings-translations` | 從本機未追蹤來源匯入官方裁定翻譯至 PostgreSQL               |
 | `npm run release:official-rulings`             | 原子發布最新官方日文與五語靜態翻譯                          |
+| `npm run search:reindex` / `search:check`      | 原子重建／檢查公開知識搜尋索引                              |
 | `npm run sync:official-rulings`                | 唯讀檢查官方 Q&A／勘誤是否有差異                            |
 | `npm run translate:official-rulings`           | 產生缺少的官方規則衍生語言翻譯                              |
 | `npm run smoke`                                | 核心遊戲流程 smoke                                          |
@@ -142,7 +145,7 @@ docker compose up -d --build
 docker compose ps
 ```
 
-Compose 包含六個單元：`postgres`、`redis`、一次性的 `migrate`、`game`、`api` 與 `platform`。
+Compose 包含七個單元：`postgres`、`redis`、內網 `meilisearch`、一次性的 `migrate`、`game`、`api` 與 `platform`。Meilisearch 不發布 host port；正式環境必須設定獨立的 `MEILI_MASTER_KEY`。
 
 另提供 `docker-compose.e2e.yml`、`docker-compose.load-test.yml` 與隔離 port／資料庫的 `docker-compose.staging.yml`。CD workflow 會在 master 更新或手動 staging dispatch 時建置並驗證七個 immutable GHCR images，版本 tag 建置 production images；未合併的 staging SHA 只接受同倉庫、base `master` 的 open PR 精確 head，SSH 部署由 `workflow_dispatch` 控制。
 
@@ -185,6 +188,7 @@ docs/                 架構、API、部署、多人平台與 UI/UX 文檔
 
 ## 文檔
 
+- [線上服務穩定化計劃](docs/LIVE_SERVICE_STABILIZATION_PLAN.md)
 - [完整架構](docs/ARCHITECTURE.md)
 - [REST API](docs/API.md)
 - [卡牌文本 i18n 維護指南](docs/card-text-i18n.md)

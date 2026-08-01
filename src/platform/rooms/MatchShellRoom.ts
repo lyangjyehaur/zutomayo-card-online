@@ -99,8 +99,8 @@ export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; cli
   private status: MatchShellStatus = 'waiting';
   private maxPlayerSeats = 2;
 
-  static configureParticipantStore(store: PlatformMatchParticipantStore): void {
-    MatchShellRoom.participantStore = store;
+  static configureParticipantStore(store: PlatformMatchParticipantStore | null): void {
+    MatchShellRoom.participantStore = store ?? createEmptyPlatformMatchParticipantStore();
   }
 
   static configureChatPreviewStore(store: PlatformChatPreviewStore): void {
@@ -135,7 +135,11 @@ export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; cli
   private async broadcastChatPreview(client: PlatformClient, message: ChatPreviewMessage): Promise<void> {
     if (carriesChatPreviewContent(message)) return;
     const messageId = optionalText(message.messageId, 128);
-    if (!messageId || !client.userData || !client.auth?.authenticated) return;
+    if (!messageId || !client.userData || !client.auth) return;
+    const hasVerifiedIdentity =
+      client.auth.authenticated ||
+      (client.userData.role === 'player' && client.userData.hasBoardgameCredentials === true);
+    if (!hasVerifiedIdentity) return;
     if (client.userData.userId !== client.auth.userId) return;
     const suppliedConversationId = optionalText(message.conversationId, 128);
     if (!this.conversationId || (suppliedConversationId && suppliedConversationId !== this.conversationId)) return;
@@ -197,6 +201,7 @@ export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; cli
     if (role === 'player' && boardgamePlayerID) {
       this.releaseReconnectSeat(boardgamePlayerID, auth.userId, client.sessionId);
       if (isReconnect) recordPlatformReconnect('match_shell');
+      await this.recordMatchConnection(boardgamePlayerID, isReconnect ? 'reconnect' : 'join');
     }
     client.userData = profile;
     await this.refreshMetadata();
@@ -220,6 +225,9 @@ export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; cli
 
   async onLeave(client: PlatformClient): Promise<void> {
     const profile = client.userData;
+    if (profile?.role === 'player' && profile.boardgamePlayerID) {
+      await this.recordMatchConnection(profile.boardgamePlayerID, 'disconnect');
+    }
     await this.refreshMetadata(client.sessionId);
     if (profile) this.broadcastPresence('leave', profile, client.sessionId);
   }
@@ -275,8 +283,27 @@ export class MatchShellRoom extends Room<{ metadata: MatchShellRoomMetadata; cli
           const authenticated = client.auth?.authenticated === true;
           const accessVerified = await this.assertDurableMatchAccess(client.userData!, authenticated);
           await this.recordParticipant(client.userData!, authenticated, accessVerified);
+          if (
+            client.userData!.role === 'player' &&
+            client.userData!.hasBoardgameCredentials === true &&
+            client.userData!.boardgamePlayerID
+          ) {
+            await this.recordMatchConnection(client.userData!.boardgamePlayerID, 'join');
+          }
         }),
     );
+  }
+
+  private async recordMatchConnection(playerID: string, event: 'join' | 'disconnect' | 'reconnect'): Promise<void> {
+    try {
+      await MatchShellRoom.participantStore.recordMatchConnection({
+        boardgameMatchID: this.boardgameMatchID,
+        playerID,
+        event,
+      });
+    } catch (err) {
+      logger.warn({ err, event, playerID }, 'failed to record match connection telemetry');
+    }
   }
 
   private async recordParticipant(

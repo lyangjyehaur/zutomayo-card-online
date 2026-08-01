@@ -16,7 +16,8 @@ const RELEASE_SHA_PATTERN = /^[a-f0-9]{40}$/i;
 const RUN_ID_PATTERN = /^\d+$/;
 const IMAGE_DIGEST_PATTERN = /^\S+@sha256:[a-f0-9]{64}$/i;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/i;
-const MIGRATION_BASENAME_PATTERN = /^\d{6,}_[a-z0-9_]+$/;
+const MIGRATION_PATTERN = /^\d{6,}_[a-z0-9_]+$/;
+const MIGRATION_BASENAME_PATTERN = MIGRATION_PATTERN;
 const REQUIRED_IMAGE_DIGESTS = Object.freeze(['game', 'api', 'platform', 'migrate', 'retention', 'gateway', 'ops']);
 const CANARY_RUNTIME_SERVICES = Object.freeze(['game', 'api', 'platform']);
 const CANARY_GATEWAY_ARTIFACT_TYPE = 'zutomayo-canary-gateway-config';
@@ -163,6 +164,12 @@ const STAGING_GATES = Object.freeze([
         'friendInviteVerified',
         'spectatorHiddenInformationVerified',
         'secureCookieVerified',
+        'serverBackedDecksVerified',
+        'quickMatchVerified',
+        'sameOriginWebSocketVerified',
+        'chatAuthorizationVerified',
+        'disconnectReconnectVerified',
+        'resultSubmissionVerified',
         'httpsTopologyVerified',
         'zeroConditionalSkips',
       ],
@@ -184,9 +191,44 @@ const STAGING_GATES = Object.freeze([
         ['maxRpoMinutes', 15, 'lte'],
         ['maxRtoMinutes', 30, 'lte'],
       ],
-      results: ['schemaGatePassed', 'fixtureRoundTripPassed', 'legalHoldInvariantPassed'],
+      results: [
+        'schemaGatePassed',
+        'fixtureRoundTripPassed',
+        'legalHoldInvariantPassed',
+        'boardgameStateInvariantPassed',
+      ],
     },
     relativePath: 'staging/restore-drill.json',
+  },
+  {
+    id: 'staging-trust-surface',
+    profiles: RELEASE_PROFILES,
+    phase: 'P5',
+    title: 'Public policies and account deletion rehearsal',
+    evidenceType: 'trust-surface',
+    measurements: {
+      comparisons: [
+        ['completedJourneys', 'minCompletedJourneys', 'gte'],
+        ['skippedTests', 'maxSkippedTests', 'lte'],
+        ['failedTests', 'maxFailedTests', 'lte'],
+        ['flakyTests', 'maxFlakyTests', 'lte'],
+      ],
+      thresholdRequirements: [['minCompletedJourneys', 1, 'gte']],
+      results: [
+        'publicPoliciesReachable',
+        'operatorContactReachable',
+        'retentionDeletionPublished',
+        'moderationAppealPublished',
+        'rightsholderTakedownPublished',
+        'authenticatedPolicyEntryReachable',
+        'accountExportVerified',
+        'accountDeletionRehearsed',
+        'deletedSessionRevoked',
+        'deletedAccountRejected',
+        'zeroConditionalSkips',
+      ],
+    },
+    relativePath: 'staging/trust-surface.json',
   },
   {
     id: 'staging-authenticated-e2e-hardening',
@@ -212,6 +254,12 @@ const STAGING_GATES = Object.freeze([
         'friendInviteVerified',
         'spectatorHiddenInformationVerified',
         'secureCookieVerified',
+        'serverBackedDecksVerified',
+        'quickMatchVerified',
+        'sameOriginWebSocketVerified',
+        'chatAuthorizationVerified',
+        'disconnectReconnectVerified',
+        'resultSubmissionVerified',
         'httpsTopologyVerified',
         'zeroConditionalSkips',
       ],
@@ -413,6 +461,9 @@ export function composeFixtureEnv() {
     ACCOUNT_EXPORT_S3_LIFECYCLE_CONFIRMED: 'true',
     ACCOUNT_EXPORT_PSEUDONYM_KEY: 'release-gate-export-pseudonym-key-32chars-minimum',
     CARD_DATA_DIR: '/tmp/zutomayo-release-gate-card-data',
+    VITE_CARD_DATASET_SHA256: '0'.repeat(64),
+    MEILI_HOST: 'https://meilisearch.example.invalid',
+    MEILI_MASTER_KEY: 'release-gate-meilisearch-master-key',
     OAUTH_PUBLIC_BASE_URL: 'https://game.example.invalid',
     METRICS_TOKEN: 'release-gate-metrics-token',
     SLACK_ALERT_WEBHOOK: 'https://hooks.example.invalid/services/release-gate',
@@ -1401,10 +1452,10 @@ function validateRestoreRawArtifact(raw, evidence, interval, missing, options) {
     return { rpoMinutes, rtoMinutes };
   }
   const expectedSchemaBound =
-    typeof options.expectedSchemaMigration === 'string' &&
-    typeof options.expectedSchemaChecksum === 'string' &&
-    checks.expectedMigration === options.expectedSchemaMigration &&
-    checks.expectedSchemaChecksum === options.expectedSchemaChecksum &&
+    typeof options.migration?.name === 'string' &&
+    typeof options.migration?.sha256 === 'string' &&
+    checks.expectedMigration === options.migration.name &&
+    checks.expectedSchemaChecksum === options.migration.sha256 &&
     checks.migrateImage === options.imageDigests?.migrate;
   if (!expectedSchemaBound) {
     missing.push('rawArtifact.checks expected migration/checksum/migrate image matching the release manifest');
@@ -1414,6 +1465,7 @@ function validateRestoreRawArtifact(raw, evidence, interval, missing, options) {
     'requiredTableCount',
     'unvalidatedConstraints',
     'invalidOutboxStatus',
+    'invalidBjgMatchPayload',
     'markerBeforeCount',
     'walReplayProbeCount',
     'markerAfterCount',
@@ -1438,6 +1490,7 @@ function validateRestoreRawArtifact(raw, evidence, interval, missing, options) {
       checks.sourceMarkerAfterCount === 1 &&
       restore.targetReached === true,
     legalHoldInvariantPassed: checks.deletionHoldViolations === 0 && checks.deletedSocialViolations === 0,
+    boardgameStateInvariantPassed: checks.invalidBjgMatchPayload === 0,
   };
   for (const [resultName, passed] of Object.entries(recomputedResults)) {
     validateSummaryResult(evidence, resultName, passed, missing);
@@ -1570,8 +1623,8 @@ function validateRestoreOffsiteArtifact(evidence, policy, missing, verifiedArtif
         missing.push(`${label}.restore.schema.expectedChecksum`);
       }
       if (
-        schema.expectedMigration !== options.expectedSchemaMigration ||
-        schema.expectedChecksum !== options.expectedSchemaChecksum ||
+        schema.expectedMigration !== options.migration?.name ||
+        schema.expectedChecksum !== options.migration?.sha256 ||
         schema.migrateImage !== options.imageDigests?.migrate
       ) {
         missing.push(`${label}.restore.schema matching the release manifest`);
@@ -1599,6 +1652,7 @@ function validateRestoreOffsiteArtifact(evidence, policy, missing, verifiedArtif
         'legalHolds',
         'unvalidatedConstraints',
         'invalidOutboxStatus',
+        'invalidBjgMatchPayload',
         'deletionHoldViolations',
         'deletedSocialViolations',
       ]) {
@@ -1607,8 +1661,8 @@ function validateRestoreOffsiteArtifact(evidence, policy, missing, verifiedArtif
         }
       }
       const expectedSchemaBound =
-        schema?.expectedMigration === options.expectedSchemaMigration &&
-        schema?.expectedChecksum === options.expectedSchemaChecksum &&
+        schema?.expectedMigration === options.migration?.name &&
+        schema?.expectedChecksum === options.migration?.sha256 &&
         schema?.migrateImage === options.imageDigests?.migrate;
       const recomputed = {
         schemaGatePassed:
@@ -1627,6 +1681,7 @@ function validateRestoreOffsiteArtifact(evidence, policy, missing, verifiedArtif
           observations.invalidOutboxStatus === 0,
         legalHoldInvariantPassed:
           observations.deletionHoldViolations === 0 && observations.deletedSocialViolations === 0,
+        boardgameStateInvariantPassed: observations.invalidBjgMatchPayload === 0,
       };
       for (const [resultName, passed] of Object.entries(recomputed)) {
         if (restore[resultName] !== passed) {
@@ -2120,13 +2175,13 @@ function readReleaseManifestContract(manifestPath) {
   if (!RELEASE_SHA_PATTERN.test(releaseSha ?? '')) {
     throw new Error('release manifest is missing a full RELEASE_SHA');
   }
-  const expectedSchemaMigration = manifestValue('EXPECTED_SCHEMA_MIGRATION');
-  const expectedSchemaChecksum = manifestValue('EXPECTED_SCHEMA_CHECKSUM');
-  if (!MIGRATION_BASENAME_PATTERN.test(expectedSchemaMigration)) {
-    throw new Error('release manifest EXPECTED_SCHEMA_MIGRATION is invalid');
+  const migrationName = contents.match(/^EXPECTED_SCHEMA_MIGRATION=(\S+)$/m)?.[1];
+  const migrationSha256 = contents.match(/^EXPECTED_SCHEMA_CHECKSUM=(\S+)$/m)?.[1];
+  if (!MIGRATION_PATTERN.test(migrationName ?? '')) {
+    throw new Error('release manifest is missing EXPECTED_SCHEMA_MIGRATION');
   }
-  if (!SHA256_PATTERN.test(expectedSchemaChecksum)) {
-    throw new Error('release manifest EXPECTED_SCHEMA_CHECKSUM is invalid');
+  if (!SHA256_PATTERN.test(migrationSha256 ?? '')) {
+    throw new Error('release manifest is missing EXPECTED_SCHEMA_CHECKSUM');
   }
   for (const line of contents.split(/\r?\n/)) {
     const match = line.match(/^(GAME|API|PLATFORM|MIGRATE|RETENTION|GATEWAY|OPS)_IMAGE=(\S+)$/);
@@ -2140,9 +2195,44 @@ function readReleaseManifestContract(manifestPath) {
   return {
     releaseSha: releaseSha.toLowerCase(),
     imageDigests,
-    expectedSchemaMigration,
-    expectedSchemaChecksum: expectedSchemaChecksum.toLowerCase(),
+    migration: { name: migrationName, sha256: migrationSha256.toLowerCase() },
   };
+}
+
+function validateReleaseIdentity(evidence, descriptor, stagingEvidenceDir, options, missing) {
+  if (!['card-dataset', 'authenticated-e2e', 'trust-surface'].includes(descriptor.evidenceType)) return;
+  const migration = evidence?.migration;
+  if (!MIGRATION_PATTERN.test(migration?.name ?? '')) {
+    missing.push('migration.name (migration basename)');
+  } else if (options.migration && migration.name !== options.migration.name) {
+    missing.push(`migration.name matching ${options.migration.name}`);
+  }
+  if (!SHA256_PATTERN.test(migration?.sha256 ?? '')) {
+    missing.push('migration.sha256 (SHA-256 digest)');
+  } else if (options.migration && migration.sha256.toLowerCase() !== options.migration.sha256.toLowerCase()) {
+    missing.push('migration.sha256 matching the release manifest');
+  }
+  if (!SHA256_PATTERN.test(evidence?.datasetSha256 ?? '')) {
+    missing.push('datasetSha256 (SHA-256 digest)');
+    return;
+  }
+  if (!['authenticated-e2e', 'trust-surface'].includes(descriptor.evidenceType)) return;
+
+  const datasetEvidencePath = path.join(stagingEvidenceDir, 'staging', 'card-dataset.json');
+  if (!existsSync(datasetEvidencePath)) {
+    missing.push('staging/card-dataset.json for dataset identity cross-check');
+    return;
+  }
+  try {
+    const datasetEvidence = JSON.parse(readFileSync(datasetEvidencePath, 'utf8'));
+    if (!SHA256_PATTERN.test(datasetEvidence?.datasetSha256 ?? '')) {
+      missing.push('staging/card-dataset.json datasetSha256 (SHA-256 digest)');
+    } else if (datasetEvidence.datasetSha256.toLowerCase() !== evidence.datasetSha256.toLowerCase()) {
+      missing.push('datasetSha256 matching staging/card-dataset.json');
+    }
+  } catch {
+    missing.push('staging/card-dataset.json readable identity evidence');
+  }
 }
 
 function validateMeasurements(evidence, descriptor, missing) {
@@ -2293,6 +2383,7 @@ function inspectStagingEvidence(descriptor, stagingEvidenceDir, options) {
     missing.push('signer as an HTTP(S) URL when provided');
   }
   validateProvenance(evidence, options, missing);
+  validateReleaseIdentity(evidence, descriptor, stagingEvidenceDir, options, missing);
   validateMeasurements(evidence, descriptor, missing);
   const verifiedArtifacts = validateArtifacts(evidence, stagingEvidenceDir, missing);
   validateOperationalEvidence(evidence, descriptor.evidenceType, missing, verifiedArtifacts, options);
@@ -2351,8 +2442,7 @@ export function inspectStagingGates(stagingEvidenceDir, options = {}) {
     maxEvidenceAgeHours,
     nowMs: options.nowMs ?? Date.now(),
     imageDigests: options.imageDigests,
-    expectedSchemaMigration: options.expectedSchemaMigration,
-    expectedSchemaChecksum: options.expectedSchemaChecksum,
+    migration: options.migration,
     evidenceRunId: options.evidenceRunId,
   };
   return STAGING_GATES.filter((descriptor) => descriptor.profiles.includes(profile)).map((descriptor) => {
@@ -2559,6 +2649,7 @@ export async function runReleaseGate(options = {}, dependencies = {}) {
     throw new Error(`release manifest RELEASE_SHA ${manifest.releaseSha} does not match requested ${releaseSha}`);
   }
   const imageDigests = manifest?.imageDigests ?? options.imageDigests;
+  const migration = manifest?.migration ?? options.migration;
   const maxEvidenceAgeHours = options.maxEvidenceAgeHours ?? DEFAULT_MAX_EVIDENCE_AGE_HOURS;
   const profile = options.profile ?? DEFAULT_PROFILE;
   const checks = [
@@ -2567,8 +2658,7 @@ export async function runReleaseGate(options = {}, dependencies = {}) {
       releaseSha,
       maxEvidenceAgeHours,
       imageDigests,
-      expectedSchemaMigration: manifest?.expectedSchemaMigration ?? options.expectedSchemaMigration,
-      expectedSchemaChecksum: manifest?.expectedSchemaChecksum ?? options.expectedSchemaChecksum,
+      migration,
       evidenceRunId: options.evidenceRunId,
       profile,
     }),

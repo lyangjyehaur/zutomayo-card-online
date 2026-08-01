@@ -7,11 +7,12 @@ import { ZutomayoCard } from '../game/Game';
 import type { GameState } from '../game/types';
 import { Board, type BoardGameOverActions } from './Board';
 import { t, useLocale } from '../i18n';
-import { IconButton, PageShell } from '../ui';
+import { Alert, IconButton, PageShell } from '../ui';
 import { Sentry } from '../sentry';
 import {
   ApiError,
   fetchChatMessages,
+  fetchUnreadChat,
   getProfile,
   isLoggedIn,
   markChatRead,
@@ -28,6 +29,7 @@ import {
   canSubmitMatchChat,
   matchChatAccessStatus,
   matchChatAuthorRole,
+  matchChatFailureStatus,
   matchPlatformPresenceUserId,
 } from '../chat/matchChatAccess';
 import {
@@ -43,6 +45,9 @@ import {
   type PlatformMatchShellConnectionState,
 } from '../platformMatchShellConnection';
 import { trackFirstWinOnce, trackFunnelEvent } from '../funnelAnalytics';
+import { hasOnlineOpponent } from '../onlineRoomStatus';
+import { createMatchConnectionTelemetry } from '../matchConnectionTelemetry';
+import { onlineErrorDetail } from '../onlineHttpError';
 
 interface OnlineGameProps {
   matchID: string;
@@ -56,13 +61,17 @@ interface OnlineGameProps {
   onLeaveRequest: () => void;
   onReturnToLobby: () => void;
   onCreateNewRoom: () => void;
+  onRematch: () => void;
   onOpponentDetected?: () => void;
+  actionError?: string;
+  actionPending?: boolean;
+  actionPendingLabel?: string;
 }
 
 type ConnectionStatus = 'reconnecting' | 'disconnected' | 'rejoined' | null;
 
 type MatchDataMember = { id: number; name?: string } | undefined;
-type ChatStatus = 'loading' | 'ready' | 'unavailable' | 'login_required' | 'sending';
+type ChatStatus = 'loading' | 'ready' | 'access_denied' | 'unavailable' | 'login_required' | 'sending';
 type OnlineChatEntry = {
   id: string;
   authorDisplayName: string;
@@ -113,9 +122,31 @@ function canShowChatMessage(message: ChatMessage): boolean {
   return message.moderationStatus !== 'blocked' && message.moderationStatus !== 'deleted';
 }
 
+function mergeChatEntries(current: OnlineChatEntry[], incoming: OnlineChatEntry[]): OnlineChatEntry[] {
+  const translations = new Map(current.map((message) => [message.id, message.translation]));
+  const merged = incoming.map((message) => ({ ...message, translation: translations.get(message.id) }));
+  const unchanged =
+    current.length === merged.length &&
+    current.every((message, index) => {
+      const next = merged[index];
+      return (
+        next?.id === message.id &&
+        next.authorDisplayName === message.authorDisplayName &&
+        next.authorRole === message.authorRole &&
+        next.content === message.content &&
+        next.createdAt === message.createdAt &&
+        next.persisted === message.persisted &&
+        next.self === message.self &&
+        next.translation === message.translation
+      );
+    });
+  return unchanged ? current : merged;
+}
+
 function chatStatusLabel(status: ChatStatus): string {
   if (status === 'loading') return t('chat.matchSyncing');
   if (status === 'login_required') return t('chat.matchLoginRequired');
+  if (status === 'access_denied') return t('chat.matchAccessDenied');
   if (status === 'unavailable') return t('chat.matchOffline');
   return t('chat.matchChat');
 }
@@ -123,6 +154,7 @@ function chatStatusLabel(status: ChatStatus): string {
 function chatEmptyLabel(status: ChatStatus): string {
   if (status === 'loading') return t('chat.matchSyncing');
   if (status === 'login_required') return t('chat.matchLoginToChat');
+  if (status === 'access_denied' || status === 'unavailable') return chatStatusLabel(status);
   return t('chat.matchNoMessages');
 }
 
@@ -209,9 +241,9 @@ function OnlineBoard(
   useEffect(() => {
     const matchData = props.matchData as MatchDataMember[] | undefined;
     if (!matchData) return;
-    const opponentJoined = matchData.some((player) => player?.id === 1 && Boolean(player?.name));
+    const opponentJoined = hasOnlineOpponent(matchData, props.playerID === '1' ? '1' : '0');
     if (opponentJoined) onOpponentDetected();
-  }, [props.matchData, onOpponentDetected]);
+  }, [props.matchData, props.playerID, onOpponentDetected]);
 
   useEffect(() => {
     if (spectator || completionTrackedRef.current || props.G.step !== 'gameOver') return;
@@ -245,10 +277,18 @@ export function OnlineGame({
   onLeaveRequest,
   onReturnToLobby,
   onCreateNewRoom,
+  onRematch,
   onOpponentDetected,
+  actionError,
+  actionPending = false,
+  actionPendingLabel,
 }: OnlineGameProps) {
   const locale = useLocale();
   const connectedOnce = useRef(false);
+  const matchConnectionTelemetryRef = useRef({ matchID, telemetry: createMatchConnectionTelemetry() });
+  if (matchConnectionTelemetryRef.current.matchID !== matchID) {
+    matchConnectionTelemetryRef.current = { matchID, telemetry: createMatchConnectionTelemetry() };
+  }
   const matchStartedRef = useRef(false);
   const initialResumeTrackedRef = useRef(false);
   const statusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -258,21 +298,28 @@ export function OnlineGame({
   const pendingMoveRef = useRef<{ moveName: string; stateID: number } | null>(null);
   const onReturnToLobbyRef = useRef(onReturnToLobby);
   const onCreateNewRoomRef = useRef(onCreateNewRoom);
+  const onRematchRef = useRef(onRematch);
   const onLeaveRequestRef = useRef(onLeaveRequest);
   const opponentDetectedRef = useRef<(() => void) | null>(null);
+  const actionPendingRef = useRef(actionPending);
   const platformRoomRef = useRef<PlatformMatchShellRoom | null>(null);
+  const chatMessagesRef = useRef<HTMLDivElement | null>(null);
+  const chatShouldStickToBottomRef = useRef(true);
   const spectatorPlatformUserId = useRef(Date.now().toString(36));
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('reconnecting');
   const [clientSyncNonce, setClientSyncNonce] = useState(0);
   const [resyncingState, setResyncingState] = useState(false);
   const [platformShellConnectionState, setPlatformShellConnectionState] =
     useState<PlatformMatchShellConnectionState>('connecting');
-  const [platformShellEvidenceReady, setPlatformShellEvidenceReady] = useState(false);
-  const [platformShellUnavailable, setPlatformShellUnavailable] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [chatUnreadCount, setChatUnreadCount] = useState(0);
+  const [pageVisible, setPageVisible] = useState(() =>
+    typeof document === 'undefined' ? true : document.visibilityState === 'visible',
+  );
   const [chatStatus, setChatStatus] = useState<ChatStatus>('loading');
   const [chatMessages, setChatMessages] = useState<OnlineChatEntry[]>([]);
   const [chatDraft, setChatDraft] = useState('');
+  const [chatActionError, setChatActionError] = useState('');
   const [reportedMessageIds, setReportedMessageIds] = useState<Set<string>>(() => new Set());
   const [chatAccount, setChatAccount] = useState<ProfileResponse | null>(null);
   const [chatAccountLoaded, setChatAccountLoaded] = useState(false);
@@ -297,6 +344,7 @@ export function OnlineGame({
           anonymousToken: spectatorPlatformUserId.current,
         });
   const chatUserId = chatAccount?.id || localPlatformUserId;
+  actionPendingRef.current = actionPending;
 
   // 線上對戰模式標記，便於 Sentry 後台區分錯誤來源模式。
   useEffect(() => {
@@ -324,14 +372,24 @@ export function OnlineGame({
     connectedOnce.current = false;
     matchStartedRef.current = false;
     initialResumeTrackedRef.current = false;
+    chatShouldStickToBottomRef.current = true;
+    setChatUnreadCount(0);
+    setChatActionError('');
   }, [matchID]);
+
+  useEffect(() => {
+    const updateVisibility = () => setPageVisible(document.visibilityState === 'visible');
+    document.addEventListener('visibilitychange', updateVisibility);
+    return () => document.removeEventListener('visibilitychange', updateVisibility);
+  }, []);
 
   useEffect(() => {
     onReturnToLobbyRef.current = onReturnToLobby;
     onCreateNewRoomRef.current = onCreateNewRoom;
+    onRematchRef.current = onRematch;
     onLeaveRequestRef.current = onLeaveRequest;
     opponentDetectedRef.current = onOpponentDetected ?? null;
-  }, [onReturnToLobby, onCreateNewRoom, onLeaveRequest, onOpponentDetected]);
+  }, [onReturnToLobby, onCreateNewRoom, onLeaveRequest, onRematch, onOpponentDetected]);
 
   useEffect(() => {
     let cancelled = false;
@@ -350,6 +408,7 @@ export function OnlineGame({
         if (cancelled) return;
         setChatAccount(profile);
         setChatAccountLoaded(true);
+        setChatActionError('');
       },
       (err) => {
         Sentry.addBreadcrumb({
@@ -361,6 +420,7 @@ export function OnlineGame({
         if (cancelled) return;
         setChatAccount(null);
         setChatAccountLoaded(true);
+        setChatActionError(onlineErrorDetail(err, t('chat.historyUnavailable')));
       },
     );
 
@@ -414,18 +474,12 @@ export function OnlineGame({
       };
     }
 
-    if (!platformShellEvidenceReady) {
-      if (platformShellUnavailable) setChatStatus('unavailable');
-      return () => {
-        cancelled = true;
-      };
-    }
-
     void loadMatchChatEntries().then(
       (entries) => {
         if (cancelled) return;
         setChatMessages(entries);
         setChatStatus('ready');
+        setChatActionError('');
       },
       (err) => {
         Sentry.addBreadcrumb({
@@ -434,39 +488,79 @@ export function OnlineGame({
           level: 'warning',
           data: { match_id: matchID, status: err instanceof ApiError ? err.status : undefined },
         });
-        if (!cancelled) setChatStatus('unavailable');
+        if (!cancelled) {
+          setChatStatus(matchChatFailureStatus(err instanceof ApiError ? err.status : undefined));
+          setChatActionError(onlineErrorDetail(err, t('chat.historyUnavailable')));
+        }
       },
     );
 
     return () => {
       cancelled = true;
     };
-  }, [
-    chatAccount,
-    chatAccountLoaded,
-    hasPlayerSeat,
-    loadMatchChatEntries,
-    matchID,
-    platformShellEvidenceReady,
-    platformShellUnavailable,
-  ]);
+  }, [chatAccount, chatAccountLoaded, hasPlayerSeat, loadMatchChatEntries, matchID]);
 
   useEffect(() => {
-    if (chatStatus !== 'ready' || !chatAccount) return;
+    if (chatStatus !== 'ready' || !chatAccount || !chatOpen || !pageVisible) return;
     const latestPersisted = [...chatMessages].reverse().find((message) => message.persisted);
     if (!latestPersisted) return;
     void markChatRead({
       conversationType: 'match',
       subjectId: matchID,
       lastReadMessageId: latestPersisted.id,
-    }).catch(() => undefined);
-  }, [chatAccount, chatMessages, chatStatus, matchID]);
+    })
+      .then(() => setChatUnreadCount(0))
+      .catch(() => undefined);
+  }, [chatAccount, chatMessages, chatOpen, chatStatus, matchID, pageVisible]);
+
+  useEffect(() => {
+    if (!chatAccount || chatOpen || !pageVisible) return;
+    let cancelled = false;
+    const syncUnread = () => {
+      void fetchUnreadChat(50).then(
+        (conversations) => {
+          if (cancelled) return;
+          const conversation = conversations.find((entry) => entry.type === 'match' && entry.subjectId === matchID);
+          setChatUnreadCount(conversation?.unreadCount ?? 0);
+        },
+        () => undefined,
+      );
+    };
+    syncUnread();
+    const interval = window.setInterval(syncUnread, 4_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [chatAccount, chatOpen, matchID, pageVisible]);
+
+  useEffect(() => {
+    if (chatStatus !== 'ready') return;
+    let cancelled = false;
+    const sync = () => {
+      void loadMatchChatEntries().then(
+        (entries) => {
+          if (!cancelled) setChatMessages((current) => mergeChatEntries(current, entries));
+        },
+        () => undefined,
+      );
+    };
+    const interval = window.setInterval(sync, 4_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [chatStatus, loadMatchChatEntries]);
+
+  useEffect(() => {
+    const element = chatMessagesRef.current;
+    if (!chatOpen || !element || !chatShouldStickToBottomRef.current) return;
+    element.scrollTop = element.scrollHeight;
+  }, [chatMessages, chatOpen]);
 
   useEffect(() => {
     if (!chatAccountLoaded) return;
     let cancelled = false;
-    setPlatformShellEvidenceReady(false);
-    setPlatformShellUnavailable(false);
 
     const controller = connectPlatformMatchShellWithRetry(
       {
@@ -485,17 +579,11 @@ export function OnlineGame({
         onRoomChange: (nextRoom) => {
           if (!cancelled) platformRoomRef.current = nextRoom;
         },
-        onPresence: () => {
-          if (!cancelled) {
-            setPlatformShellEvidenceReady(true);
-            setPlatformShellUnavailable(false);
-          }
-        },
         onChatPreview: () => {
           if (cancelled) return;
           void loadMatchChatEntries().then(
             (entries) => {
-              if (!cancelled) setChatMessages(entries);
+              if (!cancelled) setChatMessages((current) => mergeChatEntries(current, entries));
             },
             (err) => {
               Sentry.addBreadcrumb({
@@ -507,11 +595,6 @@ export function OnlineGame({
             },
           );
         },
-        onDisconnect: () => {
-          if (!cancelled) {
-            setPlatformShellEvidenceReady(false);
-          }
-        },
         onError: (err) => {
           Sentry.addBreadcrumb({
             category: 'platform',
@@ -519,9 +602,7 @@ export function OnlineGame({
             level: 'warning',
             data: { match_id: matchID, error: err instanceof Error ? err.message : String(err) },
           });
-          if (!cancelled) {
-            setPlatformShellUnavailable(true);
-          }
+          if (!cancelled) setChatActionError(onlineErrorDetail(err, t('online.connectionFailed')));
         },
       },
     );
@@ -530,8 +611,6 @@ export function OnlineGame({
       cancelled = true;
       platformRoomRef.current = null;
       setPlatformShellConnectionState('stopped');
-      setPlatformShellEvidenceReady(false);
-      setPlatformShellUnavailable(false);
       void controller.stop();
     };
   }, [
@@ -569,6 +648,9 @@ export function OnlineGame({
 
   const handleConnectionStatusChange = useCallback(
     (isConnected: boolean) => {
+      for (const event of matchConnectionTelemetryRef.current.telemetry.transition(isConnected)) {
+        trackFunnelEvent(event.name, event.data);
+      }
       if (isConnected) {
         const isReconnect = connectedOnce.current;
         connectedOnce.current = true;
@@ -682,6 +764,7 @@ export function OnlineGame({
       }
 
       setChatStatus('sending');
+      chatShouldStickToBottomRef.current = true;
       try {
         const result = await sendChatMessage(
           {
@@ -705,6 +788,7 @@ export function OnlineGame({
           });
         }
         setChatStatus('ready');
+        setChatActionError('');
       } catch (err) {
         Sentry.addBreadcrumb({
           category: 'chat',
@@ -712,7 +796,12 @@ export function OnlineGame({
           level: 'warning',
           data: { match_id: matchID, status: err instanceof ApiError ? err.status : undefined },
         });
-        setChatStatus(err instanceof ApiError && err.status === 401 ? 'login_required' : 'ready');
+        setChatStatus(
+          err instanceof ApiError && (err.status === 401 || err.status === 403)
+            ? matchChatFailureStatus(err.status)
+            : 'ready',
+        );
+        setChatActionError(onlineErrorDetail(err, t('chat.sendFailed')));
       }
     },
     [
@@ -747,6 +836,7 @@ export function OnlineGame({
           level: 'warning',
           data: { match_id: matchID, status: err instanceof ApiError ? err.status : undefined },
         });
+        setChatActionError(onlineErrorDetail(err, t('chat.reportFailed')));
       }
     },
     [matchID, reportedMessageIds],
@@ -772,6 +862,7 @@ export function OnlineGame({
           level: 'warning',
           data: { match_id: matchID, status: err instanceof ApiError ? err.status : undefined },
         });
+        setChatActionError(onlineErrorDetail(err, t('chat.translationOffline')));
       }
     },
     [applyChatTranslation, locale, matchAccess, matchID],
@@ -804,18 +895,36 @@ export function OnlineGame({
         return (
           <OnlineBoard
             {...props}
-            gameOverActions={{
-              helperText: t('online.gameOverHelper'),
-              primary: {
-                label: t('common.backToLobby'),
-                onClick: () => onReturnToLobbyRef.current(),
-              },
-              secondary: {
-                label: t('online.createNewRoom'),
-                onClick: () => onCreateNewRoomRef.current(),
-                variant: 'secondary',
-              },
-            }}
+            gameOverActions={
+              runtime.spectator
+                ? {
+                    helperText: t('online.gameOverHelper'),
+                    primary: {
+                      label: t('common.backToLobby'),
+                      onClick: () => onReturnToLobbyRef.current(),
+                    },
+                  }
+                : {
+                    helperText: t('online.gameOverHelper'),
+                    primary: {
+                      label: t('board.playAgain'),
+                      onClick: () => onRematchRef.current(),
+                      disabled: actionPendingRef.current,
+                    },
+                    secondary: {
+                      label: t('common.backToLobby'),
+                      onClick: () => onReturnToLobbyRef.current(),
+                      variant: 'secondary',
+                      disabled: actionPendingRef.current,
+                    },
+                    tertiary: {
+                      label: t('online.createNewRoom'),
+                      onClick: () => onCreateNewRoomRef.current(),
+                      variant: 'secondary',
+                      disabled: actionPendingRef.current,
+                    },
+                  }
+            }
             spectator={runtime.spectator}
             onConnectionStatusChange={runtime.handleConnectionStatusChange}
             onOpponentDetected={runtime.handleOpponentDetected}
@@ -838,6 +947,15 @@ export function OnlineGame({
 
   return (
     <PageShell>
+      {(actionError || actionPending) && (
+        <Alert
+          className="absolute left-1/2 top-4 z-[var(--z-toast)] w-[min(30rem,calc(100%-2rem))] -translate-x-1/2"
+          tone={actionError ? 'danger' : 'info'}
+          role={actionError ? 'alert' : 'status'}
+        >
+          {actionError || actionPendingLabel || t('online.rematchPreparing')}
+        </Alert>
+      )}
       {visibleConnectionStatus && (
         <div
           className="absolute right-6 top-1.5 z-[var(--z-modal)]"
@@ -870,22 +988,63 @@ export function OnlineGame({
       <div className={`online-chat-panel ${chatOpen ? 'open' : 'collapsed'}`}>
         <div className="online-chat-header">
           <IconButton
-            label={chatOpen ? t('chat.matchHide') : t('chat.matchShow')}
+            label={
+              chatOpen
+                ? t('chat.matchHide')
+                : chatUnreadCount > 0
+                  ? `${t('chat.matchShow')} · ${t('chat.unreadCount').replace('{count}', String(chatUnreadCount))}`
+                  : t('chat.matchShow')
+            }
             icon={
               chatOpen ? (
                 <ChevronDown className="size-4" aria-hidden="true" />
               ) : (
-                <MessageCircle className="size-4" aria-hidden="true" />
+                <span className="relative inline-flex">
+                  <MessageCircle className="size-4" aria-hidden="true" />
+                  {chatUnreadCount > 0 && (
+                    <span
+                      className="absolute -right-2 -top-2 grid min-h-4 min-w-4 place-items-center rounded-full bg-accent-action px-1 font-mono text-[0.625rem] leading-none text-surface-canvas"
+                      data-chat-unread-count={chatUnreadCount}
+                      aria-hidden="true"
+                    >
+                      {chatUnreadCount > 99 ? '99+' : chatUnreadCount}
+                    </span>
+                  )}
+                </span>
               )
             }
             className="online-chat-toggle"
-            onClick={() => setChatOpen((open) => !open)}
+            title={
+              !chatOpen && chatUnreadCount > 0
+                ? `${t('chat.matchShow')} · ${t('chat.unreadCount').replace('{count}', String(chatUnreadCount))}`
+                : undefined
+            }
+            onClick={() =>
+              setChatOpen((open) => {
+                const nextOpen = !open;
+                if (nextOpen) chatShouldStickToBottomRef.current = true;
+                return nextOpen;
+              })
+            }
           />
-          {chatOpen && <span className="online-chat-state">{chatStatusLabel(chatStatus)}</span>}
+          {chatOpen && (
+            <span className="online-chat-state" data-chat-status={chatStatus}>
+              {chatStatusLabel(chatStatus)}
+            </span>
+          )}
         </div>
         {chatOpen && (
           <>
-            <div className="online-chat-messages" aria-live="polite">
+            <div
+              ref={chatMessagesRef}
+              className="online-chat-messages"
+              aria-live="polite"
+              onScroll={(event) => {
+                const element = event.currentTarget;
+                chatShouldStickToBottomRef.current =
+                  element.scrollHeight - element.scrollTop - element.clientHeight <= 48;
+              }}
+            >
               {chatMessages.length === 0 ? (
                 <div className="online-chat-empty">{chatEmptyLabel(chatStatus)}</div>
               ) : (
@@ -937,12 +1096,22 @@ export function OnlineGame({
                 ))
               )}
             </div>
+            {chatActionError && (
+              <Alert className="mx-3 mb-2" tone="danger" role="alert">
+                {chatActionError}
+              </Alert>
+            )}
             <form className="online-chat-form" onSubmit={handleChatSubmit}>
               <input
                 value={chatDraft}
                 onChange={(event) => setChatDraft(event.target.value.slice(0, 500))}
                 maxLength={500}
-                disabled={chatStatus === 'loading' || chatStatus === 'unavailable' || chatStatus === 'login_required'}
+                disabled={
+                  chatStatus === 'loading' ||
+                  chatStatus === 'access_denied' ||
+                  chatStatus === 'unavailable' ||
+                  chatStatus === 'login_required'
+                }
                 aria-label={t('chat.matchInput')}
               />
               <IconButton
@@ -954,6 +1123,7 @@ export function OnlineGame({
                   !chatDraft.trim() ||
                   chatStatus === 'loading' ||
                   chatStatus === 'sending' ||
+                  chatStatus === 'access_denied' ||
                   chatStatus === 'unavailable' ||
                   chatStatus === 'login_required'
                 }

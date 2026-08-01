@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import { readFileSync, writeFileSync } from 'node:fs';
+
 const args = new Map();
 for (let index = 2; index < process.argv.length; index += 1) {
   const value = process.argv[index];
@@ -19,13 +21,67 @@ const ports = {
   platform: args.get('platform-port') || process.env.PLATFORM_PORT || '3002',
 };
 const expectedBuildId = args.get('expected-build-id') || process.env.EXPECTED_BUILD_ID || '';
+const expectedDatasetSha256 = args.get('expected-dataset-sha256') || process.env.EXPECTED_CARD_DATASET_SHA256 || '';
 const checkBattleAssets = (args.get('check-battle-assets') || process.env.CHECK_BATTLE_ASSETS || 'false') === 'true';
+const reportPath = args.get('report-path') || process.env.DEPLOY_SMOKE_REPORT_PATH || '';
+const smokeStartedAt = new Date().toISOString();
+const smokeChecks = {
+  healthReady: false,
+  buildIdentityVerified: false,
+  datasetIdentityVerified: false,
+  applicationSmokePassed: false,
+  battleAssetsVerified: false,
+  smokePassed: false,
+};
+let observedBuildId = '';
+let observedDatasetSha256 = '';
+
+if (reportPath) {
+  process.once('exit', (exitCode) => {
+    const passed = exitCode === 0 && smokeChecks.smokePassed;
+    writeFileSync(
+      reportPath,
+      `${JSON.stringify(
+        {
+          schemaVersion: 1,
+          status: passed ? 'passed' : 'failed',
+          startedAt: smokeStartedAt,
+          finishedAt: new Date().toISOString(),
+          expectedBuildId,
+          observedBuildId,
+          expectedDatasetSha256,
+          observedDatasetSha256,
+          checks: smokeChecks,
+        },
+        null,
+        2,
+      )}\n`,
+      { mode: 0o600 },
+    );
+  });
+}
+const publicBaseUrlValue = args.get('public-base-url') || process.env.SMOKE_PUBLIC_BASE_URL || '';
+const publicBaseUrl = publicBaseUrlValue ? new URL(publicBaseUrlValue).toString() : '';
+if (publicBaseUrl && !['http:', 'https:'].includes(new URL(publicBaseUrl).protocol)) {
+  throw new Error('public base URL must use HTTP or HTTPS');
+}
+const battleAssets = readFileSync(new URL('./battle-assets.sha256', import.meta.url), 'utf8')
+  .trim()
+  .split('\n')
+  .map((line) => {
+    const match = line.match(/^[a-f0-9]{64} {2}([A-Za-z0-9._/-]+\.(?:png|svg))$/);
+    if (!match) throw new Error(`invalid battle asset checksum entry: ${line}`);
+    return match[1];
+  });
 const timeoutMs = Number(args.get('timeout-ms') || process.env.SMOKE_TIMEOUT_MS || 8_000);
 const attempts = Number(args.get('attempts') || process.env.SMOKE_ATTEMPTS || 12);
 const retryDelayMs = Number(args.get('retry-delay-ms') || process.env.SMOKE_RETRY_DELAY_MS || 5_000);
 if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new Error('timeout must be a positive number');
 if (!Number.isInteger(attempts) || attempts <= 0) throw new Error('attempts must be a positive integer');
 if (!Number.isFinite(retryDelayMs) || retryDelayMs < 0) throw new Error('retry delay must be non-negative');
+if (expectedDatasetSha256 && !/^[a-f0-9]{64}$/.test(expectedDatasetSha256)) {
+  throw new Error('expected dataset SHA-256 must be a lowercase digest');
+}
 
 function endpoint(service, pathname) {
   return `${scheme}://${host}:${ports[service]}${pathname}`;
@@ -64,30 +120,46 @@ async function requestWithRetry(service, pathname) {
   throw lastError;
 }
 
-async function requestAsset(pathname, expectedContentType) {
-  const url = endpoint('game', pathname);
+function assertBattleAssetPayload(pathname, buffer) {
+  const bytes = new Uint8Array(buffer);
+  if (pathname.endsWith('.svg')) {
+    const source = new TextDecoder().decode(bytes.subarray(0, Math.min(bytes.length, 4096)));
+    if (!source.includes('<svg')) throw new Error(`${pathname} does not contain an SVG document`);
+    return;
+  }
+  if (
+    pathname.endsWith('.png') &&
+    (bytes.length < 24 || bytes[0] !== 0x89 || readAscii(bytes, 1, 3) !== 'PNG' || readAscii(bytes, 12, 4) !== 'IHDR')
+  ) {
+    throw new Error(`${pathname} does not contain a PNG image`);
+  }
+}
+
+async function requestAsset(pathname, expectedContentType, baseUrl = endpoint('game', ''), label = 'game') {
+  const url = new URL(pathname, baseUrl).toString();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(url, { signal: controller.signal, headers: { Accept: expectedContentType } });
     const contentType = response.headers.get('content-type') || '';
     const body = await response.arrayBuffer();
-    if (!response.ok) throw new Error(`game${pathname} returned HTTP ${response.status}`);
+    if (!response.ok) throw new Error(`${label}${pathname} returned HTTP ${response.status}`);
     if (!contentType.toLowerCase().startsWith(expectedContentType)) {
-      throw new Error(`game${pathname} returned unexpected content type: ${contentType || 'missing'}`);
+      throw new Error(`${label}${pathname} returned unexpected content type: ${contentType || 'missing'}`);
     }
-    if (body.byteLength === 0) throw new Error(`game${pathname} returned an empty asset`);
+    if (body.byteLength === 0) throw new Error(`${label}${pathname} returned an empty asset`);
+    assertBattleAssetPayload(new URL(url).pathname, body);
     return body.byteLength;
   } finally {
     clearTimeout(timeout);
   }
 }
 
-async function requestAssetWithRetry(pathname, expectedContentType) {
+async function requestAssetWithRetry(pathname, expectedContentType, baseUrl, label) {
   let lastError;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
-      return await requestAsset(pathname, expectedContentType);
+      return await requestAsset(pathname, expectedContentType, baseUrl, label);
     } catch (error) {
       lastError = error;
       if (attempt < attempts) await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
@@ -203,6 +275,7 @@ for (const [service, pathname] of checks) {
   assertHealthy(service, pathname, body);
   console.log(`smoke ok: ${service}${pathname}`);
 }
+smokeChecks.healthReady = true;
 
 const versions = await Promise.all([
   requestWithRetry('game', '/api/app-version').catch(() => requestWithRetry('game', '/api/version')),
@@ -210,6 +283,7 @@ const versions = await Promise.all([
   requestWithRetry('platform', '/api/version'),
 ]);
 const buildIds = versions.map((body) => String(body?.buildId || ''));
+observedBuildId = buildIds[0] || '';
 if (buildIds.some((value) => !value) || new Set(buildIds).size !== 1) {
   throw new Error(`runtime build IDs are inconsistent: ${JSON.stringify(buildIds)}`);
 }
@@ -217,6 +291,17 @@ if (expectedBuildId && buildIds[0] !== expectedBuildId) {
   throw new Error(`runtime build ID ${buildIds[0]} does not match release ${expectedBuildId}`);
 }
 console.log(`smoke ok: buildId=${buildIds[0]}`);
+smokeChecks.buildIdentityVerified = true;
+observedDatasetSha256 = String(versions[0]?.datasetSha256 || '');
+if (expectedDatasetSha256 && observedDatasetSha256 !== expectedDatasetSha256) {
+  throw new Error(
+    `game runtime dataset SHA-256 ${observedDatasetSha256 || '(missing)'} does not match release ${expectedDatasetSha256}`,
+  );
+}
+if (expectedDatasetSha256) {
+  console.log(`smoke ok: datasetSha256=${observedDatasetSha256}`);
+  smokeChecks.datasetIdentityVerified = true;
+}
 
 const officialRelease = await requestWithRetry('api', '/api/official/status');
 if (
@@ -229,6 +314,55 @@ if (
   throw new Error(`official-rulings release does not match the deployed build: ${JSON.stringify(officialRelease)}`);
 }
 console.log(`smoke ok: official-rulings release=${officialRelease.releaseId}`);
+
+async function waitForKnowledgeSearchStatus() {
+  let lastStatus;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    lastStatus = await requestWithRetry('api', '/api/search/status');
+    if (lastStatus?.enabled && Number(lastStatus?.documentCount) > 0 && lastStatus?.lastSuccessfulSyncAt) {
+      return lastStatus;
+    }
+    if (attempt < attempts) await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+  }
+  throw new Error(`knowledge search index is not ready: ${JSON.stringify(lastStatus)}`);
+}
+await waitForKnowledgeSearchStatus();
+
+async function assertKnowledgeSearch(query, scope, predicate, label) {
+  const params = new URLSearchParams({ q: query, scope, lang: 'ja', limit: '20' });
+  let lastResult;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    lastResult = await requestWithRetry('api', `/api/search?${params}`);
+    if (lastResult?.engine === 'meilisearch' && Array.isArray(lastResult?.hits) && lastResult.hits.some(predicate)) {
+      console.log(`smoke ok: knowledge search ${label}`);
+      return;
+    }
+    if (attempt < attempts) await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+  }
+  throw new Error(`knowledge search ${label} smoke failed: ${JSON.stringify(lastResult)}`);
+}
+
+await assertKnowledgeSearch('2nd_40', 'card', (hit) => hit?.type === 'card' && hit?.sourceId === '2nd_40', 'card');
+
+const qa = await requestWithRetry('api', '/api/official/qa?lang=ja');
+const representativeQa = qa?.items?.[0];
+if (!representativeQa?.number) throw new Error('official Q&A smoke source is empty');
+await assertKnowledgeSearch(
+  String(representativeQa.number),
+  'qa',
+  (hit) => hit?.type === 'qa' && hit?.sourceId === String(representativeQa.number),
+  'Q&A',
+);
+
+const grandRules = await requestWithRetry('api', '/api/official/rules/grand?lang=ja');
+const representativeRule = grandRules?.document?.sections?.[0];
+if (!representativeRule?.id) throw new Error('official Grand Rules smoke source is empty');
+await assertKnowledgeSearch(
+  `grand:${representativeRule.id}`,
+  'rule',
+  (hit) => hit?.type === 'rule' && hit?.sourceId === `grand:${representativeRule.id}`,
+  'rule',
+);
 
 const representativeCard = encodeURI('https://r2.dan.tw/cards/all-along-the-watchtower/zutomayocard_2nd_40.jpg')
   .replace(/@/g, '%40')
@@ -243,13 +377,22 @@ for (const [suffix, contentType, format] of [
   const result = await requestImgproxyWithRetry(pathname, contentType, format);
   console.log(`smoke ok: imgproxy ${format} (${result.width}x${result.height}, ${result.bytes} bytes)`);
 }
+smokeChecks.applicationSmokePassed = true;
 
 if (checkBattleAssets) {
-  for (const [pathname, contentType] of [
-    ['/battle/chronos.svg', 'image/svg+xml'],
-    ['/battle/medal.png', 'image/png'],
-  ]) {
-    const bytes = await requestAssetWithRetry(pathname, contentType);
-    console.log(`smoke ok: game${pathname} (${bytes} bytes)`);
+  const assetVersion = encodeURIComponent(expectedBuildId || buildIds[0]);
+  for (const asset of battleAssets) {
+    const pathname = `/battle/${asset}`;
+    const versionedPathname = `${pathname}?v=${assetVersion}`;
+    const contentType = asset.endsWith('.png') ? 'image/png' : 'image/svg+xml';
+    const originBytes = await requestAssetWithRetry(versionedPathname, contentType, undefined, 'game');
+    console.log(`smoke ok: game${pathname} (${originBytes} bytes)`);
+    if (publicBaseUrl) {
+      const publicBytes = await requestAssetWithRetry(versionedPathname, contentType, publicBaseUrl, 'public');
+      console.log(`smoke ok: public${pathname} (${publicBytes} bytes)`);
+    }
   }
+  smokeChecks.battleAssetsVerified = true;
 }
+smokeChecks.smokePassed =
+  smokeChecks.applicationSmokePassed && (!checkBattleAssets || smokeChecks.battleAssetsVerified);

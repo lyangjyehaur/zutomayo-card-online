@@ -10,12 +10,15 @@ import type { GameState } from '../game/types';
 import { Sentry } from '../sentry';
 import { t } from '../i18n';
 import { PageShell } from '../ui';
+import { AIDecisionInspector } from './AIDecisionInspector';
 
 interface AIGameProps {
   difficulty: AIDifficulty;
   onBack: () => void;
   onRematch?: () => void;
   onChooseSetup?: () => void;
+  /** 呼叫端可覆寫結算頁操作；教學等特殊流程不應退回一般 AI 的重賽動線。 */
+  gameOverActions?: BoardGameOverActions;
   deck0Name?: string;
   deck1Name?: string;
   /** 固定牌組（教學模式）：優先於 deck0Name/deck1Name */
@@ -30,7 +33,7 @@ interface AIGameProps {
   hideSetupOverlay?: boolean;
   aiPaused?: boolean;
   onSetupFeedbackDismiss?: () => void;
-  onNoticeDismiss?: () => void;
+  onResolutionComplete?: () => void;
   onTutorialAction?: (action: TutorialBoardAction, cardDefId: string) => void;
   /** 教學模式：限制目前步驟可從手牌打出的卡，避免偏離固定劇本。 */
   tutorialAllowedSetCardDefIds?: string[];
@@ -56,7 +59,7 @@ type AIBoardProps = BoardProps<GameState> & {
   aiPaused?: boolean;
   aiScript?: TutorialAIScript;
   onSetupFeedbackDismiss?: () => void;
-  onNoticeDismiss?: () => void;
+  onResolutionComplete?: () => void;
   onTutorialAction?: (action: TutorialBoardAction, cardDefId: string) => void;
   tutorialAllowedSetCardDefIds?: string[];
   tutorialRequiredSetCardDefIds?: string[];
@@ -77,7 +80,7 @@ function AIBoard(props: AIBoardProps) {
     aiPaused,
     aiScript,
     onSetupFeedbackDismiss,
-    onNoticeDismiss,
+    onResolutionComplete,
     onTutorialAction,
     tutorialAllowedSetCardDefIds,
     tutorialRequiredSetCardDefIds,
@@ -92,6 +95,7 @@ function AIBoard(props: AIBoardProps) {
   const aiMoves = useMemo<ZutomayoMoveDispatchers>(
     () => ({
       janken: boardProps.moves.janken,
+      mulligan: boardProps.moves.mulligan,
       keepHand: boardProps.moves.keepHand,
       setInitialCard: boardProps.moves.setInitialCard,
       setTurnCard: boardProps.moves.setTurnCard,
@@ -170,13 +174,13 @@ function AIBoard(props: AIBoardProps) {
       tutorialMode={tutorialMode}
       hideSetupOverlay={hideSetupOverlay}
       onSetupFeedbackDismiss={onSetupFeedbackDismiss}
-      onNoticeDismiss={onNoticeDismiss}
+      onResolutionComplete={boardProps.playerID === '0' ? onResolutionComplete : undefined}
       onTutorialAction={onTutorialAction}
       tutorialAllowedSetCardDefIds={tutorialAllowedSetCardDefIds}
       tutorialRequiredSetCardDefIds={tutorialRequiredSetCardDefIds}
       tutorialSetInteractionEnabled={tutorialSetInteractionEnabled}
       tutorialAutoReplay={tutorialAutoReplay}
-      tutorialSuppressNotices={tutorialSuppressNotices}
+      tutorialSuppressNotices={tutorialMode && boardProps.playerID !== '0' ? true : tutorialSuppressNotices}
       tutorialEffectOverlayVisible={tutorialEffectOverlayVisible}
       gameOverActions={gameOverActions}
     />
@@ -188,6 +192,7 @@ export function AIGame({
   onBack,
   onRematch,
   onChooseSetup,
+  gameOverActions,
   deck0Name,
   deck1Name,
   deck0Ids,
@@ -199,7 +204,7 @@ export function AIGame({
   hideSetupOverlay,
   aiPaused,
   onSetupFeedbackDismiss,
-  onNoticeDismiss,
+  onResolutionComplete,
   onTutorialAction,
   tutorialAllowedSetCardDefIds,
   tutorialRequiredSetCardDefIds,
@@ -227,8 +232,9 @@ export function AIGame({
     }),
   );
 
-  const gameOverActions: BoardGameOverActions | undefined =
-    !tutorialMode && onRematch && onChooseSetup
+  const resolvedGameOverActions: BoardGameOverActions | undefined =
+    gameOverActions ??
+    (!tutorialMode && onRematch && onChooseSetup
       ? {
           primary: { label: t('board.playAgain'), onClick: onRematch },
           secondary: {
@@ -238,7 +244,7 @@ export function AIGame({
           },
           tertiary: { label: t('common.backToLobby'), onClick: onBack, variant: 'secondary' },
         }
-      : undefined;
+      : undefined);
   const dynamicBoardProps = {
     difficulty,
     onGameStateChange,
@@ -247,7 +253,7 @@ export function AIGame({
     aiPaused,
     aiScript,
     onSetupFeedbackDismiss,
-    onNoticeDismiss,
+    onResolutionComplete,
     onTutorialAction,
     tutorialAllowedSetCardDefIds,
     tutorialRequiredSetCardDefIds,
@@ -256,7 +262,7 @@ export function AIGame({
     tutorialSuppressNotices,
     tutorialEffectOverlayVisible,
     tutorialPresentationState,
-    gameOverActions,
+    gameOverActions: resolvedGameOverActions,
   };
 
   return (
@@ -267,6 +273,7 @@ export function AIGame({
           <AIClient playerID="1" {...dynamicBoardProps} />
         </div>
       </div>
+      {import.meta.env.DEV && !tutorialMode && <AIDecisionInspector />}
     </PageShell>
   );
 }

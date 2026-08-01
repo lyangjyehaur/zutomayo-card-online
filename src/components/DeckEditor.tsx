@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
+import { compareCardsById } from '../lib/cardOrder';
 import type { CardDef, CardType, Element } from '../game/types';
 import { getAllCardDefs, isCardsInitialized, refreshCards } from '../game/cards/loader';
 import {
@@ -86,10 +87,6 @@ const PAGE_SIZE = 12;
 
 function normalizeCardNumber(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]/g, '');
-}
-
-function compareCardNumber(a: CardDef, b: CardDef): number {
-  return a.id.localeCompare(b.id, undefined, { numeric: true, sensitivity: 'base' });
 }
 
 function elementLabel(element: Element | 'all'): string {
@@ -280,7 +277,7 @@ export function DeckEditor({
     }
 
     return [...cards].sort((a, b) => {
-      if (sortBy === 'number') return compareCardNumber(a, b);
+      if (sortBy === 'number') return compareCardsById(a, b);
       if (sortBy === 'cost') return a.powerCost - b.powerCost;
       if (sortBy === 'attack') {
         const aAttack = a.attack ? Math.max(a.attack.night, a.attack.day) : 0;

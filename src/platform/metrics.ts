@@ -47,20 +47,46 @@ export const platformReconnectsTotal = new Counter({
   registers: [register],
 });
 
+const QUICK_MATCH_OUTCOMES = new Set([
+  'matched',
+  'timeout',
+  'player_left',
+  'connection_lost',
+  'account_deleted',
+  'relationship_changed',
+]);
+
+export const platformQuickMatchOutcomesTotal = new Counter({
+  name: 'platform_quick_match_outcomes_total',
+  help: 'Quick-match terminal outcomes with bounded labels',
+  labelNames: ['outcome'] as const,
+  registers: [register],
+});
+
+export const platformQuickMatchWaitDurationSeconds = new Histogram({
+  name: 'platform_quick_match_wait_duration_seconds',
+  help: 'Time from quick-match room creation to a matched or cancelled outcome',
+  labelNames: ['outcome'] as const,
+  buckets: [0.5, 1, 2, 5, 10, 20, 30, 60, 90, 120, 180],
+  registers: [register],
+});
+
 function normalizedPath(path: string): string {
   if (path === '/health' || path === '/ready' || path === '/metrics') return path;
   if (path.startsWith('/matchmake/')) return '/matchmake/:operation/:room';
   return '/other';
 }
 
+export function recordPlatformHttpRequest(method: string, path: string, status: number, startedAt: bigint): void {
+  const elapsedSeconds = Number(process.hrtime.bigint() - startedAt) / 1_000_000_000;
+  platformHttpRequestsTotal.labels(method, normalizedPath(path), String(status)).inc();
+  platformHttpDurationSeconds.labels(method, normalizedPath(path), String(status)).observe(elapsedSeconds);
+}
+
 export function platformMetricsMiddleware(req: Request, res: Response, next: NextFunction): void {
   const startedAt = process.hrtime.bigint();
   res.once('finish', () => {
-    const path = normalizedPath(req.path);
-    const status = String(res.statusCode);
-    const elapsedSeconds = Number(process.hrtime.bigint() - startedAt) / 1_000_000_000;
-    platformHttpRequestsTotal.labels(req.method, path, status).inc();
-    platformHttpDurationSeconds.labels(req.method, path, status).observe(elapsedSeconds);
+    recordPlatformHttpRequest(req.method, req.path, res.statusCode, startedAt);
   });
   next();
 }
@@ -99,6 +125,13 @@ export function setPlatformRuntimeMetrics(roomCounts: Record<string, number>, co
 
 export function recordPlatformReconnect(roomType: string): void {
   platformReconnectsTotal.labels(roomType).inc();
+}
+
+export function recordPlatformQuickMatchOutcome(outcome: string, waitMs: number): void {
+  const boundedOutcome = QUICK_MATCH_OUTCOMES.has(outcome) ? outcome : 'other';
+  const durationSeconds = Math.max(0, Number.isFinite(waitMs) ? waitMs / 1_000 : 0);
+  platformQuickMatchOutcomesTotal.labels(boundedOutcome).inc();
+  platformQuickMatchWaitDurationSeconds.labels(boundedOutcome).observe(durationSeconds);
 }
 
 export { register as platformMetricsRegister };

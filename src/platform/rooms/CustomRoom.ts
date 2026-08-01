@@ -46,8 +46,8 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
   private status: CustomRoomStatus = 'waiting';
   private host?: PlatformClientProfile;
 
-  static configureParticipantStore(store: PlatformMatchParticipantStore): void {
-    CustomRoom.participantStore = store;
+  static configureParticipantStore(store: PlatformMatchParticipantStore | null): void {
+    CustomRoom.participantStore = store ?? createEmptyPlatformMatchParticipantStore();
   }
 
   async onCreate(options: CustomRoomOptions = {}): Promise<void> {
@@ -60,7 +60,7 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
       void this.disconnect();
     }, CUSTOM_ROOM_TTL_MS);
 
-    this.onMessage<BoardgameMatchReadyMessage>('boardgameMatchReady', (client, message) => {
+    this.onMessage<BoardgameMatchReadyMessage>('boardgameMatchReady', async (client, message) => {
       if (!this.host || client.sessionId !== this.host.sessionId) return;
       const boardgameMatchID = optionalText(message.boardgameMatchID, 128);
       if (!boardgameMatchID || this.boardgameMatchID || this.status === 'cancelled' || this.status === 'finished') {
@@ -68,7 +68,8 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
       }
       this.boardgameMatchID = boardgameMatchID;
       this.status = 'ready';
-      void this.refreshMetadata();
+      await this.recordMatchProvenance(boardgameMatchID);
+      await this.refreshMetadata();
       this.broadcast('boardgameMatchReady', { boardgameMatchID });
       this.broadcastSnapshot();
     });
@@ -79,6 +80,7 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
     });
 
     await this.refreshMetadata();
+    if (this.boardgameMatchID) void this.recordMatchProvenance(this.boardgameMatchID);
   }
 
   async onAuth(_client: PlatformClient, options: CustomRoomOptions, context: AuthContext): Promise<PlatformAuth> {
@@ -225,6 +227,14 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
     }
   }
 
+  private async recordMatchProvenance(boardgameMatchID: string): Promise<void> {
+    try {
+      await CustomRoom.participantStore.recordMatchProvenance({ boardgameMatchID, matchMode: 'custom_room' });
+    } catch (err) {
+      logger.warn({ err, matchMode: 'custom_room' }, 'failed to record match provenance');
+    }
+  }
+
   private snapshot(ignoredSessionId?: string): PlatformClient['~messages']['customRoomSnapshot'] {
     return {
       roomId: this.roomId,
@@ -257,6 +267,7 @@ export class CustomRoom extends Room<{ metadata: CustomRoomMetadata; client: Pla
         status: this.status,
         playerCount: this.roleProfiles('player', ignoredSessionId).length,
         spectatorCount: this.roleProfiles('spectator', ignoredSessionId).length,
+        hostDisplayName: this.host?.displayName,
         boardgameMatchID: this.boardgameMatchID,
       },
     });

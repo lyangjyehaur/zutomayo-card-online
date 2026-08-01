@@ -3,8 +3,23 @@ import type { Server, State, LogEntry } from 'boardgame.io';
 import * as Sentry from '@sentry/node';
 import crypto from 'node:crypto';
 import { createRequire } from 'node:module';
-import { shuffleDeck } from '../../game/cards/deckBuilder';
+import { rebuildOpeningStateFromManifest } from '../../game/replay';
+import type { GameState, ReplayManifest } from '../../game/types';
 import { postgresConnectionString, postgresSslConfig } from '../../runtimeSecurityConfig';
+import { APP_VERSION_INFO } from '../../version';
+import {
+  projectAbandonedMatchAnalytics,
+  projectMatchAnalytics,
+  resolveMatchAnalyticsRuntimeMetadata,
+  sourceMatchDigest,
+  type MatchAnalyticsProjection,
+  type TrustedMatchTelemetry,
+} from '../matchAnalytics';
+import {
+  matchAnalyticsCaptureFailuresTotal,
+  matchAnalyticsCaptureTotal,
+  matchAnalyticsCleanupBlockedTotal,
+} from '../observability/metrics';
 
 const require = createRequire(import.meta.url);
 const { assertBoardgameRuntimeSchema } = require('../../../api/schemaGate.cjs') as {
@@ -127,6 +142,7 @@ export interface ReserveMatchSeatInput {
   rankedEligible: boolean;
   credentials: string;
   deckReservationId?: string;
+  localDeckIds?: string[];
   deckRulesVersion?: string;
 }
 
@@ -169,6 +185,26 @@ interface MatchSeatRow extends QueryResultRow {
   user_id: string;
   ranked_eligible: boolean;
   credential_hash: string;
+  resume_count?: number;
+}
+
+interface MatchTelemetryRow extends QueryResultRow {
+  match_mode: 'quick_match' | 'custom_room' | 'invite' | 'direct' | 'unknown';
+  traffic_class: 'production' | 'operator' | 'synthetic' | 'ai' | 'unknown';
+  player0_disconnect_count: number;
+  player1_disconnect_count: number;
+  player0_reconnect_count: number;
+  player1_reconnect_count: number;
+}
+
+function trustedMatchTelemetry(row: MatchTelemetryRow | undefined): TrustedMatchTelemetry | undefined {
+  if (!row) return undefined;
+  return {
+    matchMode: row.match_mode,
+    trafficClass: row.traffic_class,
+    disconnectCounts: [row.player0_disconnect_count, row.player1_disconnect_count],
+    reconnectCounts: [row.player0_reconnect_count, row.player1_reconnect_count],
+  };
 }
 
 interface MutableMatchPlayer {
@@ -435,8 +471,26 @@ export class PostgresAdapter {
           credential_hash  TEXT NOT NULL,
           reserved_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
           last_resumed_at  TIMESTAMPTZ,
+          resume_count     INTEGER NOT NULL DEFAULT 0,
           PRIMARY KEY (match_id, player_id),
           UNIQUE (match_id, user_id)
+        );
+      `);
+      await client.query(
+        `ALTER TABLE bjg_match_seats
+           ADD COLUMN IF NOT EXISTS resume_count INTEGER NOT NULL DEFAULT 0`,
+      );
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS bjg_match_telemetry (
+          source_match_id           TEXT PRIMARY KEY REFERENCES bjg_matches(match_id) ON DELETE CASCADE,
+          match_mode                TEXT NOT NULL DEFAULT 'direct',
+          traffic_class             TEXT NOT NULL DEFAULT 'unknown',
+          player0_disconnect_count  INTEGER NOT NULL DEFAULT 0,
+          player1_disconnect_count  INTEGER NOT NULL DEFAULT 0,
+          player0_reconnect_count   INTEGER NOT NULL DEFAULT 0,
+          player1_reconnect_count   INTEGER NOT NULL DEFAULT 0,
+          observed_at               TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at                TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
       `);
       await client.query(`
@@ -466,12 +520,87 @@ export class PostgresAdapter {
           delivered_at       TIMESTAMPTZ
         );
       `);
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS match_analytics (
+          source_match_digest    TEXT PRIMARY KEY,
+          environment            TEXT NOT NULL,
+          traffic_class          TEXT NOT NULL,
+          match_mode             TEXT NOT NULL DEFAULT 'direct',
+          rating_mode            TEXT NOT NULL,
+          unrated_reason          TEXT,
+          app_version             TEXT NOT NULL,
+          build_id                TEXT NOT NULL,
+          rules_version           TEXT NOT NULL,
+          dataset_sha256          TEXT NOT NULL DEFAULT 'unknown',
+          started_at              TIMESTAMPTZ,
+          completed_at            TIMESTAMPTZ NOT NULL,
+          duration_seconds        INTEGER NOT NULL,
+          turns                   INTEGER NOT NULL,
+          outcome                 TEXT NOT NULL,
+          winner_seat             SMALLINT,
+          janken_winner_seat      SMALLINT,
+          gameover_reason_code    TEXT NOT NULL,
+          final_hp                INTEGER[] NOT NULL,
+          seat_classes            TEXT[] NOT NULL,
+          quality_flags           TEXT[] NOT NULL DEFAULT '{}',
+          action_count            INTEGER NOT NULL,
+          timeout_count           INTEGER NOT NULL,
+          disconnect_counts       INTEGER[] NOT NULL DEFAULT '{0,0}',
+          reconnect_counts        INTEGER[] NOT NULL DEFAULT '{0,0}',
+          seat_resume_counts      INTEGER[] NOT NULL DEFAULT '{0,0}',
+          deck_count              SMALLINT NOT NULL,
+          event_count             INTEGER NOT NULL,
+          capture_schema_version  SMALLINT NOT NULL DEFAULT 1,
+          integrity_sha256        TEXT NOT NULL,
+          captured_at             TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+      `);
+      await client.query(
+        `ALTER TABLE match_analytics
+           ADD COLUMN IF NOT EXISTS disconnect_counts INTEGER[] NOT NULL DEFAULT '{0,0}',
+           ADD COLUMN IF NOT EXISTS reconnect_counts INTEGER[] NOT NULL DEFAULT '{0,0}',
+           ADD COLUMN IF NOT EXISTS seat_resume_counts INTEGER[] NOT NULL DEFAULT '{0,0}'`,
+      );
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS match_analytics_decks (
+          source_match_digest TEXT NOT NULL REFERENCES match_analytics(source_match_digest) ON DELETE RESTRICT,
+          seat                SMALLINT NOT NULL,
+          card_ids            TEXT[] NOT NULL,
+          deck_hash           TEXT NOT NULL,
+          deck_source         TEXT NOT NULL,
+          deck_validation     TEXT NOT NULL,
+          PRIMARY KEY (source_match_digest, seat)
+        );
+      `);
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS match_analytics_events (
+          source_match_digest TEXT NOT NULL REFERENCES match_analytics(source_match_digest) ON DELETE RESTRICT,
+          sequence            INTEGER NOT NULL,
+          turn                INTEGER NOT NULL,
+          step                TEXT NOT NULL,
+          actor_seat          SMALLINT,
+          event_type          TEXT NOT NULL,
+          card_def_id         TEXT,
+          target_seat         SMALLINT,
+          hp_before           INTEGER,
+          hp_after            INTEGER,
+          chronos_position    INTEGER,
+          result_code         TEXT,
+          timeout_phase       TEXT,
+          payload             JSONB NOT NULL DEFAULT '{}'::jsonb,
+          PRIMARY KEY (source_match_digest, sequence)
+        );
+      `);
       await client.query(
         `ALTER TABLE bjg_match_result_outbox
            ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
       );
       if (this.createIndexes) {
         await client.query(`CREATE INDEX IF NOT EXISTS idx_bjg_matches_updated_at ON bjg_matches (updated_at);`);
+        await client.query(
+          `CREATE INDEX IF NOT EXISTS idx_bjg_match_telemetry_classification
+             ON bjg_match_telemetry (match_mode, traffic_class, updated_at);`,
+        );
         await client.query(
           `CREATE INDEX IF NOT EXISTS idx_bjg_matches_game_name ON bjg_matches ((metadata->>'gameName'));`,
         );
@@ -486,6 +615,18 @@ export class PostgresAdapter {
           `CREATE INDEX IF NOT EXISTS idx_match_result_outbox_season_settlement
              ON bjg_match_result_outbox (rules_version, completed_at, status)
           WHERE ranked_eligible = TRUE;`,
+        );
+        await client.query(
+          `CREATE INDEX IF NOT EXISTS idx_match_analytics_completed_at
+             ON match_analytics (completed_at DESC);`,
+        );
+        await client.query(
+          `CREATE INDEX IF NOT EXISTS idx_match_analytics_version_analysis
+             ON match_analytics (rules_version, dataset_sha256, completed_at);`,
+        );
+        await client.query(
+          `CREATE INDEX IF NOT EXISTS idx_match_analytics_events_type_step
+             ON match_analytics_events (event_type, step);`,
         );
       }
       this.connected = true;
@@ -510,6 +651,23 @@ export class PostgresAdapter {
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  async withRematchLock<T>(matchID: string, operation: () => Promise<T>): Promise<T> {
+    await this.connect();
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [matchID]);
+      const result = await operation();
+      await client.query('COMMIT');
+      return result;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
     } finally {
       client.release();
     }
@@ -698,6 +856,18 @@ export class PostgresAdapter {
           reservationId: input.deckReservationId,
           rulesVersion: input.deckRulesVersion,
         });
+      } else if (input.localDeckIds) {
+        if (!input.deckRulesVersion) {
+          throw new MatchSeatReservationError('seat_taken', 'Deck rules version is required');
+        }
+        await this.bindDeckCardsWithClient(client, match, {
+          matchID: input.matchID,
+          playerID,
+          cardIds: input.localDeckIds,
+          deckVersion: crypto.createHash('sha256').update(JSON.stringify(input.localDeckIds)).digest('hex'),
+          rulesVersion: input.deckRulesVersion,
+          verifyKnownCards: true,
+        });
       } else {
         await client.query(
           `UPDATE bjg_matches
@@ -802,7 +972,8 @@ export class PostgresAdapter {
       }
       await client.query(
         `UPDATE bjg_match_seats
-            SET last_resumed_at = NOW()
+            SET last_resumed_at = NOW(),
+                resume_count = resume_count + 1
           WHERE match_id = $1 AND player_id = $2`,
         [input.matchID, input.playerID],
       );
@@ -895,7 +1066,40 @@ export class PostgresAdapter {
       throw new MatchSeatReservationError('seat_taken', 'Deck reservation already bound');
     }
 
-    const cardIds = reservation.card_ids;
+    await this.bindDeckCardsWithClient(client, row, {
+      matchID: input.matchID,
+      playerID: input.playerID,
+      cardIds: reservation.card_ids,
+      deckVersion: reservation.deck_version,
+      rulesVersion: reservation.rules_version,
+    });
+    const consumed = await client.query(
+      `UPDATE deck_reservations
+          SET match_id = $2, player_id = $3, consumed_at = NOW()
+        WHERE id = $1 AND user_id = $4 AND match_id IS NULL`,
+      [input.reservationId, input.matchID, input.playerID, input.userId],
+    );
+    if (consumed.rowCount !== 1) {
+      throw new MatchSeatReservationError('seat_taken', 'Deck reservation was bound concurrently');
+    }
+  }
+
+  private async bindDeckCardsWithClient(
+    client: PoolClient,
+    row: MatchRow,
+    input: {
+      matchID: string;
+      playerID: BoardgamePlayerID;
+      cardIds: unknown;
+      deckVersion: string;
+      rulesVersion: string;
+      verifyKnownCards?: boolean;
+    },
+  ): Promise<void> {
+    if (!row.state || !row.initial_state || !row.metadata) {
+      throw new MatchSeatReservationError('match_not_found', `Match ${input.matchID} not found`);
+    }
+    const cardIds = input.cardIds;
     const cardCounts = new Map<string, number>();
     if (Array.isArray(cardIds)) {
       for (const id of cardIds) {
@@ -910,6 +1114,15 @@ export class PostgresAdapter {
     ) {
       throw new MatchSeatReservationError('seat_taken', 'Deck reservation contains invalid cards');
     }
+    if (input.verifyKnownCards) {
+      const uniqueCardIds = [...new Set(cardIds)];
+      const knownCards = await client.query<{ id: string }>('SELECT id FROM cards WHERE id = ANY($1::text[])', [
+        uniqueCardIds,
+      ]);
+      if (knownCards.rowCount !== uniqueCardIds.length) {
+        throw new MatchSeatReservationError('seat_taken', 'Deck contains unknown cards');
+      }
+    }
     const state = JSON.parse(JSON.stringify(row.state)) as Record<string, unknown>;
     const initialState = JSON.parse(JSON.stringify(row.initial_state)) as Record<string, unknown>;
     const stateG = state.G as Record<string, unknown> | undefined;
@@ -917,24 +1130,23 @@ export class PostgresAdapter {
     if (!stateG || !initialG || stateG.step !== 'janken' || stateG.turnNumber !== 1) {
       throw new MatchSeatReservationError('seat_taken', 'Deck can only be bound before the first move');
     }
-    // Reservations contain validated card definition IDs, but the game
-    // server still owns instance creation and shuffle. Keep this path in
-    // lockstep with setupGame: shuffle before drawing the opening hand.
-    const deck = shuffleDeck(
-      cardIds.map((defId, index) => ({
-        instanceId: `server:${input.matchID}:${input.playerID}:${index}`,
-        defId: defId as string,
-        faceUp: false,
-      })),
-    );
-    const openingHand = deck.slice(0, 5).map((card) => ({ ...card, faceUp: true }));
-    const remainingDeck = deck.slice(5);
     const apply = (targetG: Record<string, unknown>) => {
-      const players = targetG.players as Array<Record<string, unknown>> | undefined;
-      const player = players?.[Number(input.playerID)];
-      if (!player) throw new MatchSeatReservationError('seat_not_found', 'Player seat not found');
-      player.deck = remainingDeck.map((card) => ({ ...card }));
-      player.hand = openingHand.map((card) => ({ ...card }));
+      const gameState = targetG as unknown as GameState;
+      if (!gameState.players?.[Number(input.playerID)]) {
+        throw new MatchSeatReservationError('seat_not_found', 'Player seat not found');
+      }
+      const manifest = gameState.replayManifest;
+      if (!manifest || manifest.schemaVersion !== 1) {
+        throw new MatchSeatReservationError('seat_taken', 'Match does not support deterministic deck binding');
+      }
+      const deckDefIds: ReplayManifest['deckDefIds'] = [[...manifest.deckDefIds[0]], [...manifest.deckDefIds[1]]];
+      deckDefIds[Number(input.playerID) as 0 | 1] = [...(cardIds as string[])];
+      gameState.replayManifest = {
+        ...manifest,
+        rulesVersion: input.rulesVersion,
+        deckDefIds,
+      };
+      rebuildOpeningStateFromManifest(gameState);
     };
     apply(stateG);
     apply(initialG);
@@ -945,8 +1157,8 @@ export class PostgresAdapter {
     const slot = Number(input.playerID) === 0 ? '0' : '1';
     metadata.setupData = {
       ...setupData,
-      [`deck${slot}Version`]: reservation.deck_version,
-      rulesVersion: reservation.rules_version,
+      [`deck${slot}Version`]: input.deckVersion,
+      rulesVersion: input.rulesVersion,
     };
     await client.query(
       `UPDATE bjg_matches
@@ -954,15 +1166,6 @@ export class PostgresAdapter {
         WHERE match_id = $1`,
       [input.matchID, JSON.stringify(state), JSON.stringify(initialState), JSON.stringify(metadata)],
     );
-    const consumed = await client.query(
-      `UPDATE deck_reservations
-          SET match_id = $2, player_id = $3, consumed_at = NOW()
-        WHERE id = $1 AND user_id = $4 AND match_id IS NULL`,
-      [input.reservationId, input.matchID, input.playerID, input.userId],
-    );
-    if (consumed.rowCount !== 1) {
-      throw new MatchSeatReservationError('seat_taken', 'Deck reservation was bound concurrently');
-    }
   }
 
   async fetch<O extends FetchOpts>(
@@ -1017,22 +1220,162 @@ export class PostgresAdapter {
     return out;
   }
 
-  async wipe(matchID: string): Promise<void> {
-    if (this.closed) return;
-    await this.withTransaction(async (client) => {
-      // A stale-room sweep must never cascade-delete a result that has not
-      // reached the durable API result tables yet. Lock the outbox row while
-      // checking so a concurrent worker claim cannot race the delete.
-      const pendingResult = await client.query<{ status: 'pending' | 'processing' | 'delivered' | 'unrated' }>(
-        `SELECT status
-           FROM bjg_match_result_outbox
-          WHERE source_match_id = $1
-            AND status IN ('pending', 'processing')
-          FOR UPDATE`,
-        [matchID],
+  async wipe(matchID: string): Promise<boolean> {
+    if (this.closed) return false;
+    return this.withTransaction(async (client) => {
+      // Runtime state is the recovery source until either terminal or
+      // abandoned analytics children reconcile. Lock it before inspecting the
+      // outbox so state writes and cleanup cannot classify the same row twice.
+      const match = (
+        await client.query<MatchRow>(
+          `SELECT match_id, state, initial_state, metadata, updated_at
+             FROM bjg_matches
+            WHERE match_id = $1
+            FOR UPDATE`,
+          [matchID],
+        )
+      ).rows[0];
+      if (!match) return false;
+
+      const archive = await client.query<{
+        status: 'pending' | 'processing' | 'delivered' | 'unrated';
+        integrity_sha256: string | null;
+        deck_count: number | null;
+        event_count: number | null;
+        archived_deck_count: string;
+        archived_event_count: string;
+      }>(
+        `SELECT outbox.status,
+                analytics.integrity_sha256,
+                analytics.deck_count,
+                analytics.event_count,
+                (SELECT COUNT(*)::text
+                   FROM match_analytics_decks decks
+                  WHERE decks.source_match_digest = analytics.source_match_digest) AS archived_deck_count,
+                (SELECT COUNT(*)::text
+                   FROM match_analytics_events events
+                  WHERE events.source_match_digest = analytics.source_match_digest) AS archived_event_count
+           FROM bjg_match_result_outbox outbox
+           LEFT JOIN match_analytics analytics ON analytics.source_match_digest = $2
+          WHERE outbox.source_match_id = $1
+          FOR UPDATE OF outbox`,
+        [matchID, sourceMatchDigest(matchID)],
       );
-      if (pendingResult.rows.length > 0) return;
-      await client.query(`DELETE FROM bjg_matches WHERE match_id = $1`, [matchID]);
+      const terminal = archive.rows[0];
+      if (terminal) {
+        if (terminal.status === 'pending' || terminal.status === 'processing') {
+          matchAnalyticsCleanupBlockedTotal.labels('pending-delivery').inc();
+          return false;
+        }
+        const archivedDeckCount = Number(terminal.archived_deck_count);
+        const archivedEventCount = Number(terminal.archived_event_count);
+        const completeArchive =
+          typeof terminal.integrity_sha256 === 'string' &&
+          /^[0-9a-f]{64}$/.test(terminal.integrity_sha256) &&
+          terminal.deck_count === 2 &&
+          archivedDeckCount === terminal.deck_count &&
+          Number.isInteger(terminal.event_count) &&
+          archivedEventCount === terminal.event_count;
+        if (!completeArchive) {
+          matchAnalyticsCleanupBlockedTotal.labels('incomplete-archive').inc();
+          return false;
+        }
+      } else if (match.state && canonicalTerminalResult(match.state)) {
+        // A terminal state without its same-transaction outbox/archive is
+        // evidence of a failed capture. Never relabel it as abandoned.
+        matchAnalyticsCleanupBlockedTotal.labels('missing-terminal-archive').inc();
+        return false;
+      } else {
+        if (!match.state || !match.initial_state || !match.metadata) {
+          matchAnalyticsCleanupBlockedTotal.labels('incomplete-runtime-state').inc();
+          return false;
+        }
+        const seats = await client.query<MatchSeatRow>(
+          `SELECT match_id, player_id, user_id, ranked_eligible, credential_hash, resume_count
+             FROM bjg_match_seats
+            WHERE match_id = $1
+            ORDER BY player_id
+            FOR SHARE`,
+          [matchID],
+        );
+        const telemetry = await client.query<MatchTelemetryRow>(
+          `SELECT match_mode, traffic_class,
+                  player0_disconnect_count, player1_disconnect_count,
+                  player0_reconnect_count, player1_reconnect_count
+             FROM bjg_match_telemetry
+            WHERE source_match_id = $1
+            FOR SHARE`,
+          [matchID],
+        );
+        let analytics: MatchAnalyticsProjection;
+        try {
+          analytics = projectAbandonedMatchAnalytics({
+            sourceMatchId: matchID,
+            state: match.state,
+            initialState: match.initial_state,
+            seats: seats.rows.map((seatRow) => ({
+              playerID: seatRow.player_id,
+              userId: seatRow.user_id,
+              rankedEligible: seatRow.ranked_eligible,
+              resumeCount: seatRow.resume_count,
+            })),
+            rulesVersion: metadataRulesVersion(match.metadata),
+            version: APP_VERSION_INFO,
+            abandonedAt: new Date(match.updated_at).toISOString(),
+            ...resolveMatchAnalyticsRuntimeMetadata(),
+            telemetry: trustedMatchTelemetry(telemetry.rows[0]),
+          });
+        } catch (error) {
+          matchAnalyticsCaptureFailuresTotal.labels('abandoned-projection').inc();
+          matchAnalyticsCleanupBlockedTotal.labels('abandoned-capture-failed').inc();
+          Sentry.captureException(error);
+          return false;
+        }
+        try {
+          const inserted = await this.insertMatchAnalytics(client, analytics);
+          if (inserted) {
+            matchAnalyticsCaptureTotal.labels(analytics.fact.outcome, analytics.fact.trafficClass).inc();
+          }
+        } catch (error) {
+          matchAnalyticsCaptureFailuresTotal.labels('abandoned-persistence').inc();
+          throw error;
+        }
+
+        const reconciliation = await client.query<{
+          integrity_sha256: string;
+          deck_count: number;
+          event_count: number;
+          archived_deck_count: string;
+          archived_event_count: string;
+        }>(
+          `SELECT analytics.integrity_sha256,
+                  analytics.deck_count,
+                  analytics.event_count,
+                  (SELECT COUNT(*)::text
+                     FROM match_analytics_decks decks
+                    WHERE decks.source_match_digest = analytics.source_match_digest) AS archived_deck_count,
+                  (SELECT COUNT(*)::text
+                     FROM match_analytics_events events
+                    WHERE events.source_match_digest = analytics.source_match_digest) AS archived_event_count
+             FROM match_analytics analytics
+            WHERE analytics.source_match_digest = $1`,
+          [analytics.fact.sourceMatchDigest],
+        );
+        const abandoned = reconciliation.rows[0];
+        const completeArchive =
+          typeof abandoned?.integrity_sha256 === 'string' &&
+          abandoned.integrity_sha256 === analytics.fact.integritySha256 &&
+          abandoned.deck_count === analytics.fact.deckCount &&
+          Number(abandoned.archived_deck_count) === analytics.fact.deckCount &&
+          abandoned.event_count === analytics.fact.eventCount &&
+          Number(abandoned.archived_event_count) === analytics.fact.eventCount;
+        if (!completeArchive) {
+          matchAnalyticsCleanupBlockedTotal.labels('abandoned-reconciliation').inc();
+          return false;
+        }
+      }
+      const deleted = await client.query(`DELETE FROM bjg_matches WHERE match_id = $1`, [matchID]);
+      return deleted.rowCount === 1;
     });
   }
 
@@ -1172,7 +1515,7 @@ export class PostgresAdapter {
       seatsBeforeLock.rows.map((seat) => seat.user_id),
     );
     const result = await client.query<MatchRow>(
-      `SELECT match_id, state, metadata FROM bjg_matches WHERE match_id = $1 FOR UPDATE`,
+      `SELECT match_id, state, initial_state, metadata FROM bjg_matches WHERE match_id = $1 FOR UPDATE`,
       [matchID],
     );
     const match = result.rows[0];
@@ -1182,7 +1525,7 @@ export class PostgresAdapter {
     if (!match) return null;
 
     const seatsAfterLock = await client.query<MatchSeatRow>(
-      `SELECT match_id, player_id, user_id, ranked_eligible, credential_hash
+      `SELECT match_id, player_id, user_id, ranked_eligible, credential_hash, resume_count
          FROM bjg_match_seats
         WHERE match_id = $1
         ORDER BY player_id`,
@@ -1273,19 +1616,29 @@ export class PostgresAdapter {
 
     const terminalResult = canonicalTerminalResult(state);
     if (terminalResult) {
-      await this.enqueueTerminalResult(queryable, lockedMatch, terminalResult);
+      await this.enqueueTerminalResult(queryable, lockedMatch, state, terminalResult);
     }
   }
 
   private async enqueueTerminalResult(
     queryable: PoolClient,
     lockedMatch: LockedMatchForStateWrite,
+    state: State,
     result: CanonicalTerminalResult,
   ): Promise<void> {
-    const { matchID } = lockedMatch;
-    const rulesVersion = metadataRulesVersion(lockedMatch.match.metadata);
-    const player0 = lockedMatch.seats.find((seat) => seat.player_id === '0');
-    const player1 = lockedMatch.seats.find((seat) => seat.player_id === '1');
+    const { matchID, match, seats } = lockedMatch;
+    if (!match.initial_state) throw new Error('Terminal analytics capture requires the authoritative initial state');
+    const rulesVersion = metadataRulesVersion(match.metadata);
+    const telemetry = await queryable.query<MatchTelemetryRow>(
+      `SELECT match_mode, traffic_class,
+              player0_disconnect_count, player1_disconnect_count,
+              player0_reconnect_count, player1_reconnect_count
+         FROM bjg_match_telemetry
+        WHERE source_match_id = $1`,
+      [matchID],
+    );
+    const player0 = seats.find((seat) => seat.player_id === '0');
+    const player1 = seats.find((seat) => seat.player_id === '1');
     const winner = result.winnerPlayer === 0 ? player0 : result.winnerPlayer === 1 ? player1 : undefined;
     const loser = result.winnerPlayer === 0 ? player1 : result.winnerPlayer === 1 ? player0 : undefined;
     const rankedEligible = Boolean(
@@ -1346,5 +1699,178 @@ export class PostgresAdapter {
         status === 'pending' ? null : unratedReason,
       ],
     );
+
+    let analytics: MatchAnalyticsProjection;
+    try {
+      analytics = projectMatchAnalytics({
+        sourceMatchId: matchID,
+        state,
+        initialState: match.initial_state,
+        seats: seats.map((seatRow) => ({
+          playerID: seatRow.player_id,
+          userId: seatRow.user_id,
+          rankedEligible: seatRow.ranked_eligible,
+          resumeCount: seatRow.resume_count,
+        })),
+        rankedEligible: status === 'pending',
+        unratedReason: status === 'pending' ? null : unratedReason,
+        rulesVersion,
+        version: APP_VERSION_INFO,
+        ...resolveMatchAnalyticsRuntimeMetadata(),
+        telemetry: trustedMatchTelemetry(telemetry.rows[0]),
+      });
+    } catch (error) {
+      matchAnalyticsCaptureFailuresTotal.labels('projection').inc();
+      throw error;
+    }
+    try {
+      const inserted = await this.insertMatchAnalytics(queryable, analytics);
+      if (inserted) {
+        matchAnalyticsCaptureTotal.labels(analytics.fact.outcome, analytics.fact.trafficClass).inc();
+      }
+    } catch (error) {
+      matchAnalyticsCaptureFailuresTotal.labels('persistence').inc();
+      throw error;
+    }
+  }
+
+  private async insertMatchAnalytics(
+    queryable: Pick<Pool | PoolClient, 'query'>,
+    analytics: MatchAnalyticsProjection,
+  ): Promise<boolean> {
+    const fact = analytics.fact;
+    const inserted = await queryable.query<{ integrity_sha256: string }>(
+      `INSERT INTO match_analytics (
+         source_match_digest, environment, traffic_class, match_mode, rating_mode, unrated_reason,
+         app_version, build_id, rules_version, dataset_sha256, started_at, completed_at,
+         duration_seconds, turns, outcome, winner_seat, janken_winner_seat, gameover_reason_code,
+         final_hp, seat_classes, quality_flags, action_count, timeout_count,
+         disconnect_counts, reconnect_counts, seat_resume_counts, deck_count, event_count,
+         capture_schema_version, integrity_sha256, captured_at
+       ) VALUES (
+         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::timestamptz, $12::timestamptz,
+         $13, $14, $15, $16, $17, $18, $19::integer[], $20::text[], $21::text[], $22, $23,
+         $24::integer[], $25::integer[], $26::integer[], $27, $28, $29, $30, NOW()
+       )
+       ON CONFLICT (source_match_digest) DO NOTHING
+       RETURNING integrity_sha256`,
+      [
+        fact.sourceMatchDigest,
+        fact.environment,
+        fact.trafficClass,
+        fact.matchMode,
+        fact.ratingMode,
+        fact.unratedReason,
+        fact.appVersion,
+        fact.buildId,
+        fact.rulesVersion,
+        fact.datasetSha256,
+        fact.startedAt,
+        fact.completedAt,
+        fact.durationSeconds,
+        fact.turns,
+        fact.outcome,
+        fact.winnerSeat,
+        fact.jankenWinnerSeat,
+        fact.gameoverReasonCode,
+        fact.finalHp,
+        fact.seatClasses,
+        fact.qualityFlags,
+        fact.actionCount,
+        fact.timeoutCount,
+        fact.disconnectCounts,
+        fact.reconnectCounts,
+        fact.seatResumeCounts,
+        fact.deckCount,
+        fact.eventCount,
+        fact.captureSchemaVersion,
+        fact.integritySha256,
+      ],
+    );
+    if (inserted.rowCount === 0) {
+      const existing = await queryable.query<{ integrity_sha256: string }>(
+        'SELECT integrity_sha256 FROM match_analytics WHERE source_match_digest = $1',
+        [fact.sourceMatchDigest],
+      );
+      if (existing.rows[0]?.integrity_sha256 !== fact.integritySha256) {
+        throw new Error('Conflicting terminal analytics capture for an existing source digest');
+      }
+    }
+
+    await queryable.query(
+      `INSERT INTO match_analytics_decks (
+         source_match_digest, seat, card_ids, deck_hash, deck_source, deck_validation
+       )
+       SELECT source_match_digest, seat, card_ids, deck_hash, deck_source, deck_validation
+         FROM jsonb_to_recordset($1::jsonb) AS deck(
+           source_match_digest text,
+           seat smallint,
+           card_ids text[],
+           deck_hash text,
+           deck_source text,
+           deck_validation text
+         )
+       ON CONFLICT (source_match_digest, seat) DO NOTHING`,
+      [
+        JSON.stringify(
+          analytics.decks.map((deck) => ({
+            source_match_digest: deck.sourceMatchDigest,
+            seat: deck.seat,
+            card_ids: deck.cardIds,
+            deck_hash: deck.deckHash,
+            deck_source: deck.deckSource,
+            deck_validation: deck.deckValidation,
+          })),
+        ),
+      ],
+    );
+    if (analytics.events.length > 0) {
+      await queryable.query(
+        `INSERT INTO match_analytics_events (
+         source_match_digest, sequence, turn, step, actor_seat, event_type, card_def_id,
+         target_seat, hp_before, hp_after, chronos_position, result_code, timeout_phase, payload
+       )
+       SELECT source_match_digest, sequence, turn, step, actor_seat, event_type, card_def_id,
+              target_seat, hp_before, hp_after, chronos_position, result_code, timeout_phase, payload
+         FROM jsonb_to_recordset($1::jsonb) AS event(
+           source_match_digest text,
+           sequence integer,
+           turn integer,
+           step text,
+           actor_seat smallint,
+           event_type text,
+           card_def_id text,
+           target_seat smallint,
+           hp_before integer,
+           hp_after integer,
+           chronos_position integer,
+           result_code text,
+           timeout_phase text,
+           payload jsonb
+         )
+       ON CONFLICT (source_match_digest, sequence) DO NOTHING`,
+        [
+          JSON.stringify(
+            analytics.events.map((event) => ({
+              source_match_digest: event.sourceMatchDigest,
+              sequence: event.sequence,
+              turn: event.turn,
+              step: event.step,
+              actor_seat: event.actorSeat,
+              event_type: event.eventType,
+              card_def_id: event.cardDefId,
+              target_seat: event.targetSeat,
+              hp_before: event.hpBefore,
+              hp_after: event.hpAfter,
+              chronos_position: event.chronosPosition,
+              result_code: event.resultCode,
+              timeout_phase: event.timeoutPhase,
+              payload: event.payload,
+            })),
+          ),
+        ],
+      );
+    }
+    return inserted.rowCount === 1;
   }
 }

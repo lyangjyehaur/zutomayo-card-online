@@ -171,7 +171,7 @@ Release gate 分別重算 physical RPO（`targetAt - recoveredThroughAt`）與 o
 
 ### Public Beta release evidence mode
 
-For the release rehearsal, create one known account with a saved deck, completed match/history row, and non-zero leaderboard participation before the fresh encrypted backup. Then run the same isolated restore with exact fixture and schema identifiers:
+For the release rehearsal, create one known account with a saved deck, completed match/history row, non-zero leaderboard participation, match-linked chat message, authored feedback post, and boardgame match state before the fresh encrypted backup. Then run the same isolated restore with exact fixture and schema identifiers:
 
 ```bash
 export PG_RESTORE_RELEASE_EVIDENCE=true
@@ -183,12 +183,15 @@ export PG_RESTORE_EXPECT_ACCOUNT_ID=u_release_fixture
 export PG_RESTORE_EXPECT_DECK_ID=deck_release_fixture
 export PG_RESTORE_EXPECT_MATCH_ID=match_release_fixture
 export PG_RESTORE_EXPECT_LEADERBOARD_USER_ID=u_release_fixture
-export EXPECTED_SCHEMA_MIGRATION=000036_harden_card_i18n_contract
-export EXPECTED_SCHEMA_CHECKSUM="$(shasum -a 256 migrations/000036_harden_card_i18n_contract.js | awk '{print $1}')"
+export PG_RESTORE_EXPECT_CHAT_MESSAGE_ID=chat_release_fixture
+export PG_RESTORE_EXPECT_FEEDBACK_POST_ID=feedback_release_fixture
+export PG_RESTORE_EXPECT_BOARDGAME_MATCH_ID=bgio_release_fixture
+export EXPECTED_SCHEMA_MIGRATION=000047_knowledge_search_zero_results
+export EXPECTED_SCHEMA_CHECKSUM="$(shasum -a 256 migrations/000047_knowledge_search_zero_results.js | awk '{print $1}')"
 ./scripts/pg-restore-drill.sh s3://zutomayo-staging-backups/zutomayo_<timestamp>.dump.age
 ```
 
-Release mode includes artifact download/decryption in the measured RTO and fails unless the exact account, deck, match-history, leaderboard user, migration, migration checksum, and legal-hold invariants survive the restore. It emits the raw JSON consumed by `npm run release:operational-evidence`; do not hand-edit a failed report.
+Release mode includes artifact download/decryption in the measured RTO and fails unless the exact account, deck, match-history, leaderboard user, chat message, feedback post, boardgame match, migration, migration checksum, legal-hold invariants, and boardgame JSON-state invariants survive the restore. The history and chat fixtures must reference the expected boardgame match, and that match must retain a seat for the expected account. It emits the raw JSON consumed by `npm run release:operational-evidence`; do not hand-edit a failed report.
 
 ## Point-in-time recovery
 

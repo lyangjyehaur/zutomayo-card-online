@@ -3,6 +3,9 @@ import { createRequire } from 'node:module';
 import type { Pool, PoolClient, QueryResultRow } from 'pg';
 import {
   gameMatchCompletionsTotal,
+  matchAnalyticsOldestUnarchivedSeconds,
+  matchAnalyticsRecentMissingMetadata,
+  matchAnalyticsUnarchivedTerminal,
   matchResultOutboxMetricsLastSuccess,
   matchResultOutboxMetricsRefreshSuccess,
   matchResultOutboxOldestAgeSeconds,
@@ -10,6 +13,7 @@ import {
   matchResultOutboxProcessedTotal,
   matchResultOutboxRows,
 } from './observability/metrics';
+import { sourceMatchDigest } from './matchAnalytics';
 
 const require = createRequire(import.meta.url);
 const { acquireAccountMutationLocks } = require('../../api/accountMutationLock.cjs') as {
@@ -29,6 +33,13 @@ const { applyCanonicalSeasonResult } = require('../../api/seasonResultService.cj
     winnerId: string;
     loserId: string;
   }) => Promise<{ applied: boolean; reason?: string; seasonId?: string; seasonStatus?: string }>;
+};
+const { createReplaySummary } = require('../../api/replaySummary.cjs') as {
+  createReplaySummary: (
+    G: Record<string, unknown>,
+    rulesVersion: string,
+    actionLog: unknown[],
+  ) => Record<string, unknown>;
 };
 
 export interface MatchResultOutboxRow extends QueryResultRow {
@@ -83,7 +94,7 @@ const OUTBOX_STATUSES = ['pending', 'processing', 'delivered', 'unrated'] as con
  */
 export async function refreshMatchResultOutboxMetrics(pool: Pick<Pool, 'query'>): Promise<void> {
   try {
-    const [summary, counts] = await Promise.all([
+    const [summary, counts, terminalRows, missingMetadata] = await Promise.all([
       pool.query<{ pending_count: string; oldest_age_seconds: string }>(
         `SELECT
            COUNT(*) FILTER (WHERE status IN ('pending', 'processing'))::text AS pending_count,
@@ -98,6 +109,21 @@ export async function refreshMatchResultOutboxMetrics(pool: Pick<Pool, 'query'>)
            FROM bjg_match_result_outbox
           GROUP BY status`,
       ),
+      pool.query<{ source_match_id: string; completed_at: Date | string }>(
+        `SELECT source_match_id, completed_at
+           FROM bjg_match_result_outbox`,
+      ),
+      pool.query<{ missing_count: string }>(
+        `SELECT COUNT(*)::text AS missing_count
+           FROM match_analytics
+          WHERE completed_at >= NOW() - INTERVAL '24 hours'
+            AND (
+              app_version = '' OR app_version = 'unknown'
+              OR build_id = '' OR build_id = 'unknown'
+              OR rules_version = '' OR rules_version = 'unknown'
+              OR dataset_sha256 !~ '^[a-f0-9]{64}$'
+            )`,
+      ),
     ]);
     const row = summary.rows[0] ?? { pending_count: '0', oldest_age_seconds: '0' };
     matchResultOutboxPending.set(Math.max(0, Number(row.pending_count) || 0));
@@ -106,6 +132,58 @@ export async function refreshMatchResultOutboxMetrics(pool: Pick<Pool, 'query'>)
     for (const status of OUTBOX_STATUSES) {
       matchResultOutboxRows.labels(status).set(countsByStatus.get(status) ?? 0);
     }
+
+    const terminalDigests = terminalRows.rows.map((item) => sourceMatchDigest(item.source_match_id));
+    const archives =
+      terminalDigests.length === 0
+        ? { rows: [] }
+        : await pool.query<{
+            source_match_digest: string;
+            integrity_sha256: string;
+            deck_count: number;
+            event_count: number;
+            archived_deck_count: string;
+            archived_event_count: string;
+          }>(
+            `SELECT analytics.source_match_digest,
+                    analytics.integrity_sha256,
+                    analytics.deck_count,
+                    analytics.event_count,
+                    COUNT(DISTINCT decks.seat)::text AS archived_deck_count,
+                    COUNT(DISTINCT events.sequence)::text AS archived_event_count
+               FROM match_analytics analytics
+               LEFT JOIN match_analytics_decks decks
+                 ON decks.source_match_digest = analytics.source_match_digest
+               LEFT JOIN match_analytics_events events
+                 ON events.source_match_digest = analytics.source_match_digest
+              WHERE analytics.source_match_digest = ANY($1::text[])
+              GROUP BY analytics.source_match_digest, analytics.integrity_sha256,
+                       analytics.deck_count, analytics.event_count`,
+            [terminalDigests],
+          );
+    const reconciled = new Set(
+      archives.rows
+        .filter(
+          (archive) =>
+            /^[0-9a-f]{64}$/.test(archive.integrity_sha256) &&
+            archive.deck_count === 2 &&
+            Number(archive.archived_deck_count) === archive.deck_count &&
+            Number(archive.archived_event_count) === archive.event_count,
+        )
+        .map((archive) => archive.source_match_digest),
+    );
+    const unarchived = terminalRows.rows.filter((item) => !reconciled.has(sourceMatchDigest(item.source_match_id)));
+    const oldestUnarchivedMilliseconds = unarchived.reduce((oldest, item) => {
+      const completedAt = new Date(item.completed_at).getTime();
+      return Number.isFinite(completedAt) ? Math.min(oldest, completedAt) : oldest;
+    }, Number.POSITIVE_INFINITY);
+    matchAnalyticsUnarchivedTerminal.set(unarchived.length);
+    matchAnalyticsOldestUnarchivedSeconds.set(
+      Number.isFinite(oldestUnarchivedMilliseconds)
+        ? Math.max(0, (Date.now() - oldestUnarchivedMilliseconds) / 1000)
+        : 0,
+    );
+    matchAnalyticsRecentMissingMetadata.set(Math.max(0, Number(missingMetadata.rows[0]?.missing_count) || 0));
     matchResultOutboxMetricsRefreshSuccess.set(1);
     matchResultOutboxMetricsLastSuccess.set(Date.now() / 1000);
   } catch (error) {
@@ -358,6 +436,18 @@ async function deliverOutboxRow(
     const winnerDelta = winnerNewElo - Number(winner.elo);
     const loserDelta = loserNewElo - Number(loser.elo);
     const matchId = generateMatchId();
+    const sanitizedActionLog = sanitizeCanonicalActionLog(current.action_log);
+    const replayState = (
+      await client.query<{ replay_state: Record<string, unknown> | null }>(
+        `SELECT state->'G' AS replay_state
+           FROM bjg_matches
+          WHERE match_id = $1`,
+        [current.source_match_id],
+      )
+    ).rows[0]?.replay_state;
+    const replaySummary = replayState
+      ? createReplaySummary(replayState, current.rules_version || 'legacy', sanitizedActionLog)
+      : null;
     const inserted = await client.query<{ id: string }>(
       `INSERT INTO matches (
          id,
@@ -389,7 +479,7 @@ async function deliverOutboxRow(
         current.turns,
         current.duration_seconds,
         current.rules_version || 'legacy',
-        JSON.stringify(sanitizeCanonicalActionLog(current.action_log)),
+        JSON.stringify(sanitizedActionLog),
         current.completed_at,
       ],
     );
@@ -415,6 +505,15 @@ async function deliverOutboxRow(
         ])
       ).rows[0]?.id;
       if (!deliveredMatchId) throw new Error('Idempotent match result could not be resolved');
+    }
+
+    if (replaySummary) {
+      await client.query(
+        `UPDATE matches
+            SET replay_summary = COALESCE(replay_summary, $2::jsonb)
+          WHERE id = $1`,
+        [deliveredMatchId, JSON.stringify(replaySummary)],
+      );
     }
 
     const seasonResult = await applyCanonicalSeasonResult({
@@ -507,9 +606,17 @@ export function startMatchResultOutboxWorker({
 }): MatchResultOutboxWorker {
   let stopped = false;
   let running: Promise<MatchResultOutboxBatchResult> | null = null;
+  let lastDisabledMetricsRefreshAt = 0;
   const runOnce = async (): Promise<MatchResultOutboxBatchResult> => {
-    if (!enabled || stopped) return { claimed: 0, delivered: 0, retried: 0 };
+    if (stopped) return { claimed: 0, delivered: 0, retried: 0 };
     if (running) return running;
+    if (!enabled) {
+      if (Date.now() - lastDisabledMetricsRefreshAt >= 30_000) {
+        await refreshMatchResultOutboxMetrics(pool);
+        lastDisabledMetricsRefreshAt = Date.now();
+      }
+      return { claimed: 0, delivered: 0, retried: 0 };
+    }
     running = processMatchResultOutboxBatch({ pool })
       .then(async (result) => {
         await refreshMatchResultOutboxMetrics(pool);
@@ -527,7 +634,7 @@ export function startMatchResultOutboxWorker({
     Math.max(250, pollIntervalMs),
   );
   timer.unref?.();
-  if (enabled) void runOnce().catch((err) => onError?.(err));
+  void runOnce().catch((err) => onError?.(err));
 
   return {
     runOnce,

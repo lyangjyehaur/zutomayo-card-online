@@ -74,9 +74,9 @@ let platform: ReturnType<typeof createPlatformRuntime> | undefined;
 try {
   platform = createPlatformRuntime();
   await platform.schemaReady;
-  await platform.gameServer.listen(platform.port);
+  await platform.listen();
 } catch (err) {
-  logger.fatal({ err }, 'platform startup gate failed; refusing to listen');
+  logger.fatal({ err }, 'platform startup failed; refusing to listen');
   await platform?.closeStores().catch(() => undefined);
   process.exit(1);
 }

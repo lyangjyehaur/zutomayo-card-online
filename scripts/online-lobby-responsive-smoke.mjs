@@ -459,7 +459,6 @@ const accountWorkflowExpression = `
 function failuresFor(metrics) {
   const failures = [];
   if (metrics.doc.overflowX) failures.push('document overflowX');
-  if (!metrics.quick.length) failures.push('missing quick room panel');
   if (!metrics.deck.length) failures.push('missing deck room panel');
   if (!metrics.custom.length) failures.push('missing custom room panel');
   if (!metrics.status.length && !metrics.platformError.length) {
@@ -500,14 +499,22 @@ try {
       screenHeight: testCase.height,
     });
     await client.send('Page.navigate', { url: `${baseUrl}/online` });
-    await waitFor(client, `Boolean(document.querySelector('[data-room-panel="deck"] button:not([disabled])'))`);
+    await waitFor(client, `Boolean(document.querySelector('details[data-deck-options]'))`);
+    await evalChecked(client, `document.querySelector('details[data-deck-options]')?.setAttribute('open', '')`);
+    await waitFor(
+      client,
+      `Boolean(document.querySelector('[data-room-panel="deck"] button[aria-pressed]:not([disabled])'))`,
+    );
     await new Promise((resolve) => setTimeout(resolve, 700));
-    await evalChecked(client, `document.querySelector('[data-room-panel="deck"] button:not([disabled])')?.click()`);
+    await evalChecked(
+      client,
+      `document.querySelector('[data-room-panel="deck"] button[aria-pressed]:not([disabled])')?.click()`,
+    );
     await new Promise((resolve) => setTimeout(resolve, 500));
     if (testCase.createRoom) {
       await evalChecked(
         client,
-        `[...document.querySelectorAll('button')].find((button) => button.textContent.includes('建立房間') || button.textContent.includes('創建房間') || button.textContent.includes('Create Room'))?.click()`,
+        `[...document.querySelectorAll('button')].find((button) => button.textContent.includes('建立公開房間') || button.textContent.includes('建立房間') || button.textContent.includes('創建房間') || button.textContent.includes('Create Room'))?.click()`,
       );
       await waitFor(client, `Boolean(document.querySelector('[data-room-panel="status"], [role="alert"]'))`);
       await new Promise((resolve) => setTimeout(resolve, 600));

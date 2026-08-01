@@ -17,7 +17,7 @@ test.describe('首頁煙霧測試', () => {
     });
   });
 
-  test('首頁能載入且標題正確', async ({ page }) => {
+  test('首頁能載入且標題正確 @core', async ({ page }) => {
     await page.goto('/');
 
     // 等待 AppBootLoader 結束、主內容出現。
@@ -57,7 +57,7 @@ test.describe('首頁煙霧測試', () => {
 
     // Hero 區的線上對戰與教學按鈕
     await expect(page.getByRole('button', { name: /CH\.01.*線上房間/ })).toBeVisible();
-    await expect(page.getByRole('button', { name: /GUIDE.*新手教學/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /CH\.03.*新手教學/ })).toBeVisible();
   });
 
   test('頁尾連結使用斜線完整分隔', async ({ page }) => {
@@ -73,8 +73,7 @@ test.describe('首頁煙霧測試', () => {
     await page.goto('/');
     await expect(page.getByRole('heading', { level: 1 })).toContainText('ZUTOMAYO', { timeout: 30_000 });
 
-    // 點擊 CH.03 牌組編輯器頻道
-    await page.getByText('CH.03', { exact: true }).click();
+    await page.getByRole('button', { name: /牌組編輯器/ }).click();
 
     // 牌組編輯器頁面應該載入（URL 變更）
     await expect(page).toHaveURL(/\/deck-builder/);
@@ -93,7 +92,7 @@ test.describe('首頁煙霧測試', () => {
     await page.goto('/');
     await expect(page.getByRole('heading', { level: 1 })).toContainText('ZUTOMAYO', { timeout: 30_000 });
 
-    await page.getByText('CH.06', { exact: true }).click();
+    await page.getByRole('button', { name: /排行榜/ }).click();
     await expect(page).toHaveURL(/\/leaderboard/);
     await expect(page.getByText('排行榜', { exact: true }).first()).toBeVisible();
     await expect(page.getByRole('tab', { name: '全域排行', exact: true })).toBeVisible();
@@ -106,6 +105,7 @@ test.describe('首頁煙霧測試', () => {
       ['/legal/terms', '服務條款'],
       ['/legal/contact', '聯絡與下架申請'],
     ] as const;
+
     for (const [route, title] of documents) {
       await page.goto(route);
       await expect(page.getByRole('heading', { level: 1, name: title })).toBeVisible({ timeout: 30_000 });

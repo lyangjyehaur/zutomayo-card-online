@@ -30,6 +30,7 @@ import {
 } from './config';
 import { createPlatformFriendStoreFromEnv, resolvePlatformFriendStoreMode } from './friendStore';
 import { platformLogger as logger } from './logger';
+import { publicCustomRoomSummaries } from './publicRooms';
 import {
   createPlatformMatchParticipantStoreFromEnv,
   resolvePlatformMatchParticipantStoreMode,
@@ -57,6 +58,11 @@ import { CustomRoom, InviteRoom, LobbyRoom, MatchShellRoom, QuickMatchRoom } fro
 import { postgresConnectionString, postgresSslConfig } from '../runtimeSecurityConfig';
 import type { PlatformRelationshipChange } from './rooms/types';
 import { createRelationshipChangeProcessor, createRelationshipRecoveryLoop } from './relationshipEventProcessor';
+import {
+  canonicalizePlatformHttpRequest,
+  createPlatformMatchmakingRouter,
+  platformMatchmakingCorsHeaders,
+} from './matchmakingHttp';
 
 const require = createRequire(import.meta.url);
 const { assertPlatformRuntimeSchema: assertPlatformSchemaGate } = require('../../api/schemaGate.cjs') as {
@@ -73,6 +79,8 @@ const { RELATIONSHIP_CHANGE_CHANNEL, parseRelationshipChange } = require('../../
 
 interface CreatePlatformRuntimeOptions {
   gracefullyShutdown?: boolean;
+  admissionLimiter?: ReturnType<typeof createPlatformAdmissionLimiter>;
+  verifyAdmissionUserId?: (token: string) => Promise<string>;
   pendingInviteDiscovery?: PendingInviteDiscoveryDependencies;
 }
 
@@ -87,6 +95,7 @@ export interface PlatformRuntime {
   matchParticipantStoreMode: ReturnType<typeof resolvePlatformMatchParticipantStoreMode>;
   chatPreviewStoreMode: ReturnType<typeof resolvePlatformChatPreviewStoreMode>;
   closeStores: () => Promise<void>;
+  listen: (port?: number) => Promise<void>;
   schemaReady: Promise<void>;
   beginDrain: () => boolean;
   isDraining: () => boolean;
@@ -250,7 +259,9 @@ export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}
   InviteRoom.configureFriendStore(friendStore, { enforceFriendship: friendStoreMode === 'postgres' });
   InviteRoom.configureBlockStore(blockStore);
   QuickMatchRoom.configureBlockStore(blockStore);
+  QuickMatchRoom.configureParticipantStore(matchParticipantStore);
   CustomRoom.configureParticipantStore(matchParticipantStore);
+  InviteRoom.configureParticipantStore(matchParticipantStore);
   MatchShellRoom.configureParticipantStore(matchParticipantStore);
   MatchShellRoom.configureChatPreviewStore(chatPreviewStore);
 
@@ -337,10 +348,12 @@ export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}
   configurePlatformJwtAccountStore(healthPool ? createPostgresPlatformJwtAccountStore(healthPool) : null, {
     required: requiresPostgres,
   });
-  const admissionLimiter = createPlatformAdmissionLimiter(authRevocationRedis, {
-    nodeEnv: process.env.NODE_ENV,
-    limits: admissionLimits,
-  });
+  const admissionLimiter =
+    options.admissionLimiter ??
+    createPlatformAdmissionLimiter(authRevocationRedis, {
+      nodeEnv: process.env.NODE_ENV,
+      limits: admissionLimits,
+    });
   const pendingInviteDiscoveryLimiter = createPlatformPendingInviteDiscoveryLimiter(authRevocationRedis, {
     nodeEnv: process.env.NODE_ENV,
   });
@@ -386,7 +399,10 @@ export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}
     return { ok: result.ok, checks: result.checks };
   });
 
+  let restoreMatchmakingCors = () => undefined;
+
   const closeStores = async () => {
+    restoreMatchmakingCors();
     relationshipRecovery.stop();
     await Promise.all([
       friendStore.close?.(),
@@ -404,6 +420,10 @@ export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}
     configurePlatformJwtAccountStore(null);
     InviteRoom.configureBlockStore(null);
     QuickMatchRoom.configureBlockStore(null);
+    QuickMatchRoom.configureParticipantStore(null);
+    CustomRoom.configureParticipantStore(null);
+    InviteRoom.configureParticipantStore(null);
+    MatchShellRoom.configureParticipantStore(null);
     LobbyRoom.clearActiveRoomsForTests();
     QuickMatchRoom.clearActiveRoomsForTests();
     InviteRoom.clearActiveRoomsForTests();
@@ -457,6 +477,15 @@ export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}
       app.get('/api/version', (_req, res) => {
         res.set('Cache-Control', 'no-store').json(versionInfo);
       });
+      app.get('/api/rooms', async (_req, res) => {
+        try {
+          const rooms = await matchMaker.query({ name: 'custom_room' }, { createdAt: 1 });
+          res.set('Cache-Control', 'no-store').json({ rooms: publicCustomRoomSummaries(rooms) });
+        } catch (err) {
+          logger.error({ err }, 'failed to list public custom rooms');
+          res.status(503).set('Cache-Control', 'no-store').json({ error: 'Room list is temporarily unavailable' });
+        }
+      });
       app.get(
         PLATFORM_PENDING_INVITE_DISCOVERY_PATH,
         createPendingInviteDiscoveryHandler({
@@ -485,6 +514,36 @@ export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}
     gracefullyShutdown: options.gracefullyShutdown ?? true,
     greet: false,
   });
+  gameServer.router = createPlatformMatchmakingRouter({
+    limiter: admissionLimiter,
+    corsOrigins,
+    verifyUserId: options.verifyAdmissionUserId,
+  });
+
+  const originalCorsResolver = matchMaker.controller.getCorsHeaders;
+  const configuredCorsResolver = (headers: Headers) =>
+    platformMatchmakingCorsHeaders(headers.get('origin'), corsOrigins);
+  matchMaker.controller.getCorsHeaders = configuredCorsResolver;
+  restoreMatchmakingCors = () => {
+    if (matchMaker.controller.getCorsHeaders === configuredCorsResolver) {
+      matchMaker.controller.getCorsHeaders = originalCorsResolver;
+    }
+  };
+  let listening = false;
+  const listen = async (listenPort = port) => {
+    if (listening) throw new Error('Platform HTTP server is already listening');
+    await gameServer.serverless();
+    httpServer.prependListener('request', (request) => canonicalizePlatformHttpRequest(request, trustedProxy));
+    await new Promise<void>((resolve, reject) => {
+      const onError = (err: Error) => reject(err);
+      httpServer.once('error', onError);
+      httpServer.listen(listenPort, () => {
+        httpServer.off('error', onError);
+        listening = true;
+        resolve();
+      });
+    });
+  };
 
   gameServer.define('lobby', LobbyRoom);
   gameServer.define('match_shell', MatchShellRoom).filterBy(['boardgameMatchID', 'status']);
@@ -515,6 +574,7 @@ export function createPlatformRuntime(options: CreatePlatformRuntimeOptions = {}
     matchParticipantStoreMode,
     chatPreviewStoreMode,
     closeStores,
+    listen,
     schemaReady,
     beginDrain: readiness.beginDrain,
     isDraining: readiness.isDraining,

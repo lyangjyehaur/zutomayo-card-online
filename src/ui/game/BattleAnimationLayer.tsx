@@ -8,7 +8,6 @@ type SnapshotCard = Pick<CardInstance, 'instanceId' | 'defId' | 'faceUp'>;
 
 interface VisualSnapshot {
   turn: number;
-  battle: GameState['lastBattleResult'];
   chronosPosition: number;
   players: Array<Record<ZoneName, SnapshotCard[]>>;
 }
@@ -22,7 +21,7 @@ interface Rect {
 
 interface AnimationItem {
   id: string;
-  kind: 'move' | 'lunge' | 'impact' | 'chronos';
+  kind: 'move' | 'chronos';
   card?: SnapshotCard;
   rect: Rect;
   dx?: number;
@@ -44,7 +43,6 @@ function copyCard(card: CardInstance | null): SnapshotCard[] {
 function snapshot(G: GameState): VisualSnapshot {
   return {
     turn: G.turnNumber,
-    battle: { ...G.lastBattleResult },
     chronosPosition: G.chronos.position,
     players: G.players.map((player) => ({
       hand: player.hand.map((card) => ({ ...card })),
@@ -169,6 +167,37 @@ export function BattleAnimationLayer({
         }
       }
 
+      // 對手只比較雙方本來就看得到的公開區域；絕不讀取手牌、牌庫或伏牌的實例 ID。
+      const opponent = (1 - me) as PlayerIndex;
+      const opponentPublicZones: ZoneName[] = ['battleZone', 'setZoneC', 'powerCharger', 'abyss'];
+      for (const sourceZone of opponentPublicZones) {
+        for (const oldCard of before.players[opponent][sourceZone]) {
+          if (!oldCard.faceUp) continue;
+          const destination = findCard(next.players[opponent], oldCard.instanceId);
+          if (
+            !destination ||
+            destination.zone === sourceZone ||
+            !opponentPublicZones.includes(destination.zone) ||
+            !destination.card.faceUp
+          ) {
+            continue;
+          }
+          const from = zoneRect(opponent, sourceZone, oldCard, previousRects.current, previousZoneRects.current);
+          const to = zoneRect(opponent, destination.zone, destination.card, nextRects, nextZoneRects);
+          if (!from || !to) continue;
+          generated.push({
+            id: `move-${next.turn}-${oldCard.instanceId}-${sourceZone}-${destination.zone}`,
+            kind: 'move',
+            card: destination.card,
+            rect: from,
+            dx: to.left - from.left,
+            dy: to.top - from.top,
+            scaleX: to.width / from.width,
+            scaleY: to.height / from.height,
+          });
+        }
+      }
+
       // 抽牌與牌庫頂公開移動在舊快照中沒有可識別實例；以牌庫區域作來源，
       // 只對自己新取得或進入公開區域的卡播放。抽牌動畫固定使用卡背。
       const previousKnown = new Set(
@@ -201,38 +230,46 @@ export function BattleAnimationLayer({
         }
       }
 
-      if (before.chronosPosition !== next.chronosPosition) {
+      const opponentKnownPublic = new Set(
+        opponentPublicZones.flatMap((zone) =>
+          before.players[opponent][zone].filter((card) => card.faceUp).map((card) => card.instanceId),
+        ),
+      );
+      const opponentDeckSource = zoneRect(
+        opponent,
+        'deck',
+        undefined,
+        previousRects.current,
+        previousZoneRects.current,
+      );
+      if (opponentDeckSource) {
+        for (const destinationZone of ['abyss', 'powerCharger'] as const) {
+          for (const card of next.players[opponent][destinationZone]) {
+            if (!card.faceUp || opponentKnownPublic.has(card.instanceId)) continue;
+            const to = zoneRect(opponent, destinationZone, card, nextRects, nextZoneRects);
+            if (!to) continue;
+            generated.push({
+              id: `public-draw-${next.turn}-${card.instanceId}-${destinationZone}`,
+              kind: 'move',
+              card,
+              rect: opponentDeckSource,
+              dx: to.left - opponentDeckSource.left,
+              dy: to.top - opponentDeckSource.top,
+              scaleX: to.width / opponentDeckSource.width,
+              scaleY: to.height / opponentDeckSource.height,
+            });
+          }
+        }
+      }
+
+      const latestChronosNotice = [...(G.recentGameNotices ?? [])]
+        .reverse()
+        .find((notice) => notice.kind === 'chronosChange');
+      const hasSequencedChronosChange = latestChronosNotice?.kind === 'chronosChange';
+      if (before.chronosPosition !== next.chronosPosition && !hasSequencedChronosChange) {
         const chronosRect = nextZoneRects.get('chronos');
         if (chronosRect)
           generated.push({ id: `chronos-${next.turn}-${next.chronosPosition}`, kind: 'chronos', rect: chronosRect });
-      }
-
-      // 回合結算時，保留正式卡牌在原位，改以複本向中央短衝，避免誤導規則上的場地移動。
-      const battleChanged =
-        next.battle.winner !== before.battle.winner ||
-        next.battle.damage !== before.battle.damage ||
-        next.battle.winnerAttack !== before.battle.winnerAttack ||
-        next.battle.loserAttack !== before.battle.loserAttack;
-      if ((next.turn > before.turn || battleChanged) && next.battle.winner !== null) {
-        const winner = next.battle.winner;
-        const loser = (1 - winner) as PlayerIndex;
-        const winnerCard = next.players[winner].battleZone[0];
-        const winnerRect = winnerCard ? nextRects.get(winnerCard.instanceId) : null;
-        const loserCard = next.players[loser].battleZone[0];
-        const loserRect = loserCard ? nextRects.get(loserCard.instanceId) : null;
-        if (winnerCard && winnerRect && loserRect) {
-          generated.push({
-            id: `lunge-${next.turn}-${winnerCard.instanceId}`,
-            kind: 'lunge',
-            card: winnerCard,
-            rect: winnerRect,
-            dx: (loserRect.left - winnerRect.left) * 0.36,
-            dy: (loserRect.top - winnerRect.top) * 0.36,
-          });
-          if (next.battle.damage > 0) {
-            generated.push({ id: `impact-${next.turn}-${loser}`, kind: 'impact', rect: loserRect });
-          }
-        }
       }
     }
 
@@ -265,21 +302,15 @@ export function BattleAnimationLayer({
   return (
     <div className="battle-animation-layer" aria-hidden="true">
       {items.map((item) =>
-        item.kind === 'impact' || item.kind === 'chronos' ? (
-          <span
-            key={item.id}
-            className={item.kind === 'chronos' ? 'battle-animation-chronos' : 'battle-animation-impact'}
-            style={styleFor(item)}
-          />
+        item.kind === 'chronos' ? (
+          <span key={item.id} className="battle-animation-chronos" style={styleFor(item)} />
         ) : (
           <div
             key={item.id}
             className={`battle-animation-card battle-animation-card-${item.kind}`}
             style={styleFor(item)}
           >
-            {item.card && (
-              <CardView card={item.card} size="md" showCost={false} className="battle-animation-card-face" />
-            )}
+            {item.card && <CardView card={item.card} size="md" className="battle-animation-card-face" />}
           </div>
         ),
       )}

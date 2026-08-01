@@ -1,5 +1,5 @@
-export { CardView } from './CardView';
-export type { CardViewProps, CardViewSize, CardViewState } from './CardView';
+export { CardCostTag, CardView } from './CardView';
+export type { CardCostTagProps, CardViewProps, CardViewSize, CardViewState } from './CardView';
 export { CardSlot } from './CardSlot';
 export type { CardSlotProps, CardSlotState } from './CardSlot';
 export { CardStack } from './CardStack';
@@ -9,6 +9,15 @@ export type { ZonePanelProps } from './ZonePanel';
 export { BattleZone } from './BattleZone';
 export type { BattleZoneAttack, BattleZoneProps } from './BattleZone';
 export { BattleAnimationLayer } from './BattleAnimationLayer';
+export { BattleResolutionLayer } from './BattleResolutionLayer';
+export { EffectHpResolutionLayer } from './EffectHpResolutionLayer';
+export { ChronosResolutionLayer } from './ChronosResolutionLayer';
+export {
+  initialResolutionNotices,
+  resolutionNoticeChannel,
+  unseenResolutionNotices,
+  type ResolutionNoticeChannel,
+} from './resolutionTimeline';
 export { AbyssZone, ChargeZone, DeckZone, SetZone } from './zones';
 export type { AbyssZoneProps, ChargeZoneProps, DeckZoneProps, SetZoneProps } from './zones';
 export { PlayerStatus, PlayerStatus as OpponentStatus } from './PlayerStatus';

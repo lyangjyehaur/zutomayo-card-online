@@ -1,5 +1,4 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
-import { Menu, X } from 'lucide-react';
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { identifyAnalytics, trackPageView } from './analytics';
 import { formatAnonymousDisplayName } from './anonymousIdentity';
@@ -9,29 +8,34 @@ import { NetworkStatusNotifier } from './components/NetworkStatusNotifier';
 import { PwaInstallPrompt } from './components/PwaInstallPrompt';
 import { PwaStatusPrompt } from './components/PwaStatusPrompt';
 import { Sentry } from './sentry';
-import { Button, IconButton } from './ui';
+import { Button } from './ui';
 import { hasStoredCustomDeck } from './game/cards/customDeck';
 import { getGameConfig as getLoadedGameConfig } from './game/cards/loader';
 import type { ZutomayoSetupData } from './game/types';
 import type { AIDifficulty } from './game/ai';
-import { LobbyPage, aiOpponentDeckName, onlineDeckName, serverDeckIdFromOption } from './pages/LobbyPage';
+import { LobbyPage, aiOpponentDeckSetup, onlineDeckName, serverDeckIdFromOption } from './pages/LobbyPage';
 import { t, translate, useLocale, type TranslationKey } from './i18n';
 import {
   clearStoredOnlineSession,
+  leaveOnlineSession,
   loadOnlineSession,
+  requestOnlineRematch,
   saveOnlineSession,
   validateOnlineSession,
   type OnlineSession,
   type OnlineSessionValidationReason,
 } from './onlineSession';
+import { onlineErrorDetail, onlineHttpError } from './onlineHttpError';
 import { APP_VERSION_INFO } from './version';
+import { webFontsReady } from './webFonts';
 import './App.css';
 // Design System v1：semantic tokens 與對戰版面樣式（必須在 App.css 之後載入，覆寫舊層）
 import './ui/tokens/index.css';
 import './ui/game/game.css';
 
-const AdminPage = lazy(() => import('./pages/AdminPage').then((module) => ({ default: module.AdminPage })));
-const I18nManager = lazy(() => import('./pages/I18nManager').then((module) => ({ default: module.I18nManager })));
+const RefineAdminApp = lazy(() =>
+  import('./admin/RefineAdminApp').then((module) => ({ default: module.RefineAdminApp })),
+);
 const AIGamePage = lazy(() => import('./pages/AIGamePage').then((module) => ({ default: module.AIGamePage })));
 const AILobbyPage = lazy(() => import('./pages/AILobbyPage').then((module) => ({ default: module.AILobbyPage })));
 const TutorialGamePage = lazy(() =>
@@ -39,6 +43,12 @@ const TutorialGamePage = lazy(() =>
 );
 const DeckEditorPage = lazy(() =>
   import('./pages/DeckEditorPage').then((module) => ({ default: module.DeckEditorPage })),
+);
+const CardCatalogPage = lazy(() =>
+  import('./pages/CardCatalogPage').then((module) => ({ default: module.CardCatalogPage })),
+);
+const KnowledgeSearchPage = lazy(() =>
+  import('./pages/KnowledgeSearchPage').then((module) => ({ default: module.KnowledgeSearchPage })),
 );
 const DeckShareLobbyPage = lazy(() =>
   import('./pages/DeckShareLobbyPage').then((module) => ({ default: module.DeckShareLobbyPage })),
@@ -107,6 +117,9 @@ function isFullscreenRoute(pathname: string): boolean {
     pathname === '/community' ||
     pathname === '/ai' ||
     pathname === '/deck-builder' ||
+    pathname === '/cards' ||
+    pathname.startsWith('/cards/') ||
+    pathname === '/search' ||
     pathname === '/deck-shares' ||
     pathname.startsWith('/deck-shares/') ||
     pathname === '/feedback' ||
@@ -118,12 +131,23 @@ function isFullscreenRoute(pathname: string): boolean {
     pathname.startsWith('/legal') ||
     pathname === '/verify-email' ||
     pathname === '/forgot-password' ||
-    pathname === '/reset-password'
+    pathname === '/reset-password' ||
+    pathname.startsWith('/admin')
   );
 }
 
-function onlineRoomError(key: OnlineRoomErrorKey): Error {
-  return new Error(key);
+class OnlineRoomError extends Error {
+  readonly detail?: string;
+
+  constructor(key: OnlineRoomErrorKey, detail?: string) {
+    super(key);
+    this.name = 'OnlineRoomError';
+    this.detail = detail;
+  }
+}
+
+function onlineRoomError(key: OnlineRoomErrorKey, cause?: Error): Error {
+  return new OnlineRoomError(key, cause?.message);
 }
 
 async function createMatch(setupData: ZutomayoSetupData): Promise<string> {
@@ -133,12 +157,13 @@ async function createMatch(setupData: ZutomayoSetupData): Promise<string> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ numPlayers: 2, setupData: { ...setupData, clientVersion: APP_VERSION_INFO } }),
   });
-  if (response.status === 426) throw onlineRoomError('online.versionMismatch');
   if (!response.ok) {
-    Sentry.captureException(new Error(`createMatch failed: HTTP ${response.status}`), {
+    const error = await onlineHttpError(response, 'createMatch');
+    if (response.status === 426) throw onlineRoomError('online.versionMismatch', error);
+    Sentry.captureException(error, {
       tags: { action: 'create-match', http_status: String(response.status) },
     });
-    throw onlineRoomError('online.connectionFailed');
+    throw error;
   }
   const data = await response.json();
   return data.matchID;
@@ -148,12 +173,8 @@ type OnlineSeatProfile = { data?: { userId: string }; platformUserId: string; pl
 
 async function currentAccountSeatProfile(): Promise<OnlineSeatProfile | undefined> {
   if (!isLoggedIn()) return undefined;
-  try {
-    const profile = await getProfile();
-    return { data: { userId: profile.id }, platformUserId: profile.id, platformDisplayName: profile.nickname };
-  } catch {
-    return undefined;
-  }
+  const profile = await getProfile();
+  return { data: { userId: profile.id }, platformUserId: profile.id, platformDisplayName: profile.nickname };
 }
 
 async function joinMatch(
@@ -161,6 +182,8 @@ async function joinMatch(
   playerID: '0' | '1',
   requestedPlayerName?: string,
   deckReservationId?: string,
+  localDeckIds?: string[],
+  localDeckName?: string,
 ): Promise<{
   playerCredentials: string;
   platformSeatToken?: string;
@@ -183,16 +206,21 @@ async function joinMatch(
       data: { ...(account?.data ?? {}), clientVersion: APP_VERSION_INFO },
       clientVersion: APP_VERSION_INFO,
       ...(deckReservationId ? { deckReservationId } : {}),
+      ...(localDeckIds ? { localDeckIds } : {}),
+      ...(localDeckName ? { localDeckName } : {}),
     }),
   });
   if (!response.ok) {
-    if (response.status === 426) throw onlineRoomError('online.versionMismatch');
-    if (response.status === 404) throw onlineRoomError('online.roomNotFound');
-    if (response.status === 409) throw onlineRoomError('online.roomFull');
-    Sentry.captureException(new Error(`joinMatch failed: HTTP ${response.status}`), {
+    const error = await onlineHttpError(response, 'joinMatch');
+    if (response.status === 426) throw onlineRoomError('online.versionMismatch', error);
+    if (response.status === 404) throw onlineRoomError('online.roomNotFound', error);
+    if (response.status === 409 && /no available seats|player [01] is not available/i.test(error.message)) {
+      throw onlineRoomError('online.roomFull', error);
+    }
+    Sentry.captureException(error, {
       tags: { action: 'join-match', http_status: String(response.status), match_id: matchID },
     });
-    throw onlineRoomError('online.connectionFailed');
+    throw error;
   }
   const data = (await response.json()) as {
     playerCredentials: string;
@@ -210,132 +238,17 @@ async function joinMatch(
   };
 }
 
-function NavBar({ deckSharingEnabled }: { deckSharingEnabled: boolean }) {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const [open, setOpen] = useState(false);
-
-  // 全螢幕單屏頁面有自己的 Header，不需要 NavBar
-  if (isFullscreenRoute(location.pathname)) {
-    return null;
-  }
-
-  const navItems = [
-    { path: '/', label: t('nav.lobby') },
-    { path: '/online', label: t('lobby.onlineTitle') },
-    { path: '/community', label: t('community.title') },
-    { path: '/ai', label: t('lobby.aiBattle') },
-    { path: '/deck-builder', label: t('nav.deckBuilder') },
-    ...(deckSharingEnabled ? [{ path: '/deck-shares', label: t('deckShare.lobbyTitle') }] : []),
-    { path: '/feedback', label: t('nav.feedback') },
-    { path: '/profile', label: t('nav.profile') },
-    { path: '/tutorial', label: t('nav.tutorial') },
-  ];
-
-  const activeItem = navItems.find((item) => item.path === location.pathname) ?? navItems[0];
-  const navButtonClass = (path: string) =>
-    `!min-h-11 min-w-touch px-2 py-0 tracking-[var(--tracking-label)] md:tracking-[var(--tracking-kicker)] ${
-      location.pathname === path ? 'text-accent-primary' : 'text-content-primary/50 hover:text-content-primary'
-    }`;
-
-  const goTo = (path: string) => {
-    setOpen(false);
-    navigate(path);
-  };
-
-  return (
-    <nav className="relative z-[var(--z-header)] px-3 pt-3 md:px-4 md:pt-4" aria-label={t('nav.primary')}>
-      <div className="hidden items-center justify-between md:flex">
-        <div className="flex items-center gap-1 rounded-md border border-border-soft bg-surface-base/80 px-2 py-1.5 backdrop-blur-md">
-          <span className="mx-2 size-2 rounded-full bg-accent-primary shadow-status-dot" aria-hidden="true" />
-          {navItems.slice(0, 6).map((item) => (
-            <Button
-              key={item.path}
-              className={navButtonClass(item.path)}
-              variant="ghost"
-              size="sm"
-              type="button"
-              onClick={() => goTo(item.path)}
-            >
-              {item.label}
-            </Button>
-          ))}
-        </div>
-        <div className="rounded-md border border-border-soft bg-surface-base/80 px-2 py-1.5 backdrop-blur-md">
-          <Button
-            className={navButtonClass('/profile')}
-            variant="ghost"
-            size="sm"
-            type="button"
-            onClick={() => goTo('/profile')}
-          >
-            {t('nav.profile')}
-          </Button>
-          <Button
-            className={navButtonClass('/tutorial')}
-            variant="ghost"
-            size="sm"
-            type="button"
-            onClick={() => goTo('/tutorial')}
-          >
-            {t('nav.tutorial')}
-          </Button>
-        </div>
-      </div>
-      <div className="flex items-center justify-between gap-2 rounded-md border border-border-soft bg-surface-base/80 px-2 py-1.5 backdrop-blur-md md:hidden">
-        <Button
-          className="!min-h-11 font-display text-base font-bold normal-case tracking-normal text-content-primary"
-          variant="ghost"
-          size="sm"
-          type="button"
-          onClick={() => goTo('/')}
-        >
-          ZUTOMAYO
-        </Button>
-        <span className="min-w-0 truncate font-mono text-caption uppercase tracking-[var(--tracking-label)] text-accent-primary">
-          {activeItem.label}
-        </span>
-        <IconButton
-          variant="secondary"
-          label={open ? t('common.close') : t('nav.primary')}
-          icon={open ? <X className="size-4" aria-hidden="true" /> : <Menu className="size-4" aria-hidden="true" />}
-          aria-expanded={open}
-          onClick={() => setOpen((current) => !current)}
-        />
-      </div>
-      {open && (
-        <div className="fixed inset-0 top-16 z-[var(--z-modal)] bg-surface-canvas/80 p-4 backdrop-blur md:hidden">
-          <div className="grid gap-2 rounded-md bg-surface-base p-3 ring-1 ring-content-primary/10 shadow-raised">
-            {navItems.map((item) => (
-              <Button
-                key={item.path}
-                className="justify-between text-left"
-                fullWidth
-                variant={location.pathname === item.path ? 'primary' : 'ghost'}
-                type="button"
-                onClick={() => goTo(item.path)}
-              >
-                {item.label}
-              </Button>
-            ))}
-          </div>
-        </div>
-      )}
-    </nav>
-  );
-}
-
 function resumeErrorTitle(reason: OnlineSessionValidationReason): TranslationKey {
   if (reason === 'versionMismatch') return 'online.versionMismatch';
   if (reason === 'roomGone') return 'onlineSession.roomGoneTitle';
-  if (reason === 'seatTaken') return 'onlineSession.seatTakenTitle';
+  if (reason === 'seatTaken' || reason === 'invalidSession') return 'onlineSession.seatTakenTitle';
   return 'onlineSession.resumeErrorTitle';
 }
 
 function resumeErrorBody(reason: OnlineSessionValidationReason): TranslationKey {
   if (reason === 'versionMismatch') return 'online.versionMismatchBody';
   if (reason === 'roomGone') return 'onlineSession.roomGoneBody';
-  if (reason === 'seatTaken') return 'onlineSession.seatTakenBody';
+  if (reason === 'seatTaken' || reason === 'invalidSession') return 'onlineSession.seatTakenBody';
   return 'onlineSession.resumeErrorBody';
 }
 
@@ -343,12 +256,14 @@ function OnlineResumePrompt({
   session,
   status,
   errorReason,
+  errorDetail,
   onResume,
   onDismiss,
 }: {
   session: OnlineSession;
   status: 'idle' | 'reconnecting' | 'error';
   errorReason: OnlineSessionValidationReason | null;
+  errorDetail: string;
   onResume: () => void;
   onDismiss: () => void;
 }) {
@@ -361,7 +276,7 @@ function OnlineResumePrompt({
         <span>{t('game.onlineMode')}</span>
         <strong>{isError ? t(resumeErrorTitle(errorReason)) : t('onlineSession.resumeTitle')}</strong>
         <p>
-          {isError ? t(resumeErrorBody(errorReason)) : t('onlineSession.resumeBody')}
+          {isError ? errorDetail || t(resumeErrorBody(errorReason)) : t('onlineSession.resumeBody')}
           {!isError && (
             <>
               {' '}
@@ -410,8 +325,7 @@ function RouteFallback() {
 }
 
 function waitForFonts(): Promise<void> {
-  if (typeof document === 'undefined' || !('fonts' in document)) return Promise.resolve();
-  return document.fonts.ready.then(() => undefined);
+  return webFontsReady;
 }
 
 async function withBootTimeout<T>(promise: Promise<T>, timeoutMs = APP_BOOT_TIMEOUT_MS): Promise<T | null> {
@@ -462,6 +376,7 @@ function RouterShell() {
   );
   const [resumePromptStatus, setResumePromptStatus] = useState<'idle' | 'reconnecting' | 'error'>('idle');
   const [resumeErrorReason, setResumeErrorReason] = useState<OnlineSessionValidationReason | null>(null);
+  const [resumeErrorDetail, setResumeErrorDetail] = useState('');
 
   useEffect(() => {
     trackPageView(`${location.pathname}${location.search}`);
@@ -506,9 +421,9 @@ function RouterShell() {
     try {
       setServerDecks(await getDecks());
       setServerDeckError('');
-    } catch {
+    } catch (err) {
       setServerDecks([]);
-      setServerDeckError(translate(locale, 'deck.loadServerError'));
+      setServerDeckError(onlineErrorDetail(err, translate(locale, 'deck.loadServerError')));
     }
   }, [locale]);
 
@@ -520,7 +435,7 @@ function RouterShell() {
     setCardResourceState('loading');
     try {
       const { refreshCards } = await import('./game/cards/loader');
-      const cards = await withBootTimeout(refreshCards());
+      const cards = await refreshCards();
       setCardResourceState(cards && cards.length > 0 ? 'ready' : 'error');
     } catch {
       setCardResourceState('error');
@@ -536,7 +451,7 @@ function RouterShell() {
       ]);
       await Promise.allSettled([
         refreshCardResources(),
-        withBootTimeout(loadConfigFromAPI()),
+        loadConfigFromAPI(),
         withBootTimeout(loadCardTextsI18nFromAPI()),
         withBootTimeout(waitForFonts(), 2500),
       ]);
@@ -568,6 +483,7 @@ function RouterShell() {
     } = {},
   ): Promise<OnlineSession> => {
     const selectedPlayerDeck = options.playerDeckName ?? deck0Name;
+    const selectedDeckSetup = onlineDeckName(existingID ? 1 : 0, selectedPlayerDeck, serverDecks);
     const selectedServerDeckId = serverDeckIdFromOption(selectedPlayerDeck);
     const playerDeckReservation = options.playerDeckReservationId
       ? undefined
@@ -576,7 +492,7 @@ function RouterShell() {
         : undefined;
     const effectiveDeckReservationId = options.playerDeckReservationId || playerDeckReservation?.reservationId;
     const setupData = {
-      ...onlineDeckName(0, options.playerDeckName ?? deck0Name, serverDecks),
+      ...selectedDeckSetup,
       ...(effectiveDeckReservationId
         ? {
             deck0Ids: undefined,
@@ -596,6 +512,8 @@ function RouterShell() {
       playerID === '1'
         ? options.playerDeckReservationId || playerDeckReservation?.reservationId
         : effectiveDeckReservationId,
+      playerID === '1' && !effectiveDeckReservationId ? selectedDeckSetup.deck1Ids : undefined,
+      playerID === '1' && !effectiveDeckReservationId ? selectedDeckSetup.deck1Name : undefined,
     );
     const session = { matchID, playerID, playerCredentials, platformSeatToken, platformUserId, platformDisplayName };
     setOnlineSession(session);
@@ -607,15 +525,48 @@ function RouterShell() {
     return session;
   };
 
+  const rematchOnline = async (previousSession: OnlineSession): Promise<OnlineSession> => {
+    const nextMatchID = await requestOnlineRematch(previousSession);
+    const { playerCredentials, platformSeatToken, platformUserId, platformDisplayName } = await joinMatch(
+      nextMatchID,
+      previousSession.playerID,
+      previousSession.platformDisplayName,
+    );
+    const nextSession: OnlineSession = {
+      matchID: nextMatchID,
+      playerID: previousSession.playerID,
+      playerCredentials,
+      platformSeatToken,
+      platformUserId,
+      platformDisplayName,
+    };
+    // Persist before navigating so the new route can resolve this session while React commits the parent state.
+    saveOnlineSession(nextSession);
+    navigate(`/play/online/${encodeURIComponent(nextMatchID)}`, { state: { freshOnlineSession: true } });
+    setOnlineSession(nextSession);
+    setResumePromptSession(null);
+    // Keep the finished match seats intact until both players have exchanged
+    // their old credentials for seats in the shared rematch.
+    return nextSession;
+  };
+
   const clearOnlineSession = useCallback(() => {
     setOnlineSession(null);
     clearStoredOnlineSession();
+  }, []);
+
+  const cancelPendingOnlineSession = useCallback(async (session: OnlineSession) => {
+    await leaveOnlineSession(session);
+    setOnlineSession((current) => (current?.matchID === session.matchID ? null : current));
+    setResumePromptSession((current) => (current?.matchID === session.matchID ? null : current));
+    if (loadOnlineSession()?.matchID === session.matchID) clearStoredOnlineSession();
   }, []);
 
   const resumeStoredSession = async () => {
     if (!resumePromptSession) return;
     setResumePromptStatus('reconnecting');
     setResumeErrorReason(null);
+    setResumeErrorDetail('');
     const validation = await validateOnlineSession(resumePromptSession);
     if (validation.ok) {
       setOnlineSession(resumePromptSession);
@@ -632,6 +583,7 @@ function RouterShell() {
       clearStoredOnlineSession();
     }
     setResumeErrorReason(validation.reason);
+    setResumeErrorDetail(validation.error.message);
     setResumePromptStatus('error');
   };
 
@@ -639,21 +591,35 @@ function RouterShell() {
     setResumePromptSession(null);
     setResumePromptStatus('idle');
     setResumeErrorReason(null);
+    setResumeErrorDetail('');
     clearOnlineSession();
   };
 
   const aiPlayerDeck = onlineDeckName(0, deck0Name, serverDecks);
-  const deck1 = aiOpponentDeckName(deck1Name);
+  const aiOpponentDeck = aiOpponentDeckSetup(deck1Name, serverDecks);
   const cardsReady = cardResourceState === 'ready';
   const cardsLoadError = cardResourceState === 'error';
-  // 新版沉浸頁面有自己的 AppHeader，不需要外層 NavBar 和 padding。
-  const hideNav = isFullscreenRoute(location.pathname);
+  // 沉浸頁面暫不顯示跨頁的對局恢復提示；全域舊 NavBar 已移除。
+  const suppressResumePrompt = isFullscreenRoute(location.pathname);
+
+  useEffect(() => {
+    if (!cardsReady || new URLSearchParams(location.search).get('ai-performance') !== '1') return;
+    let cancelled = false;
+    let uninstall: (() => void) | undefined;
+    void import('./game/aiBrowserBenchmark').then(({ installAIBrowserBenchmark }) => {
+      if (cancelled) return;
+      uninstall = installAIBrowserBenchmark();
+    });
+    return () => {
+      cancelled = true;
+      uninstall?.();
+    };
+  }, [cardsReady, location.search]);
 
   if (!appResourcesReady) return <AppBootLoader />;
 
   return (
-    <div className={`app-shell ${hideNav ? 'play-shell' : 'has-nav'}`} data-locale={locale}>
-      {!hideNav && <NavBar deckSharingEnabled={deckSharingEnabled} />}
+    <div className="app-shell play-shell" data-locale={locale}>
       <div className="route-content">
         <Suspense fallback={<RouteFallback />}>
           <Routes>
@@ -671,6 +637,7 @@ function RouterShell() {
                   serverDecks={serverDecks}
                   setDeck0Name={setDeck0Name}
                   onStartOnline={startOnline}
+                  onCancelOnlineSession={cancelPendingOnlineSession}
                   onAuthChanged={refreshServerDecks}
                   serverDeckError={serverDeckError}
                   cardsReady={cardsReady}
@@ -703,7 +670,8 @@ function RouterShell() {
                 <AIGamePage
                   deck0Name={aiPlayerDeck.deck0Name}
                   deck0Ids={aiPlayerDeck.deck0Ids}
-                  deck1Name={deck1}
+                  deck1Name={aiOpponentDeck.deck1Name}
+                  deck1Ids={aiOpponentDeck.deck1Ids}
                   cardsReady={cardsReady}
                   cardsLoadError={cardsLoadError}
                   onRetryCards={refreshCardResources}
@@ -727,6 +695,7 @@ function RouterShell() {
                   session={onlineSession}
                   onClearSession={clearOnlineSession}
                   onCreateNewRoom={() => startOnline()}
+                  onRematch={rematchOnline}
                 />
               }
             />
@@ -747,6 +716,9 @@ function RouterShell() {
                 />
               }
             />
+            <Route path="/cards" element={<CardCatalogPage />} />
+            <Route path="/cards/:cardId" element={<CardCatalogPage />} />
+            <Route path="/search" element={<KnowledgeSearchPage />} />
             {deckSharingEnabled && <Route path="/deck-shares" element={<DeckShareLobbyPage />} />}
             {deckSharingEnabled && (
               <Route
@@ -778,18 +750,18 @@ function RouterShell() {
             <Route path="/verify-email" element={<VerifyEmailPage />} />
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
-            <Route path="/admin" element={<AdminPage />} />
-            <Route path="/admin/i18n" element={<I18nManager />} />
+            <Route path="/admin/*" element={<RefineAdminApp />} />
             <Route path="/qa/battle" element={<BattleVisualQaPage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
         </Suspense>
       </div>
-      {resumePromptSession && !hideNav && (
+      {resumePromptSession && !suppressResumePrompt && (
         <OnlineResumePrompt
           session={resumePromptSession}
           status={resumePromptStatus}
           errorReason={resumeErrorReason}
+          errorDetail={resumeErrorDetail}
           onResume={resumeStoredSession}
           onDismiss={dismissResumePrompt}
         />

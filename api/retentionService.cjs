@@ -15,6 +15,7 @@ const RETENTION_DAYS = Object.freeze({
   accountTokens: 2,
   relationshipOutboxDelivered: 30,
   relationshipOutboxDeadLetter: 365,
+  searchZeroResults: 90,
 });
 
 const RETENTION_LOCK_NAME = 'zutomayo:retention-job:v1';
@@ -418,6 +419,25 @@ function operationDefinitions(cutoffs) {
        WHERE a.id = c.id`,
       countParams: [cutoffs.accountExportAudit],
       mutateParams: [cutoffs.accountExportAudit],
+    },
+    {
+      name: 'searchZeroResults',
+      countSql: `SELECT COUNT(*)::int AS count
+        FROM knowledge_search_zero_results
+       WHERE last_seen_at < $1`,
+      mutateSql: `WITH candidates AS (
+        SELECT id
+          FROM knowledge_search_zero_results
+         WHERE last_seen_at < $1
+         ORDER BY last_seen_at ASC
+         FOR UPDATE SKIP LOCKED
+         LIMIT $2
+      )
+      DELETE FROM knowledge_search_zero_results search
+       USING candidates c
+       WHERE search.id = c.id`,
+      countParams: [cutoffs.searchZeroResults],
+      mutateParams: [cutoffs.searchZeroResults],
     },
     {
       name: 'relationshipOutbox',

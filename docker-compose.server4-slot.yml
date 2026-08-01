@@ -43,6 +43,7 @@ x-release-environment: &release-environment
 x-platform-environment: &platform-environment
   <<: *release-environment
   PLATFORM_PORT: '3002'
+  MATCH_ANALYTICS_TRAFFIC_CLASS: production
   PG_USER: ${PG_PLATFORM_USER:?Set PG_PLATFORM_USER in .env}
   PG_PASSWORD: ${PG_PLATFORM_PASSWORD:?Set PG_PLATFORM_PASSWORD in .env}
   PG_PLATFORM_USER: ${PG_PLATFORM_USER:?Set PG_PLATFORM_USER in .env}
@@ -137,11 +138,13 @@ services:
       CARD_OCR_OVERRIDES_SOURCE: /run/card-data/card-english-ocr-overrides.json
       OFFICIAL_RULINGS_TRANSLATIONS_FILE: /run/card-data/official-rulings-translations.json
       OFFICIAL_RULE_DOCUMENTS_FILE: /run/card-data/official-rule-documents-20260721.json
+      MEILI_HOST: http://meilisearch:7700
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:?Set a strong MEILI_MASTER_KEY in .env}
+      MEILI_INDEX_UID: ${MEILI_INDEX_UID:-zutomayo_knowledge}
     networks:
       - 1panel-network
     volumes:
       - ${PG_CA_FILE:?Set PG_CA_FILE to the mounted PostgreSQL CA}:/run/secrets/zutomayo-service-ca.crt:ro
-      - ${BATTLE_ASSET_DIR:-./public/battle}:/app/dist/battle:ro
       - ${CARD_DATA_DIR:?Set CARD_DATA_DIR to the private reviewed card-data directory}:/run/card-data:ro
     restart: 'no'
 
@@ -159,6 +162,7 @@ services:
       PG_PASSWORD: ${PG_GAME_PASSWORD:?Set PG_GAME_PASSWORD in .env}
       PG_GAME_USER: ${PG_GAME_USER:?Set PG_GAME_USER in .env}
       API_URL: http://api-${RELEASE_SLOT:?Set RELEASE_SLOT to blue or green}:3001
+      CARD_DATASET_SHA256: ${VITE_CARD_DATASET_SHA256:?Set VITE_CARD_DATASET_SHA256 to the release dataset digest}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
       PLATFORM_SEAT_TOKEN_SECRET: ${PLATFORM_SEAT_TOKEN_SECRET:?Set an independent PLATFORM_SEAT_TOKEN_SECRET in .env}
       SENTRY_DSN: ${SENTRY_DSN:-}
@@ -184,6 +188,7 @@ services:
           - game-${RELEASE_SLOT:?Set RELEASE_SLOT to blue or green}
     volumes:
       - ${PG_CA_FILE:?Set PG_CA_FILE to the mounted PostgreSQL CA}:/run/secrets/zutomayo-service-ca.crt:ro
+      - ${BATTLE_ASSET_DIR:-./public/battle}:/app/dist/battle:ro
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -315,6 +320,13 @@ services:
       CHAT_TRANSLATION_PROVIDER: ${CHAT_TRANSLATION_PROVIDER:-}
       CHAT_TRANSLATION_MODEL: ${CHAT_TRANSLATION_MODEL:-}
       CHAT_TRANSLATION_TIMEOUT_MS: ${CHAT_TRANSLATION_TIMEOUT_MS:-10000}
+      MEILI_HOST: http://meilisearch:7700
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:?Set a strong MEILI_MASTER_KEY in .env}
+      MEILI_INDEX_UID: ${MEILI_INDEX_UID:-zutomayo_knowledge}
+      MEILI_TIMEOUT_MS: ${MEILI_TIMEOUT_MS:-2500}
+      SEARCH_REINDEX_INTERVAL_MS: ${SEARCH_REINDEX_INTERVAL_MS:-300000}
+      SEARCH_REINDEX_DEBOUNCE_MS: ${SEARCH_REINDEX_DEBOUNCE_MS:-2000}
+      SEARCH_FALLBACK_CACHE_MS: ${SEARCH_FALLBACK_CACHE_MS:-60000}
       CHAT_BLOCKED_WORDS: ${CHAT_BLOCKED_WORDS:-}
       CHAT_REVIEW_WORDS: ${CHAT_REVIEW_WORDS:-}
       SENTRY_DSN: ${SENTRY_DSN:-}

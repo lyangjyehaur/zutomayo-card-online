@@ -3,7 +3,9 @@ import './server/observability/tracing.js';
 import { ZutomayoOnlineCard, resetParsedEffects } from './game/Game';
 import { initCards } from './game/cards/loader';
 import { initCardTextsI18n, type CardTextI18nEntry } from './game/cards/i18n';
+import { getPresetDeck, validateConstructedDeckIds } from './game/cards/deckBuilder';
 import type { CardDef, ZutomayoSetupData } from './game/types';
+import { authoritativeOnlineSetupData } from './server/onlineSetup';
 import { APP_VERSION_INFO, isCompatibleVersion, normalizeVersionInfo, type AppVersionInfo } from './version';
 import path from 'path';
 import fs from 'fs';
@@ -18,6 +20,7 @@ import { Pool } from 'pg';
 import { MatchSeatReservationError, PostgresAdapter } from './server/db/postgres-adapter';
 import { RedisPubSub } from './server/transport/redis-pubsub';
 import { startMatchResultOutboxWorker } from './server/matchResultOutbox';
+import { resolveMatchAnalyticsRuntimeMetadata } from './server/matchAnalytics';
 import * as Sentry from '@sentry/node';
 import helmet from 'koa-helmet';
 import { logger, requestLoggingMiddleware } from './server/observability/logger';
@@ -31,6 +34,7 @@ import { createRateLimit, getClientIpFromRequest } from './server/rateLimit';
 import type { IncomingHttpHeaders, IncomingMessage } from 'http';
 import { createPlatformSeatToken } from './platform/seatToken';
 import {
+  contentSecurityScriptSources,
   postgresConnectionString,
   postgresSslConfig,
   requireSecret,
@@ -41,7 +45,11 @@ import {
 } from './runtimeSecurityConfig';
 import { createServiceReadiness } from './operational/serviceLifecycle';
 import { drainNetwork } from './operational/networkDrain';
+import { resolveSocketIoRuntime, type SocketNamespaceRuntime } from './operational/socketIoRuntime';
 import { replayJsonRequestBody } from './server/requestBodyReplay';
+import { createOnlineRematchSetupData } from './server/onlineRematch';
+import { CACHE_CONTROL, frontendCacheControl } from './server/cachePolicy';
+import { shouldServeSpaFallback } from './server/staticRouting';
 import { createUmamiProxyMiddleware, UMAMI_SCRIPT_PATH, UMAMI_SEND_PATH } from './server/umamiProxy';
 import {
   configurePlatformJwtAccountStore,
@@ -434,7 +442,7 @@ server.app.use(
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", "'unsafe-inline'"],
+        scriptSrc: contentSecurityScriptSources(process.env),
         styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
         imgSrc: ["'self'", 'https://www.gravatar.com', 'https://cravatar.cn', 'https://q1.qlogo.cn', 'data:', 'blob:'],
         connectSrc: ["'self'", ...websocketConnectSources(process.env)],
@@ -446,6 +454,13 @@ server.app.use(
   }),
 );
 
+// Dynamic responses are private by default. Static middleware below replaces
+// this header only for resources whose URL is safe to cache across deployments.
+server.app.use(async (ctx: KoaContext, next: Next) => {
+  ctx.set('Cache-Control', CACHE_CONTROL.noStore);
+  await next();
+});
+
 // Structured request logging + Prometheus metrics (before route handlers).
 server.app.use(requestLoggingMiddleware());
 server.app.use(metricsMiddleware());
@@ -456,6 +471,7 @@ server.app.use(async (ctx: KoaContext, next: Next) => {
   }
   await next();
 });
+
 server.app.use(
   createUmamiProxyMiddleware({
     upstreamUrl: process.env.UMAMI_UPSTREAM_URL,
@@ -472,11 +488,45 @@ server.app.use(async (ctx: KoaContext, next: Next) => {
   await next();
 });
 
+const parseGameCreateBody = koaBody({ jsonLimit: '64kb' });
+server.app.use(async (ctx: KoaContext, next: Next) => {
+  const match = /^\/games\/zutomayo-card\/([^/]+)\/playAgain$/.exec(ctx.path);
+  if (!match || ctx.method !== 'POST') {
+    await next();
+    return;
+  }
+
+  await parseGameCreateBody(ctx, async () => undefined);
+  const matchID = decodeURIComponent(match[1]);
+  await db.withRematchLock(matchID, async () => {
+    const current = await db.fetch(matchID, { initialState: true, metadata: true });
+    if (!current.initialState || !current.metadata) ctx.throw(404, 'Match ' + matchID + ' not found');
+    if (!isCompatibleVersion(setupVersion(current.metadata))) {
+      ctx.throw(426, 'Room version does not match server game version');
+    }
+    let setupData: ZutomayoSetupData;
+    try {
+      setupData = createOnlineRematchSetupData(
+        current.initialState,
+        current.metadata,
+        APP_VERSION_INFO,
+        APP_VERSION_INFO.rulesVersion,
+      );
+    } catch (error) {
+      logger.warn({ err: error, matchID }, 'unable to reconstruct rematch decks');
+      ctx.throw(409, 'Previous match cannot be replayed');
+    }
+    const body = isRecord(ctx.request.body) ? ctx.request.body : {};
+    ctx.request.body = { ...body, numPlayers: 2, unlisted: true, setupData };
+    replayJsonRequestBody(ctx, ctx.request.body);
+    await next();
+  });
+});
+
 // Online setup data is an untrusted transport envelope. Resolve custom decks
 // from a short-lived PostgreSQL reservation bound to the caller's JWT, then
 // strip the opaque token and any client-supplied opponent deck before the
 // boardgame router creates the match.
-const parseGameCreateBody = koaBody({ jsonLimit: '64kb' });
 server.app.use(async (ctx: KoaContext, next: Next) => {
   if (ctx.path !== '/games/zutomayo-card/create' || ctx.method !== 'POST') {
     await next();
@@ -487,9 +537,6 @@ server.app.use(async (ctx: KoaContext, next: Next) => {
   const setup = (isRecord(body.setupData) ? body.setupData : {}) as ZutomayoSetupData;
   const requestUserId = await authenticatedRequestUserId(ctx);
   const reservationId = typeof setup.deck0ReservationId === 'string' ? setup.deck0ReservationId : '';
-  if (Array.isArray(setup.deck0Ids) && !reservationId) {
-    ctx.throw(403, 'Custom online decks require a server reservation');
-  }
   let reservation: DeckReservationResult['body'] | undefined;
   if (reservationId) {
     if (!requestUserId) ctx.throw(401, 'Authenticated deck reservation required');
@@ -501,8 +548,8 @@ server.app.use(async (ctx: KoaContext, next: Next) => {
     reservation = result.body;
   }
   const nextSetup: ZutomayoSetupData = {
-    ...setup,
-    rulesVersion: APP_VERSION_INFO.rulesVersion,
+    // The seed controls future hidden outcomes, so online clients never choose it.
+    ...authoritativeOnlineSetupData(setup, APP_VERSION_INFO.rulesVersion),
     ...(reservation
       ? {
           deck0Ids: reservation.cardIds,
@@ -576,7 +623,10 @@ server.app.use(async (ctx: KoaContext, next: Next) => {
 server.app.use(async (ctx: KoaContext, next: Next) => {
   if (ctx.path === '/api/app-version') {
     ctx.set('Cache-Control', 'no-store');
-    ctx.body = APP_VERSION_INFO;
+    ctx.body = {
+      ...APP_VERSION_INFO,
+      datasetSha256: resolveMatchAnalyticsRuntimeMetadata().datasetSha256,
+    };
     return;
   }
   if (ctx.path === '/api/admin/cards/reload' && ctx.method === 'POST') {
@@ -657,6 +707,8 @@ server.router.post('/games/zutomayo-card/:id/join', koaBody(), async (ctx: KoaCo
     data?: unknown;
     clientVersion?: unknown;
     deckReservationId?: unknown;
+    localDeckIds?: unknown;
+    localDeckName?: unknown;
   };
   const requestedPlayerID = body.playerID;
   const playerName = body.playerName;
@@ -671,6 +723,25 @@ server.router.post('/games/zutomayo-card/:id/join', koaBody(), async (ctx: KoaCo
       : isRecord(body.data) && typeof body.data.deckReservationId === 'string'
         ? body.data.deckReservationId
         : '';
+  const localDeckIds = body.localDeckIds;
+  const localDeckName = typeof body.localDeckName === 'string' ? body.localDeckName.trim() : '';
+  const suppliedDeckSources =
+    Number(Boolean(deckReservationId)) + Number(localDeckIds !== undefined) + Number(Boolean(localDeckName));
+  if (suppliedDeckSources > 1) {
+    ctx.throw(400, 'Choose one deck source');
+  }
+  let resolvedLocalDeckIds: string[] | undefined;
+  if (localDeckIds !== undefined) {
+    const validationError = validateConstructedDeckIds(localDeckIds);
+    if (validationError) ctx.throw(400, `Local deck invalid: ${validationError}`);
+    resolvedLocalDeckIds = localDeckIds as string[];
+  } else if (localDeckName) {
+    try {
+      resolvedLocalDeckIds = getPresetDeck(localDeckName).map((card) => card.defId);
+    } catch (error) {
+      ctx.throw(400, error instanceof Error ? error.message : 'Invalid preset deck');
+    }
+  }
   if (deckReservationId) {
     if (!requestUserId) ctx.throw(401, 'Authenticated deck reservation required');
     const result = await peekDeckReservation(cardPool, { reservationId: deckReservationId, userId: requestUserId });
@@ -732,6 +803,9 @@ server.router.post('/games/zutomayo-card/:id/join', koaBody(), async (ctx: KoaCo
       rankedEligible: Boolean(requestUserId),
       credentials: playerCredentials,
       ...(deckReservationId ? { deckReservationId, deckRulesVersion: APP_VERSION_INFO.rulesVersion } : {}),
+      ...(resolvedLocalDeckIds
+        ? { localDeckIds: resolvedLocalDeckIds, deckRulesVersion: APP_VERSION_INFO.rulesVersion }
+        : {}),
     });
   } catch (error) {
     throwSeatReservationError(ctx, error);
@@ -745,7 +819,19 @@ server.router.post('/games/zutomayo-card/:id/join', koaBody(), async (ctx: KoaCo
   };
 });
 
-// Serve dist (frontend)
+// Serve dist (frontend). The same origin policy is consumed by direct Hong Kong
+// traffic and by Cloudflare, so both DNS paths share identical cache semantics.
+server.app.use(async (ctx: KoaContext, next: Next) => {
+  await next();
+  const cacheControl = frontendCacheControl({
+    buildId: APP_VERSION_INFO.buildId,
+    method: ctx.method,
+    pathname: ctx.path,
+    searchParams: new URLSearchParams(ctx.querystring),
+    status: ctx.status,
+  });
+  if (cacheControl) ctx.set('Cache-Control', cacheControl);
+});
 server.app.use(serve(path.join(root, 'dist')));
 
 // Serve admin panel assets for the React /admin iframe.
@@ -785,6 +871,7 @@ const HOP_BY_HOP_PROXY_HEADERS = new Set([
 ]);
 
 const IMGPROXY_PROXY_FORWARD_HEADERS = ['accept', 'if-none-match', 'if-modified-since', 'if-range', 'range'];
+const MATCH_CHAT_ACCESS_PROXY_FORWARD_HEADERS = ['x-match-id', 'x-match-player-id', 'x-match-credentials'];
 
 function setProxyResponseHeaders(ctx: KoaContext, responseHeaders: IncomingHttpHeaders): void {
   for (const [name, value] of Object.entries(responseHeaders)) {
@@ -860,6 +947,9 @@ server.app.use(async (ctx: KoaContext, next: Next) => {
   if (cookie) requestHeaders.cookie = cookie;
   forwardOptionalRequestHeader(requestHeaders, ctx.request.headers, 'x-csrf-token');
   forwardOptionalRequestHeader(requestHeaders, ctx.request.headers, 'origin');
+  for (const name of MATCH_CHAT_ACCESS_PROXY_FORWARD_HEADERS) {
+    forwardOptionalRequestHeader(requestHeaders, ctx.request.headers, name);
+  }
   if (shouldStreamImageProxy) {
     for (const name of IMGPROXY_PROXY_FORWARD_HEADERS) {
       forwardOptionalRequestHeader(requestHeaders, ctx.request.headers, name);
@@ -945,7 +1035,8 @@ server.app.use(async (ctx: KoaContext, next: Next) => {
 // configureApp 掛載到 app，位於此中間件之後。因此 /games/ 路徑必須 await next()
 // 讓請求繼續到 boardgame.io router，否則 createMatch/join 等都會被擋成 404。
 server.app.use(async (ctx: KoaContext, next: Next) => {
-  if (ctx.status === 404 && !ctx.path.startsWith('/games/')) {
+  if (ctx.status === 404 && shouldServeSpaFallback(ctx.path)) {
+    ctx.set('Cache-Control', 'no-store');
     ctx.type = 'html';
     ctx.body = fs.readFileSync(path.join(root, 'dist', 'index.html'));
     return;
@@ -954,7 +1045,9 @@ server.app.use(async (ctx: KoaContext, next: Next) => {
 });
 
 const PORT = Number(process.env.PORT) || 3000;
-const STALE_MATCH_TTL_MS = Number(process.env.STALE_MATCH_TTL_MS) || 30 * 60 * 1000; // 30 minutes
+const LEGACY_STALE_MATCH_TTL_MS = Number(process.env.STALE_MATCH_TTL_MS) || 30 * 60 * 1000;
+const TERMINAL_MATCH_TTL_MS = Number(process.env.TERMINAL_MATCH_TTL_MS) || LEGACY_STALE_MATCH_TTL_MS;
+const INACTIVE_MATCH_TTL_MS = Number(process.env.INACTIVE_MATCH_TTL_MS) || LEGACY_STALE_MATCH_TTL_MS;
 const CLEANUP_INTERVAL_MS = Number(process.env.CLEANUP_INTERVAL_MS) || 5 * 60 * 1000; // every 5 min
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -981,22 +1074,26 @@ function validateSecurityConfig(): void {
 // Stale room cleanup — 直接使用 PostgresAdapter instance（server.db 型別因斷言後不夠精確）。
 async function cleanupStaleMatches() {
   try {
-    const matchIDs = await db.listMatches({});
-    if (!matchIDs || !Array.isArray(matchIDs)) return;
     let cleaned = 0;
-    for (const matchID of matchIDs) {
-      try {
-        const { metadata } = await db.fetch(matchID, { metadata: true });
-        if (!metadata) continue;
-        const updatedAt = metadata.updatedAt ? new Date(metadata.updatedAt).getTime() : 0;
-        const createdAt = metadata.createdAt ? new Date(metadata.createdAt).getTime() : 0;
-        const age = Date.now() - Math.max(createdAt, updatedAt);
-        if (age > STALE_MATCH_TTL_MS) {
-          await db.wipe(matchID);
-          cleaned++;
+    for (const classification of [
+      { isGameover: true, ttlMs: TERMINAL_MATCH_TTL_MS },
+      { isGameover: false, ttlMs: INACTIVE_MATCH_TTL_MS },
+    ]) {
+      const matchIDs = await db.listMatches({ where: { isGameover: classification.isGameover } });
+      if (!matchIDs || !Array.isArray(matchIDs)) continue;
+      for (const matchID of matchIDs) {
+        try {
+          const { metadata } = await db.fetch(matchID, { metadata: true });
+          if (!metadata) continue;
+          const updatedAt = metadata.updatedAt ? new Date(metadata.updatedAt).getTime() : 0;
+          const createdAt = metadata.createdAt ? new Date(metadata.createdAt).getTime() : 0;
+          const age = Date.now() - Math.max(createdAt, updatedAt);
+          if (age > classification.ttlMs && (await db.wipe(matchID))) {
+            cleaned++;
+          }
+        } catch {
+          /* skip */
         }
-      } catch {
-        /* skip */
       }
     }
     if (cleaned > 0) logger.info({ count: cleaned }, 'removed stale matches');
@@ -1028,8 +1125,9 @@ function startBackgroundWorkers(): void {
     {
       enabled: true,
       rankedMatchesEnabled: RANKED_MATCHES_ENABLED,
-      staleMatchTtlMin: STALE_MATCH_TTL_MS / 60000,
-      cleanupIntervalMin: CLEANUP_INTERVAL_MS / 60000,
+      terminalTtlMin: TERMINAL_MATCH_TTL_MS / 60000,
+      inactiveTtlMin: INACTIVE_MATCH_TTL_MS / 60000,
+      intervalMin: CLEANUP_INTERVAL_MS / 60000,
     },
     'game background workers configured',
   );
@@ -1042,16 +1140,6 @@ type SocketLike = {
   on: (event: string, cb: (err?: Error) => void) => void;
   disconnect: (close?: boolean) => void;
 };
-type SocketNamespaceLike = {
-  on: (event: string, cb: (socket: SocketLike) => void) => void;
-  emit: (event: string, payload: unknown) => void;
-  disconnectSockets: (close?: boolean) => void;
-};
-type SocketIoLike = {
-  of: (namespace: string) => SocketNamespaceLike;
-  close: () => Promise<void>;
-};
-
 const configuredDrainGraceMs = Number(process.env.GAME_DRAIN_GRACE_MS);
 const GAME_DRAIN_GRACE_MS = Number.isFinite(configuredDrainGraceMs) ? Math.max(0, configuredDrainGraceMs) : 5_000;
 const configuredShutdownTimeoutMs = Number(process.env.SHUTDOWN_TIMEOUT_MS);
@@ -1061,8 +1149,8 @@ const SHUTDOWN_TIMEOUT_MS = Number.isFinite(configuredShutdownTimeoutMs)
 let runningServers: RunningServers | undefined;
 let shutdownPromise: Promise<void> | undefined;
 
-function socketIoRuntime(): SocketIoLike | undefined {
-  return (server.app as unknown as { _io?: SocketIoLike })._io;
+function socketIoRuntime() {
+  return resolveSocketIoRuntime(server.app);
 }
 
 async function performShutdown(signal: string): Promise<void> {
@@ -1129,6 +1217,7 @@ process.on('SIGINT', () => void shutdown('SIGINT'));
 // PG 不可用時重試 5 次（間隔 2 秒），仍失敗則退出 — 卡牌未載入時 createMatch 會崩潰。
 async function bootstrap(): Promise<void> {
   validateSecurityConfig();
+  resolveMatchAnalyticsRuntimeMetadata();
 
   for (let attempt = 1; attempt <= 5; attempt++) {
     try {
@@ -1153,11 +1242,12 @@ async function bootstrap(): Promise<void> {
     // boardgame.io transport structure is not part of the public API; access defensively.
     try {
       const io = socketIoRuntime();
-      const namespace = io?.of(`/${ZutomayoOnlineCard.name}`);
+      const namespace = io?.of(`/${ZutomayoOnlineCard.name}`) as SocketNamespaceRuntime | undefined;
       if (namespace) {
         const MAX_CONN_PER_IP = Number(process.env.MAX_CONN_PER_IP) || 10;
         const connectionsPerIp = new Map<string, number>();
-        namespace.on('connection', (socket: SocketLike) => {
+        namespace.on('connection', (runtimeSocket) => {
+          const socket = runtimeSocket as SocketLike;
           const ip = socket.handshake.address;
           const current = connectionsPerIp.get(ip) ?? 0;
           if (current >= MAX_CONN_PER_IP) {

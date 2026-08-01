@@ -493,6 +493,11 @@ describe('match shell room', () => {
   });
 
   it('transfers a boardgame player seat to the same user reconnect session', async () => {
+    const recordMatchConnection = vi.fn(async () => undefined);
+    MatchShellRoom.configureParticipantStore({
+      ...createEmptyPlatformMatchParticipantStore(),
+      recordMatchConnection,
+    });
     const room = new MatchShellRoom();
     const broadcast = vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
     vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
@@ -565,6 +570,16 @@ describe('match shell room', () => {
         hasBoardgameCredentials: true,
       }),
     );
+    expect(recordMatchConnection).toHaveBeenNthCalledWith(1, {
+      boardgameMatchID: 'bgio-match-1',
+      playerID: '0',
+      event: 'join',
+    });
+    expect(recordMatchConnection).toHaveBeenNthCalledWith(2, {
+      boardgameMatchID: 'bgio-match-1',
+      playerID: '0',
+      event: 'reconnect',
+    });
     expect(broadcast).toHaveBeenLastCalledWith(
       'presence',
       expect.objectContaining({
@@ -572,6 +587,12 @@ describe('match shell room', () => {
         spectators: 1,
       }),
     );
+    await room.onLeave(newClient);
+    expect(recordMatchConnection).toHaveBeenNthCalledWith(3, {
+      boardgameMatchID: 'bgio-match-1',
+      playerID: '0',
+      event: 'disconnect',
+    });
   });
 
   it('excludes leaving match-shell sessions from presence and matchmaking counts', async () => {
@@ -920,6 +941,46 @@ describe('match shell room', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(broadcast).not.toHaveBeenCalledWith('chatPreview', expect.anything());
+  });
+
+  it('broadcasts a persisted preview for a guest with a verified player seat', async () => {
+    allowChatPreviewBroadcasts();
+    const room = new MatchShellRoom();
+    const handlers = new Map<string, ChatPreviewHandler>();
+    vi.spyOn(room, 'setMatchmaking').mockResolvedValue(undefined);
+    vi.spyOn(room, 'onMessage').mockImplementation(((type: string, handler: ChatPreviewHandler) => {
+      handlers.set(type, handler);
+      return room;
+    }) as never);
+    const broadcast = vi.spyOn(room, 'broadcast').mockImplementation(() => undefined as never);
+
+    await room.onCreate({ boardgameMatchID: 'bgio-match-1' });
+    handlers.get('chatPreview')?.(
+      {
+        auth: {
+          userId: 'guest:match:bgio-match-1:reservation:abc',
+          displayName: 'Guest',
+          role: 'player',
+          authenticated: false,
+        },
+        userData: {
+          sessionId: 'session_guest',
+          userId: 'guest:match:bgio-match-1:reservation:abc',
+          displayName: 'Guest',
+          role: 'player',
+          joinedAt: 1000,
+          boardgamePlayerID: '0',
+          hasBoardgameCredentials: true,
+        },
+      } as PlatformClient,
+      { messageId: 'chat_msg_guest', conversationId: 'match:bgio-match-1' },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(broadcast).toHaveBeenCalledWith('chatPreview', {
+      conversationId: 'match:bgio-match-1',
+      messageId: 'chat_msg_guest',
+    });
   });
 
   it('does not broadcast chat preview without durable verification', async () => {

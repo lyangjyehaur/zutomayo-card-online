@@ -103,25 +103,27 @@ describe('TUTORIAL_STEPS', () => {
 
   it('exposes exactly one interactive target at every scripted battle-flow action', () => {
     const expectedTargets = new Map([
-      ['clock-advance', '[data-tut="game-notice-panel"] button'],
       ['turnSet-character-select', '[data-tut-card="1st_46"]'],
       ['turnSet-character-place', '[data-tut="set-selected-card"]'],
       ['turnSet-area-select', '[data-tut-card="2nd_98"]'],
       ['turnSet-area-place', '[data-tut="set-selected-card"]'],
       ['turnSet-confirm', '[data-tut="confirm-set"]'],
-      ['reveal-clock', '[data-tut="game-notice-panel"] button'],
       ['effectOrder-action', '[data-tut-effect-card="2nd_98"]'],
     ]);
     const flow = TUTORIAL_STEPS.filter((step) => step.chapter === 'flow');
-    const actionSteps = flow.filter((step) => step.actionOnly || step.completeWhen || step.advanceOnNoticeDismiss);
+    const actionSteps = flow.filter((step) => step.actionOnly || step.completeWhen);
+    const resolutionSteps = flow.filter((step) => step.advanceOnResolutionComplete);
 
-    expect(actionSteps).toHaveLength(10);
+    expect(actionSteps).toHaveLength(6);
     for (const step of actionSteps) {
-      const expected =
-        step.phase === 'hp-calc' ? '[data-tut="game-notice-panel"] button' : expectedTargets.get(step.phase);
-      expect(step.interactionTarget, step.phase).toBe(expected);
+      expect(step.interactionTarget, step.phase).toBe(expectedTargets.get(step.phase));
       expect(Array.isArray(step.target), `${step.phase} visual target`).toBe(false);
       expect(Array.isArray(step.interactionTarget), `${step.phase} interaction target`).toBe(false);
+    }
+    expect(resolutionSteps).toHaveLength(4);
+    for (const step of resolutionSteps) {
+      expect(step.hideNext, step.phase).toBe(true);
+      expect(step.interactionTarget, step.phase).toBeNull();
     }
   });
 

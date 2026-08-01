@@ -223,7 +223,7 @@ function countFragment(relativePath, fragment) {
 
 function serviceBlock(relativePath, serviceName) {
   const lines = read(relativePath).split(/\r?\n/);
-  const start = lines.findIndex((line) => line === `  ${serviceName}:`);
+  const start = lines.findIndex((line) => line === `  ${serviceName}:` || line.startsWith(`  ${serviceName}: `));
   if (start < 0) throw new Error(`${relativePath} is missing service ${serviceName}`);
   const block = [];
   for (let index = start; index < lines.length; index += 1) {
@@ -552,6 +552,58 @@ function assertApiDrainContract(relativePath) {
   }
 }
 
+function assertReleaseDataAndSearchContract(relativePath, expectedTrafficClass, externalMeilisearch = false) {
+  const migrate = serviceBlock(relativePath, 'migrate');
+  const game = serviceBlock(relativePath, 'game');
+  const api = serviceBlock(relativePath, 'api');
+  const contents = read(relativePath);
+  const environmentBinding = (block, variable, valuePattern) =>
+    new RegExp(`(?:^|\\n)\\s*(?:-\\s*)?${variable}\\s*(?:=|:)\\s*${valuePattern}`, 'm').test(block);
+
+  if (!migrate.includes('${CARD_DATA_DIR:?Set CARD_DATA_DIR to the private reviewed card-data directory}')) {
+    throw new Error(`${relativePath} migrate must mount the private reviewed card-data directory`);
+  }
+  if (!migrate.includes('/run/card-data') || (!migrate.includes('read_only: true') && !migrate.includes(':ro'))) {
+    throw new Error(`${relativePath} migrate card-data mount must be read-only at /run/card-data`);
+  }
+  if (!game.includes('${BATTLE_ASSET_DIR:-./public/battle}') || !game.includes('/app/dist/battle')) {
+    throw new Error(`${relativePath} game must mount the private battle assets at /app/dist/battle`);
+  }
+  if (!game.includes('read_only: true') && !game.includes('/app/dist/battle:ro')) {
+    throw new Error(`${relativePath} game battle asset mount must be read-only`);
+  }
+  if (!environmentBinding(game, 'CARD_DATASET_SHA256', '\\$\\{VITE_CARD_DATASET_SHA256:\\?[^}]+\\}')) {
+    throw new Error(`${relativePath} game must require VITE_CARD_DATASET_SHA256 as its runtime dataset identity`);
+  }
+
+  const meiliHostPattern = externalMeilisearch ? '\\$\\{MEILI_HOST:\\?[^}]+\\}' : 'http://meilisearch:7700';
+  for (const [serviceName, block] of [
+    ['migrate', migrate],
+    ['api', api],
+  ]) {
+    if (!environmentBinding(block, 'MEILI_HOST', meiliHostPattern)) {
+      throw new Error(`${relativePath} ${serviceName} must use the release Meilisearch endpoint`);
+    }
+    if (!environmentBinding(block, 'MEILI_MASTER_KEY', '\\$\\{MEILI_MASTER_KEY:\\?[^}]+\\}')) {
+      throw new Error(`${relativePath} ${serviceName} must require MEILI_MASTER_KEY`);
+    }
+    if (!environmentBinding(block, 'MEILI_INDEX_UID', '\\$\\{MEILI_INDEX_UID:-zutomayo_knowledge\\}')) {
+      throw new Error(`${relativePath} ${serviceName} must map MEILI_INDEX_UID`);
+    }
+  }
+  if (!environmentBinding(api, 'MEILI_TIMEOUT_MS', '\\$\\{MEILI_TIMEOUT_MS:-2500\\}')) {
+    throw new Error(`${relativePath} API must map MEILI_TIMEOUT_MS`);
+  }
+  if (
+    !new RegExp(
+      `(?:^|\\n)\\s*(?:-\\s*)?MATCH_ANALYTICS_TRAFFIC_CLASS\\s*(?:=|:)\\s*${expectedTrafficClass}(?:\\s|$)`,
+      'm',
+    ).test(contents)
+  ) {
+    throw new Error(`${relativePath} must classify match analytics traffic as ${expectedTrafficClass}`);
+  }
+}
+
 function assertProductionRuntimeInputs() {
   const roleUserInputs = [
     'PG_API_USER',
@@ -591,6 +643,9 @@ function assertProductionRuntimeInputs() {
       throw new Error(`${relativePath} must reject aliased PostgreSQL roles in production/staging`);
     }
   }
+  assertReleaseDataAndSearchContract('docker-compose.server4.yml', 'production');
+  assertReleaseDataAndSearchContract('docker-compose.server4-slot.yml', 'production');
+  assertReleaseDataAndSearchContract('docker-compose.staging.yml', 'synthetic', true);
 
   const rolePasswordInputs = [
     'PG_MIGRATION_PASSWORD',

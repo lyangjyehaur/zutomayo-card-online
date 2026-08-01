@@ -1,8 +1,8 @@
 # ZUTOMAYO CARD Online — Online Card Battle Game
 
-**Languages:** [繁體中文](README.md) | [日本語](README.ja.md) | [English](README.en.md)
+**Languages:** [繁體中文](README.md) | [日本語](README.ja.md) | [English](README.en.md) | [한국어](README.ko.md)
 
-Current version: **0.2.3**
+Current version: **0.2.6**
 
 > An unofficial digital battle platform for ZUTOMAYO CARD, the official TCG from ZUTOMAYO.
 > Supports local two-player games, AI practice, an interactive tutorial, and real-time online play.
@@ -11,20 +11,20 @@ Current version: **0.2.3**
 
 Version 0.2.0 expands the project from a standalone battle app into a multiplayer platform. `boardgame.io` remains authoritative for card state, Colyseus owns lobby, matchmaking, room, invite, and spectator presence flows, and ChatService owns durable chat, unread state, translation, reports, and moderation.
 
-Version 0.2.3 adds localized Grand Rules and Basic Floor Rules backed by an atomic PostgreSQL release workflow, and completes the AI post-match navigation, battle log, first-visit tutorial entry, and deck-creation experience.
+Version 0.2.6 establishes a live-service stabilization baseline and durable anonymous match analytics, archiving authoritative results, decks, and allowlisted rule events before runtime state is removed. It also adds deterministic decision traces, privacy-filtered replay summaries restricted to match participants, and deployment, recovery, alerting, and trust-surface acceptance gates.
 
 ### Game and Battle
 
-- Local two-player and easy, normal, or hard AI; hard AI uses lookahead simulation.
-- Complete data for 422 cards across 4 packs, with all 267 effect lines parsed.
+- Local two-player and easy, normal, or hard AI with strategic mulligans, effect and target scoring, and bounded rules-driven turn simulation on hard.
+- Complete data for 479 playable cards and 7 catalog-only cards, with all 322 playable effect lines parsed; incremental limited cards pass separate image, official Japanese/English text, and rules audits.
 - Rock-paper-scissors, mulligan, initial setup, effect ordering, player choices, battle, and Chronos day/night flow.
 - Authoritative phase timers and timeout recovery prevent disconnected or unresponsive players from blocking a match forever.
-- Battle animations, a responsive battlefield, mobile touch controls, and a redesigned tutorial overlay.
+- Per-card Chronos movement, HP, attack, mitigation, and healing resolution animations, a responsive battlefield, mobile touch controls, and a tutorial that shares the production battle presentation.
 - The result screen can retry ELO and match submission; server writes are idempotent, while local history is deduplicated and retains its post-match chat source.
 
 ### Multiplayer Platform
 
-- Colyseus quick match, custom rooms, friend invitations, spectators, and lobby friend presence.
+- Colyseus public room discovery, custom rooms, friend invitations, spectators, and lobby friend presence; the not-yet-released quick-match entry remains hidden.
 - Stable match handoff and reconnect recovery; online sessions retain platform identity, seat tokens, and boardgame.io credentials.
 - Production uses Redis driver/presence, while local development can use memory mode.
 - Colyseus stores platform-shell state only and never owns hands, decks, effects, or other authoritative game data.
@@ -40,8 +40,9 @@ Version 0.2.3 adds localized Grand Rules and Basic Floor Rules backed by an atom
 ### Other Product Features
 
 - Six UI languages: Traditional Chinese, Cantonese, Simplified Chinese, Japanese, English, and Korean.
-- Deck editor, shared-deck lobby, leaderboard, cross-device match history, profile, OAuth identities, and feedback board.
-- Official Grand Rules, Basic Floor Rules, Japanese Q&A and errata, localized reading pages, admin review, and source synchronization.
+- Deck editor, deck sharing and card catalog with card metadata and synergy recommendations, leaderboard, cross-device match history, profile, OAuth identities, and feedback board.
+- Multilingual global and in-page full-text search across card names/effects/songs, official Q&A, rule sections, errata, and public deck shares, with IME-safe request timing.
+- Official Grand Rules, Basic Floor Rules, Japanese Q&A and errata, localized reading pages, and a Refine 5 admin console for review and source synchronization.
 - PWA install/update prompts plus app, build, and rules compatibility checks.
 - Admin tooling for cards, translations, users, ELO, chat evidence, sanctions, and feedback.
 - Playwright core E2E, k6 API/WebSocket/auth/matchmaking load tests, and staging/production CD pipelines.
@@ -59,7 +60,8 @@ Browser / PWA
 
 game / api / platform
   ├─ PostgreSQL: durable product data, match state, participants, chat evidence
-  └─ Redis: Pub/Sub, Colyseus presence/driver, rate limits, ephemeral coordination
+  ├─ Redis: Pub/Sub, Colyseus presence/driver, rate limits, ephemeral coordination
+  └─ Meilisearch: public knowledge index atomically rebuilt from PostgreSQL
 ```
 
 ### Authority Boundaries
@@ -122,6 +124,7 @@ To run the real boardgame.io server, start Compose's `game` service or run `npm 
 | `npm run db:migrate`                           | Apply PostgreSQL migrations                                                    |
 | `npm run import:official-rulings-translations` | Import untracked official-rulings translations into PostgreSQL                 |
 | `npm run release:official-rulings`             | Atomically release current official sources and five static translations       |
+| `npm run search:reindex` / `search:check`      | Atomically rebuild / verify the public knowledge search index                  |
 | `npm run sync:official-rulings`                | Read-only comparison of the official Q&A and errata sources                    |
 | `npm run translate:official-rulings`           | Generate missing derived official-rulings translations                         |
 | `npm run smoke`                                | Core game-flow smoke test                                                      |
@@ -142,7 +145,7 @@ docker compose up -d --build
 docker compose ps
 ```
 
-Compose contains six units: `postgres`, `redis`, one-shot `migrate`, `game`, `api`, and `platform`.
+Compose contains seven units: `postgres`, `redis`, internal `meilisearch`, one-shot `migrate`, `game`, `api`, and `platform`. Meilisearch publishes no host port; production must set an independent `MEILI_MASTER_KEY`.
 
 The repository also provides `docker-compose.e2e.yml`, `docker-compose.load-test.yml`, and an isolated-port/database `docker-compose.staging.yml`. Production-hardening CD is currently isolated on `codex/deferred-production-hardening`; staging and production SSH deployment is explicitly triggered with `workflow_dispatch` using verified artifacts.
 
@@ -185,6 +188,7 @@ Primary pages include `/online`, `/ai`, `/tutorial`, `/deck-builder`, `/deck-sha
 
 ## Documentation
 
+- [Live service stabilization plan](docs/LIVE_SERVICE_STABILIZATION_PLAN.md)
 - [Full architecture](docs/ARCHITECTURE.md)
 - [REST API](docs/API.md)
 - [Card-text i18n maintenance guide (Traditional Chinese)](docs/card-text-i18n.md)

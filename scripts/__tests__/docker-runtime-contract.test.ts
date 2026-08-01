@@ -106,12 +106,9 @@ describe('game runtime image contract', () => {
     expect(dockerignore).toContain('!api/deckService.cjs');
   });
 
-  it('keeps the account-locked refresh session helper in API build contexts', () => {
-    const apiDockerfile = readFileSync(resolve(root, 'api/Dockerfile'), 'utf8');
-    const apiDockerignore = readFileSync(resolve(root, 'api/.dockerignore'), 'utf8');
-    expect(apiDockerfile).toContain('COPY api/*.cjs ./');
-    expect(apiDockerignore).not.toContain('*.cjs');
-    expect(readFileSync(resolve(root, 'api/authSessionService.cjs'), 'utf8')).toContain('issueAccountRefreshToken');
+  it('keeps CJS type declarations available to the frontend image builder', () => {
+    const dockerignore = readFileSync(resolve(root, '.dockerignore'), 'utf8');
+    expect(dockerignore).toContain('!api/*.d.cts');
   });
 
   it('ships the schema gate helper in the migration image', () => {
@@ -128,6 +125,7 @@ describe('game runtime image contract', () => {
     expect(dockerfile).toContain('COPY scripts/officialRulingsData.ts');
     expect(dockerfile).toContain('COPY scripts/cardDerivedEffects.ts');
     expect(dockerfile).toContain('COPY scripts/import-card-derived-effects-pg.ts');
+    expect(dockerfile).toContain('COPY scripts/release-reviewed-unlisted-cards.ts');
     expect(dockerfile).toContain('COPY src/rulesTerminology.ts');
     expect(dockerignore).toContain('data/official-rulings-*.json');
     expect(dockerfile).toContain('COPY api/runtimeSecurityConfig.cjs ./api/runtimeSecurityConfig.cjs');
@@ -221,6 +219,8 @@ describe('game runtime image contract', () => {
     expect(dockerignore).toContain('!api/runtimeSecurityConfig.cjs');
     expect(dockerfile).toContain('COPY --from=builder /app/api/seasonResultService.cjs ./api/seasonResultService.cjs');
     expect(dockerignore).toContain('!api/seasonResultService.cjs');
+    expect(dockerfile).toContain('COPY --from=builder /app/api/replaySummary.cjs ./api/replaySummary.cjs');
+    expect(dockerignore).toContain('!api/replaySummary.cjs');
   });
 
   it('ships every CommonJS API helper imported by a game or platform runtime source', () => {

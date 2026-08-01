@@ -17,8 +17,8 @@ async function activateWithKeyboard(locator: Locator): Promise<void> {
 
 test.describe.configure({ mode: 'serial' });
 
-test.describe('雙瀏覽器線上對戰 @requires-backend', () => {
-  test('建立房間、加入、唯讀觀戰與斷線重連', async ({ browser, context, page }, testInfo) => {
+test.describe('雙瀏覽器線上對戰 @requires-backend @core', () => {
+  test('建立房間、加入、唯讀觀戰與斷線重連', async ({ browser, context, page, request }, testInfo) => {
     test.setTimeout(90_000);
     const baseURL = process.env.E2E_BASE_URL ?? 'http://localhost:3000';
     const guestContext = await browser.newContext({
@@ -62,18 +62,70 @@ test.describe('雙瀏覽器線上對戰 @requires-backend', () => {
       await expect(page.locator('[data-tut="janken-panel"]')).toBeVisible();
       await expect(guestPage.locator('[data-tut="janken-panel"]')).toBeVisible();
 
+      await Promise.all([
+        page.getByRole('button', { name: '顯示對戰聊天' }).click(),
+        guestPage.getByRole('button', { name: '顯示對戰聊天' }).click(),
+      ]);
+      await Promise.all([
+        expect(page.locator('[data-chat-status="ready"]')).toBeVisible({ timeout: 20_000 }),
+        expect(guestPage.locator('[data-chat-status="ready"]')).toBeVisible({ timeout: 20_000 }),
+      ]);
+      const hostMessage = `guest-host-${Date.now()}`;
+      const guestMessage = `guest-reply-${Date.now()}`;
+      await page.getByRole('textbox', { name: '對戰聊天訊息' }).fill(hostMessage);
+      await page.getByRole('button', { name: '發送對戰聊天訊息' }).click();
+      await expect(guestPage.locator('.online-chat-bubble', { hasText: hostMessage })).toBeVisible({ timeout: 20_000 });
+      await guestPage.getByRole('textbox', { name: '對戰聊天訊息' }).fill(guestMessage);
+      await guestPage.getByRole('button', { name: '發送對戰聊天訊息' }).click();
+      await expect(page.locator('.online-chat-bubble', { hasText: guestMessage })).toBeVisible({ timeout: 20_000 });
+
       await openOnlineSpectator(spectatorPage, match.matchID);
       await expect(spectatorPage.locator('[data-game-step="janken"]')).toBeVisible({ timeout: 30_000 });
       await expect(spectatorPage.locator('[data-tut="janken-panel"]')).toHaveCount(0);
       await expect(spectatorPage.locator('[data-tut^="janken-"]')).toHaveCount(0);
 
-      await expect(page.locator('[data-online-connection-status]')).toHaveCount(0, { timeout: 20_000 });
+      await page.evaluate(() => {
+        const statuses: string[] = [];
+        (window as typeof window & { __e2eOnlineConnectionStatuses?: string[] }).__e2eOnlineConnectionStatuses =
+          statuses;
+        const recordStatus = () => {
+          const status = document
+            .querySelector('[data-online-connection-status]')
+            ?.getAttribute('data-online-connection-status');
+          if (status) statuses.push(status);
+        };
+        new MutationObserver(recordStatus).observe(document.body, {
+          attributes: true,
+          childList: true,
+          subtree: true,
+        });
+        recordStatus();
+      });
       await context.setOffline(true);
-      await expect.poll(() => page.evaluate(() => navigator.onLine)).toBe(false);
-      await expect(page.locator('[data-online-connection-status="disconnected"]')).toBeVisible({ timeout: 15_000 });
+      await page.evaluate(() => fetch('/api/app-version').catch(() => undefined));
+      await expect
+        .poll(
+          () =>
+            page.evaluate(() =>
+              (
+                window as typeof window & { __e2eOnlineConnectionStatuses?: string[] }
+              ).__e2eOnlineConnectionStatuses?.includes('disconnected'),
+            ),
+          { timeout: 30_000 },
+        )
+        .toBe(true);
       await context.setOffline(false);
-      await expect.poll(() => page.evaluate(() => navigator.onLine)).toBe(true);
-      await expect(page.locator('[data-online-connection-status="rejoined"]')).toBeVisible({ timeout: 20_000 });
+      await expect
+        .poll(
+          () =>
+            page.evaluate(() =>
+              (
+                window as typeof window & { __e2eOnlineConnectionStatuses?: string[] }
+              ).__e2eOnlineConnectionStatuses?.includes('rejoined'),
+            ),
+          { timeout: 30_000 },
+        )
+        .toBe(true);
       await expect(page.locator('[data-game-step="janken"]')).toBeVisible();
 
       await activateWithKeyboard(page.locator('[data-tut="janken-rock"]'));
@@ -123,6 +175,29 @@ test.describe('雙瀏覽器線上對戰 @requires-backend', () => {
       await expect(guestPage.locator('[data-result-outcome="victory"]')).toBeVisible({ timeout: 10_000 });
       await expect(spectatorPage.locator('[data-result-outcome="spectator"]')).toBeVisible({ timeout: 20_000 });
       expect(spectatorSubmissions).toEqual([]);
+
+      await Promise.all([
+        page.getByRole('button', { name: '再戰一局' }).click(),
+        guestPage.getByRole('button', { name: '再戰一局' }).click(),
+      ]);
+      await Promise.all([
+        expect
+          .poll(() => decodeURIComponent(new URL(page.url()).pathname.split('/').pop() || ''), { timeout: 20_000 })
+          .not.toBe(match.matchID),
+        expect
+          .poll(() => decodeURIComponent(new URL(guestPage.url()).pathname.split('/').pop() || ''), {
+            timeout: 20_000,
+          })
+          .not.toBe(match.matchID),
+      ]);
+      const hostRematchID = decodeURIComponent(new URL(page.url()).pathname.split('/').pop() || '');
+      const guestRematchID = decodeURIComponent(new URL(guestPage.url()).pathname.split('/').pop() || '');
+      expect(hostRematchID).not.toBe(match.matchID);
+      expect(guestRematchID).toBe(hostRematchID);
+      await Promise.all([
+        expect(page.locator('[data-game-step="janken"]')).toBeVisible({ timeout: 20_000 }),
+        expect(guestPage.locator('[data-game-step="janken"]')).toBeVisible({ timeout: 20_000 }),
+      ]);
     } catch (error) {
       failed = true;
       throw error;

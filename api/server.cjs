@@ -65,6 +65,8 @@ const {
 const { resolveBackgroundWorkersEnabled } = require('./backgroundWorkerConfig.cjs');
 const { apiRateLimitConfig } = require('./rateLimitConfig.cjs');
 const { upsertCard, upsertCardI18n, upsertGameConfig } = require('./adminCardService.cjs');
+const { listCardSynergies, upsertCardSynergy } = require('./cardSynergyService.cjs');
+const { listOwnedCardIds, mergeCardOwnership, setCardOwnership } = require('./cardCollectionService.cjs');
 const { listAdminUsers, resetUserElo, updateLinkedAdminRole } = require('./adminService.cjs');
 const {
   authenticateAdmin,
@@ -107,20 +109,22 @@ const {
   accountExportPurgeRetrying,
   accountExportMetricsRefreshSuccess,
   accountExportMetricsLastSuccess,
+  knowledgeSearchDocuments,
+  knowledgeSearchDuration,
+  knowledgeSearchLastSuccess,
+  knowledgeSearchQueriesTotal,
+  knowledgeSearchSuggestionsTotal,
+  knowledgeSearchSyncTotal,
+  knowledgeSearchZeroResultsTotal,
 } = require('./observability.cjs');
 const { validateBody } = require('./validate.cjs');
 const S = require('./schemas.cjs');
 const { buildSignedImgproxyUrl, parseAllowedSources } = require('./imgproxySigner.cjs');
-const {
-  getAllCardTextsI18n,
-  getCardOfficialErrata,
-  getCardTextsI18n,
-  getGameConfig,
-  getOfficialCardDataVersion,
-  getPresetDecks,
-  getPublicCard,
-  getPublicCards,
-} = require('./cardDataService.cjs');
+
+const PUBLIC_EDGE_CACHE_SHORT = 'public, max-age=0, must-revalidate, s-maxage=60, stale-while-revalidate=300';
+const PUBLIC_EDGE_CACHE_STANDARD = 'public, max-age=0, must-revalidate, s-maxage=300, stale-while-revalidate=1800';
+const { getAdminCards, getCardOfficialErrata } = require('./cardDataService.cjs');
+const { handlePublicCardRoute } = require('./publicCardRoutes.cjs');
 const {
   createChatUserSanction,
   defaultChatModerationRules,
@@ -153,7 +157,13 @@ const {
   updateDeckShare,
 } = require('./deckShareService.cjs');
 const { countOnlinePresence, heartbeatOnlinePresence } = require('./presenceService.cjs');
-const { getAdminMatches, getLeaderboard, getMatchActionLog, getUserMatches } = require('./matchQueries.cjs');
+const {
+  getAdminMatches,
+  getLeaderboard,
+  getMatchActionLog,
+  getMatchReplay,
+  getUserMatches,
+} = require('./matchQueries.cjs');
 const { submitMatchResult } = require('./matchSubmission.cjs');
 const {
   listPosts: listFeedbackPosts,
@@ -221,6 +231,16 @@ const {
   upsertOfficialQaTranslation,
 } = require('./officialRulingsService.cjs');
 const { getPublicRuleDocument } = require('./officialRuleDocumentsService.cjs');
+const {
+  createKnowledgeSearchService,
+  parseKnowledgeSearchScopes,
+  validateKnowledgeSearchConfig,
+} = require('./knowledgeSearchService.cjs');
+const {
+  listZeroResults: listKnowledgeSearchZeroResults,
+  recordZeroResult: recordKnowledgeSearchZeroResult,
+  zeroResultScope,
+} = require('./knowledgeSearchAnalytics.cjs');
 const {
   checkOfficialSources,
   generateOfficialTranslation,
@@ -407,6 +427,7 @@ if (process.env.SENTRY_DSN) {
 
 // 安全性驗證：JWT_SECRET 必須在生產環境設定
 function validateSecurityConfig() {
+  validateKnowledgeSearchConfig(process.env);
   if (!JWT_SECRET) {
     logger.fatal('JWT_SECRET environment variable is required');
     logger.fatal('Generate secrets with: openssl rand -hex 32');
@@ -486,6 +507,34 @@ const redis = new Redis(REDIS_URL, {
 // 連線層錯誤（如 Redis 暫時斷線）不應變成 unhandled error event；
 // query 層錯誤仍會 reject promise 由各 handler 的 safe() 接住。
 redis.on('error', () => {});
+
+const knowledgeSearch = createKnowledgeSearchService({
+  pool,
+  redis,
+  env: process.env,
+  logger,
+  onSync: (result, details) => {
+    knowledgeSearchSyncTotal.labels(result).inc();
+    knowledgeSearchDocuments.set(details.documentCount || 0);
+    if (result === 'success') knowledgeSearchLastSuccess.set(Date.now() / 1000);
+  },
+});
+
+function refreshKnowledgeSearchAfter(result) {
+  if (result?.ok) knowledgeSearch.scheduleReindex();
+  return result;
+}
+
+function recordKnowledgeSearchOutcome(params, result) {
+  if (result.estimatedTotalHits > 0 || !String(params.query || '').trim()) return;
+  const scope = zeroResultScope(params.scopes);
+  void recordKnowledgeSearchZeroResult(pool, params)
+    .then(({ stored }) => knowledgeSearchZeroResultsTotal.labels(result.engine, scope, String(stored)).inc())
+    .catch((error) => {
+      knowledgeSearchZeroResultsTotal.labels(result.engine, scope, 'false').inc();
+      logger.warn({ err: error }, 'Knowledge search zero-result aggregation failed');
+    });
+}
 
 const relationshipOutboxWorker = createRelationshipOutboxWorker({
   pool,
@@ -685,6 +734,7 @@ async function initSchema() {
       duration_seconds INTEGER,
       rules_version TEXT NOT NULL DEFAULT 'legacy',
       action_log JSONB,
+      replay_summary JSONB,
       completed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )`,
@@ -695,6 +745,7 @@ async function initSchema() {
     `CREATE INDEX IF NOT EXISTS idx_matches_created_at ON matches(created_at DESC)`,
     `ALTER TABLE matches ADD COLUMN IF NOT EXISTS source_match_id TEXT`,
     `ALTER TABLE matches ADD COLUMN IF NOT EXISTS rules_version TEXT NOT NULL DEFAULT 'legacy'`,
+    `ALTER TABLE matches ADD COLUMN IF NOT EXISTS replay_summary JSONB`,
     `ALTER TABLE matches ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_matches_source_match_id
       ON matches(source_match_id)
@@ -768,7 +819,95 @@ async function initSchema() {
     `ALTER TABLE cards ADD COLUMN IF NOT EXISTS official_errata_affects_name BOOLEAN NOT NULL DEFAULT FALSE`,
     `ALTER TABLE cards ADD COLUMN IF NOT EXISTS official_errata_affects_effect BOOLEAN NOT NULL DEFAULT FALSE`,
     `ALTER TABLE cards ADD COLUMN IF NOT EXISTS official_errata_url TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE cards ADD COLUMN IF NOT EXISTS catalog_status TEXT NOT NULL DEFAULT 'listed'`,
+    `ALTER TABLE cards ADD COLUMN IF NOT EXISTS distribution_type TEXT NOT NULL DEFAULT 'standard'`,
+    `ALTER TABLE cards ADD COLUMN IF NOT EXISTS publication_status TEXT NOT NULL DEFAULT 'published'`,
+    `ALTER TABLE cards ADD COLUMN IF NOT EXISTS play_status TEXT NOT NULL DEFAULT 'playable'`,
+    `ALTER TABLE cards ADD COLUMN IF NOT EXISTS play_status_reason TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE cards ADD COLUMN IF NOT EXISTS source_url TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE cards ADD COLUMN IF NOT EXISTS source_note TEXT NOT NULL DEFAULT ''`,
+    `ALTER TABLE cards ADD COLUMN IF NOT EXISTS source_sha256 TEXT NOT NULL DEFAULT ''`,
     `CREATE INDEX IF NOT EXISTS idx_cards_has_official_errata ON cards(has_official_errata)`,
+    `CREATE INDEX IF NOT EXISTS idx_cards_public_game_pool ON cards(publication_status, play_status)`,
+    `CREATE INDEX IF NOT EXISTS idx_cards_catalog_source ON cards(catalog_status, distribution_type)`,
+
+    `CREATE TABLE IF NOT EXISTS user_card_collection (
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+      acquired_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (user_id, card_id)
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_user_card_collection_user_updated
+      ON user_card_collection(user_id, updated_at DESC)`,
+
+    `CREATE TABLE IF NOT EXISTS knowledge_search_zero_results (
+      id TEXT PRIMARY KEY,
+      normalized_query TEXT NOT NULL,
+      locale TEXT NOT NULL,
+      scope TEXT NOT NULL,
+      occurrence_count BIGINT NOT NULL DEFAULT 1,
+      first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CONSTRAINT knowledge_search_zero_results_query_check
+        CHECK (normalized_query <> '' AND char_length(normalized_query) <= 120),
+      CONSTRAINT knowledge_search_zero_results_id_check CHECK (id ~ '^[0-9a-f]{64}$'),
+      CONSTRAINT knowledge_search_zero_results_locale_check
+        CHECK (locale IN ('ja', 'zh-TW', 'zh-CN', 'zh-HK', 'en', 'ko')),
+      CONSTRAINT knowledge_search_zero_results_scope_check
+        CHECK (scope IN ('all', 'card', 'qa', 'rule', 'errata', 'deck')),
+      CONSTRAINT knowledge_search_zero_results_count_check CHECK (occurrence_count > 0)
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_knowledge_search_zero_results_last_seen
+      ON knowledge_search_zero_results(last_seen_at DESC)`,
+    `CREATE INDEX IF NOT EXISTS idx_knowledge_search_zero_results_popular
+      ON knowledge_search_zero_results(occurrence_count DESC, last_seen_at DESC)`,
+
+    `CREATE TABLE IF NOT EXISTS card_synergy_groups (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      primary_category TEXT NOT NULL,
+      rationale_ja TEXT NOT NULL,
+      rationale_i18n JSONB NOT NULL DEFAULT '{}'::jsonb,
+      evidence JSONB NOT NULL DEFAULT '[]'::jsonb,
+      review_status TEXT NOT NULL DEFAULT 'candidate',
+      recommendation_eligible BOOLEAN NOT NULL DEFAULT FALSE,
+      source_version TEXT NOT NULL,
+      rules_version TEXT NOT NULL,
+      reviewed_by_user_id TEXT,
+      reviewed_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS card_synergy_relations (
+      id TEXT PRIMARY KEY,
+      group_id TEXT REFERENCES card_synergy_groups(id) ON DELETE SET NULL,
+      source_card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+      target_card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL,
+      primary_category TEXT NOT NULL,
+      categories TEXT[] NOT NULL DEFAULT '{}',
+      confidence TEXT NOT NULL,
+      score INTEGER NOT NULL,
+      rationale_ja TEXT NOT NULL,
+      rationale_i18n JSONB NOT NULL DEFAULT '{}'::jsonb,
+      evidence JSONB NOT NULL DEFAULT '[]'::jsonb,
+      review_status TEXT NOT NULL DEFAULT 'candidate',
+      recommendation_eligible BOOLEAN NOT NULL DEFAULT FALSE,
+      source_version TEXT NOT NULL,
+      rules_version TEXT NOT NULL,
+      reviewed_by_user_id TEXT,
+      reviewed_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CHECK (source_card_id <> target_card_id)
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS uq_card_synergy_relation_source
+      ON card_synergy_relations(source_card_id, target_card_id, kind, primary_category, source_version)`,
+    `CREATE INDEX IF NOT EXISTS idx_card_synergy_recommendations
+      ON card_synergy_relations(source_card_id, review_status, recommendation_eligible)`,
+    `CREATE INDEX IF NOT EXISTS idx_card_synergy_review_queue
+      ON card_synergy_relations(primary_category, confidence, review_status)`,
 
     `CREATE TABLE IF NOT EXISTS card_official_errata (
       errata_id TEXT PRIMARY KEY,
@@ -940,6 +1079,408 @@ async function initSchema() {
       release_id TEXT NOT NULL REFERENCES official_rulings_releases(id) ON DELETE RESTRICT,
       activated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )`,
+    `CREATE TABLE IF NOT EXISTS official_qa_item_revisions (
+      qa_id TEXT NOT NULL,
+      revision BIGINT NOT NULL,
+      operation TEXT NOT NULL CHECK (operation IN ('backfill', 'insert', 'update', 'delete')),
+      recorded_from TEXT NOT NULL DEFAULT 'trigger',
+      release_id TEXT,
+      number INTEGER NOT NULL,
+      published_at DATE NOT NULL,
+      question_ja TEXT NOT NULL,
+      answer_ja TEXT NOT NULL,
+      tags TEXT[] NOT NULL,
+      related_card_ids TEXT[] NOT NULL,
+      source_url TEXT NOT NULL,
+      content_hash TEXT NOT NULL,
+      content_version INTEGER NOT NULL CHECK (content_version > 0),
+      publication_status TEXT NOT NULL,
+      source_updated_at TIMESTAMPTZ,
+      last_seen_at TIMESTAMPTZ NOT NULL,
+      source_created_at TIMESTAMPTZ NOT NULL,
+      source_row_updated_at TIMESTAMPTZ NOT NULL,
+      recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (qa_id, revision)
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_official_qa_item_revisions_content
+      ON official_qa_item_revisions(qa_id, content_version, recorded_at DESC)`,
+    `CREATE TABLE IF NOT EXISTS card_official_errata_revisions (
+      errata_id TEXT NOT NULL,
+      revision BIGINT NOT NULL,
+      operation TEXT NOT NULL CHECK (operation IN ('backfill', 'insert', 'update', 'delete')),
+      recorded_from TEXT NOT NULL DEFAULT 'trigger',
+      release_id TEXT,
+      card_id TEXT NOT NULL,
+      published_at DATE NOT NULL,
+      card_number TEXT NOT NULL,
+      incorrect_text TEXT NOT NULL,
+      corrected_japanese_text TEXT NOT NULL,
+      corrected_english_status TEXT NOT NULL,
+      corrected_english_source TEXT NOT NULL,
+      reason_ja TEXT NOT NULL,
+      replacement_policy_ja TEXT NOT NULL,
+      usage_policy_ja TEXT NOT NULL,
+      affects_name BOOLEAN NOT NULL,
+      affects_effect BOOLEAN NOT NULL,
+      source_url TEXT NOT NULL,
+      content_hash TEXT NOT NULL,
+      content_version INTEGER NOT NULL CHECK (content_version > 0),
+      publication_status TEXT NOT NULL,
+      last_seen_at TIMESTAMPTZ NOT NULL,
+      source_row_updated_at TIMESTAMPTZ NOT NULL,
+      recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (errata_id, revision)
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_card_official_errata_revisions_content
+      ON card_official_errata_revisions(errata_id, content_version, recorded_at DESC)`,
+    `CREATE TABLE IF NOT EXISTS card_revisions (
+      card_id TEXT NOT NULL,
+      revision BIGINT NOT NULL,
+      operation TEXT NOT NULL CHECK (operation IN ('backfill', 'insert', 'update', 'delete')),
+      name TEXT NOT NULL,
+      en_name_official TEXT NOT NULL,
+      pack TEXT NOT NULL,
+      song TEXT,
+      illustrator TEXT,
+      rarity TEXT,
+      element TEXT NOT NULL,
+      type TEXT NOT NULL,
+      clock INTEGER,
+      attack_night INTEGER,
+      attack_day INTEGER,
+      power_cost INTEGER,
+      send_to_power INTEGER,
+      effect TEXT,
+      en_effect_official TEXT NOT NULL,
+      image TEXT,
+      errata TEXT,
+      has_official_errata BOOLEAN NOT NULL,
+      official_errata_id TEXT,
+      official_errata_affects_name BOOLEAN NOT NULL,
+      official_errata_affects_effect BOOLEAN NOT NULL,
+      official_errata_url TEXT NOT NULL,
+      catalog_status TEXT NOT NULL,
+      distribution_type TEXT NOT NULL,
+      publication_status TEXT NOT NULL,
+      play_status TEXT NOT NULL,
+      play_status_reason TEXT NOT NULL,
+      source_url TEXT NOT NULL,
+      source_note TEXT NOT NULL,
+      source_sha256 TEXT NOT NULL,
+      source_row_updated_at TIMESTAMPTZ NOT NULL,
+      recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (card_id, revision)
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_card_revisions_recorded
+      ON card_revisions(card_id, recorded_at DESC)`,
+    `WITH release_versions AS (
+       SELECT DISTINCT ON (snapshot.qa_id, snapshot.content_version, snapshot.content_hash)
+              snapshot.*, release.created_at AS release_created_at
+         FROM official_rulings_release_qa AS snapshot
+         JOIN official_rulings_releases AS release ON release.id = snapshot.release_id
+        ORDER BY snapshot.qa_id, snapshot.content_version, snapshot.content_hash,
+                 release.created_at, snapshot.release_id
+     ), numbered AS (
+       SELECT release_versions.*,
+              ROW_NUMBER() OVER (PARTITION BY qa_id ORDER BY content_version, release_created_at, release_id)
+                AS revision
+         FROM release_versions
+     )
+     INSERT INTO official_qa_item_revisions (
+       qa_id, revision, operation, recorded_from, release_id, number, published_at, question_ja, answer_ja,
+       tags, related_card_ids, source_url, content_hash, content_version, publication_status,
+       source_updated_at, last_seen_at, source_created_at, source_row_updated_at, recorded_at
+     )
+     SELECT qa_id, revision, 'backfill', 'release_snapshot', release_id, number, published_at, question_ja,
+            answer_ja, tags, related_card_ids, source_url, content_hash, content_version, 'published', NULL,
+            last_seen_at, release_created_at, release_created_at, release_created_at
+       FROM numbered ON CONFLICT (qa_id, revision) DO NOTHING`,
+    `WITH release_versions AS (
+       SELECT DISTINCT ON (snapshot.errata_id, snapshot.content_version, snapshot.content_hash)
+              snapshot.*, release.created_at AS release_created_at
+         FROM official_rulings_release_errata AS snapshot
+         JOIN official_rulings_releases AS release ON release.id = snapshot.release_id
+        ORDER BY snapshot.errata_id, snapshot.content_version, snapshot.content_hash,
+                 release.created_at, snapshot.release_id
+     ), numbered AS (
+       SELECT release_versions.*,
+              ROW_NUMBER() OVER (PARTITION BY errata_id ORDER BY content_version, release_created_at, release_id)
+                AS revision
+         FROM release_versions
+     )
+     INSERT INTO card_official_errata_revisions (
+       errata_id, revision, operation, recorded_from, release_id, card_id, published_at, card_number,
+       incorrect_text, corrected_japanese_text, corrected_english_status, corrected_english_source, reason_ja,
+       replacement_policy_ja, usage_policy_ja, affects_name, affects_effect, source_url, content_hash,
+       content_version, publication_status, last_seen_at, source_row_updated_at, recorded_at
+     )
+     SELECT errata_id, revision, 'backfill', 'release_snapshot', release_id, card_id, published_at, card_number,
+            incorrect_text, corrected_japanese_text, 'pending_review', 'release_snapshot_unavailable', reason_ja,
+            replacement_policy_ja, usage_policy_ja, affects_name, affects_effect, source_url, content_hash,
+            content_version, 'published', last_seen_at, release_created_at, release_created_at
+       FROM numbered ON CONFLICT (errata_id, revision) DO NOTHING`,
+    `INSERT INTO official_qa_item_revisions (
+       qa_id, revision, operation, recorded_from, number, published_at, question_ja, answer_ja, tags,
+       related_card_ids, source_url, content_hash, content_version, publication_status, source_updated_at,
+       last_seen_at, source_created_at, source_row_updated_at
+     )
+     SELECT current.id, COALESCE(history.max_revision, 0) + 1, 'backfill', 'current_row', current.number, current.published_at,
+            current.question_ja, current.answer_ja, current.tags, current.related_card_ids, current.source_url,
+            current.content_hash, current.content_version, current.publication_status, current.source_updated_at,
+            current.last_seen_at, current.created_at, current.updated_at
+       FROM official_qa_items AS current
+       LEFT JOIN LATERAL (
+         SELECT MAX(revision) AS max_revision FROM official_qa_item_revisions WHERE qa_id = current.id
+       ) AS history ON TRUE
+      WHERE NOT EXISTS (
+        SELECT 1 FROM official_qa_item_revisions
+         WHERE qa_id = current.id AND recorded_from = 'current_row'
+      )`,
+    `INSERT INTO card_official_errata_revisions (
+       errata_id, revision, operation, recorded_from, card_id, published_at, card_number, incorrect_text,
+       corrected_japanese_text, corrected_english_status, corrected_english_source, reason_ja,
+       replacement_policy_ja, usage_policy_ja, affects_name, affects_effect, source_url, content_hash,
+       content_version, publication_status, last_seen_at, source_row_updated_at
+     )
+     SELECT current.errata_id, COALESCE(history.max_revision, 0) + 1, 'backfill', 'current_row', current.card_id, current.published_at,
+            current.card_number, current.incorrect_text,
+            CASE WHEN current.affects_name THEN card.name ELSE COALESCE(card.effect, '') END,
+            current.corrected_english_status, current.corrected_english_source, current.reason_ja,
+            current.replacement_policy_ja, current.usage_policy_ja, current.affects_name, current.affects_effect,
+            current.source_url, current.content_hash, current.content_version, current.publication_status,
+            current.last_seen_at, current.updated_at
+       FROM card_official_errata AS current JOIN cards AS card ON card.id = current.card_id
+       LEFT JOIN LATERAL (
+         SELECT MAX(revision) AS max_revision
+           FROM card_official_errata_revisions WHERE errata_id = current.errata_id
+       ) AS history ON TRUE
+      WHERE NOT EXISTS (
+        SELECT 1 FROM card_official_errata_revisions
+         WHERE errata_id = current.errata_id AND recorded_from = 'current_row'
+      )`,
+    `INSERT INTO card_revisions (
+       card_id, revision, operation, name, en_name_official, pack, song, illustrator, rarity, element, type,
+       clock, attack_night, attack_day, power_cost, send_to_power, effect, en_effect_official, image, errata,
+       has_official_errata, official_errata_id, official_errata_affects_name, official_errata_affects_effect,
+       official_errata_url, catalog_status, distribution_type, publication_status, play_status,
+       play_status_reason, source_url, source_note, source_sha256, source_row_updated_at
+     )
+     SELECT id, 1, 'backfill', name, en_name_official, pack, song, illustrator, rarity, element, type, clock,
+            attack_night, attack_day, power_cost, send_to_power, effect, en_effect_official, image, errata,
+            has_official_errata, official_errata_id, official_errata_affects_name,
+            official_errata_affects_effect, official_errata_url, catalog_status, distribution_type,
+            publication_status, play_status, play_status_reason, source_url, source_note, source_sha256, updated_at
+       FROM cards AS current
+      WHERE NOT EXISTS (SELECT 1 FROM card_revisions WHERE card_id = current.id)`,
+    `CREATE OR REPLACE FUNCTION reject_immutable_revision_mutation() RETURNS trigger
+       LANGUAGE plpgsql SET search_path = pg_catalog, public AS $$
+     BEGIN
+       RAISE EXCEPTION '% is immutable; % is not allowed', TG_TABLE_NAME, TG_OP USING ERRCODE = '55000';
+     END; $$`,
+    `CREATE OR REPLACE FUNCTION validate_official_qa_content_version() RETURNS trigger
+       LANGUAGE plpgsql SET search_path = pg_catalog, public AS $$
+     DECLARE content_changed BOOLEAN;
+     BEGIN
+       content_changed := ROW(NEW.number, NEW.published_at, NEW.question_ja, NEW.answer_ja, NEW.tags,
+                              NEW.related_card_ids)
+                          IS DISTINCT FROM
+                          ROW(OLD.number, OLD.published_at, OLD.question_ja, OLD.answer_ja, OLD.tags,
+                              OLD.related_card_ids);
+       IF content_changed OR NEW.content_hash IS DISTINCT FROM OLD.content_hash THEN
+         IF content_changed AND NEW.content_hash IS NOT DISTINCT FROM OLD.content_hash THEN
+           RAISE EXCEPTION 'official Q&A % changed content requires a new content_hash', OLD.id
+             USING ERRCODE = '23514';
+         END IF;
+         IF NEW.content_version <> OLD.content_version + 1 THEN
+           RAISE EXCEPTION 'official Q&A % content_version must increase by exactly one', OLD.id
+             USING ERRCODE = '23514';
+         END IF;
+       ELSIF NEW.content_version IS DISTINCT FROM OLD.content_version THEN
+         RAISE EXCEPTION 'official Q&A % content_version cannot change without content', OLD.id
+           USING ERRCODE = '23514';
+       END IF;
+       RETURN NEW;
+     END; $$`,
+    `CREATE OR REPLACE FUNCTION validate_official_errata_content_version() RETURNS trigger
+       LANGUAGE plpgsql SET search_path = pg_catalog, public AS $$
+     DECLARE content_changed BOOLEAN;
+     BEGIN
+       content_changed := ROW(NEW.card_id, NEW.published_at, NEW.card_number, NEW.incorrect_text, NEW.reason_ja,
+                              NEW.replacement_policy_ja, NEW.usage_policy_ja, NEW.affects_name, NEW.affects_effect)
+                          IS DISTINCT FROM
+                          ROW(OLD.card_id, OLD.published_at, OLD.card_number, OLD.incorrect_text, OLD.reason_ja,
+                              OLD.replacement_policy_ja, OLD.usage_policy_ja, OLD.affects_name, OLD.affects_effect);
+       IF content_changed OR NEW.content_hash IS DISTINCT FROM OLD.content_hash THEN
+         IF content_changed AND NEW.content_hash IS NOT DISTINCT FROM OLD.content_hash THEN
+           RAISE EXCEPTION 'official errata % changed content requires a new content_hash', OLD.errata_id
+             USING ERRCODE = '23514';
+         END IF;
+         IF NEW.content_version <> OLD.content_version + 1 THEN
+           RAISE EXCEPTION 'official errata % content_version must increase by exactly one', OLD.errata_id
+             USING ERRCODE = '23514';
+         END IF;
+       ELSIF NEW.content_version IS DISTINCT FROM OLD.content_version THEN
+         RAISE EXCEPTION 'official errata % content_version cannot change without content', OLD.errata_id
+           USING ERRCODE = '23514';
+       END IF;
+       RETURN NEW;
+     END; $$`,
+    `CREATE OR REPLACE FUNCTION append_official_qa_item_revision() RETURNS trigger
+       LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+     DECLARE source official_qa_items%ROWTYPE; next_revision BIGINT;
+     BEGIN
+       IF TG_OP = 'UPDATE' AND
+          ROW(NEW.number, NEW.published_at, NEW.question_ja, NEW.answer_ja, NEW.tags, NEW.related_card_ids,
+              NEW.source_url, NEW.content_hash, NEW.content_version, NEW.publication_status, NEW.source_updated_at,
+              NEW.created_at)
+          IS NOT DISTINCT FROM
+          ROW(OLD.number, OLD.published_at, OLD.question_ja, OLD.answer_ja, OLD.tags, OLD.related_card_ids,
+              OLD.source_url, OLD.content_hash, OLD.content_version, OLD.publication_status, OLD.source_updated_at,
+              OLD.created_at) THEN RETURN NEW; END IF;
+       IF TG_OP = 'DELETE' THEN source := OLD; ELSE source := NEW; END IF;
+       SELECT COALESCE(MAX(revision), 0) + 1 INTO next_revision
+         FROM official_qa_item_revisions WHERE qa_id = source.id;
+       INSERT INTO official_qa_item_revisions (
+         qa_id, revision, operation, recorded_from, number, published_at, question_ja, answer_ja, tags,
+         related_card_ids, source_url, content_hash, content_version, publication_status, source_updated_at,
+         last_seen_at, source_created_at, source_row_updated_at
+       ) VALUES (source.id, next_revision, lower(TG_OP), 'trigger', source.number, source.published_at,
+         source.question_ja, source.answer_ja, source.tags, source.related_card_ids, source.source_url,
+         source.content_hash, source.content_version, source.publication_status, source.source_updated_at,
+         source.last_seen_at, source.created_at, source.updated_at);
+       RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+     END; $$`,
+    `CREATE OR REPLACE FUNCTION append_official_errata_revision() RETURNS trigger
+       LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+     DECLARE source card_official_errata%ROWTYPE; corrected_japanese TEXT; next_revision BIGINT;
+     BEGIN
+       IF TG_OP = 'UPDATE' AND
+          ROW(NEW.card_id, NEW.published_at, NEW.card_number, NEW.incorrect_text, NEW.corrected_english_status,
+              NEW.corrected_english_source, NEW.reason_ja, NEW.replacement_policy_ja, NEW.usage_policy_ja,
+              NEW.affects_name, NEW.affects_effect, NEW.source_url, NEW.content_hash, NEW.content_version,
+              NEW.publication_status)
+          IS NOT DISTINCT FROM
+          ROW(OLD.card_id, OLD.published_at, OLD.card_number, OLD.incorrect_text, OLD.corrected_english_status,
+              OLD.corrected_english_source, OLD.reason_ja, OLD.replacement_policy_ja, OLD.usage_policy_ja,
+              OLD.affects_name, OLD.affects_effect, OLD.source_url, OLD.content_hash, OLD.content_version,
+              OLD.publication_status) THEN RETURN NEW; END IF;
+       IF TG_OP = 'DELETE' THEN source := OLD; ELSE source := NEW; END IF;
+       SELECT CASE WHEN source.affects_name THEN card.name ELSE COALESCE(card.effect, '') END
+         INTO corrected_japanese FROM cards AS card WHERE card.id = source.card_id;
+       IF corrected_japanese IS NULL THEN
+         SELECT corrected_japanese_text INTO corrected_japanese
+           FROM card_official_errata_revisions
+          WHERE errata_id = source.errata_id ORDER BY revision DESC LIMIT 1;
+       END IF;
+       IF corrected_japanese IS NULL THEN corrected_japanese := ''; END IF;
+       SELECT COALESCE(MAX(revision), 0) + 1 INTO next_revision
+         FROM card_official_errata_revisions WHERE errata_id = source.errata_id;
+       INSERT INTO card_official_errata_revisions (
+         errata_id, revision, operation, recorded_from, card_id, published_at, card_number, incorrect_text,
+         corrected_japanese_text, corrected_english_status, corrected_english_source, reason_ja,
+         replacement_policy_ja, usage_policy_ja, affects_name, affects_effect, source_url, content_hash,
+         content_version, publication_status, last_seen_at, source_row_updated_at
+       ) VALUES (source.errata_id, next_revision, lower(TG_OP), 'trigger', source.card_id, source.published_at,
+         source.card_number, source.incorrect_text, corrected_japanese, source.corrected_english_status,
+         source.corrected_english_source, source.reason_ja, source.replacement_policy_ja, source.usage_policy_ja,
+         source.affects_name, source.affects_effect, source.source_url, source.content_hash,
+         source.content_version, source.publication_status, source.last_seen_at, source.updated_at);
+       RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+     END; $$`,
+    `CREATE OR REPLACE FUNCTION append_derived_errata_revision_for_card() RETURNS trigger
+       LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+     DECLARE source card_official_errata%ROWTYPE; next_revision BIGINT;
+     BEGIN
+       IF NEW.name IS NOT DISTINCT FROM OLD.name AND NEW.effect IS NOT DISTINCT FROM OLD.effect THEN
+         RETURN NEW;
+       END IF;
+       FOR source IN SELECT * FROM card_official_errata
+         WHERE card_id = NEW.id
+           AND ((affects_name AND NEW.name IS DISTINCT FROM OLD.name)
+             OR (affects_effect AND NEW.effect IS DISTINCT FROM OLD.effect))
+       LOOP
+         SELECT COALESCE(MAX(revision), 0) + 1 INTO next_revision
+           FROM card_official_errata_revisions WHERE errata_id = source.errata_id;
+         INSERT INTO card_official_errata_revisions (
+           errata_id, revision, operation, recorded_from, card_id, published_at, card_number, incorrect_text,
+           corrected_japanese_text, corrected_english_status, corrected_english_source, reason_ja,
+           replacement_policy_ja, usage_policy_ja, affects_name, affects_effect, source_url, content_hash,
+           content_version, publication_status, last_seen_at, source_row_updated_at
+         ) VALUES (source.errata_id, next_revision, 'update', 'card_trigger', source.card_id,
+           source.published_at, source.card_number, source.incorrect_text,
+           CASE WHEN source.affects_name THEN NEW.name ELSE COALESCE(NEW.effect, '') END,
+           source.corrected_english_status, source.corrected_english_source, source.reason_ja,
+           source.replacement_policy_ja, source.usage_policy_ja, source.affects_name, source.affects_effect,
+           source.source_url, source.content_hash, source.content_version, source.publication_status,
+           source.last_seen_at, source.updated_at);
+       END LOOP;
+       RETURN NEW;
+     END; $$`,
+    `CREATE OR REPLACE FUNCTION append_card_revision() RETURNS trigger
+       LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+     DECLARE source cards%ROWTYPE; next_revision BIGINT;
+     BEGIN
+       IF TG_OP = 'UPDATE' AND
+          ROW(NEW.name, NEW.en_name_official, NEW.pack, NEW.song, NEW.illustrator, NEW.rarity, NEW.element,
+              NEW.type, NEW.clock, NEW.attack_night, NEW.attack_day, NEW.power_cost, NEW.send_to_power,
+              NEW.effect, NEW.en_effect_official, NEW.image, NEW.errata, NEW.has_official_errata,
+              NEW.official_errata_id, NEW.official_errata_affects_name, NEW.official_errata_affects_effect,
+              NEW.official_errata_url, NEW.catalog_status, NEW.distribution_type, NEW.publication_status,
+              NEW.play_status, NEW.play_status_reason, NEW.source_url, NEW.source_note, NEW.source_sha256)
+          IS NOT DISTINCT FROM
+          ROW(OLD.name, OLD.en_name_official, OLD.pack, OLD.song, OLD.illustrator, OLD.rarity, OLD.element,
+              OLD.type, OLD.clock, OLD.attack_night, OLD.attack_day, OLD.power_cost, OLD.send_to_power,
+              OLD.effect, OLD.en_effect_official, OLD.image, OLD.errata, OLD.has_official_errata,
+              OLD.official_errata_id, OLD.official_errata_affects_name, OLD.official_errata_affects_effect,
+              OLD.official_errata_url, OLD.catalog_status, OLD.distribution_type, OLD.publication_status,
+              OLD.play_status, OLD.play_status_reason, OLD.source_url, OLD.source_note, OLD.source_sha256)
+          THEN RETURN NEW; END IF;
+       IF TG_OP = 'DELETE' THEN source := OLD; ELSE source := NEW; END IF;
+       SELECT COALESCE(MAX(revision), 0) + 1 INTO next_revision
+         FROM card_revisions WHERE card_id = source.id;
+       INSERT INTO card_revisions (
+         card_id, revision, operation, name, en_name_official, pack, song, illustrator, rarity, element, type,
+         clock, attack_night, attack_day, power_cost, send_to_power, effect, en_effect_official, image, errata,
+         has_official_errata, official_errata_id, official_errata_affects_name, official_errata_affects_effect,
+         official_errata_url, catalog_status, distribution_type, publication_status, play_status,
+         play_status_reason, source_url, source_note, source_sha256, source_row_updated_at
+       ) VALUES (source.id, next_revision, lower(TG_OP), source.name, source.en_name_official, source.pack,
+         source.song, source.illustrator, source.rarity, source.element, source.type, source.clock,
+         source.attack_night, source.attack_day, source.power_cost, source.send_to_power, source.effect,
+         source.en_effect_official, source.image, source.errata, source.has_official_errata,
+         source.official_errata_id, source.official_errata_affects_name, source.official_errata_affects_effect,
+         source.official_errata_url, source.catalog_status, source.distribution_type, source.publication_status,
+         source.play_status, source.play_status_reason, source.source_url, source.source_note,
+         source.source_sha256, source.updated_at);
+       RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+     END; $$`,
+    `DROP TRIGGER IF EXISTS official_qa_content_version_guard ON official_qa_items;
+     CREATE TRIGGER official_qa_content_version_guard BEFORE UPDATE ON official_qa_items
+       FOR EACH ROW EXECUTE FUNCTION validate_official_qa_content_version()`,
+    `DROP TRIGGER IF EXISTS official_qa_revision_append ON official_qa_items;
+     CREATE TRIGGER official_qa_revision_append AFTER INSERT OR UPDATE OR DELETE ON official_qa_items
+       FOR EACH ROW EXECUTE FUNCTION append_official_qa_item_revision()`,
+    `DROP TRIGGER IF EXISTS official_errata_content_version_guard ON card_official_errata;
+     CREATE TRIGGER official_errata_content_version_guard BEFORE UPDATE ON card_official_errata
+       FOR EACH ROW EXECUTE FUNCTION validate_official_errata_content_version()`,
+    `DROP TRIGGER IF EXISTS official_errata_revision_append ON card_official_errata;
+     CREATE TRIGGER official_errata_revision_append AFTER INSERT OR UPDATE OR DELETE ON card_official_errata
+       FOR EACH ROW EXECUTE FUNCTION append_official_errata_revision()`,
+    `DROP TRIGGER IF EXISTS card_revision_append ON cards;
+     CREATE TRIGGER card_revision_append AFTER INSERT OR UPDATE OR DELETE ON cards
+       FOR EACH ROW EXECUTE FUNCTION append_card_revision()`,
+    `DROP TRIGGER IF EXISTS card_derived_errata_revision_append ON cards;
+     CREATE TRIGGER card_derived_errata_revision_append AFTER UPDATE ON cards
+       FOR EACH ROW EXECUTE FUNCTION append_derived_errata_revision_for_card()`,
+    `DROP TRIGGER IF EXISTS official_qa_item_revisions_immutable ON official_qa_item_revisions;
+     CREATE TRIGGER official_qa_item_revisions_immutable BEFORE UPDATE OR DELETE ON official_qa_item_revisions
+       FOR EACH ROW EXECUTE FUNCTION reject_immutable_revision_mutation()`,
+    `DROP TRIGGER IF EXISTS card_official_errata_revisions_immutable ON card_official_errata_revisions;
+     CREATE TRIGGER card_official_errata_revisions_immutable BEFORE UPDATE OR DELETE ON card_official_errata_revisions
+       FOR EACH ROW EXECUTE FUNCTION reject_immutable_revision_mutation()`,
+    `DROP TRIGGER IF EXISTS card_revisions_immutable ON card_revisions;
+     CREATE TRIGGER card_revisions_immutable BEFORE UPDATE OR DELETE ON card_revisions
+       FOR EACH ROW EXECUTE FUNCTION reject_immutable_revision_mutation()`,
     `CREATE TABLE IF NOT EXISTS official_rule_documents (
       document_id TEXT NOT NULL CHECK (document_id IN ('grand', 'floor')),
       document_version TEXT NOT NULL,
@@ -3450,6 +3991,9 @@ function handleRequest(req, res) {
   res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
+  // Public read routes below explicitly replace this. Everything else remains
+  // uncacheable in browsers and on either side of the GeoDNS split.
+  res.setHeader('Cache-Control', 'private, no-store');
   if (method === 'OPTIONS') {
     res.writeHead(200);
     res.end();
@@ -3644,6 +4188,94 @@ function handleRequest(req, res) {
     if ((pathname === '/api/app-version' || pathname === '/api/version') && method === 'GET') {
       res.setHeader('Cache-Control', 'no-store');
       json(APP_VERSION_INFO);
+      return;
+    }
+
+    if (pathname === '/api/search/status' && method === 'GET') {
+      res.setHeader('Cache-Control', 'no-store');
+      json(knowledgeSearch.status());
+      return;
+    }
+
+    if (pathname === '/api/search/suggest' && method === 'GET') {
+      const parsed = validateBody(S.knowledgeSearchSuggestQuerySchema, Object.fromEntries(url.searchParams.entries()));
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      const scopes = parseKnowledgeSearchScopes(parsed.data.scope);
+      if (scopes === null) return json({ error: 'Invalid search scope' }, 400);
+      res.setHeader('Cache-Control', 'private, max-age=15');
+      const result = await knowledgeSearch.suggest({
+        query: parsed.data.q,
+        scopes,
+        locale: parsed.data.lang || 'zh-TW',
+        limit: parsed.data.limit || 8,
+      });
+      knowledgeSearchSuggestionsTotal.labels(result.engine).inc();
+      json(result);
+      return;
+    }
+
+    if (pathname === '/api/search/ids' && method === 'GET') {
+      const parsed = validateBody(S.knowledgeSearchIdsQuerySchema, Object.fromEntries(url.searchParams.entries()));
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      res.setHeader('Cache-Control', 'no-store');
+      const searchStartedAt = process.hrtime.bigint();
+      const result = await knowledgeSearch.search({
+        query: parsed.data.q,
+        scopes: [parsed.data.scope],
+        locale: parsed.data.lang || 'zh-TW',
+        pack: parsed.data.pack || '',
+        rarity: parsed.data.rarity || '',
+        element: parsed.data.element || '',
+        cardType: parsed.data.cardType || '',
+        distributionType: parsed.data.distributionType || '',
+        documentId: parsed.data.documentId || '',
+        tag: parsed.data.tag || '',
+        cardId: parsed.data.cardId || '',
+        limit: parsed.data.limit || 500,
+        offset: 0,
+      });
+      knowledgeSearchQueriesTotal.labels(result.engine).inc();
+      knowledgeSearchDuration.labels(result.engine).observe(Number(process.hrtime.bigint() - searchStartedAt) / 1e9);
+      if (parsed.data.analytics !== '0') {
+        recordKnowledgeSearchOutcome(
+          { query: parsed.data.q, locale: parsed.data.lang || 'zh-TW', scopes: [parsed.data.scope] },
+          result,
+        );
+      }
+      json({
+        ids: result.hits.map((hit) => hit.sourceId),
+        estimatedTotalHits: result.estimatedTotalHits,
+        engine: result.engine,
+      });
+      return;
+    }
+
+    if (pathname === '/api/search' && method === 'GET') {
+      const parsed = validateBody(S.knowledgeSearchQuerySchema, Object.fromEntries(url.searchParams.entries()));
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      const scopes = parseKnowledgeSearchScopes(parsed.data.scope);
+      if (scopes === null) return json({ error: 'Invalid search scope' }, 400);
+      res.setHeader('Cache-Control', 'no-store');
+      const searchStartedAt = process.hrtime.bigint();
+      const result = await knowledgeSearch.search({
+        query: parsed.data.q,
+        scopes,
+        locale: parsed.data.lang || 'zh-TW',
+        pack: parsed.data.pack || '',
+        rarity: parsed.data.rarity || '',
+        element: parsed.data.element || '',
+        cardType: parsed.data.cardType || '',
+        distributionType: parsed.data.distributionType || '',
+        documentId: parsed.data.documentId || '',
+        tag: parsed.data.tag || '',
+        cardId: parsed.data.cardId || '',
+        limit: parsed.data.limit || 24,
+        offset: parsed.data.offset || 0,
+      });
+      knowledgeSearchQueriesTotal.labels(result.engine).inc();
+      knowledgeSearchDuration.labels(result.engine).observe(Number(process.hrtime.bigint() - searchStartedAt) / 1e9);
+      recordKnowledgeSearchOutcome({ query: parsed.data.q, locale: parsed.data.lang || 'zh-TW', scopes }, result);
+      json(result);
       return;
     }
 
@@ -4432,6 +5064,38 @@ function handleRequest(req, res) {
       return;
     }
 
+    if (pathname === '/api/profile/card-collection' && method === 'GET') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      json(await listOwnedCardIds(pool, userId));
+      return;
+    }
+
+    if (pathname === '/api/profile/card-collection/merge' && method === 'POST') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const body = await readBody(96 * 1024);
+      const parsed = validateBody(S.cardOwnershipMergeSchema, body);
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      const result = await mergeCardOwnership(pool, userId, parsed.data.cardIds);
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
+      return;
+    }
+
+    const cardOwnershipRoute = pathname.match(/^\/api\/profile\/card-collection\/([^/]+)$/);
+    if (cardOwnershipRoute && method === 'PUT') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const body = await readBody(8 * 1024);
+      const parsed = validateBody(S.cardOwnershipUpdateSchema, body);
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      const result = await setCardOwnership(pool, userId, decodeURIComponent(cardOwnershipRoute[1]), parsed.data.owned);
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
+      return;
+    }
+
     if (pathname === '/api/profile/identities' && method === 'GET') {
       const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
@@ -4694,13 +5358,25 @@ function handleRequest(req, res) {
       const parsed = validateBody(S.deckShareListQuerySchema, {
         sort: url.searchParams.get('sort') || undefined,
         q: url.searchParams.get('q') || undefined,
+        lang: url.searchParams.get('lang') || undefined,
         element: url.searchParams.get('element') || undefined,
         cursor: url.searchParams.get('cursor') || undefined,
         limit: url.searchParams.get('limit') || undefined,
       });
       if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
       const viewerUserId = await getAuthUserId(req);
-      serviceJson(await listDeckShares(pool, viewerUserId, parsed.data));
+      let searchIds;
+      if (parsed.data.q) {
+        const candidates = await knowledgeSearch.search({
+          query: parsed.data.q,
+          scopes: ['deck'],
+          locale: parsed.data.lang || 'zh-TW',
+          limit: 500,
+          offset: 0,
+        });
+        searchIds = candidates.hits.map((hit) => hit.sourceId);
+      }
+      serviceJson(await listDeckShares(pool, viewerUserId, { ...parsed.data, searchIds }));
       return;
     }
 
@@ -4711,7 +5387,9 @@ function handleRequest(req, res) {
       const parsed = validateBody(S.deckShareCreateSchema, body);
       if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
       serviceJson(
-        await publishDeckShare(pool, userId, parsed.data.deckId, parsed.data.visibility, GAME_RULES_VERSION),
+        refreshKnowledgeSearchAfter(
+          await publishDeckShare(pool, userId, parsed.data.deckId, parsed.data.visibility, GAME_RULES_VERSION),
+        ),
         201,
       );
       return;
@@ -4736,14 +5414,18 @@ function handleRequest(req, res) {
       const body = await readBody(32 * 1024);
       const parsed = validateBody(S.deckShareUpdateSchema, body);
       if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
-      serviceJson(await updateDeckShare(pool, userId, publicDeckShareRoute[1], parsed.data, GAME_RULES_VERSION));
+      serviceJson(
+        refreshKnowledgeSearchAfter(
+          await updateDeckShare(pool, userId, publicDeckShareRoute[1], parsed.data, GAME_RULES_VERSION),
+        ),
+      );
       return;
     }
 
     if (publicDeckShareRoute && method === 'DELETE') {
       const userId = await getAuthUserId(req);
       if (!userId) return json({ error: 'Unauthorized' }, 401);
-      serviceJson(await unpublishDeckShare(pool, userId, publicDeckShareRoute[1]));
+      serviceJson(refreshKnowledgeSearchAfter(await unpublishDeckShare(pool, userId, publicDeckShareRoute[1])));
       return;
     }
 
@@ -4849,6 +5531,17 @@ function handleRequest(req, res) {
     // ===== Match Routes =====
 
     // Get match action log
+    const matchReplayRoute = pathname.match(/^\/api\/matches\/([^/]+)\/replay$/);
+    if (matchReplayRoute && method === 'GET') {
+      const userId = await getAuthUserId(req);
+      if (!userId) return json({ error: 'Unauthorized' }, 401);
+      const result = await getMatchReplay(pool, matchReplayRoute[1], userId);
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
+      return;
+    }
+
+    // Get match action log
     const matchLogRoute = pathname.match(/^\/api\/matches\/([^/]+)\/log$/);
     if (matchLogRoute && method === 'GET') {
       const userId = await getAuthUserId(req);
@@ -4913,13 +5606,13 @@ function handleRequest(req, res) {
         limit: url.searchParams.get('limit'),
         translateText: await translationRuntime.getTranslateText(),
       });
-      res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+      res.setHeader('Cache-Control', PUBLIC_EDGE_CACHE_SHORT);
       serviceJson(result);
       return;
     }
 
     if (pathname === '/api/official/qa' && method === 'GET') {
-      res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=1800');
+      res.setHeader('Cache-Control', PUBLIC_EDGE_CACHE_STANDARD);
       publicServiceJson(
         await listPublicQa({
           pool,
@@ -4933,14 +5626,14 @@ function handleRequest(req, res) {
     }
 
     if (pathname === '/api/official/status' && method === 'GET') {
-      res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+      res.setHeader('Cache-Control', PUBLIC_EDGE_CACHE_SHORT);
       publicServiceJson(await getOfficialRulingsReleaseStatus({ pool }));
       return;
     }
 
     const publicOfficialRuleDocumentRoute = pathname.match(/^\/api\/official\/rules\/(grand|floor)$/);
     if (publicOfficialRuleDocumentRoute && method === 'GET') {
-      res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=1800');
+      res.setHeader('Cache-Control', PUBLIC_EDGE_CACHE_STANDARD);
       publicServiceJson(
         await getPublicRuleDocument({
           pool,
@@ -4953,7 +5646,7 @@ function handleRequest(req, res) {
 
     const publicOfficialQaRoute = pathname.match(/^\/api\/official\/qa\/(\d+)$/);
     if (publicOfficialQaRoute && method === 'GET') {
-      res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=1800');
+      res.setHeader('Cache-Control', PUBLIC_EDGE_CACHE_STANDARD);
       publicServiceJson(
         await getPublicQa({ pool, language: url.searchParams.get('lang'), number: publicOfficialQaRoute[1] }),
       );
@@ -4961,7 +5654,7 @@ function handleRequest(req, res) {
     }
 
     if (pathname === '/api/official/errata' && method === 'GET') {
-      res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=1800');
+      res.setHeader('Cache-Control', PUBLIC_EDGE_CACHE_STANDARD);
       publicServiceJson(
         await listPublicErrata({
           pool,
@@ -4974,7 +5667,7 @@ function handleRequest(req, res) {
 
     const publicOfficialErrataRoute = pathname.match(/^\/api\/official\/errata\/(\d{3})$/);
     if (publicOfficialErrataRoute && method === 'GET') {
-      res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=1800');
+      res.setHeader('Cache-Control', PUBLIC_EDGE_CACHE_STANDARD);
       publicServiceJson(
         await getPublicErrata({
           pool,
@@ -5223,6 +5916,18 @@ function handleRequest(req, res) {
       if (!payload) return json({ error: 'Unauthorized' }, 401);
       await revokeAdminSession({ pool, jti: payload.jti, adminUserId: payload.adminUserId });
       json({ revoked: true });
+      return;
+    }
+
+    if (pathname === '/api/admin/search/zero-results' && method === 'GET') {
+      if (!(await authorizeAdmin(req, 'audit:read'))) return json({ error: 'Unauthorized' }, 401);
+      const parsed = validateBody(
+        S.adminKnowledgeSearchZeroResultsQuerySchema,
+        Object.fromEntries(url.searchParams.entries()),
+      );
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      res.setHeader('Cache-Control', 'no-store');
+      json({ items: await listKnowledgeSearchZeroResults(pool, parsed.data) });
       return;
     }
 
@@ -5508,15 +6213,17 @@ function handleRequest(req, res) {
         reviewerUserId: admin.adminUserId,
       };
       serviceJson(
-        resourceType === 'qa'
-          ? await upsertOfficialQaTranslation({
-              ...shared,
-              qaId: decodeURIComponent(adminOfficialTranslationWriteRoute[2]),
-            })
-          : await upsertOfficialErrataTranslation({
-              ...shared,
-              errataId: decodeURIComponent(adminOfficialTranslationWriteRoute[2]),
-            }),
+        refreshKnowledgeSearchAfter(
+          resourceType === 'qa'
+            ? await upsertOfficialQaTranslation({
+                ...shared,
+                qaId: decodeURIComponent(adminOfficialTranslationWriteRoute[2]),
+              })
+            : await upsertOfficialErrataTranslation({
+                ...shared,
+                errataId: decodeURIComponent(adminOfficialTranslationWriteRoute[2]),
+              }),
+        ),
       );
       return;
     }
@@ -5531,12 +6238,14 @@ function handleRequest(req, res) {
       const parsed = validateBody(S.officialQaTranslationWriteSchema, body);
       if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
       serviceJson(
-        await upsertOfficialQaTranslation({
-          pool,
-          qaId: decodeURIComponent(adminOfficialQaTranslationRoute[1]),
-          body: { ...parsed.data, locale: decodeURIComponent(adminOfficialQaTranslationRoute[2]) },
-          reviewerUserId: admin.adminUserId,
-        }),
+        refreshKnowledgeSearchAfter(
+          await upsertOfficialQaTranslation({
+            pool,
+            qaId: decodeURIComponent(adminOfficialQaTranslationRoute[1]),
+            body: { ...parsed.data, locale: decodeURIComponent(adminOfficialQaTranslationRoute[2]) },
+            reviewerUserId: admin.adminUserId,
+          }),
+        ),
       );
       return;
     }
@@ -5551,12 +6260,14 @@ function handleRequest(req, res) {
       const parsed = validateBody(S.officialErrataTranslationWriteSchema, body);
       if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
       serviceJson(
-        await upsertOfficialErrataTranslation({
-          pool,
-          errataId: adminOfficialErrataTranslationRoute[1],
-          body: { ...parsed.data, locale: decodeURIComponent(adminOfficialErrataTranslationRoute[2]) },
-          reviewerUserId: admin.adminUserId,
-        }),
+        refreshKnowledgeSearchAfter(
+          await upsertOfficialErrataTranslation({
+            pool,
+            errataId: adminOfficialErrataTranslationRoute[1],
+            body: { ...parsed.data, locale: decodeURIComponent(adminOfficialErrataTranslationRoute[2]) },
+            reviewerUserId: admin.adminUserId,
+          }),
+        ),
       );
       return;
     }
@@ -5703,81 +6414,78 @@ function handleRequest(req, res) {
       const body = await readBody(32 * 1024);
       const parsed = validateBody(S.adminDeckShareModerationSchema, body);
       if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
-      serviceJson(await moderateDeckShare(pool, admin.adminUserId, adminDeckShareModerationRoute[1], parsed.data));
-      return;
-    }
-
-    // ===== Card Data Routes =====
-
-    const sendVersionedCardData = async (loadData, validateData = () => true) => {
-      const version = await getOfficialCardDataVersion(pool);
-      if (!version) {
-        json({ error: 'Card data release metadata unavailable' }, 503);
-        return;
-      }
-      const data = await loadData();
-      if (!validateData(data, version)) {
-        json({ error: 'Card data release is incomplete' }, 503);
-        return;
-      }
-      res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
-      res.setHeader('X-Card-Dataset-Sha256', version.datasetSha256);
-      res.setHeader('X-Card-Dataset-Release-Sha', version.releaseSha);
-      res.setHeader('X-Card-Dataset-Count', String(version.cardCount));
-      res.setHeader('X-Card-Data-App-Version', APP_VERSION);
-      res.setHeader('X-Card-Data-Build-Id', APP_BUILD_ID);
-      res.setHeader('X-Card-Data-Rules-Version', GAME_RULES_VERSION);
-      json(data);
-    };
-
-    // Public: list card definitions from PostgreSQL.
-    if (pathname === '/api/cards' && method === 'GET') {
-      await sendVersionedCardData(
-        () => getPublicCards(pool, url.searchParams),
-        (cards, version) => Array.isArray(cards) && (url.searchParams.size > 0 || cards.length === version.cardCount),
+      serviceJson(
+        refreshKnowledgeSearchAfter(
+          await moderateDeckShare(pool, admin.adminUserId, adminDeckShareModerationRoute[1], parsed.data),
+        ),
       );
       return;
     }
 
-    if (pathname === '/api/cards/texts' && method === 'GET') {
-      await sendVersionedCardData(() => getAllCardTextsI18n(pool));
-      return;
-    }
-
-    const publicCardTextsRoute = pathname.match(/^\/api\/cards\/([^/]+)\/texts$/);
-    if (publicCardTextsRoute && method === 'GET') {
-      const cardId = decodeURIComponent(publicCardTextsRoute[1]);
-      res.setHeader('Cache-Control', 'no-store');
-      json(await getCardTextsI18n(pool, cardId));
-      return;
-    }
-
-    const publicCardRoute = pathname.match(/^\/api\/cards\/([^/]+)$/);
-    if (publicCardRoute && method === 'GET') {
-      const cardId = decodeURIComponent(publicCardRoute[1]);
-      const result = await getPublicCard(pool, cardId);
-      if (!result.ok) return json({ error: result.error }, result.status);
-      res.setHeader('Cache-Control', 'no-store');
-      json(result.body);
-      return;
-    }
-
-    if (pathname === '/api/config' && method === 'GET') {
-      res.setHeader('Cache-Control', 'no-store');
-      json({ ...(await getGameConfig(pool)), deck_sharing_enabled: DECK_SHARING_ENABLED });
-      return;
-    }
-
-    if (pathname === '/api/preset-decks' && method === 'GET') {
-      res.setHeader('Cache-Control', 'no-store');
-      json(await getPresetDecks(pool));
+    if (
+      await handlePublicCardRoute({
+        pathname,
+        method,
+        url,
+        res,
+        json,
+        pool,
+        deckSharingEnabled: DECK_SHARING_ENABLED,
+      })
+    ) {
       return;
     }
 
     // Admin: no-op reload signal for clients that refetch card data after edits.
     if (pathname === '/api/admin/cards/reload' && method === 'POST') {
       if (!(await authorizeAdmin(req, 'cards:write'))) return json({ error: 'Unauthorized' }, 401);
+      knowledgeSearch.scheduleReindex();
       json({ ok: true });
+      return;
+    }
+
+    if (pathname === '/api/admin/cards' && method === 'GET') {
+      if (!(await authorizeAdmin(req, 'cards:write'))) return json({ error: 'Unauthorized' }, 401);
+      res.setHeader('Cache-Control', 'no-store');
+      json(await getAdminCards(pool));
+      return;
+    }
+
+    if (pathname === '/api/admin/card-synergies' && method === 'GET') {
+      if (!(await authorizeAdmin(req, 'cards:write'))) return json({ error: 'Unauthorized' }, 401);
+      const parsed = validateBody(S.cardSynergyListQuerySchema, Object.fromEntries(url.searchParams.entries()));
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      res.setHeader('Cache-Control', 'no-store');
+      json({ relations: await listCardSynergies(pool, parsed.data) });
+      return;
+    }
+
+    if (pathname === '/api/admin/card-synergies' && method === 'POST') {
+      const admin = await authorizeAdmin(req, 'cards:write');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
+      const parsed = validateBody(S.cardSynergyWriteSchema, await readBody(128 * 1024));
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      const id = `synergy_${crypto.randomBytes(12).toString('hex')}`;
+      const result = await upsertCardSynergy(pool, id, parsed.data, admin.adminUserId);
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body, 201);
+      return;
+    }
+
+    const adminCardSynergyRoute = pathname.match(/^\/api\/admin\/card-synergies\/([^/]+)$/);
+    if (adminCardSynergyRoute && method === 'PUT') {
+      const admin = await authorizeAdmin(req, 'cards:write');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
+      const parsed = validateBody(S.cardSynergyWriteSchema, await readBody(128 * 1024));
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      const result = await upsertCardSynergy(
+        pool,
+        decodeURIComponent(adminCardSynergyRoute[1]),
+        parsed.data,
+        admin.adminUserId,
+      );
+      if (!result.ok) return json({ error: result.error }, result.status);
+      json(result.body);
       return;
     }
 
@@ -5797,6 +6505,7 @@ function handleRequest(req, res) {
       const cardId = decodeURIComponent(adminCardI18nRoute[1]);
       const result = await upsertCardI18n(pool, cardId, await readBody(), admin.adminUserId);
       if (!result.ok) return json({ error: result.error }, result.status);
+      knowledgeSearch.scheduleReindex();
       json(result.body);
       return;
     }
@@ -5808,6 +6517,7 @@ function handleRequest(req, res) {
       const cardId = decodeURIComponent(adminCardRoute[1]);
       const result = await upsertCard(pool, cardId, await readBody(), admin.adminUserId);
       if (!result.ok) return json({ error: result.error }, result.status);
+      knowledgeSearch.scheduleReindex();
       json(result.body);
       return;
     }
@@ -5819,6 +6529,7 @@ function handleRequest(req, res) {
       const key = decodeURIComponent(adminConfigRoute[1]);
       const result = await upsertGameConfig(pool, key, await readBody(), admin.adminUserId);
       if (!result.ok) return json({ error: result.error }, result.status);
+      knowledgeSearch.scheduleReindex();
       json(result.body);
       return;
     }
@@ -6192,6 +6903,7 @@ async function settleShutdownOperations(operations) {
 async function stopBackgroundWorkers() {
   await settleShutdownOperations([
     () => stopAccountDeletionRecovery(),
+    () => knowledgeSearch.stop(),
     () => accountExportWorker.stop(),
     () => relationshipOutboxWorker.stop(),
   ]);
@@ -6345,12 +7057,11 @@ if (require.main === module) {
       }
       if (shuttingDown) return;
       server.listen(PORT, () => {
-        // SIGTERM can arrive after listen() is called but before its callback
-        // runs. Do not resurrect background work once the drain has begun.
         if (shuttingDown) return;
         if (API_BACKGROUND_WORKERS_ENABLED) {
           relationshipOutboxWorker.start();
           accountExportWorker.start();
+          knowledgeSearch.start();
           startAccountDeletionRecovery();
         }
         logger.info(

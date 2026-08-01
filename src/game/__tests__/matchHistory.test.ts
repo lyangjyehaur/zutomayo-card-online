@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   buildMatchHistoryChatPath,
+  attachReplaySummary,
+  filterMatchRecords,
   getMatchRecords,
   historyChatSubjectId,
   linkMatchRecordToServer,
@@ -122,6 +124,65 @@ describe('match history', () => {
       turns: 7,
     });
     expect(defeat).toMatchObject({ serverMatchId: 'server-match-2', outcome: 'defeat' });
+  });
+
+  it('searches replay action, effect, choice, and card indexes with outcome filters', () => {
+    const victory = matchRecordFromServer(
+      {
+        id: 'server-match-1',
+        winnerId: 'user-1',
+        loserId: 'user-2',
+        turns: 7,
+        createdAt: '2026-07-12T08:00:00.000Z',
+        replayAvailable: true,
+        replaySearchText: 'battle resolvependingeffect card-42 clockadvance',
+      },
+      'user-1',
+    );
+    const defeat = matchRecordFromServer(
+      {
+        id: 'server-match-2',
+        winnerId: 'user-2',
+        loserId: 'user-1',
+        turns: 8,
+        createdAt: '2026-07-12T09:00:00.000Z',
+      },
+      'user-1',
+    );
+
+    expect(filterMatchRecords([victory, defeat], 'card-42')).toEqual([victory]);
+    expect(filterMatchRecords([victory, defeat], 'clockadvance', 'victory')).toEqual([victory]);
+    expect(filterMatchRecords([victory, defeat], '', 'defeat')).toEqual([defeat]);
+  });
+
+  it('attaches authorized replay details without changing unrelated history identity', () => {
+    const record = matchRecordFromServer(
+      { id: 'server-match-1', winnerId: 'user-1', loserId: 'user-2', turns: 2, createdAt: '2026-07-12T08:00:00Z' },
+      'user-1',
+    );
+    const next = attachReplaySummary(record, {
+      schemaVersion: 1,
+      traceComplete: true,
+      rulesVersion: 'rules-2',
+      result: { winner: 0, reason: 'hp', turns: 4, finalHp: [20, 0], finalChronos: 6 },
+      phases: [],
+      decisions: [],
+      effects: [],
+      revealedHands: [],
+      timeline: [{ id: 1, turn: 4, step: 'gameOver', player: 0, action: 'gameOver', timestamp: 1, payload: {} }],
+      searchText: 'gameover hp',
+    });
+
+    expect(next).toMatchObject({
+      id: record.id,
+      serverMatchId: 'server-match-1',
+      rulesVersion: 'rules-2',
+      turns: 4,
+      detailsAvailable: true,
+      replayAvailable: true,
+      chronos: { finalPosition: 6 },
+      players: [{ hp: 20 }, { hp: 0 }],
+    });
   });
 
   it('prefers server records and deduplicates linked local results', () => {

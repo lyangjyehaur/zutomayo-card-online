@@ -11,6 +11,8 @@ const PROTECTED_SCHEMA_TABLES = Object.freeze([
 const APPLICATION_TABLES = Object.freeze([
   'users',
   'user_identities',
+  'user_card_collection',
+  'knowledge_search_zero_results',
   'decks',
   'deck_reservations',
   'deck_shares',
@@ -19,9 +21,14 @@ const APPLICATION_TABLES = Object.freeze([
   'deck_share_reports',
   'matches',
   'cards',
+  'card_revisions',
   'card_texts_i18n',
+  'card_synergy_groups',
+  'card_synergy_relations',
   'card_official_errata',
+  'card_official_errata_revisions',
   'official_qa_items',
+  'official_qa_item_revisions',
   'official_qa_translations',
   'card_official_errata_translations',
   'official_rulings_sync_runs',
@@ -75,15 +82,27 @@ const APPLICATION_TABLES = Object.freeze([
   'admin_sessions',
   'bjg_matches',
   'bjg_match_seats',
+  'bjg_match_telemetry',
   'bjg_match_result_outbox',
+  'match_analytics',
+  'match_analytics_decks',
+  'match_analytics_events',
 ]);
 
 const ALL_TABLES = Object.freeze([...PROTECTED_SCHEMA_TABLES, ...APPLICATION_TABLES]);
 const ALL_RELATIONS = ALL_TABLES;
+const IMMUTABLE_HISTORY_TABLES = Object.freeze([
+  'card_revisions',
+  'card_official_errata_revisions',
+  'official_qa_item_revisions',
+]);
 const API_APPEND_ONLY_AUDIT_TABLES = Object.freeze(['admin_audit_log', 'account_export_audit']);
-const API_CRUD_TABLES = Object.freeze(
-  APPLICATION_TABLES.filter((tableName) => !API_APPEND_ONLY_AUDIT_TABLES.includes(tableName)),
-);
+const ANALYTICS_TABLES = Object.freeze([
+  'bjg_match_telemetry',
+  'match_analytics',
+  'match_analytics_decks',
+  'match_analytics_events',
+]);
 const ROLE_TYPES = Object.freeze(['api', 'game', 'platform', 'retention', 'monitor', 'backup', 'wal', 'walOperator']);
 const APP_ALIAS_TYPES = Object.freeze(new Set(['api', 'game', 'platform']));
 const TABLE_PRIVILEGES = Object.freeze(['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER']);
@@ -105,7 +124,11 @@ const GAME_TABLE_PRIVILEGES = Object.freeze({
   matches: ['SELECT', 'INSERT'],
   bjg_matches: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'],
   bjg_match_seats: ['SELECT', 'INSERT', 'UPDATE'],
+  bjg_match_telemetry: ['SELECT'],
   bjg_match_result_outbox: ['SELECT', 'INSERT', 'UPDATE'],
+  match_analytics: ['SELECT', 'INSERT'],
+  match_analytics_decks: ['SELECT', 'INSERT'],
+  match_analytics_events: ['SELECT', 'INSERT'],
   season_ratings: ['SELECT', 'INSERT', 'UPDATE'],
   season_match_results: ['SELECT', 'INSERT'],
 });
@@ -117,14 +140,22 @@ const PLATFORM_READ_TABLES = Object.freeze([
   'chat_conversations',
   ...PROTECTED_SCHEMA_TABLES,
 ]);
-const PLATFORM_WRITE_TABLES = Object.freeze(['platform_match_participants', 'platform_room_participants']);
+const PLATFORM_WRITE_TABLES = Object.freeze([
+  'platform_match_participants',
+  'platform_room_participants',
+  'bjg_match_telemetry',
+]);
 const RETENTION_TABLE_PRIVILEGES = Object.freeze({
   matches: ['SELECT', 'UPDATE'],
   platform_match_participants: ['SELECT'],
   platform_room_participants: ['SELECT'],
   bjg_matches: ['SELECT'],
   bjg_match_seats: ['SELECT'],
+  bjg_match_telemetry: ['SELECT'],
   bjg_match_result_outbox: ['SELECT'],
+  match_analytics: ['SELECT'],
+  match_analytics_decks: ['SELECT'],
+  match_analytics_events: ['SELECT'],
   deck_reservations: ['SELECT'],
   deck_shares: ['SELECT'],
   deck_share_reports: ['SELECT', 'DELETE'],
@@ -148,6 +179,7 @@ const RETENTION_TABLE_PRIVILEGES = Object.freeze({
   account_export_jobs: ['SELECT', 'DELETE'],
   account_export_audit: ['SELECT', 'DELETE'],
   relationship_change_outbox: ['SELECT', 'DELETE'],
+  knowledge_search_zero_results: ['SELECT', 'DELETE'],
   retention_runs: ['INSERT', 'UPDATE'],
   schema_migrations: ['SELECT'],
   schema_migration_checksums: ['SELECT'],
@@ -264,7 +296,17 @@ function tableRulesFor(roleUsers, requiredRoleTypes) {
 
   // API owns the HTTP data plane. It gets row-level application CRUD but no
   // DDL, privilege-management, or writes to migration history.
-  grant('api', API_CRUD_TABLES, ['SELECT', 'INSERT', 'UPDATE', 'DELETE']);
+  grant(
+    'api',
+    APPLICATION_TABLES.filter(
+      (tableName) =>
+        !IMMUTABLE_HISTORY_TABLES.includes(tableName) &&
+        !API_APPEND_ONLY_AUDIT_TABLES.includes(tableName) &&
+        !ANALYTICS_TABLES.includes(tableName),
+    ),
+    ['SELECT', 'INSERT', 'UPDATE', 'DELETE'],
+  );
+  grant('api', IMMUTABLE_HISTORY_TABLES, ['SELECT']);
   grant('api', API_APPEND_ONLY_AUDIT_TABLES, ['SELECT', 'INSERT']);
   grant('api', PROTECTED_SCHEMA_TABLES, ['SELECT']);
 

@@ -1,6 +1,9 @@
-import type { ServerMatchSummary } from '../game/matchHistory';
+import type { MatchReplaySummary, ServerMatchSummary } from '../game/matchHistory';
 import type { ActionLogEntry, CardDef } from '../game/types';
 import { Sentry } from '../sentry';
+import { createKnowledgeClient } from './knowledgeClient';
+
+export * from './knowledgeClient';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 const ADMIN_TOKEN_KEY = 'zutomayo_admin_token';
@@ -261,6 +264,7 @@ export interface AccountExport {
   account: Record<string, unknown>;
   identities: unknown[];
   decks: unknown[];
+  cardCollection: unknown[];
   deckShares: unknown[];
   deckShareLikes: unknown[];
   deckShareCopies: unknown[];
@@ -781,6 +785,45 @@ export async function fetchCards(force = false): Promise<CardDef[]> {
   return data;
 }
 
+export interface CardRecommendation {
+  card: CardDef;
+  score: number;
+  reasons: string[];
+  categories?: string[];
+  rationale?: string;
+  rationaleI18n?: Record<string, string>;
+  source?: 'approved' | 'heuristic';
+  recommendationType: 'synergy' | 'same_song';
+}
+
+const knowledgeClient = createKnowledgeClient({ request, adminAuthHeaders });
+
+export const { suggestKnowledge, searchKnowledgeIds, searchKnowledge, adminGetKnowledgeSearchZeroResults } =
+  knowledgeClient;
+
+export async function fetchCatalogCards(
+  params: {
+    query?: string;
+    pack?: string;
+    element?: string;
+    type?: string;
+    distributionType?: string;
+  } = {},
+): Promise<CardDef[]> {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value) query.set(key, value);
+  }
+  const suffix = query.toString() ? `?${query.toString()}` : '';
+  return request<CardDef[]>(`/catalog/cards${suffix}`);
+}
+
+export async function fetchCardRecommendations(cardId: string, limit = 12): Promise<CardRecommendation[]> {
+  return request<CardRecommendation[]>(
+    `/catalog/cards/${encodeURIComponent(cardId)}/recommendations?limit=${encodeURIComponent(String(limit))}`,
+  );
+}
+
 export interface CardTextI18nEntry {
   name: string;
   effect: string;
@@ -820,8 +863,11 @@ export interface OfficialQaItem {
   translationStatus: OfficialTranslationStatus;
   sourceUrl: string;
   lastSyncedAt: string;
+  contentHash: string;
   contentVersion: number;
 }
+
+type OfficialQaWireItem = Omit<OfficialQaItem, 'tagIds'> & { tagIds?: string[] };
 
 export interface OfficialErrataItem {
   errataId: string;
@@ -841,6 +887,7 @@ export interface OfficialErrataItem {
   translationStatus: OfficialTranslationStatus;
   sourceUrl: string;
   lastSyncedAt: string;
+  contentHash: string;
   contentVersion: number;
 }
 
@@ -934,8 +981,13 @@ export async function fetchOfficialQa(
   if (filters.query) params.set('query', filters.query);
   if (filters.tag) params.set('tag', filters.tag);
   if (filters.cardId) params.set('cardId', filters.cardId);
-  const data = await request<{ items: OfficialQaItem[] }>(`/official/qa?${params.toString()}`);
-  return data.items;
+  const data = await request<{ items: OfficialQaWireItem[] }>(`/official/qa?${params.toString()}`);
+  return data.items.map((item) => ({
+    ...item,
+    tags: Array.isArray(item.tags) ? item.tags : [],
+    tagIds: Array.isArray(item.tagIds) ? item.tagIds : Array.isArray(item.tags) ? item.tags : [],
+    relatedCardIds: Array.isArray(item.relatedCardIds) ? item.relatedCardIds : [],
+  }));
 }
 
 export async function fetchOfficialQaItem(number: number, language: string): Promise<OfficialQaItem> {
@@ -1141,6 +1193,26 @@ export function isLoggedIn(): boolean {
 // ===== Profile =====
 export async function getProfile(): Promise<ProfileResponse> {
   return request('/profile');
+}
+
+export async function getOwnedCardIds(): Promise<string[]> {
+  const result = await request<{ cardIds: string[] }>('/profile/card-collection');
+  return result.cardIds;
+}
+
+export async function setOwnedCard(cardId: string, owned: boolean): Promise<{ cardId: string; owned: boolean }> {
+  return request(`/profile/card-collection/${encodeURIComponent(cardId)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ owned }),
+  });
+}
+
+export async function mergeOwnedCards(cardIds: string[]): Promise<string[]> {
+  const result = await request<{ cardIds: string[] }>('/profile/card-collection/merge', {
+    method: 'POST',
+    body: JSON.stringify({ cardIds }),
+  });
+  return result.cardIds;
 }
 
 export async function updateProfile(nickname: string): Promise<ProfileResponse> {
@@ -1378,6 +1450,7 @@ export async function listDeckShares(
   params: {
     sort?: DeckShareSort;
     q?: string;
+    lang?: string;
     element?: string;
     cursor?: string;
     limit?: number;
@@ -1386,6 +1459,7 @@ export async function listDeckShares(
   const query = new URLSearchParams();
   if (params.sort) query.set('sort', params.sort);
   if (params.q) query.set('q', params.q);
+  if (params.lang) query.set('lang', params.lang);
   if (params.element) query.set('element', params.element);
   if (params.cursor) query.set('cursor', params.cursor);
   if (params.limit) query.set('limit', String(params.limit));
@@ -1483,6 +1557,13 @@ export async function getMatches(limit = 50, offset = 0): Promise<ServerMatchSum
 export async function getMatchLog(matchId: string): Promise<ActionLogEntry[]> {
   const data = await request<{ matchId: string; actionLog: ActionLogEntry[] }>(`/matches/${matchId}/log`);
   return data.actionLog;
+}
+
+export async function getMatchReplay(matchId: string): Promise<MatchReplaySummary> {
+  const data = await request<{ matchId: string; replay: MatchReplaySummary }>(
+    `/matches/${encodeURIComponent(matchId)}/replay`,
+  );
+  return data.replay;
 }
 
 // ===== Leaderboard =====
@@ -2203,6 +2284,85 @@ export async function adminUpdateCard(id: string, card: Partial<CardDef>): Promi
   await adminReloadGameCards();
   cardsCache = null;
   return updated;
+}
+
+export async function adminGetCards(): Promise<CardDef[]> {
+  return request<CardDef[]>('/admin/cards', { headers: adminAuthHeaders() });
+}
+
+export type CardSynergyCategory =
+  | 'named_card_song'
+  | 'element'
+  | 'zone_resource'
+  | 'chronos'
+  | 'hp_damage'
+  | 'hand_draw'
+  | 'card_stats_type'
+  | 'deck_flow'
+  | 'area_enchant'
+  | 'event_trigger'
+  | 'other';
+
+export interface AdminCardSynergy {
+  id: string;
+  groupId: string;
+  sourceCardId: string;
+  sourceCardName: string;
+  targetCardId: string;
+  targetCardName: string;
+  kind: 'enables' | 'conflicts';
+  primaryCategory: CardSynergyCategory;
+  categories: CardSynergyCategory[];
+  confidence: 'high' | 'medium' | 'low';
+  score: number;
+  rationaleJa: string;
+  rationaleI18n: Record<string, string>;
+  evidence: unknown[];
+  reviewStatus: 'candidate' | 'approved' | 'rejected' | 'needs_changes';
+  recommendationEligible: boolean;
+  sourceVersion: string;
+  rulesVersion: string;
+  reviewedAt: string | null;
+  updatedAt: string;
+}
+
+export type AdminCardSynergyInput = Omit<
+  AdminCardSynergy,
+  'id' | 'sourceCardName' | 'targetCardName' | 'reviewedAt' | 'updatedAt'
+>;
+
+export async function adminGetCardSynergies(
+  params: {
+    status?: string;
+    category?: string;
+    query?: string;
+    limit?: number;
+  } = {},
+): Promise<AdminCardSynergy[]> {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== '') search.set(key, String(value));
+  }
+  const data = await request<{ relations: AdminCardSynergy[] }>(`/admin/card-synergies?${search.toString()}`, {
+    headers: adminAuthHeaders(),
+  });
+  return data.relations;
+}
+
+export async function adminCreateCardSynergy(input: AdminCardSynergyInput): Promise<AdminCardSynergy> {
+  return request('/admin/card-synergies', {
+    method: 'POST',
+    headers: adminAuthHeaders(),
+    body: JSON.stringify(input),
+  });
+}
+
+export async function adminUpdateCardSynergy(id: string, input: AdminCardSynergyInput): Promise<AdminCardSynergy> {
+  return request(`/admin/card-synergies/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    headers: adminAuthHeaders(),
+    body: JSON.stringify(input),
+  });
 }
 
 export async function adminGetCardOfficialErrata(cardId: string): Promise<CardOfficialErrata | null> {

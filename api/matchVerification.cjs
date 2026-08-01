@@ -119,6 +119,7 @@ async function verifyBoardgameMatchResult(pool, sourceMatchId, winnerPlayer, aut
     rulesVersion: authoritativeRulesVersion(match.metadata),
     authoritative: {
       ...authoritativeMatchStats(match.state),
+      replayState: match.state.G,
       completedAt:
         typeof match.completed_at === 'string' && match.completed_at
           ? new Date(match.completed_at).toISOString()

@@ -87,6 +87,14 @@ test.describe('牌組分享大廳', () => {
       localStorage.setItem('zutomayo_deck_intro_seen', 'true');
       localStorage.setItem('zutomayo_locale', 'zh-TW');
       localStorage.setItem('zutomayo_deck_share_demo_disabled', 'true');
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: { writeText: async () => undefined },
+      });
+      Object.defineProperty(navigator, 'share', {
+        configurable: true,
+        value: undefined,
+      });
     });
     await page.route('**/api/config', (route) => route.fulfill({ json: { deck_sharing_enabled: true } }));
     await page.route(
@@ -150,7 +158,13 @@ test.describe('牌組分享大廳', () => {
     const sheet = page.getByRole('dialog', { name: 'Test Card 0' });
     await expect(sheet).toBeVisible();
     await expect(sheet.getByText('Test effect 0')).toBeVisible();
-    await waitForModalAnimations(sheet);
+    await expect
+      .poll(() =>
+        sheet.evaluate((element) =>
+          element.getAnimations({ subtree: true }).every((animation) => animation.playState === 'finished'),
+        ),
+      )
+      .toBe(true);
     await expectNoBlockingAxeViolations(page, '分享卡牌詳情 Sheet');
     await sheet.getByRole('button', { name: '關閉' }).click();
     await page.getByRole('button', { name: '分享連結' }).first().click();
@@ -372,8 +386,7 @@ test.describe('牌組分享大廳', () => {
       await route.fulfill({ json: { shareId: share.id, moderationStatus, moderationReason: body.moderationStatus } });
     });
 
-    await page.goto('/admin');
-    await page.getByRole('button', { name: '牌組分享' }).click();
+    await page.goto('/admin/deck-shares');
     await expect(page.getByRole('heading', { name: '牌組分享審核' })).toBeVisible();
     await page.getByRole('button', { name: '隱藏分享' }).click();
     await expect(page.getByText('沒有牌組分享檢舉', { exact: true })).toBeVisible();

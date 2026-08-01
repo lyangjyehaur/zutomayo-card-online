@@ -96,6 +96,42 @@ describe('official rule documents service', () => {
     });
   });
 
+  it('accepts an empty translated body for a structural heading', () => {
+    const document = mapRuleDocumentRows(
+      [
+        {
+          ...baseRow,
+          section_id: 'overview',
+          sort_order: 0,
+          section_title_ja: 'グランドルール',
+          body_ja: '概要',
+          translated_title: 'Grand Rules',
+          translated_body: 'Overview',
+          translation_status: 'verified',
+        },
+        {
+          ...baseRow,
+          section_id: 'chapter-1',
+          section_number: '1',
+          sort_order: 1,
+          section_title_ja: 'ゲームの概要',
+          body_ja: '',
+          translated_title: 'Game Overview',
+          translated_body: '',
+          translation_status: 'verified',
+        },
+      ],
+      'en',
+    );
+
+    expect(document?.sections[0]).toMatchObject({
+      id: 'chapter-1',
+      localized: { title: 'Game Overview', body: '' },
+      effectiveLocale: 'en',
+      translationStatus: 'verified',
+    });
+  });
+
   it('rejects unknown document ids without querying PostgreSQL', async () => {
     const pool = { query: vi.fn() };
     await expect(getPublicRuleDocument({ pool, language: 'en', documentId: 'other' })).resolves.toMatchObject({

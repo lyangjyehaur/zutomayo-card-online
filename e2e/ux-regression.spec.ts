@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { QUICK_MATCH_ENABLED } from '../src/featureFlags';
 
 async function prepareGuest(page: Page) {
   await page.addInitScript(() => {
@@ -57,38 +58,47 @@ test.describe('首次造訪流程回歸', () => {
     await page.setViewportSize({ width: 390, height: 844 });
   });
 
-  test('線上大廳先選牌組，選擇後帶到快速配對', async ({ page }) => {
+  test('線上大廳先選牌組，並提供公開房間入口 @core', async ({ page }) => {
     await page.goto('/online');
     const deckPanel = page.locator('[data-room-panel="deck"]');
     const quickPanel = page.locator('[data-room-panel="quick"]');
     const customPanel = page.locator('[data-room-panel="custom"]').first();
     await expect(deckPanel).toBeVisible({ timeout: 30_000 });
-    expect(await topOf(deckPanel)).toBeLessThan(await topOf(quickPanel));
-    expect(await topOf(quickPanel)).toBeLessThan(await topOf(customPanel));
+    expect(await topOf(deckPanel)).toBeLessThan(await topOf(customPanel));
+
+    const roomCodeInput = customPanel.getByRole('textbox', { name: '房間代碼', exact: true });
+    const joinRoomButton = customPanel.getByRole('button', { name: '加入房間', exact: true });
+    await roomCodeInput.fill('ROOM42');
+    await expect(joinRoomButton).toBeDisabled();
 
     await deckPanel.getByRole('button', { name: /隨機牌組/ }).click();
-    await expect
-      .poll(() => quickPanel.evaluate((element) => Math.abs(element.getBoundingClientRect().top)))
-      .toBeLessThanOrEqual(110);
+    await expect(quickPanel).toHaveCount(QUICK_MATCH_ENABLED ? 1 : 0);
+    await expect.poll(() => topOf(customPanel)).toBeLessThan(500);
+    await expect(customPanel).toBeVisible();
+    await expect(customPanel.getByRole('button', { name: /建立公開房間/ })).toBeVisible();
+    await expect(joinRoomButton).toBeEnabled();
   });
 
-  test('AI 大廳依序把下一個決策帶入視窗', async ({ page }) => {
+  test('AI 大廳依序把下一個決策帶入視窗 @core', async ({ page }) => {
     await page.goto('/ai');
     const steps = page.locator('main section[aria-label^="0"]');
     await expect(steps).toHaveCount(3, { timeout: 30_000 });
+    await expect(steps.nth(1).getByRole('button', { name: /隨機牌組/ })).toHaveAttribute('aria-pressed', 'true');
+    await expect(steps.nth(2).getByRole('button', { name: /簡單/ })).toBeDisabled();
 
     await steps
       .nth(0)
       .getByRole('button', { name: /隨機牌組/ })
       .click();
     await expect.poll(() => steps.nth(1).evaluate((element) => element.getBoundingClientRect().top)).toBeLessThan(500);
+    await expect(steps.nth(2).getByRole('button', { name: /簡單/ })).toBeEnabled();
 
     await steps
       .nth(1)
       .getByRole('button', { name: /克制牌組/ })
       .click();
     await expect.poll(() => steps.nth(2).evaluate((element) => element.getBoundingClientRect().top)).toBeLessThan(500);
-    await expect(steps.nth(2).getByRole('button', { name: /簡單/ })).toBeVisible();
+    await expect(steps.nth(2).getByRole('button', { name: /簡單/ })).toBeEnabled();
   });
 
   test('空白對戰紀錄只顯示必要資訊', async ({ page }) => {

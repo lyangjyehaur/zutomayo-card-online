@@ -10,7 +10,7 @@ import type { TutorialStep } from '../components/GameTutorialOverlay';
  * 流程順序：
  * 1. 從 CH.04 直接進入猜拳，第一步就是實際操作。
  * 2. 查看五張起手牌後，完成重抽與 T1 初始放置。
- * 3. 透過實際通知說明時計推進與 HP 計算。
+ * 3. 透過正式場上動畫說明時計推進與 HP 計算。
  * 4. T2 追趕回合放置角色卡與 Area Enchant。
  * 5. 有效果或待選卡牌時直接操作，不再先顯示重複的說明頁。
  * 6. 完成 T2 結算並結束教學。
@@ -18,7 +18,7 @@ import type { TutorialStep } from '../components/GameTutorialOverlay';
  * - 無 completeWhen：導覽步驟，用戶手動點 Next。
  * - 有 completeWhen：操作步驟，偵測遊戲狀態達成後自動推進，隱藏 Next 並高亮可操作區。
  * - 有 skipWhen：條件式步驟，進入時若為 true 自動跳過（如該回合無效果卡）。
- * - 有 advanceOnNoticeDismiss：由 GameNotice 彈窗確認按鈕推進（如時鐘/HP 彈窗）。
+ * - 有 advanceOnResolutionComplete：正式場上結算動畫播完後自動推進。
  */
 export const TUTORIAL_STEPS: TutorialStep[] = [
   // === CH.04 戰鬥準備：每一步只開放劇本指定的操作 ===
@@ -133,27 +133,27 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     chapter: 'flow',
     phase: 'clock-advance',
     backBehavior: { type: 'direct' },
-    target: '[data-tut="game-notice-panel"]',
-    interactionTarget: '[data-tut="game-notice-panel"] button',
+    target: '[data-tut="central-arena"]',
+    interactionTarget: null,
     title: 'tutorial.game.clockAdvance.title',
     body: 'tutorial.game.clockAdvance.body',
     placement: 'bottom',
     padding: 12,
     hideNext: true,
-    advanceOnNoticeDismiss: true,
+    advanceOnResolutionComplete: true,
   },
   {
     chapter: 'flow',
     phase: 'hp-calc',
     backBehavior: { type: 'restart', checkpoint: 'flow' },
-    target: '[data-tut="game-notice-panel"]',
-    interactionTarget: '[data-tut="game-notice-panel"] button',
+    target: ['[data-tut="central-arena"]', '[data-tut="player-hp"]'],
+    interactionTarget: null,
     title: 'tutorial.game.hpCalc.title',
     body: 'tutorial.game.hpCalc.body',
     placement: 'bottom',
     padding: 12,
     hideNext: true,
-    advanceOnNoticeDismiss: true,
+    advanceOnResolutionComplete: true,
   },
   {
     chapter: 'flow',
@@ -231,14 +231,14 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     chapter: 'flow',
     phase: 'reveal-clock',
     backBehavior: { type: 'restart', checkpoint: 'turn2' },
-    target: '[data-tut="game-notice-panel"]',
-    interactionTarget: '[data-tut="game-notice-panel"] button',
+    target: '.bf-field',
+    interactionTarget: null,
     title: 'tutorial.game.revealClock.title',
     body: 'tutorial.game.revealClock.body',
     placement: 'bottom',
     padding: 12,
     hideNext: true,
-    advanceOnNoticeDismiss: true,
+    advanceOnResolutionComplete: true,
   },
   {
     chapter: 'flow',
@@ -296,14 +296,14 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     chapter: 'flow',
     phase: 'hp-calc',
     backBehavior: { type: 'direct' },
-    target: '[data-tut="game-notice-panel"]',
-    interactionTarget: '[data-tut="game-notice-panel"] button',
+    target: ['[data-tut="central-arena"]', '[data-tut="opponent-hp"]'],
+    interactionTarget: null,
     title: 'tutorial.game.hpCalc.turn2.title',
     body: 'tutorial.game.hpCalc.turn2.body',
     placement: 'bottom',
     padding: 12,
     hideNext: true,
-    advanceOnNoticeDismiss: true,
+    advanceOnResolutionComplete: true,
   },
   {
     chapter: 'flow',

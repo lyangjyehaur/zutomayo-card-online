@@ -39,6 +39,9 @@ services:
       - CARD_OCR_OVERRIDES_SOURCE=/run/card-data/card-english-ocr-overrides.json
       - OFFICIAL_RULINGS_TRANSLATIONS_FILE=/run/card-data/official-rulings-translations.json
       - OFFICIAL_RULE_DOCUMENTS_FILE=/run/card-data/official-rule-documents-20260721.json
+      - MEILI_HOST=http://meilisearch:7700
+      - MEILI_MASTER_KEY=${MEILI_MASTER_KEY:?Set a strong MEILI_MASTER_KEY in .env}
+      - MEILI_INDEX_UID=${MEILI_INDEX_UID:-zutomayo_knowledge}
     networks:
       - default
       - 1panel-network
@@ -46,10 +49,6 @@ services:
       - type: bind
         source: ${PG_CA_FILE:?Set PG_CA_FILE to the mounted PostgreSQL CA}
         target: /run/secrets/zutomayo-service-ca.crt
-        read_only: true
-      - type: bind
-        source: ${BATTLE_ASSET_DIR:-./public/battle}
-        target: /app/dist/battle
         read_only: true
       - type: bind
         source: ${CARD_DATA_DIR:?Set CARD_DATA_DIR to the private reviewed card-data directory}
@@ -68,6 +67,8 @@ services:
       - APP_BUILD_ID=${RELEASE_SHA:?Set RELEASE_SHA from the verified release manifest}
       - GAME_RULES_VERSION=${GAME_RULES_VERSION:?Set GAME_RULES_VERSION from the verified release manifest}
       - UMAMI_UPSTREAM_URL=${UMAMI_UPSTREAM_URL:-}
+      - DEPLOYMENT_ENV=production
+      - CARD_DATASET_SHA256=${VITE_CARD_DATASET_SHA256:?Set VITE_CARD_DATASET_SHA256 to the release dataset digest}
       - PG_HOST=postgresql
       - PG_PORT=5432
       - PG_USER=${PG_GAME_USER:?Set PG_GAME_USER in .env}
@@ -121,6 +122,10 @@ services:
         source: ${PG_CA_FILE:?Set PG_CA_FILE to the mounted PostgreSQL CA}
         target: /run/secrets/zutomayo-service-ca.crt
         read_only: true
+      - type: bind
+        source: ${BATTLE_ASSET_DIR:-./public/battle}
+        target: /app/dist/battle
+        read_only: true
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -142,6 +147,7 @@ services:
       - APP_VERSION=${APP_VERSION:?Set APP_VERSION from the verified release manifest}
       - APP_BUILD_ID=${RELEASE_SHA:?Set RELEASE_SHA from the verified release manifest}
       - GAME_RULES_VERSION=${GAME_RULES_VERSION:?Set GAME_RULES_VERSION from the verified release manifest}
+      - DEPLOYMENT_ENV=production
       - PG_HOST=postgresql
       - PG_PORT=5432
       - PG_USER=${PG_API_USER:?Set PG_API_USER in .env}
@@ -255,6 +261,13 @@ services:
       - TRANSLATION_PROVIDER=${TRANSLATION_PROVIDER:-}
       - TRANSLATION_MODEL=${TRANSLATION_MODEL:-}
       - TRANSLATION_TIMEOUT_MS=${TRANSLATION_TIMEOUT_MS:-10000}
+      - MEILI_HOST=http://meilisearch:7700
+      - MEILI_MASTER_KEY=${MEILI_MASTER_KEY:?Set a strong MEILI_MASTER_KEY in .env}
+      - MEILI_INDEX_UID=${MEILI_INDEX_UID:-zutomayo_knowledge}
+      - MEILI_TIMEOUT_MS=${MEILI_TIMEOUT_MS:-2500}
+      - SEARCH_REINDEX_INTERVAL_MS=${SEARCH_REINDEX_INTERVAL_MS:-300000}
+      - SEARCH_REINDEX_DEBOUNCE_MS=${SEARCH_REINDEX_DEBOUNCE_MS:-2000}
+      - SEARCH_FALLBACK_CACHE_MS=${SEARCH_FALLBACK_CACHE_MS:-60000}
       - CHAT_BLOCKED_WORDS=${CHAT_BLOCKED_WORDS:-}
       - CHAT_REVIEW_WORDS=${CHAT_REVIEW_WORDS:-}
       - SENTRY_DSN=${SENTRY_DSN:-}
@@ -305,6 +318,8 @@ services:
       - PLATFORM_PORT=3002
       - PLATFORM_PUBLIC_ADDRESS=${PLATFORM_PUBLIC_ADDRESS:?Set the absolute wss:// address advertised by this platform instance}
       - NODE_ENV=production
+      - DEPLOYMENT_ENV=production
+      - MATCH_ANALYTICS_TRAFFIC_CLASS=production
       - APP_VERSION=${APP_VERSION:?Set APP_VERSION from the verified release manifest}
       - APP_BUILD_ID=${RELEASE_SHA:?Set RELEASE_SHA from the verified release manifest}
       - GAME_RULES_VERSION=${GAME_RULES_VERSION:?Set GAME_RULES_VERSION from the verified release manifest}

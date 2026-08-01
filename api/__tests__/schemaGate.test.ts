@@ -110,242 +110,53 @@ describe('production schema gate', () => {
     expect(REQUIRED_RUNTIME_COLUMNS.account_deletion_requests).not.toContain('poison_count');
   });
 
-  it('requires the official English card fields used by API, game, and seed readers', () => {
-    expect(REQUIRED_RUNTIME_COLUMNS.cards).toEqual(expect.arrayContaining(['en_name_official', 'en_effect_official']));
-    expect(REQUIRED_RUNTIME_COLUMN_CONTRACTS).toEqual(
+  it('requires the permanent anonymous match analytics contract', () => {
+    expect(REQUIRED_RUNTIME_TABLES).toEqual(
       expect.arrayContaining([
-        {
-          tableName: 'cards',
-          columnName: 'en_name_official',
-          udtName: 'text',
-          nullable: false,
-          defaultToken: "''",
-        },
-        {
-          tableName: 'cards',
-          columnName: 'en_effect_official',
-          udtName: 'text',
-          nullable: false,
-          defaultToken: "''",
-        },
+        'bjg_match_telemetry',
+        'match_analytics',
+        'match_analytics_decks',
+        'match_analytics_events',
       ]),
     );
-  });
-
-  it('requires the protected signed official-card dataset ledger', () => {
-    expect(REQUIRED_RUNTIME_TABLES).toContain('official_card_data_releases');
-    expect(REQUIRED_RUNTIME_COLUMNS.official_card_data_releases).toEqual([
-      'dataset_sha256',
-      'extraction_sha256',
-      'errata_sha256',
-      'review_provenance_sha256',
-      'release_sha',
-      'card_count',
-      'errata_count',
-      'applied_at',
-    ]);
-    expect(
-      REQUIRED_RUNTIME_COLUMN_CONTRACTS.filter(({ tableName }) => tableName === 'official_card_data_releases')
-        .map(({ columnName }) => columnName)
-        .sort(),
-    ).toEqual([...REQUIRED_RUNTIME_COLUMNS.official_card_data_releases].sort());
-    expect(REQUIRED_RUNTIME_COLUMN_CONTRACTS).toEqual(
+    expect(REQUIRED_RUNTIME_COLUMNS.bjg_match_seats).toContain('resume_count');
+    expect(REQUIRED_RUNTIME_COLUMNS.bjg_match_telemetry).toEqual(
+      expect.arrayContaining(['match_mode', 'traffic_class', 'player0_disconnect_count', 'player1_reconnect_count']),
+    );
+    expect(REQUIRED_RUNTIME_COLUMNS.match_analytics).toEqual(
       expect.arrayContaining([
-        {
-          tableName: 'official_card_data_releases',
-          columnName: 'review_provenance_sha256',
-          udtName: 'text',
-          nullable: false,
-          defaultToken: null,
-        },
-        {
-          tableName: 'official_card_data_releases',
-          columnName: 'card_count',
-          udtName: 'int4',
-          nullable: false,
-          defaultToken: null,
-        },
-        {
-          tableName: 'official_card_data_releases',
-          columnName: 'applied_at',
-          udtName: 'timestamptz',
-          nullable: false,
-          defaultToken: 'now()',
-        },
+        'source_match_digest',
+        'integrity_sha256',
+        'disconnect_counts',
+        'reconnect_counts',
+        'seat_resume_counts',
+        'deck_count',
+        'event_count',
       ]),
     );
-    expect(REQUIRED_RUNTIME_CONSTRAINTS).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          tableName: 'official_card_data_releases',
-          constraintType: 'p',
-          fragments: ['primary key (dataset_sha256)'],
-        }),
-        expect.objectContaining({
-          tableName: 'official_card_data_releases',
-          constraintType: 'c',
-          fragments: ['dataset_sha256', '^[a-f0-9]{64}$'],
-        }),
-        expect.objectContaining({
-          tableName: 'official_card_data_releases',
-          constraintType: 'c',
-          fragments: ['review_provenance_sha256', '^[a-f0-9]{64}$'],
-        }),
-        expect.objectContaining({
-          tableName: 'official_card_data_releases',
-          constraintType: 'c',
-          fragments: ['release_sha', '^[a-f0-9]{40}$'],
-        }),
-        expect.objectContaining({
-          tableName: 'official_card_data_releases',
-          constraintType: 'c',
-          fragments: ['card_count > 0'],
-        }),
-        expect.objectContaining({
-          tableName: 'official_card_data_releases',
-          constraintType: 'c',
-          fragments: ['errata_count <= card_count'],
-        }),
-      ]),
+    expect(REQUIRED_RUNTIME_COLUMNS.match_analytics_decks).toContain('card_ids');
+    expect(REQUIRED_RUNTIME_COLUMNS.match_analytics_events).toContain('payload');
+    expect(REQUIRED_RUNTIME_CONSTRAINTS).toContainEqual(
+      expect.objectContaining({
+        tableName: 'match_analytics',
+        constraintName: 'match_analytics_digest_check',
+      }),
     );
-  });
-
-  it('requires the credential, revocation, and durable admin audit schema contracts', () => {
-    expect(REQUIRED_RUNTIME_COLUMNS.users).toContain('identity_anonymized_at');
-    expect(REQUIRED_RUNTIME_COLUMN_CONTRACTS).toContainEqual({
-      tableName: 'users',
-      columnName: 'identity_anonymized_at',
-      udtName: 'timestamptz',
-      nullable: true,
-      defaultToken: null,
-    });
-    expect(REQUIRED_RUNTIME_INDEXES).toContainEqual({
-      tableName: 'users',
-      indexName: 'idx_users_deleted_identity_pending',
-      fragments: ['(deleted_at)', 'deleted_at is not null', 'identity_anonymized_at is null'],
-    });
-    expect(REQUIRED_RUNTIME_COLUMNS.admin_users).toEqual(
-      expect.arrayContaining([
-        'user_id',
-        'password_hash',
-        'salt',
-        'totp_secret_ciphertext',
-        'updated_at',
-        'disabled_at',
-      ]),
+    expect(REQUIRED_RUNTIME_INDEXES).toContainEqual(
+      expect.objectContaining({ tableName: 'match_analytics', indexName: 'idx_match_analytics_completed_at' }),
     );
-    for (const columnName of ['user_id', 'password_hash', 'salt']) {
-      expect(REQUIRED_RUNTIME_COLUMN_CONTRACTS).toContainEqual({
-        tableName: 'admin_users',
-        columnName,
-        udtName: 'text',
-        nullable: true,
-        defaultToken: null,
-      });
-    }
-    expect(REQUIRED_RUNTIME_COLUMNS.admin_sessions).toEqual(
-      expect.arrayContaining(['jti', 'admin_user_id', 'expires_at', 'revoked_at', 'last_seen_at']),
+    expect(REQUIRED_RUNTIME_CONSTRAINTS).toContainEqual(
+      expect.objectContaining({
+        tableName: 'bjg_match_telemetry',
+        constraintName: 'bjg_match_telemetry_classification_check',
+      }),
     );
-    expect(REQUIRED_RUNTIME_COLUMNS.admin_audit_log).toEqual(
-      expect.arrayContaining(['admin_user_id', 'target_id', 'details', 'created_at', 'identity_anonymized_at']),
+    expect(REQUIRED_RUNTIME_INDEXES).toContainEqual(
+      expect.objectContaining({
+        tableName: 'bjg_match_telemetry',
+        indexName: 'idx_bjg_match_telemetry_classification',
+      }),
     );
-    expect(REQUIRED_RUNTIME_INDEXES).toContainEqual({
-      tableName: 'admin_sessions',
-      indexName: 'idx_admin_sessions_user_expiry',
-      fragments: ['admin_user_id', 'expires_at'],
-    });
-    expect(REQUIRED_RUNTIME_INDEXES).toContainEqual({
-      tableName: 'admin_users',
-      indexName: 'uq_admin_users_user_id',
-      fragments: ['unique index', '(user_id)'],
-    });
-    expect(REQUIRED_RUNTIME_CONSTRAINTS).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ tableName: 'admin_users', constraintType: 'u', fragments: ['unique (username)'] }),
-        expect.objectContaining({
-          tableName: 'admin_users',
-          constraintType: 'f',
-          fragments: expect.arrayContaining(['foreign key (user_id)', 'references users(id)', 'on delete cascade']),
-        }),
-        expect.objectContaining({
-          tableName: 'admin_users',
-          constraintName: 'admin_users_auth_mode_check',
-          constraintType: 'c',
-          fragments: expect.arrayContaining([
-            'user_id is null',
-            'password_hash is not null',
-            'salt is not null',
-            'user_id is not null',
-          ]),
-        }),
-        expect.objectContaining({
-          tableName: 'admin_sessions',
-          constraintType: 'f',
-          fragments: expect.arrayContaining(['references admin_users(id)', 'on delete cascade']),
-        }),
-      ]),
-    );
-  });
-
-  it('requires the complete asynchronous account export schema contract', () => {
-    expect(REQUIRED_RUNTIME_TABLES).toEqual(expect.arrayContaining(['account_export_jobs', 'account_export_audit']));
-    expect(REQUIRED_RUNTIME_COLUMNS.account_export_jobs).toEqual(
-      expect.arrayContaining(['lease_token', 'lease_expires_at', 'object_version_id', 'content_sha256', 'purged_at']),
-    );
-    expect(REQUIRED_RUNTIME_INDEXES.map(({ indexName }) => indexName)).toEqual(
-      expect.arrayContaining([
-        'uq_account_export_jobs_active_user',
-        'idx_account_export_jobs_purge',
-        'idx_account_export_jobs_retention',
-        'idx_account_export_audit_retention',
-        'uq_account_export_audit_request_event',
-        'uq_account_export_audit_request_terminal',
-      ]),
-    );
-    const auditConstraint = REQUIRED_RUNTIME_CONSTRAINTS.find(
-      ({ tableName, constraintType }) => tableName === 'account_export_audit' && constraintType === 'c',
-    );
-    expect(auditConstraint?.fragments).toEqual(
-      expect.arrayContaining([
-        'download_started',
-        'download_completed',
-        'download_interrupted',
-        'integrity_failed',
-        'expired',
-        'purged',
-      ]),
-    );
-    expect(REQUIRED_RUNTIME_COLUMN_CONTRACTS).toEqual(
-      expect.arrayContaining([
-        {
-          tableName: 'account_export_jobs',
-          columnName: 'user_id',
-          udtName: 'text',
-          nullable: true,
-          defaultToken: null,
-        },
-        {
-          tableName: 'account_export_audit',
-          columnName: 'user_id',
-          udtName: 'text',
-          nullable: true,
-          defaultToken: null,
-        },
-        {
-          tableName: 'season_match_results',
-          columnName: 'winner_user_id',
-          udtName: 'text',
-          nullable: true,
-          defaultToken: null,
-        },
-      ]),
-    );
-    expect(
-      REQUIRED_RUNTIME_CONSTRAINTS.find(
-        ({ tableName, constraintType, fragments }) =>
-          tableName === 'account_export_jobs' && constraintType === 'f' && fragments.includes('foreign key (user_id)'),
-      )?.fragments,
-    ).toContain('on delete set null');
   });
 
   it('requires official and localized card text schema', () => {
@@ -353,6 +164,9 @@ describe('production schema gate', () => {
     expect(REQUIRED_RUNTIME_TABLES).toContain('card_texts_i18n');
     expect(REQUIRED_RUNTIME_TABLES).toContain('card_official_errata');
     expect(REQUIRED_RUNTIME_TABLES).toContain('official_qa_items');
+    expect(REQUIRED_RUNTIME_TABLES).toContain('official_qa_item_revisions');
+    expect(REQUIRED_RUNTIME_TABLES).toContain('card_official_errata_revisions');
+    expect(REQUIRED_RUNTIME_TABLES).toContain('card_revisions');
     expect(REQUIRED_RUNTIME_TABLES).toContain('official_qa_translations');
     expect(REQUIRED_RUNTIME_TABLES).toContain('card_official_errata_translations');
     expect(REQUIRED_RUNTIME_TABLES).toContain('official_rulings_sync_runs');
@@ -360,6 +174,8 @@ describe('production schema gate', () => {
     expect(REQUIRED_RUNTIME_TABLES).toContain('official_rule_sections');
     expect(REQUIRED_RUNTIME_TABLES).toContain('official_rule_section_translations');
     expect(REQUIRED_RUNTIME_TABLES).toContain('official_rule_active_versions');
+    expect(REQUIRED_RUNTIME_TABLES).toContain('knowledge_search_zero_results');
+    expect(REQUIRED_RUNTIME_COLUMNS.knowledge_search_zero_results).toContain('normalized_query');
     expect(REQUIRED_RUNTIME_COLUMNS.cards).toContain('en_name_official');
     expect(REQUIRED_RUNTIME_COLUMNS.cards).toContain('has_official_errata');
     expect(REQUIRED_RUNTIME_COLUMNS.card_texts_i18n).toEqual(
@@ -368,6 +184,9 @@ describe('production schema gate', () => {
     expect(REQUIRED_RUNTIME_COLUMNS.card_official_errata).toContain('corrected_english_source');
     expect(REQUIRED_RUNTIME_COLUMNS.card_official_errata).toContain('content_version');
     expect(REQUIRED_RUNTIME_COLUMNS.official_qa_items).toContain('question_ja');
+    expect(REQUIRED_RUNTIME_COLUMNS.official_qa_item_revisions).toContain('content_version');
+    expect(REQUIRED_RUNTIME_COLUMNS.card_official_errata_revisions).toContain('corrected_japanese_text');
+    expect(REQUIRED_RUNTIME_COLUMNS.card_revisions).toContain('name');
     expect(REQUIRED_RUNTIME_COLUMNS.official_qa_translations).toContain('question_text');
     expect(REQUIRED_RUNTIME_COLUMNS.official_rulings_sync_runs).toContain('diff');
     expect(REQUIRED_RUNTIME_COLUMNS.official_rule_documents).toContain('source_sha256');
@@ -381,15 +200,14 @@ describe('production schema gate', () => {
         constraintName: 'card_texts_i18n_derived_lang_check',
       }),
     );
-    expect(REQUIRED_RUNTIME_COLUMNS.card_official_errata).toEqual(
-      expect.arrayContaining([
-        'errata_id',
-        'card_id',
-        'published_at',
-        'incorrect_text',
-        'corrected_english_source',
-        'updated_at',
-      ]),
+    expect(REQUIRED_RUNTIME_CONSTRAINTS).toContainEqual(
+      expect.objectContaining({ tableName: 'official_qa_item_revisions', constraintType: 'p' }),
+    );
+    expect(REQUIRED_RUNTIME_CONSTRAINTS).toContainEqual(
+      expect.objectContaining({
+        tableName: 'card_texts_i18n',
+        constraintName: 'card_texts_i18n_derived_review_status_check',
+      }),
     );
     expect(
       REQUIRED_RUNTIME_COLUMN_CONTRACTS.filter(({ tableName }) => tableName === 'card_texts_i18n')

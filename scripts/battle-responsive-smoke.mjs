@@ -18,7 +18,39 @@ const cases = [
   { name: '1024x768__turn-set', width: 1024, height: 768, state: 'turn-set' },
   { name: '768x1024__turn-set', width: 768, height: 1024, state: 'turn-set' },
   { name: '1366x768__turn-set__me-day', width: 1366, height: 768, state: 'turn-set', side: 'day' },
+  {
+    name: '1366x768__revealed-hand__desktop-field',
+    width: 1366,
+    height: 768,
+    state: 'revealed-hand',
+    ready: '.bf-opponent-hand-card[data-face-up="true"]',
+    waitAfterReady: 800,
+    revealPresentation: 'opponent-hand',
+    click: '.bf-opponent-hand-card[data-face-up="true"]',
+    expectedDialogCount: 0,
+    expectFocusMatchesRevealedCard: true,
+    assertStableAfterDone: true,
+  },
+  {
+    name: '1366x768__partial-hand-reveal__player-1',
+    width: 1366,
+    height: 768,
+    state: 'partial-reveal',
+    viewer: '1',
+    ready: '.bf-opponent-hand-card[data-face-up="true"]',
+    waitAfterReady: 800,
+    revealPresentation: 'opponent-hand',
+  },
   { name: '390x844__turn-set__me-day', width: 390, height: 844, state: 'turn-set', side: 'day' },
+  {
+    name: '390x844__revealed-hand__mobile-sheet',
+    width: 390,
+    height: 844,
+    state: 'revealed-hand',
+    ready: '.revealed-hand-panel',
+    waitAfterReady: 800,
+    revealPresentation: 'overlay',
+  },
   { name: '932x430__turn-set', width: 932, height: 430, state: 'turn-set' },
   { name: '844x390__turn-set', width: 844, height: 390, state: 'turn-set' },
   { name: '430x932__turn-set', width: 430, height: 932, state: 'turn-set' },
@@ -50,6 +82,13 @@ const cases = [
     click: '.battle-side-panel-actions button:last-child',
   },
 ];
+const selectedCases = process.env.CASE_FILTER
+  ? cases.filter((testCase) => testCase.name.includes(process.env.CASE_FILTER))
+  : cases;
+
+if (selectedCases.length === 0) {
+  throw new Error(`No battle responsive cases matched CASE_FILTER=${process.env.CASE_FILTER}`);
+}
 
 await fs.mkdir(outDir, { recursive: true });
 
@@ -178,6 +217,11 @@ const expression = `
     mulliganActions: '.mulligan-actions',
     mulliganActionButtons: '.mulligan-actions button',
     gameOverActions: '.game-over-panel button',
+    revealedHandArea: '.bf-opponent-hand-area[data-reveal-active="true"]',
+    revealedHandCards: '.bf-opponent-hand-card[data-face-up="true"]',
+    revealedHandOverlay: '.revealed-hand-overlay',
+    revealedHandPanel: '.revealed-hand-panel',
+    dialogs: '[role="dialog"]',
   };
   const box = (el) => {
     const rect = el.getBoundingClientRect();
@@ -238,7 +282,33 @@ const expression = `
         return { className: el.className, transitionDuration: style.transitionDuration };
       }),
     },
+    revealPresentation: document.querySelector('.bf-main')?.getAttribute('data-revealed-hand-presentation') ?? null,
+    firstRevealedCardName:
+      document.querySelector('.bf-opponent-hand-card[data-face-up="true"]')?.getAttribute('aria-label') ?? null,
+    focusedCardName: document.querySelector('.bf-sidebar .carddetail-name')?.textContent?.trim() ?? null,
   };
+})()
+`;
+
+const stableRevealLayoutExpression = `
+(() => {
+  const selectors = {
+    field: '.bf-field',
+    opponent: '.bf-opponent',
+    opponentStatus: '.bf-opponent .playerstatus-row',
+    opponentHand: '.bf-opponent-hand-area',
+    opponentStrip: '.bf-opponent .bf-strip',
+    stage: '.bf-stage',
+  };
+  return Object.fromEntries(Object.entries(selectors).map(([key, selector]) => {
+    const rect = document.querySelector(selector)?.getBoundingClientRect();
+    return [key, rect ? {
+      x: Math.round(rect.x * 10) / 10,
+      y: Math.round(rect.y * 10) / 10,
+      width: Math.round(rect.width * 10) / 10,
+      height: Math.round(rect.height * 10) / 10,
+    } : null];
+  }));
 })()
 `;
 
@@ -249,6 +319,8 @@ function failuresFor(testCase, metrics) {
   if (testCase.state === 'turn-set') requiredKeys.push('field', 'playerArea', 'stage', 'hand', 'action');
   if (testCase.state === 'mulligan') requiredKeys.push('mulliganPanel', 'mulliganHand', 'mulliganActions');
   if (testCase.state === 'effect-order' || testCase.state === 'pending-choice') requiredKeys.push('effectPanel');
+  if (testCase.revealPresentation === 'opponent-hand') requiredKeys.push('revealedHandArea', 'revealedHandCards');
+  if (testCase.revealPresentation === 'overlay') requiredKeys.push('revealedHandOverlay', 'revealedHandPanel');
   if (testCase.click) requiredKeys.push('sideSheet');
   for (const key of requiredKeys) {
     for (const item of metrics.boxes[key] ?? []) {
@@ -278,6 +350,29 @@ function failuresFor(testCase, metrics) {
       failures.push('transition remains active under reduced motion');
     }
   }
+  if (testCase.revealPresentation && metrics.revealPresentation !== testCase.revealPresentation) {
+    failures.push(`reveal presentation ${metrics.revealPresentation ?? 'missing'}`);
+  }
+  if (testCase.revealPresentation === 'opponent-hand' && metrics.boxes.revealedHandOverlay.length > 0) {
+    failures.push('desktop reveal rendered an overlay');
+  }
+  if (testCase.revealPresentation === 'overlay' && metrics.boxes.revealedHandArea.length > 0) {
+    failures.push('mobile reveal rendered in desktop hand area');
+  }
+  if (testCase.expectedDialogCount !== undefined && metrics.boxes.dialogs.length !== testCase.expectedDialogCount) {
+    failures.push(`dialog count ${metrics.boxes.dialogs.length}`);
+  }
+  if (
+    testCase.expectFocusMatchesRevealedCard &&
+    (!metrics.firstRevealedCardName || metrics.focusedCardName !== metrics.firstRevealedCardName)
+  ) {
+    failures.push(
+      `focused card ${metrics.focusedCardName ?? 'missing'} does not match ${metrics.firstRevealedCardName ?? 'missing'}`,
+    );
+  }
+  if (testCase.assertStableAfterDone && metrics.layoutShiftAfterDone?.length) {
+    failures.push(`layout shifted after reveal: ${metrics.layoutShiftAfterDone.join(', ')}`);
+  }
   return [...new Set(failures)];
 }
 
@@ -291,7 +386,7 @@ try {
   await client.send('Page.enable');
   await client.send('Runtime.enable');
   const results = [];
-  for (const testCase of cases) {
+  for (const testCase of selectedCases) {
     console.log(`case ${testCase.name}`);
     await client.send('Emulation.setDeviceMetricsOverride', {
       width: testCase.width,
@@ -310,14 +405,29 @@ try {
       ],
     });
     const sideParam = testCase.side ? `&side=${encodeURIComponent(testCase.side)}` : '';
-    await client.send('Page.navigate', { url: `${baseUrl}/qa/battle?state=${testCase.state}${sideParam}&controls=0` });
+    const viewerParam = testCase.viewer ? `&viewer=${encodeURIComponent(testCase.viewer)}` : '';
+    await client.send('Page.navigate', {
+      url: `${baseUrl}/qa/battle?state=${testCase.state}${sideParam}${viewerParam}&controls=0`,
+    });
+    const readySelector = testCase.ready ?? '.bf-root, [data-tut="mulligan-panel"], .game-over-panel';
     for (let attempt = 0; attempt < 25; attempt += 1) {
       const ready = await client.send('Runtime.evaluate', {
-        expression: `Boolean(document.querySelector('.bf-root, [data-tut="mulligan-panel"], .game-over-panel'))`,
+        expression: `Boolean(document.querySelector(${JSON.stringify(readySelector)}))`,
         returnByValue: true,
       });
       if (ready.result.value === true) break;
       await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+    if (testCase.waitAfterReady) {
+      await new Promise((resolve) => setTimeout(resolve, testCase.waitAfterReady));
+    }
+    let layoutBeforeDone = null;
+    if (testCase.assertStableAfterDone) {
+      const layoutResult = await client.send('Runtime.evaluate', {
+        expression: stableRevealLayoutExpression,
+        returnByValue: true,
+      });
+      layoutBeforeDone = layoutResult.result.value;
     }
     if (testCase.click) {
       await client.send('Runtime.evaluate', {
@@ -338,6 +448,25 @@ try {
     const screenshotPath = `${outDir}/${testCase.name}.png`;
     await fs.writeFile(screenshotPath, Buffer.from(screenshot.data, 'base64'));
     const metrics = metricsResult.result.value;
+    if (testCase.assertStableAfterDone && layoutBeforeDone) {
+      await client.send('Runtime.evaluate', {
+        expression: `document.querySelector('.phaseindicator-action button')?.click()`,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      const layoutAfterResult = await client.send('Runtime.evaluate', {
+        expression: stableRevealLayoutExpression,
+        returnByValue: true,
+      });
+      const layoutAfterDone = layoutAfterResult.result.value;
+      metrics.layoutBeforeDone = layoutBeforeDone;
+      metrics.layoutAfterDone = layoutAfterDone;
+      metrics.layoutShiftAfterDone = Object.keys(layoutBeforeDone).filter((key) => {
+        const before = layoutBeforeDone[key];
+        const after = layoutAfterDone[key];
+        if (!before || !after) return before !== after;
+        return ['x', 'y', 'width', 'height'].some((dimension) => Math.abs(before[dimension] - after[dimension]) > 1);
+      });
+    }
     const failures = failuresFor(testCase, metrics);
     if (failures.length) exitCode = 1;
     results.push({ ...testCase, screenshot: screenshotPath, metrics, failures });

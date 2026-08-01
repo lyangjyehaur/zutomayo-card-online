@@ -73,6 +73,7 @@ COPY --from=builder /app/api/backgroundWorkerConfig.cjs ./api/backgroundWorkerCo
 COPY --from=builder /app/api/relationshipOutbox.cjs ./api/relationshipOutbox.cjs
 COPY --from=builder /app/api/runtimeSecurityConfig.cjs ./api/runtimeSecurityConfig.cjs
 COPY --from=builder /app/api/seasonResultService.cjs ./api/seasonResultService.cjs
+COPY --from=builder /app/api/replaySummary.cjs ./api/replaySummary.cjs
 ENV PORT=3000
 ENV PLATFORM_PORT=3002
 ENV APP_VERSION=$APP_VERSION

@@ -3,6 +3,7 @@ api
 !api/
 api/*
 !api/*.cjs
+!api/*.d.cts
 !api/package.json
 !api/package-lock.json
 !api/Dockerfile
@@ -25,6 +26,7 @@ api/*
 !api/relationshipOutbox.cjs
 !api/runtimeSecurityConfig.cjs
 !api/seasonResultService.cjs
+!api/replaySummary.cjs
 dist
 dist-server
 coverage

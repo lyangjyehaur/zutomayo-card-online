@@ -1,8 +1,8 @@
 # ZUTOMAYO CARD Online — オンライン対戦カードゲーム
 
-**言語 / Languages：** [繁體中文](README.md) | [日本語](README.ja.md) | [English](README.en.md)
+**言語 / Languages：** [繁體中文](README.md) | [日本語](README.ja.md) | [English](README.en.md) | [한국어](README.ko.md)
 
-現在のバージョン：**0.2.3**
+現在のバージョン：**0.2.6**
 
 > ZUTOMAYO CARD（ずっと真夜中でいいのに。公式 TCG）の非公式デジタル対戦プラットフォームです。
 > ローカル 2 人対戦、AI 練習、インタラクティブチュートリアル、リアルタイムオンライン対戦に対応します。
@@ -11,20 +11,20 @@
 
 0.2.0 では、単体の対戦アプリからマルチプレイヤープラットフォームへ拡張しました。カード状態の権威は引き続き `boardgame.io` が持ち、Colyseus がロビー、マッチング、ルーム、招待、観戦 presence を担当し、ChatService が永続チャット、未読、翻訳、通報、モデレーションを担当します。
 
-0.2.3 では、PostgreSQL のアトミックな公開フローに対応したグランドルール／基本フロアルールの多言語ページを追加し、AI 対戦後の導線、対戦ログ、初回チュートリアル入口、デッキ作成体験を改善しました。
+0.2.6 では、ライブサービス安定化の基準と永続的な匿名対戦分析を整備し、runtime state の削除前に権威ある対戦結果、デッキ、allowlist 済みルールイベントを保存します。さらに、決定論的な decision trace、対戦参加者だけが参照できるプライバシー保護済みリプレイ要約、デプロイ・復旧・アラート・信頼境界の検収ゲートを追加しました。
 
 ### ゲームと対戦
 
-- ローカル 2 人対戦と、かんたん／ふつう／むずかしい AI。難しい AI は lookahead シミュレーションを使用します。
-- 4 パック・422 枚のカードデータと、267 行すべての効果テキスト解析。
+- ローカル 2 人対戦と、かんたん／ふつう／むずかしい AI。マリガン、効果・対象評価に対応し、難しい AI はルール駆動の有限ターンシミュレーションを使用します。
+- プレイ可能な 479 枚と図鑑表示限定 7 枚のカードデータ、プレイ可能な効果テキスト 322 行をすべて解析。追加限定カードは画像、公式日英テキスト、ルールを個別にレビュー・監査します。
 - じゃんけん、引き直し、初期配置、効果順、プレイヤー選択、バトル、Chronos 昼夜フロー。
 - サーバー権威のフェーズタイマーとタイムアウト復旧により、切断・無応答プレイヤーが対局を永久停止させません。
-- バトルアニメーション、レスポンシブ戦場、モバイルタッチ操作、再設計されたチュートリアル overlay。
+- カードごとの Chronos 推移、HP／攻撃／軽減／回復の解決演出、レスポンシブ戦場、モバイルタッチ操作、正式対戦の表示を共有するチュートリアル。
 - 結果画面から ELO／戦績送信を再試行可能。サーバー送信は冪等で、ローカル履歴は重複を防ぎ、試合後チャットの参照元を保持します。
 
 ### マルチプレイヤープラットフォーム
 
-- Colyseus によるクイックマッチ、カスタムルーム、フレンド招待、観戦、ロビーのフレンド presence。
+- Colyseus による公開ルーム一覧、カスタムルーム、フレンド招待、観戦、ロビーのフレンド presence。未公開のクイックマッチ入口は非表示です。
 - 安定した対局引き継ぎと再接続復旧。オンライン session は platform identity、seat token、boardgame.io credentials を保持します。
 - 本番環境では Redis driver/presence、ローカル開発では memory mode を利用できます。
 - Colyseus はプラットフォーム shell の状態だけを保持し、手札、デッキ、効果などの権威ゲームデータを所有しません。
@@ -40,7 +40,8 @@
 ### その他の機能
 
 - 6 言語 UI：繁体字中国語、広東語、簡体字中国語、日本語、英語、韓国語。
-- デッキエディター、共有デッキロビー、ランキング、端末間戦績、プロフィール、OAuth identity、フィードバックボード。
+- デッキエディター、カードメタデータと相性提案を備えたデッキ共有／カード図鑑、ランキング、端末間戦績、プロフィール、OAuth identity、フィードバックボード。
+- カード名／効果／楽曲、公式 Q&A、ルール節、訂正情報、公開デッキを横断する多言語の全体／ページ内全文検索。IME 変換中は検索 request を送信しません。
 - 公式グランドルール／基本フロアルール、日本語 Q&A／訂正情報、多言語閲覧ページ、管理レビュー、公式ソース同期。
 - PWA インストール／更新通知と app、build、rules の 3 層バージョン互換チェック。
 - カード、翻訳、ユーザー、ELO、チャット証拠、制裁、フィードバックの管理画面。
@@ -59,7 +60,8 @@ Browser / PWA
 
 game / api / platform
   ├─ PostgreSQL：永続データ、対局状態、参加者、チャット証拠
-  └─ Redis：Pub/Sub、Colyseus presence/driver、rate limit、一時的な協調
+  ├─ Redis：Pub/Sub、Colyseus presence/driver、rate limit、一時的な協調
+  └─ Meilisearch：PostgreSQL から原子的に再構築する公開知識全文 index
 ```
 
 ### 権威境界
@@ -123,6 +125,7 @@ npm run dev
 | `npm run import:official-rulings-translations` | 未追跡の公式裁定翻訳を PostgreSQL に import                 |
 | `npm run sync:official-rulings`                | 公式 Q&A／訂正情報ソースを読み取り専用で比較                |
 | `npm run translate:official-rulings`           | 不足している公式裁定の派生翻訳を生成                        |
+| `npm run search:reindex` / `search:check`      | 公開知識検索 index を原子的に再構築／検査                   |
 | `npm run smoke`                                | コアゲームフロー smoke                                      |
 | `npm run smoke:api`                            | REST API integration smoke                                  |
 | `npm run smoke:online`                         | boardgame.io オンライン対戦 smoke                           |
@@ -141,7 +144,7 @@ docker compose up -d --build
 docker compose ps
 ```
 
-Compose は `postgres`、`redis`、一度だけ実行する `migrate`、`game`、`api`、`platform` の 6 unit で構成されます。
+Compose は `postgres`、`redis`、内部 `meilisearch`、一度だけ実行する `migrate`、`game`、`api`、`platform` の 7 unit で構成されます。Meilisearch の host port は公開せず、本番環境では独立した `MEILI_MASTER_KEY` が必須です。
 
 さらに `docker-compose.e2e.yml`、`docker-compose.load-test.yml`、port／DB を分離した `docker-compose.staging.yml` を提供します。Production-hardening CD は現在 `codex/deferred-production-hardening` に分離され、staging／production の SSH deploy は検証済み artifact を使って `workflow_dispatch` で明示的に実行します。
 
@@ -171,7 +174,7 @@ load-tests/           k6 API、WebSocket、認証、matchmaking 負荷テスト
 docs/                 architecture、API、deployment、multiplayer、UI/UX 文書
 ```
 
-主なページは `/online`、`/ai`、`/tutorial`、`/deck-builder`、`/deck-shares`、`/history`、`/leaderboard`、`/feedback`、`/profile`、`/rules/grand`、`/rules/floor`、`/rules/qa`、`/rules/errata`、`/admin` です。
+主なページは `/online`、`/ai`、`/tutorial`、`/deck-builder`、`/deck-shares`、`/history`、`/leaderboard`、`/feedback`、`/profile`、`/rules/grand`、`/rules/floor`、`/rules/qa`、`/rules/errata`、Refine 5 ベースの `/admin/*` です。
 
 ## セキュリティと運用
 
@@ -184,6 +187,7 @@ docs/                 architecture、API、deployment、multiplayer、UI/UX 文�
 
 ## ドキュメント
 
+- [ライブサービス安定化計画](docs/LIVE_SERVICE_STABILIZATION_PLAN.md)
 - [完全なアーキテクチャ](docs/ARCHITECTURE.md)
 - [REST API](docs/API.md)
 - [カードテキスト i18n メンテナンスガイド（繁体字中国語）](docs/card-text-i18n.md)

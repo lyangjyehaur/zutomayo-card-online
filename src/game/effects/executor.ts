@@ -3,10 +3,12 @@ import type {
   CardInstance,
   Element,
   GameState,
+  GameNotice,
   HpChangeBreakdown,
   HpChangeBreakdownLine,
   PendingEffect,
   PendingEffectSource,
+  PendingChoice,
   PendingUseFromAbyssPayload,
   PlayerIndex,
   PlayerState,
@@ -18,6 +20,8 @@ import { getCardDef } from '../cards/loader';
 import { getChronosTimeForPosition, normalizeChronosPosition } from '../chronos';
 import { pushHpChange } from '../hpChange';
 import { recordAction } from '../actionLog';
+import { pushGameNotice } from '../gameNotices';
+import { restoreHiddenInformation } from '../hiddenInformation';
 import { handleRequestChoice } from './requestChoices';
 import { Sentry } from '../../sentry';
 
@@ -25,6 +29,8 @@ export interface EffectExecutionContext {
   cardInstanceId?: string;
   cardDefId?: string;
   onTimingEvent?: (event: TimingEvent) => void;
+  /** Optional diagnostics hook invoked immediately before the resolved action handler. */
+  onDispatch?: (actionType: ActionType) => void;
 }
 
 function emitTimingEvent(G: GameState, context: EffectExecutionContext, event: TimingEvent): void {
@@ -329,6 +335,7 @@ function evaluateCondition(
 }
 
 function endFromEffect(G: GameState, winner: PlayerIndex, reason: string): void {
+  restoreHiddenInformation(G);
   G.step = 'gameOver';
   G.winner = winner;
   G.gameoverReason = reason;
@@ -390,6 +397,26 @@ function effectSource(G: GameState, player: PlayerIndex, card: CardInstance): Pe
   return 'played';
 }
 
+function notifyEffectFailure(
+  G: GameState,
+  player: PlayerIndex,
+  cardDefId: string,
+  cardInstanceId: string | undefined,
+  failureReason: NonNullable<GameNotice['failureReason']>,
+  failureMessage?: string,
+): void {
+  pushGameNotice(G, {
+    kind: 'effectFailure',
+    tone: 'danger',
+    titleKey: 'board.notice.effectFailure',
+    player,
+    sourceCardDefId: cardDefId,
+    ...(cardInstanceId ? { sourceCardInstanceId: cardInstanceId } : {}),
+    failureReason,
+    ...(failureMessage ? { failureMessage } : {}),
+  });
+}
+
 export function collectTurnEffects(
   G: GameState,
   parsedEffects: Map<string, ParsedEffect[]>,
@@ -405,23 +432,27 @@ export function collectTurnEffects(
       .filter((card) => !(G.suppressedEffectCardIdsThisTurn ?? []).includes(card.instanceId))
       .filter((card, index, all) => all.findIndex((other) => other.instanceId === card.instanceId) === index);
     for (const card of candidates) {
+      const isNew = playedIds.has(card.instanceId);
+      const isPersistedSetZoneC = G.players[player].setZoneC?.instanceId === card.instanceId;
+      const effects = (parsedEffects.get(card.defId) ?? []).flatMap((effect, effectIndex) => {
+        if (!['onUse', 'onEnter'].includes(effect.trigger)) return [];
+        const canRunPersisted = isPersistedSetZoneC && isPersistentAreaEnchantEffect(card, effect);
+        return isNew || canRunPersisted ? [{ effect, effectIndex }] : [];
+      });
+      if (effects.length === 0) continue;
       if (areEffectsDisabledForCard(G, player, card.defId)) {
         // 效果被禁用（如 enchantEffectsDisabled），記錄到 actionLog 讓玩家知道為何附魔未生效。
         recordAction(G, player, 'effectFailed', { cardDefId: card.defId, reason: 'disabled' });
+        notifyEffectFailure(G, player, card.defId, card.instanceId, 'disabled');
         continue;
       }
       const definition = getCardDef(card.defId);
-      const effects = parsedEffects.get(card.defId) ?? [];
-      for (const [effectIndex, effect] of effects.entries()) {
-        const isNew = playedIds.has(card.instanceId);
-        if (!['onUse', 'onEnter'].includes(effect.trigger)) continue;
-        const isPersistedSetZoneC = G.players[player].setZoneC?.instanceId === card.instanceId;
-        const canRunPersisted = isPersistedSetZoneC && isPersistentAreaEnchantEffect(card, effect);
-        if ((effect.trigger === 'onUse' || effect.trigger === 'onEnter') && !isNew && !canRunPersisted) continue;
+      for (const { effect, effectIndex } of effects) {
         if (!definition || power(G, player) < definition.powerCost) {
           G.log.push(`Player ${player}: ${definition?.name ?? card.defId} effect skipped (power cost).`);
           // 能量不足導致效果未發動，記錄到 actionLog 供玩家回溯復盤。
           recordAction(G, player, 'effectFailed', { cardDefId: card.defId, reason: 'powerCost' });
+          notifyEffectFailure(G, player, card.defId, card.instanceId, 'powerCost');
           continue;
         }
         pending[player].push({
@@ -471,7 +502,34 @@ interface EffectHandlerArgs {
 
 type EffectHandler = (args: EffectHandlerArgs) => { success: boolean; message: string };
 
-function handleBoostAttack({ effect, G, player, me, value }: EffectHandlerArgs): { success: boolean; message: string } {
+function pushAttackModifierSource(
+  G: GameState,
+  player: PlayerIndex,
+  targetPlayer: PlayerIndex,
+  context: EffectExecutionContext,
+  amount: number,
+  kind: 'boost' | 'reduce' | 'set',
+  setTo?: number,
+  from?: number,
+): void {
+  if (amount === 0 && kind !== 'set') return;
+  if (!G.modifiers.attackSources) G.modifiers.attackSources = [[], []];
+  G.modifiers.attackSources[targetPlayer].push({
+    kind,
+    player,
+    targetPlayer,
+    amount,
+    ...(from !== undefined ? { from } : {}),
+    ...(setTo !== undefined ? { setTo } : {}),
+    ...(context.cardDefId ? { cardDefId: context.cardDefId } : {}),
+    ...(context.cardInstanceId ? { cardInstanceId: context.cardInstanceId } : {}),
+  });
+}
+
+function handleBoostAttack({ effect, G, player, me, value, context }: EffectHandlerArgs): {
+  success: boolean;
+  message: string;
+} {
   // 官方 QA Q40/Q74：角色 power cost 不足時攻撃力修飾效果不発動，
   // 不設定修飾器避免殘留導致 power 補足後攻撃力錯誤。
   // battleZone 為 null 時不跳過（無角色可修飾，修飾器不會造成殘留問題）。
@@ -501,10 +559,11 @@ function handleBoostAttack({ effect, G, player, me, value }: EffectHandlerArgs):
   const newAttack = Math.max(0, currentAttack + boost);
   const baseAttack = computeBaseAttack(me.battleZone, G, player);
   G.modifiers.attack[player] = newAttack - baseAttack;
+  pushAttackModifierSource(G, player, player, context, newAttack - currentAttack, 'boost');
   return { success: true, message: `Attack +${boost}` };
 }
 
-function handleBoostBothAttackByOwnHp({ G, player, me, opponent, opponentIndex }: EffectHandlerArgs): {
+function handleBoostBothAttackByOwnHp({ G, player, me, opponent, opponentIndex, context }: EffectHandlerArgs): {
   success: boolean;
   message: string;
 } {
@@ -517,6 +576,7 @@ function handleBoostBothAttackByOwnHp({ G, player, me, opponent, opponentIndex }
     const myNew = Math.max(0, myCurrent + me.hp);
     const myBase = computeBaseAttack(me.battleZone, G, player);
     G.modifiers.attack[player] = myNew - myBase;
+    pushAttackModifierSource(G, player, player, context, myNew - myCurrent, 'boost');
   }
   const oppPowerOk =
     !opponent.battleZone || power(G, opponentIndex) >= (effectivePowerCost(opponent.battleZone, G, opponentIndex) ?? 0);
@@ -525,6 +585,7 @@ function handleBoostBothAttackByOwnHp({ G, player, me, opponent, opponentIndex }
     const oppNew = Math.max(0, oppCurrent + opponent.hp);
     const oppBase = computeBaseAttack(opponent.battleZone, G, opponentIndex);
     G.modifiers.attack[opponentIndex] = oppNew - oppBase;
+    pushAttackModifierSource(G, player, opponentIndex, context, oppNew - oppCurrent, 'boost');
   }
   return { success: true, message: 'Both players gain attack equal to own HP' };
 }
@@ -545,7 +606,7 @@ function handleBoostPower({ effect, G, player, value }: EffectHandlerArgs): { su
   return { success: true, message: `Power +${boost}` };
 }
 
-function handleReduceAttack({ G, opponent, opponentIndex, value }: EffectHandlerArgs): {
+function handleReduceAttack({ G, player, opponent, opponentIndex, value, context }: EffectHandlerArgs): {
   success: boolean;
   message: string;
 } {
@@ -563,18 +624,23 @@ function handleReduceAttack({ G, opponent, opponentIndex, value }: EffectHandler
   const newAttack = Math.max(0, currentAttack - value);
   const baseAttack = computeBaseAttack(opponent.battleZone, G, opponentIndex);
   G.modifiers.attack[opponentIndex] = newAttack - baseAttack;
+  pushAttackModifierSource(G, player, opponentIndex, context, currentAttack - newAttack, 'reduce');
   return { success: true, message: `Opponent attack -${value}` };
 }
 
-function handleSetOpponentAttack({ G, opponentIndex, value }: EffectHandlerArgs): {
+function handleSetOpponentAttack({ G, player, opponent, opponentIndex, value, context }: EffectHandlerArgs): {
   success: boolean;
   message: string;
 } {
+  const previousAttack = effectiveAttack(opponent.battleZone, G, opponentIndex) ?? 0;
   // 官方 QA Q82：ジョブチェンジ設定對手攻撃力時，需重置累積 attack 修飾器，
   // 否則先前 boost/reduce 的累積值會疊加到新基準上。
   if (!G.modifiers.attackSetTo) G.modifiers.attackSetTo = [null, null];
   G.modifiers.attackSetTo[opponentIndex] = value;
   G.modifiers.attack[opponentIndex] = 0;
+  if (!G.modifiers.attackSources) G.modifiers.attackSources = [[], []];
+  G.modifiers.attackSources[opponentIndex] = [];
+  pushAttackModifierSource(G, player, opponentIndex, context, 0, 'set', value, previousAttack);
   return { success: true, message: `Opponent attack set to ${value}` };
 }
 
@@ -626,7 +692,7 @@ function handleHeal({ effect, G, player, context, me, opponent, opponentIndex, v
       ],
       sourceCardDefId,
     );
-    pushHpChange(G, opponentIndex, delta, 'heal', sourceCardDefId, breakdown);
+    pushHpChange(G, opponentIndex, delta, 'heal', sourceCardDefId, breakdown, undefined, context.cardInstanceId);
     return { success: true, message: `Heal opponent ${value}` };
   }
   const before = me.hp;
@@ -645,7 +711,7 @@ function handleHeal({ effect, G, player, context, me, opponent, opponentIndex, v
     ],
     sourceCardDefId,
   );
-  pushHpChange(G, player, delta, 'heal', sourceCardDefId, breakdown);
+  pushHpChange(G, player, delta, 'heal', sourceCardDefId, breakdown, undefined, context.cardInstanceId);
   return { success: true, message: `Heal ${value}` };
 }
 
@@ -670,7 +736,7 @@ function handleHealOpponent({ G, context, opponent, opponentIndex, value }: Effe
     ],
     sourceCardDefId,
   );
-  pushHpChange(G, opponentIndex, delta, 'healOpponent', sourceCardDefId, breakdown);
+  pushHpChange(G, opponentIndex, delta, 'healOpponent', sourceCardDefId, breakdown, undefined, context.cardInstanceId);
   return { success: true, message: `Heal opponent ${value}` };
 }
 
@@ -701,6 +767,8 @@ function handleHealBoth({ G, player, context, me, opponent, opponentIndex, value
       ],
       sourceCardDefId,
     ),
+    undefined,
+    context.cardInstanceId,
   );
   const beforeOpp = opponent.hp;
   opponent.hp = Math.min(100, beforeOpp + value);
@@ -724,6 +792,8 @@ function handleHealBoth({ G, player, context, me, opponent, opponentIndex, value
       ],
       sourceCardDefId,
     ),
+    undefined,
+    context.cardInstanceId,
   );
   return { success: true, message: `Heal both ${value}` };
 }
@@ -748,8 +818,8 @@ function handleDirectDamage({
     G.delayedEffects.push({
       id: `delayed-${player}-${G.turnNumber}-${G.log.length}-${G.delayedEffects.length}`,
       player,
-      cardInstanceId: `delayed-${player}`,
-      cardDefId: 'delayed-effect',
+      cardInstanceId: context.cardInstanceId ?? `delayed-${player}`,
+      cardDefId: context.cardDefId ?? 'delayed-effect',
       rawText: effect.rawText,
       effect: {
         ...effect,
@@ -790,13 +860,23 @@ function handleDirectDamage({
     'directDamage',
     sourceCardDefId,
     buildEffectHpChangeBreakdown('board.hpChange.directDamageCalc', breakdownLines, sourceCardDefId),
+    undefined,
+    context.cardInstanceId,
   );
   if (opponent.hp <= 0) loseByHp(G, opponentIndex, `Player ${opponentIndex} loses at 0 HP.`);
   return { success: true, message: `Deal ${damage}` };
 }
 
-function handleDamageReduce({ G, player, value }: EffectHandlerArgs): { success: boolean; message: string } {
+function handleDamageReduce({ G, player, value, context }: EffectHandlerArgs): { success: boolean; message: string } {
   G.modifiers.damageReduction[player] += value;
+  if (context.cardDefId && value > 0) {
+    if (!G.modifiers.damageReductionSources) G.modifiers.damageReductionSources = [[], []];
+    G.modifiers.damageReductionSources[player].push({
+      ...(context.cardInstanceId ? { cardInstanceId: context.cardInstanceId } : {}),
+      cardDefId: context.cardDefId,
+      amount: value,
+    });
+  }
   return { success: true, message: `Damage reduction +${value}` };
 }
 
@@ -977,6 +1057,13 @@ function handleMillDeckToAbyss({ effect, G, player, opponent, opponentIndex, con
     moved++;
   }
   if (effect.action.params.countFromLastChoice) G.lastChoiceSelectionCount[player] = null;
+  // Grand Rules 8.2.2: moving fewer than the specified number from a deck to
+  // Abyss causes that deck's owner to lose immediately.
+  if (moved < count) {
+    const reason = `Player ${opponentIndex} loses: not enough cards to move ${count} from deck to Abyss (moved ${moved}).`;
+    endFromEffect(G, player, reason);
+    return { success: false, message: reason };
+  }
   return { success: true, message: `Mill ${moved} opposing card${moved === 1 ? '' : 's'} to Abyss` };
 }
 
@@ -1001,7 +1088,39 @@ function handleMoveOwnDeckTopByPower({ G, player, me, context }: EffectHandlerAr
   return { success: true, message: 'Move deck top to Abyss' };
 }
 
-function handleMoveOpponentDeckTopByPowerCost({ effect, G, player, me, opponent, context }: EffectHandlerArgs): {
+function pauseForDeckTopReveal(
+  G: GameState,
+  player: PlayerIndex,
+  revealedPlayer: PlayerIndex,
+  card: CardInstance,
+  deckComparison: NonNullable<Extract<PendingChoice, { type: 'acknowledgeRevealedHand' }>['payload']['deckComparison']>,
+): void {
+  G.pendingChoice = {
+    id: ['choice', player, G.turnNumber, G.log.length, 'revealed-deck'].join('-'),
+    player,
+    type: 'acknowledgeRevealedHand',
+    min: 0,
+    max: 0,
+    prompt: 'Review the revealed deck-top card.',
+    payload: {
+      revealedPlayer,
+      sourceZone: 'deck',
+      revealedCardInstanceIds: [card.instanceId],
+      deckComparison,
+    },
+    options: [],
+  };
+}
+
+function handleMoveOpponentDeckTopByPowerCost({
+  effect,
+  G,
+  player,
+  me,
+  opponent,
+  opponentIndex,
+  context,
+}: EffectHandlerArgs): {
   success: boolean;
   message: string;
 } {
@@ -1012,43 +1131,105 @@ function handleMoveOpponentDeckTopByPowerCost({ effect, G, player, me, opponent,
   if (opponent.deck.length === 0) return { success: false, message: 'No opposing deck top card to reveal' };
   const card = opponent.deck[0];
   card.faceUp = true;
+  recordAction(G, player, 'revealCards', {
+    targetPlayer: opponentIndex,
+    sourceZone: 'deck',
+    cardDefIds: [card.defId],
+  });
   const powerCost = getCardDef(card.defId)?.powerCost ?? 0;
-  if (powerCost >= minPowerCost) {
+  const matched = powerCost >= minPowerCost;
+  if (matched) {
     const areaEnchant = me.setZoneC;
-    if (!areaEnchant) return { success: false, message: 'No own Area Enchant to move' };
+    if (!areaEnchant) {
+      pauseForDeckTopReveal(G, player, opponentIndex, card, {
+        stat: 'powerCost',
+        value: powerCost,
+        threshold: minPowerCost,
+        matched,
+      });
+      return { success: false, message: 'No own Area Enchant to move' };
+    }
     me.setZoneC = null;
     areaEnchant.faceUp = true;
     me.powerCharger.push(areaEnchant);
     emitZoneEntered(G, context, player, 'powerCharger', areaEnchant);
+    pauseForDeckTopReveal(G, player, opponentIndex, card, {
+      stat: 'powerCost',
+      value: powerCost,
+      threshold: minPowerCost,
+      matched,
+    });
     return { success: true, message: 'Move own Area Enchant to Power Charger' };
   }
+  pauseForDeckTopReveal(G, player, opponentIndex, card, {
+    stat: 'powerCost',
+    value: powerCost,
+    threshold: minPowerCost,
+    matched,
+  });
   return { success: true, message: 'Reveal opposing deck top' };
 }
 
-function handleRevealOpponentDeckTopBySendToPower({ effect, G, player, me, opponent, context }: EffectHandlerArgs): {
+function handleRevealOpponentDeckTopBySendToPower({
+  effect,
+  G,
+  player,
+  me,
+  opponent,
+  opponentIndex,
+  context,
+}: EffectHandlerArgs): {
   success: boolean;
   message: string;
 } {
   if (opponent.deck.length === 0) return { success: false, message: 'No opposing deck top card to reveal' };
   const card = opponent.deck[0];
   card.faceUp = true;
+  recordAction(G, player, 'revealCards', {
+    targetPlayer: opponentIndex,
+    sourceZone: 'deck',
+    cardDefIds: [card.defId],
+  });
   const sendToPower = getCardDef(card.defId)?.sendToPower ?? 0;
   const minSendToPower = Number(effect.action.params.minSendToPower ?? 1);
-  if (sendToPower >= minSendToPower) {
+  const matched = sendToPower >= minSendToPower;
+  if (matched) {
     const areaEnchant = me.setZoneC;
-    if (!areaEnchant) return { success: false, message: 'No own Area Enchant to move' };
+    if (!areaEnchant) {
+      pauseForDeckTopReveal(G, player, opponentIndex, card, {
+        stat: 'sendToPower',
+        value: sendToPower,
+        threshold: minSendToPower,
+        matched,
+      });
+      return { success: false, message: 'No own Area Enchant to move' };
+    }
     me.setZoneC = null;
     areaEnchant.faceUp = true;
     me.powerCharger.push(areaEnchant);
     emitZoneEntered(G, context, player, 'powerCharger', areaEnchant);
+    pauseForDeckTopReveal(G, player, opponentIndex, card, {
+      stat: 'sendToPower',
+      value: sendToPower,
+      threshold: minSendToPower,
+      matched,
+    });
     return { success: true, message: 'Move own Area Enchant to Power Charger' };
   }
   const boost = Number(effect.action.params.boostIfMissing ?? 0);
   G.modifiers.attack[player] += boost;
+  pushAttackModifierSource(G, player, player, context, boost, 'boost');
+  pauseForDeckTopReveal(G, player, opponentIndex, card, {
+    stat: 'sendToPower',
+    value: sendToPower,
+    threshold: minSendToPower,
+    matched,
+    attackBoost: boost,
+  });
   return { success: true, message: `Attack +${boost}` };
 }
 
-function handleRevealOpponentHand({ G, opponent, opponentIndex }: EffectHandlerArgs): {
+function handleRevealOpponentHand({ G, player, opponent, opponentIndex }: EffectHandlerArgs): {
   success: boolean;
   message: string;
 } {
@@ -1056,6 +1237,21 @@ function handleRevealOpponentHand({ G, opponent, opponentIndex }: EffectHandlerA
   const revealed = new Set(G.revealedHandCardIds[opponentIndex]);
   for (const card of opponent.hand) revealed.add(card.instanceId);
   G.revealedHandCardIds[opponentIndex] = [...revealed];
+  recordAction(G, player, 'revealCards', {
+    targetPlayer: opponentIndex,
+    sourceZone: 'hand',
+    cardCount: opponent.hand.length,
+  });
+  G.pendingChoice = {
+    id: `choice-${player}-${G.turnNumber}-${G.log.length}-revealed-hand`,
+    player,
+    type: 'acknowledgeRevealedHand',
+    min: 0,
+    max: 0,
+    prompt: 'Review the temporarily revealed opposing hand.',
+    payload: { revealedPlayer: opponentIndex },
+    options: [],
+  };
   return { success: true, message: 'Reveal opposing hand' };
 }
 
@@ -1066,7 +1262,7 @@ function handleReturnAreaEnchantToDeck({ effect, G, opponent, opponentIndex }: E
   const card = opponent.setZoneC;
   if (!card) return { success: false, message: 'No opposing Area Enchant' };
   opponent.setZoneC = null;
-  card.faceUp = true;
+  card.faceUp = false;
   if (effect.action.params.position === 'top') opponent.deck.unshift(card);
   else opponent.deck.push(card);
   if (effect.action.params.lockAreaEnchant) {
@@ -1074,6 +1270,26 @@ function handleReturnAreaEnchantToDeck({ effect, G, opponent, opponentIndex }: E
     G.areaEnchantSetLocked[opponentIndex] = true;
   }
   return { success: true, message: 'Return opposing Area Enchant to deck' };
+}
+
+function handleMoveOpponentAreaEnchant({ G, opponent, opponentIndex, context }: EffectHandlerArgs): {
+  success: boolean;
+  message: string;
+} {
+  const card = opponent.setZoneC;
+  if (!card) return { success: false, message: 'No opposing Area Enchant' };
+  opponent.setZoneC = null;
+  card.faceUp = true;
+  opponent.abyss.push(card);
+  emitZoneEntered(G, context, opponentIndex, 'abyss', card);
+
+  if (!G.suppressedEffectCardIdsThisTurn) G.suppressedEffectCardIdsThisTurn = [];
+  if (!G.suppressedEffectCardIdsThisTurn.includes(card.instanceId)) {
+    G.suppressedEffectCardIdsThisTurn.push(card.instanceId);
+  }
+  G.pendingEffects[0] = G.pendingEffects[0].filter((effect) => effect.cardInstanceId !== card.instanceId);
+  G.pendingEffects[1] = G.pendingEffects[1].filter((effect) => effect.cardInstanceId !== card.instanceId);
+  return { success: true, message: 'Move opposing Area Enchant to Abyss' };
 }
 
 function handleMoveSelfAreaEnchant({ effect, G, player, me, context }: EffectHandlerArgs): {
@@ -1238,6 +1454,7 @@ const effectHandlers: Record<ActionType, EffectHandler> = {
   revealOpponentDeckTopBySendToPower: handleRevealOpponentDeckTopBySendToPower,
   revealOpponentHand: handleRevealOpponentHand,
   returnAreaEnchantToDeck: handleReturnAreaEnchantToDeck,
+  moveOpponentAreaEnchant: handleMoveOpponentAreaEnchant,
   moveSelfAreaEnchant: handleMoveSelfAreaEnchant,
   useFromAbyss: handleUseFromAbyss,
   handSizeModifier: handleHandSizeModifier,
@@ -1265,10 +1482,17 @@ export function executeEffect(
     const revealed = new Set(G.revealedHandCardIds[player]);
     for (const card of me.hand) revealed.add(card.instanceId);
     G.revealedHandCardIds[player] = [...revealed];
+    recordAction(G, player, 'revealCards', {
+      targetPlayer: player,
+      sourceZone: 'hand',
+      cardDefIds: me.hand.map((card) => card.defId),
+    });
   }
   const valueParam = effect.action.params.value;
   const value = Number(effect.action.params.value ?? 0);
-  const handler = effectHandlers[effect.action.type];
+  const handler = (effectHandlers as Partial<Record<ActionType, EffectHandler>>)[effect.action.type];
+  if (!handler) return { success: false, message: `Unsupported action type: ${effect.action.type}` };
+  context.onDispatch?.(effect.action.type);
   let result: { success: boolean; message: string };
   try {
     result = handler({ effect, G, player, context, me, opponent, opponentIndex, valueParam, value });
@@ -1285,6 +1509,9 @@ export function executeEffect(
   }
   if (G.pendingChoice && context.cardDefId && !G.pendingChoice.sourceCardDefId) {
     G.pendingChoice.sourceCardDefId = context.cardDefId;
+  }
+  if (G.pendingChoice && context.cardInstanceId && !G.pendingChoice.sourceCardInstanceId) {
+    G.pendingChoice.sourceCardInstanceId = context.cardInstanceId;
   }
   return result;
 }
@@ -1304,6 +1531,7 @@ export function processTurnEffects(
         if (areEffectsDisabledForCard(G, player, pendingEffect.cardDefId)) {
           // 執行階段再次檢查禁用（效果執行中途可能被其他效果禁用），記錄失敗。
           recordAction(G, player, 'effectFailed', { cardDefId: pendingEffect.cardDefId, reason: 'disabled' });
+          notifyEffectFailure(G, player, pendingEffect.cardDefId, pendingEffect.cardInstanceId, 'disabled');
           continue;
         }
         const result = executeEffect(pendingEffect.effect, G, player, {
@@ -1319,9 +1547,18 @@ export function processTurnEffects(
             reason: 'condition',
             message: result.message,
           });
+          notifyEffectFailure(
+            G,
+            player,
+            pendingEffect.cardDefId,
+            pendingEffect.cardInstanceId,
+            'condition',
+            result.message,
+          );
         }
         if ((G.step as GameState['step']) === 'gameOver') return;
       }
     }
   }
+  restoreHiddenInformation(G);
 }

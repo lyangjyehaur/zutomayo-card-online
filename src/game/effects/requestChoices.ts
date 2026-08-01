@@ -165,17 +165,16 @@ function handleNameGuessOpponentHandRevealChoice({
     attackBoost,
   };
   const cardDefs = getAllCardDefs();
-  const options = opponent.hand.flatMap((_card, handIndex) =>
-    cardDefs.map((def) => ({
-      id: `hand:${handIndex}:guess:${def.id}`,
-      label: `${def.name} / Opponent hand ${handIndex + 1}`,
-      value: def.id,
-    })),
-  );
+  const options = cardDefs.map((def) => ({
+    id: `declare:${def.id}`,
+    label: def.name,
+    value: def.id,
+    cardDefId: def.id,
+  }));
   G.pendingChoice = {
     id: `choice-${player}-${G.turnNumber}-${G.log.length}`,
     player,
-    type: 'nameGuessOpponentHandReveal',
+    type: 'declareOpponentHandCardName',
     min: 1,
     max: 1,
     prompt: effect.rawText,
@@ -432,6 +431,7 @@ function handleAbyssToDeckBottomOrLoseChoice({
   const payload: PendingAbyssToDeckBottomPayload = {
     faceDown: Boolean(effect.action.params.faceDown),
     shuffle: Boolean(effect.action.params.shuffle),
+    moveAllPowerChargersToAbyss: Boolean(effect.action.params.moveAllPowerChargersToAbyss),
     followUpChoiceType:
       effect.action.params.followUpChoiceType === 'reorderOpponentDeckTop' ? 'reorderOpponentDeckTop' : undefined,
     followUpCount:

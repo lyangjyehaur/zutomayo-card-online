@@ -31,6 +31,10 @@ SMOKE_LOCAL_GAME_PORT="${SMOKE_LOCAL_GAME_PORT:-13000}"
 SMOKE_LOCAL_API_PORT="${SMOKE_LOCAL_API_PORT:-13001}"
 SMOKE_LOCAL_PLATFORM_PORT="${SMOKE_LOCAL_PLATFORM_PORT:-13002}"
 PLATFORM_SMOKE_TIMEOUT_MS="${PLATFORM_SMOKE_TIMEOUT_MS:-15000}"
+PUBLIC_SMOKE_BASE_URL="${PUBLIC_SMOKE_BASE_URL:-https://battle.zutomayocard.online}"
+DIRECT_SMOKE_ADDRESS="${DIRECT_SMOKE_ADDRESS:-$SERVER_HOST}"
+DEPLOY_SMOKE_REPORT_PATH="${DEPLOY_SMOKE_REPORT_PATH:-}"
+CLOUDFLARE_CACHE_RULES_REQUIRED="${CLOUDFLARE_CACHE_RULES_REQUIRED:-false}"
 VERIFY_RELEASE_ARTIFACTS="${VERIFY_RELEASE_ARTIFACTS:-true}"
 COSIGN_IDENTITY_REGEXP="${COSIGN_IDENTITY_REGEXP:-https://github.com/${GITHUB_REPOSITORY:-}/.github/workflows/cd\\.yml@refs/(heads/master|tags/v[0-9]+\\.[0-9]+\\.[0-9]+([.-][0-9A-Za-z.-]+)?)$}"
 COSIGN_OIDC_ISSUER="${COSIGN_OIDC_ISSUER:-https://token.actions.githubusercontent.com}"
@@ -334,6 +338,23 @@ remote_rollback() {
 
 run_smoke() {
   local tunnel_pid status platform_public_address
+  local smoke_args=(
+    --host 127.0.0.1
+    --game-port "$SMOKE_LOCAL_GAME_PORT"
+    --api-port "$SMOKE_LOCAL_API_PORT"
+    --platform-port "$SMOKE_LOCAL_PLATFORM_PORT"
+    --expected-build-id "$RELEASE_SHA"
+    --check-battle-assets true
+  )
+  if [[ -n "${VITE_CARD_DATASET_SHA256:-}" ]]; then
+    smoke_args+=(--expected-dataset-sha256 "$VITE_CARD_DATASET_SHA256")
+  fi
+  if [[ -n "$PUBLIC_SMOKE_BASE_URL" ]]; then
+    smoke_args+=(--public-base-url "$PUBLIC_SMOKE_BASE_URL")
+  fi
+  if [[ -n "$DEPLOY_SMOKE_REPORT_PATH" ]]; then
+    smoke_args+=(--report-path "$DEPLOY_SMOKE_REPORT_PATH")
+  fi
   platform_public_address="$(ssh_run "set -euo pipefail;
     cd '$REMOTE_DIR';
     set -a; . ./.release.env; set +a;
@@ -354,13 +375,7 @@ run_smoke() {
     return 1
   fi
   set +e
-  node "$SCRIPT_DIR/deploy-smoke.mjs" \
-    --host 127.0.0.1 \
-    --game-port "$SMOKE_LOCAL_GAME_PORT" \
-    --api-port "$SMOKE_LOCAL_API_PORT" \
-    --platform-port "$SMOKE_LOCAL_PLATFORM_PORT" \
-    --expected-build-id "$RELEASE_SHA" \
-    --check-battle-assets true
+  node "$SCRIPT_DIR/deploy-smoke.mjs" "${smoke_args[@]}"
   status=$?
   if [[ "$status" -eq 0 ]]; then
     node --import tsx "$SCRIPT_DIR/platform-deployment-smoke.ts" \
@@ -374,6 +389,37 @@ run_smoke() {
   kill "$tunnel_pid" >/dev/null 2>&1 || true
   wait "$tunnel_pid" >/dev/null 2>&1 || true
   return "$status"
+}
+
+sync_cloudflare_cache_rules() {
+  local token_set=false zone_set=false
+  [[ -n "${CLOUDFLARE_API_TOKEN:-}" ]] && token_set=true
+  [[ -n "${CLOUDFLARE_ZONE_ID:-}" ]] && zone_set=true
+  if [[ "$token_set" != true && "$zone_set" != true ]]; then
+    [[ "$CLOUDFLARE_CACHE_RULES_REQUIRED" == true ]] && \
+      die 'Cloudflare cache rules are required but CLOUDFLARE_API_TOKEN/CLOUDFLARE_ZONE_ID are missing'
+    log 'Cloudflare cache rule sync skipped (operator credentials not configured)'
+    return
+  fi
+  [[ "$token_set" == true && "$zone_set" == true ]] || \
+    die 'CLOUDFLARE_API_TOKEN and CLOUDFLARE_ZONE_ID must be configured together'
+  log 'synchronizing repository-managed Cloudflare cache rules'
+  (cd "$PROJECT_DIR" && npm run cloudflare:cache:apply)
+}
+
+run_cache_policy_smoke() {
+  local args=(
+    --base-url "$PUBLIC_SMOKE_BASE_URL"
+    --expected-build-id "$RELEASE_SHA"
+  )
+  if [[ -n "$DIRECT_SMOKE_ADDRESS" ]]; then
+    args+=(--direct-address "$DIRECT_SMOKE_ADDRESS")
+  fi
+  if [[ -n "${CLOUDFLARE_API_TOKEN:-}" && -n "${CLOUDFLARE_ZONE_ID:-}" ]]; then
+    args+=(--expect-cloudflare true)
+  fi
+  log 'verifying cache policy through public DNS and the direct server route'
+  node --import tsx "$SCRIPT_DIR/cache-policy-smoke.ts" "${args[@]}"
 }
 
 rollback_and_smoke() {
@@ -408,12 +454,16 @@ if [[ "$ROLLBACK" == true ]]; then
 fi
 
 validate_manifest "$MANIFEST_FILE" false
+[[ "${VITE_CARD_DATASET_SHA256:-}" =~ ^[a-f0-9]{64}$ ]] || \
+  die 'VITE_CARD_DATASET_SHA256 must be the verified release card-dataset SHA-256'
 verify_manifest_artifacts
 confirm_action "deploy $(sed -n 's/^RELEASE_SHA=//p' "$MANIFEST_FILE" | cut -c1-12)"
 if [[ "$DRY_RUN" == true ]]; then
   log "[dry-run] would upload $MANIFEST_FILE and deploy immutable images"
   log '[dry-run] would verify and synchronize private battle assets'
   log '[dry-run] would atomically publish reviewed official rulings and rule documents from the private card-data mount'
+  log '[dry-run] would sync Cloudflare cache rules when credentials are configured'
+  log "[dry-run] would verify cache headers through $PUBLIC_SMOKE_BASE_URL and $DIRECT_SMOKE_ADDRESS"
   exit 0
 fi
 
@@ -462,6 +512,17 @@ if ! run_smoke; then
     fi
   else
     log 'bootstrap smoke failed; no automatic rollback is available, manual intervention is required'
+  fi
+  exit 1
+fi
+if ! sync_cloudflare_cache_rules || ! run_cache_policy_smoke; then
+  if [[ "$HAS_PREVIOUS" == true ]]; then
+    log 'cache policy verification failed; restoring previous verified release'
+    if ! rollback_and_smoke; then
+      log 'rollback verification failed; manual intervention is required'
+    fi
+  else
+    log 'bootstrap cache verification failed; no automatic rollback is available, manual intervention is required'
   fi
   exit 1
 fi

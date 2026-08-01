@@ -20,6 +20,7 @@ import type {
 } from './types';
 import { normalizeChronosPosition } from './chronos';
 import { getCardDef } from './cards/loader';
+import { recordAction } from './actionLog';
 
 type ChoiceType = PendingChoice['type'];
 
@@ -52,7 +53,14 @@ export interface PendingChoiceRuntime {
     position: number,
     parsedEffects?: Map<string, ParsedEffect[]>,
     logMessage?: string,
-    source?: { kind: 'turnAdvance' | 'cardEffect'; cardDefId?: string },
+    source?: {
+      kind: 'turnAdvance' | 'cardEffect';
+      cardDefId?: string;
+      cardInstanceId?: string;
+      player?: PlayerIndex;
+      effectMode?: 'advance' | 'rewind' | 'set';
+      moveAmount?: number;
+    },
     breakdown?: HpChangeBreakdown,
   ) => void;
   shuffleSelectedCards: <T>(cards: T[]) => T[];
@@ -86,7 +94,7 @@ const handToDeckBottomThenDrawHandler: ChoiceHandler = {
       const handIndex = playerState.hand.findIndex((card) => card.instanceId === optionId);
       if (handIndex < 0) return { status: 'invalid' };
       const [card] = playerState.hand.splice(handIndex, 1);
-      card.faceUp = true;
+      card.faceUp = false;
       playerState.deck.push(card);
     }
     const drawCount = Number(c.payload.drawCount ?? 0);
@@ -156,6 +164,7 @@ const optionalHandMoveThenDrawHandler: ChoiceHandler = {
             cardDefId: card.defId,
           });
         } else {
+          card.faceUp = false;
           playerState.deck.push(card);
         }
       }
@@ -243,6 +252,8 @@ const useFromAbyssHandler: ChoiceHandler = {
           player,
           cardInstanceId: selected.instanceId,
           cardDefId: selected.defId,
+          ...(c.sourceCardInstanceId ? { rulesSourceCardInstanceId: c.sourceCardInstanceId } : {}),
+          ...(c.sourceCardDefId ? { rulesSourceCardDefId: c.sourceCardDefId } : {}),
           rawText: effect.rawText,
           effect,
           source: 'played' as const,
@@ -344,34 +355,154 @@ const revealHandAttackBoostHandler: ChoiceHandler = {
     const revealed = new Set(G.revealedHandCardIds[player] ?? []);
     for (const optionId of optionIds) revealed.add(optionId);
     G.revealedHandCardIds[player] = [...revealed];
-    G.modifiers.attack[player] += optionIds.length * c.payload.boostPerCard;
-    return { status: 'ok' };
+    recordAction(G, player, 'revealCards', {
+      targetPlayer: player,
+      sourceZone: 'hand',
+      cardDefIds: optionIds
+        .map((optionId) => playerState.hand.find((card) => card.instanceId === optionId)?.defId)
+        .filter((defId): defId is string => Boolean(defId)),
+    });
+    const attackBoost = optionIds.length * c.payload.boostPerCard;
+    G.modifiers.attack[player] += attackBoost;
+    if (attackBoost !== 0) {
+      if (!G.modifiers.attackSources) G.modifiers.attackSources = [[], []];
+      G.modifiers.attackSources[player].push({
+        kind: 'boost',
+        player,
+        targetPlayer: player,
+        amount: attackBoost,
+        ...(choice.sourceCardDefId ? { cardDefId: choice.sourceCardDefId } : {}),
+        ...(choice.sourceCardInstanceId ? { cardInstanceId: choice.sourceCardInstanceId } : {}),
+      });
+    }
+    if (optionIds.length === 0) return { status: 'ok' };
+    return {
+      status: 'ok',
+      nextChoice: {
+        id: `${choice.id}:reveal-result`,
+        player: (1 - player) as PlayerIndex,
+        type: 'acknowledgeRevealedHand',
+        min: 0,
+        max: 0,
+        prompt: choice.prompt,
+        payload: {
+          revealedPlayer: player,
+          sourceZone: 'hand',
+          revealedCardInstanceIds: optionIds,
+          attackBoost,
+          boostPerCard: c.payload.boostPerCard,
+        },
+        options: [],
+        ...(choice.sourceCardDefId ? { sourceCardDefId: choice.sourceCardDefId } : {}),
+        ...(choice.sourceCardInstanceId ? { sourceCardInstanceId: choice.sourceCardInstanceId } : {}),
+      },
+    };
   },
 };
 
-const nameGuessOpponentHandRevealHandler: ChoiceHandler = {
+const declareOpponentHandCardNameHandler: ChoiceHandler = {
   summarize(choice) {
-    const c = choice as Extract<PendingChoice, { type: 'nameGuessOpponentHandReveal' }>;
+    const c = choice as Extract<PendingChoice, { type: 'declareOpponentHandCardName' }>;
     return {
       targetPlayer: c.payload.opponentPlayer,
-      effectLabel: 'nameGuessOpponentHandReveal',
+      effectLabel: 'declareOpponentHandCardName',
     };
   },
   apply({ G, player, choice, optionIds }) {
-    const c = choice as Extract<PendingChoice, { type: 'nameGuessOpponentHandReveal' }>;
-    const match = optionIds[0]?.match(/^hand:([0-9]+):guess:([^:]+)$/);
-    if (!match || c.payload.opponentPlayer !== ((1 - player) as PlayerIndex)) return { status: 'invalid' };
-    const [, handIndexText, guessedDefId] = match;
+    const c = choice as Extract<PendingChoice, { type: 'declareOpponentHandCardName' }>;
+    const option = choice.options.find((candidate) => candidate.id === optionIds[0]);
+    const guessedCardDefId = typeof option?.value === 'string' ? option.value : undefined;
+    if (!guessedCardDefId || !getCardDef(guessedCardDefId)) return { status: 'invalid' };
     const opponent = G.players[c.payload.opponentPlayer];
-    const selected = opponent.hand[Number(handIndexText)];
+    if (opponent.hand.length === 0 || c.payload.opponentPlayer !== ((1 - player) as PlayerIndex)) {
+      return { status: 'invalid' };
+    }
+    return {
+      status: 'ok',
+      nextChoice: {
+        id: `${choice.id}:select-hand`,
+        player,
+        type: 'selectOpponentHandCard',
+        min: 1,
+        max: 1,
+        prompt: choice.prompt,
+        payload: { ...c.payload, guessedCardDefId },
+        options: opponent.hand.map((_card, handIndex) => ({
+          id: `hand-position:${handIndex}`,
+          label: `Opponent hand ${handIndex + 1}`,
+          value: handIndex,
+        })),
+        ...(choice.sourceCardDefId ? { sourceCardDefId: choice.sourceCardDefId } : {}),
+        ...(choice.sourceCardInstanceId ? { sourceCardInstanceId: choice.sourceCardInstanceId } : {}),
+      },
+    };
+  },
+};
+
+const selectOpponentHandCardHandler: ChoiceHandler = {
+  summarize(choice) {
+    const c = choice as Extract<PendingChoice, { type: 'selectOpponentHandCard' }>;
+    return {
+      targetPlayer: c.payload.opponentPlayer,
+      guessedCardDefId: c.payload.guessedCardDefId,
+      effectLabel: 'selectOpponentHandCard',
+    };
+  },
+  apply({ G, player, choice, optionIds }) {
+    const c = choice as Extract<PendingChoice, { type: 'selectOpponentHandCard' }>;
+    const option = choice.options.find((candidate) => candidate.id === optionIds[0]);
+    const handIndex = Number(option?.value);
+    if (!Number.isInteger(handIndex) || c.payload.opponentPlayer !== ((1 - player) as PlayerIndex)) {
+      return { status: 'invalid' };
+    }
+    const opponent = G.players[c.payload.opponentPlayer];
+    const selected = opponent.hand[handIndex];
     if (!selected) return { status: 'invalid' };
     const revealed = new Set(G.revealedHandCardIds[c.payload.opponentPlayer] ?? []);
     revealed.add(selected.instanceId);
     G.revealedHandCardIds[c.payload.opponentPlayer] = [...revealed];
-    if (selected.defId === guessedDefId) {
+    const matched = selected.defId === c.payload.guessedCardDefId;
+    recordAction(G, player, 'revealCards', {
+      targetPlayer: c.payload.opponentPlayer,
+      sourceZone: 'hand',
+      cardDefIds: [selected.defId],
+      guessedCardDefId: c.payload.guessedCardDefId,
+      matched,
+    });
+    if (matched) {
       G.modifiers.attack[player] += c.payload.attackBoost;
+      if (!G.modifiers.attackSources) G.modifiers.attackSources = [[], []];
+      G.modifiers.attackSources[player].push({
+        kind: 'boost',
+        player,
+        targetPlayer: player,
+        amount: c.payload.attackBoost,
+        ...(choice.sourceCardDefId ? { cardDefId: choice.sourceCardDefId } : {}),
+        ...(choice.sourceCardInstanceId ? { cardInstanceId: choice.sourceCardInstanceId } : {}),
+      });
     }
-    return { status: 'ok' };
+    return {
+      status: 'ok',
+      nextChoice: {
+        id: `${choice.id}:result`,
+        player,
+        type: 'acknowledgeRevealedHand',
+        min: 0,
+        max: 0,
+        prompt: choice.prompt,
+        payload: {
+          revealedPlayer: c.payload.opponentPlayer,
+          sourceZone: 'hand',
+          revealedCardInstanceIds: [selected.instanceId],
+          guessedCardDefId: c.payload.guessedCardDefId,
+          matched,
+          attackBoost: matched ? c.payload.attackBoost : 0,
+        },
+        options: [],
+        ...(choice.sourceCardDefId ? { sourceCardDefId: choice.sourceCardDefId } : {}),
+        ...(choice.sourceCardInstanceId ? { sourceCardInstanceId: choice.sourceCardInstanceId } : {}),
+      },
+    };
   },
 };
 
@@ -437,10 +568,11 @@ const abyssToDeckBottomOrLoseHandler: ChoiceHandler = {
       destinationPosition: 'bottom',
       faceDown: c.payload.faceDown,
       shuffle: c.payload.shuffle,
+      moveAllPowerChargersToAbyss: c.payload.moveAllPowerChargersToAbyss,
       followUpChoiceType: c.payload.followUpChoiceType,
     };
   },
-  apply({ G, player, choice, optionIds, playerState, runtime }) {
+  apply({ G, player, choice, optionIds, playerState, parsedEffects, runtime }) {
     const c = choice as Extract<PendingChoice, { type: 'abyssToDeckBottomOrLose' }>;
     const abyssIds = new Set(playerState.abyss.map((card) => card.instanceId));
     if (!optionIds.every((optionId) => abyssIds.has(optionId))) return { status: 'invalid' };
@@ -468,6 +600,26 @@ const abyssToDeckBottomOrLoseHandler: ChoiceHandler = {
       c.payload.shuffle && selectedCards.length > 1 ? runtime.shuffleSelectedCards(selectedCards) : selectedCards;
     playerState.deck.push(...ordered);
     G.lastChoiceSelectionCount[player] = optionIds.length;
+
+    if (c.payload.moveAllPowerChargersToAbyss) {
+      const moved = G.players.map((owner) => owner.powerCharger.splice(0));
+      for (const ownerIndex of [0, 1] as const) {
+        for (const card of moved[ownerIndex]) {
+          card.faceUp = true;
+          G.players[ownerIndex].abyss.push(card);
+        }
+      }
+      for (const ownerIndex of [0, 1] as const) {
+        for (const card of moved[ownerIndex]) {
+          runtime.resolveTimingEvent(G, parsedEffects, {
+            type: 'zoneEntered',
+            player: ownerIndex,
+            zone: 'abyss',
+            cardDefId: card.defId,
+          });
+        }
+      }
+    }
 
     if (c.payload.followUpChoiceType === 'reorderOpponentDeckTop') {
       const result = buildReorderOpponentDeckTopChoice(G, player, Number(c.payload.followUpCount ?? 0), choice.prompt);
@@ -510,11 +662,14 @@ const clockPositionHandler: ChoiceHandler = {
     const option = choice.options.find((item) => item.id === optionIds[0]);
     if (!option || !Number.isInteger(Number(option.value))) return { status: 'invalid' };
     const value = Number(option.value);
-    const sourceCardDefId =
-      G.pendingEffectPlayer !== null ? G.pendingEffects[G.pendingEffectPlayer]?.[0]?.cardDefId : undefined;
+    const sourceCardDefId = choice.sourceCardDefId;
+    const sourceCardInstanceId = choice.sourceCardInstanceId;
     runtime.setChronosPosition(G, value, parsedEffects, `Chronos set to ${value}.`, {
       kind: 'cardEffect',
       ...(sourceCardDefId ? { cardDefId: sourceCardDefId } : {}),
+      ...(sourceCardInstanceId ? { cardInstanceId: sourceCardInstanceId } : {}),
+      player: choice.player,
+      effectMode: 'set',
     });
     return { status: 'ok' };
   },
@@ -529,15 +684,40 @@ const clockAdvanceHandler: ChoiceHandler = {
     if (!option || !Number.isInteger(Number(option.value))) return { status: 'invalid' };
     const value = Number(option.value);
     const before = G.chronos.position;
-    const sourceCardDefId =
-      G.pendingEffectPlayer !== null ? G.pendingEffects[G.pendingEffectPlayer]?.[0]?.cardDefId : undefined;
+    const sourceCardDefId = choice.sourceCardDefId;
+    const sourceCardInstanceId = choice.sourceCardInstanceId;
     runtime.setChronosPosition(
       G,
       before + value,
       parsedEffects,
       `Chronos +${value} (${before}→${normalizeChronosPosition(before + value)}).`,
-      { kind: 'cardEffect', ...(sourceCardDefId ? { cardDefId: sourceCardDefId } : {}) },
+      {
+        kind: 'cardEffect',
+        ...(sourceCardDefId ? { cardDefId: sourceCardDefId } : {}),
+        ...(sourceCardInstanceId ? { cardInstanceId: sourceCardInstanceId } : {}),
+        player: choice.player,
+        effectMode: value < 0 ? 'rewind' : 'advance',
+        moveAmount: Math.abs(value),
+      },
     );
+    return { status: 'ok' };
+  },
+};
+
+const acknowledgeRevealedHandHandler: ChoiceHandler = {
+  summarize(choice) {
+    const c = choice as Extract<PendingChoice, { type: 'acknowledgeRevealedHand' }>;
+    return { targetPlayer: c.payload.revealedPlayer, effectLabel: 'acknowledgeRevealedHand' };
+  },
+  apply({ G, choice }) {
+    const c = choice as Extract<PendingChoice, { type: 'acknowledgeRevealedHand' }>;
+    G.revealedHandCardIds[c.payload.revealedPlayer] = [];
+    if (c.payload.sourceZone === 'deck') {
+      const revealedIds = new Set(c.payload.revealedCardInstanceIds ?? []);
+      for (const card of G.players[c.payload.revealedPlayer].deck) {
+        if (revealedIds.has(card.instanceId)) card.faceUp = false;
+      }
+    }
     return { status: 'ok' };
   },
 };
@@ -552,10 +732,12 @@ const choiceHandlers: Record<ChoiceType, ChoiceHandler> = {
   useFromAbyss: useFromAbyssHandler,
   useFromHand: useFromHandHandler,
   revealHandAttackBoost: revealHandAttackBoostHandler,
-  nameGuessOpponentHandReveal: nameGuessOpponentHandRevealHandler,
+  declareOpponentHandCardName: declareOpponentHandCardNameHandler,
+  selectOpponentHandCard: selectOpponentHandCardHandler,
   handAbyssSwap: handAbyssSwapHandler,
   clockPosition: clockPositionHandler,
   clockAdvance: clockAdvanceHandler,
+  acknowledgeRevealedHand: acknowledgeRevealedHandHandler,
 };
 
 export function choiceDestinationSummary(choice: PendingChoice): Record<string, unknown> {

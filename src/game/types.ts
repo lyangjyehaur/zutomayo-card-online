@@ -2,8 +2,28 @@ import type { AppVersionInfo } from '../version';
 
 export type Element = '闇' | '炎' | '電気' | '風' | 'カオス';
 export type CardType = 'Character' | 'Enchant' | 'Area Enchant';
-export type Rarity = 'N' | 'R' | 'SR' | 'UR' | 'SE';
+export const CARD_RARITIES = ['N', 'N+', 'R', 'R+', 'SR', 'SR+', 'UR', 'UR+', 'SE'] as const;
+export type Rarity = (typeof CARD_RARITIES)[number];
+export const CARD_TOURNAMENT_RESTRICTED_RARITIES = ['N+', 'R+', 'SR+', 'UR+'] as const;
+export type TournamentRestrictedRarity = (typeof CARD_TOURNAMENT_RESTRICTED_RARITIES)[number];
+export const CARD_PACKS = [
+  'THE WORLD IS CHANGING',
+  'ALL ALONG THE WATCHTOWER',
+  'Off Minor',
+  'Fantasy Is Reality',
+] as const;
+export type CardPack = (typeof CARD_PACKS)[number];
+export const CARD_PACKLESS_IDS = ['collaboration_007'] as const;
+
+export function isPacklessCard(cardId: string): boolean {
+  return CARD_PACKLESS_IDS.includes(cardId as (typeof CARD_PACKLESS_IDS)[number]);
+}
 export type ChronosTime = 'night' | 'day';
+export type CardCatalogStatus = 'listed' | 'pending_listing' | 'unlisted';
+export const CARD_DISTRIBUTION_TYPES = ['standard', 'bonus', 'collaboration', 'live', 'event', 'regional'] as const;
+export type CardDistributionType = (typeof CARD_DISTRIBUTION_TYPES)[number];
+export type CardPublicationStatus = 'draft' | 'reviewed' | 'published' | 'retired';
+export type CardPlayStatus = 'playable' | 'display_only' | 'disabled';
 
 // 官方場地墊：クロノス共 18 刻度，夜（青）晝（赤）各 9 格平分；
 // 真夜中（0）為夜弧中心、正午（9）為晝弧中心，順時針推進。
@@ -20,6 +40,65 @@ export type JankenChoice = 'rock' | 'paper' | 'scissors';
 export type GameStep = 'janken' | 'mulligan' | 'initialSet' | 'turnSet' | 'effectOrder' | 'gameOver';
 export type PlayerIndex = 0 | 1;
 export type SetSlot = 'A' | 'B' | 'C';
+export type GameRngAlgorithm = 'mulberry32-v1';
+
+export interface GameRngState {
+  algorithm: GameRngAlgorithm;
+  seed: number;
+  counter: number;
+}
+
+export interface ReplayManifest {
+  schemaVersion: 1;
+  rngAlgorithm: GameRngAlgorithm;
+  seed: number;
+  rulesVersion: string;
+  /** Final deck composition before the persisted match RNG shuffles either deck. */
+  deckDefIds: [string[], string[]];
+}
+
+export type ReplayMoveName =
+  | 'janken'
+  | 'mulligan'
+  | 'keepHand'
+  | 'setInitialCard'
+  | 'setTurnCard'
+  | 'undoSetCard'
+  | 'confirmReady'
+  | 'timeoutSkip'
+  | 'timeoutAdvance'
+  | 'surrender'
+  | 'resolvePendingEffect'
+  | 'submitPendingChoice';
+
+export interface ReplayDecisionRecord {
+  schemaVersion: 1;
+  sequence: number;
+  player: PlayerIndex;
+  move: ReplayMoveName;
+  args: unknown[];
+  requestFingerprint: string;
+  stateFingerprintAfter: string;
+}
+
+export type ReplayDivergenceReason =
+  | 'unsupportedManifest'
+  | 'rulesVersion'
+  | 'sequence'
+  | 'requestFingerprint'
+  | 'invalidDecision'
+  | 'stateFingerprint';
+
+export interface ReplayDivergence {
+  sequence: number;
+  reason: ReplayDivergenceReason;
+  expected?: string;
+  actual?: string;
+}
+
+export type ReplayStatus =
+  | { status: 'verified'; decisionsApplied: number }
+  | { status: 'diverged'; decisionsApplied: number; divergence: ReplayDivergence };
 export type TimingEventType =
   | 'turnStart'
   | 'turnEnd'
@@ -61,23 +140,43 @@ export interface HpChangeEntry {
   id: number;
   player: PlayerIndex;
   delta: number;
+  hpBefore?: number;
+  hpAfter?: number;
   reason: HpChangeReason;
   sourceCardDefId?: string;
+  sourceCardInstanceId?: string;
   breakdown?: HpChangeBreakdown;
   turn: number;
   timestamp: number;
 }
 
+/** 回合時計合計中，單張已公開卡牌實際提供的 Chronos 推進量。 */
+export interface ChronosContribution {
+  player: PlayerIndex;
+  cardInstanceId: string;
+  cardDefId: string;
+  printedValue: number;
+  appliedValue: number;
+  nullified: boolean;
+}
+
+/** 戰鬥中實際參與減傷的卡牌來源與套用值。 */
+export interface DamageReductionSource {
+  cardInstanceId?: string;
+  cardDefId: string;
+  amount: number;
+}
+
 /**
  * 統一遊戲事件提示（GameNotice）。
  *
- * 為了讓「遊戲進行的每一步」都有置中面板提示（HP 變化、時鐘推進、戰鬥結果、
- * 回合切換），且避免多個浮層互相競爭定位，引擎層在關鍵節點統一 push 到
- * `recentGameNotices`，由 UI 層單一 overlay 依序消費顯示。
+ * 為了讓「遊戲進行的每一步」都有一致回饋（HP 變化、時計推進、戰鬥結果、
+ * 回合切換），引擎層在關鍵節點統一 push 到 `recentGameNotices`，由 UI 層的
+ * 單一播放時間線依序分派給場上動畫或提示面板。
  *
  * titleKey / kickerKey 存 i18n key 字串，由 UI 層翻譯（引擎層不依賴 i18n）。
  */
-export type GameNoticeKind = 'hpChange' | 'chronosChange' | 'battleResult' | 'turnStart';
+export type GameNoticeKind = 'hpChange' | 'chronosChange' | 'battleResult' | 'turnStart' | 'effectFailure';
 export type GameNoticeTone = 'success' | 'danger' | 'neutral' | 'phase';
 
 export interface GameNotice {
@@ -86,12 +185,18 @@ export interface GameNotice {
   tone: GameNoticeTone;
   titleKey: string;
   kickerKey?: string;
-  /** hpChange / battleResult 適用：受影響玩家。 */
+  /** hpChange / battleResult 的受影響玩家，或 cardEffect 的來源玩家。 */
   player?: PlayerIndex;
   /** hpChange 專用。 */
   delta?: number;
+  /** HP 變化發生當下的精確快照，避免後續效果改寫 UI 結算起訖值。 */
+  hpBefore?: number;
+  hpAfter?: number;
   reason?: HpChangeReason;
   sourceCardDefId?: string;
+  sourceCardInstanceId?: string;
+  failureReason?: 'disabled' | 'powerCost' | 'condition';
+  failureMessage?: string;
   breakdown?: HpChangeBreakdown;
   /** chronosChange 專用：from→to 位置與晝夜轉換、來源歸因。 */
   chronosFrom?: number;
@@ -101,11 +206,28 @@ export interface GameNotice {
   chronosToTime?: ChronosTime;
   chronosSourceKind?: 'turnAdvance' | 'cardEffect';
   chronosSourceCardDefId?: string;
+  chronosSourceCardInstanceId?: string;
+  /** cardEffect 專用：區分順時針推進、逆時針回溯與直接指定位置。 */
+  chronosEffectMode?: 'advance' | 'rewind' | 'set';
+  /** cardEffect 專用：逐格移動量；set 模式不使用。 */
+  chronosMoveAmount?: number;
+  /** turnAdvance 專用：不依賴鐘面位置反推的實際順時針推進格數。 */
+  chronosAdvanceAmount?: number;
+  /** turnAdvance 專用：各張卡牌的時計貢獻，供場上定位回饋使用。 */
+  chronosContributions?: ChronosContribution[];
   /** battleResult 專用。 */
   winner?: PlayerIndex | null;
   winnerAttack?: number;
   loserAttack?: number;
   damage?: number;
+  /** 戰鬥當下實際套用的減傷來源，供場上因果動畫使用。 */
+  damageReductionSources?: DamageReductionSource[];
+  /** 戰鬥雙方逐張卡牌的攻擊修正來源。 */
+  attackModifierSources?: [AttackModifierSource[], AttackModifierSource[]];
+  /** 戰鬥發生當下的雙方卡牌快照，避免後續回合換牌污染延遲播放。 */
+  battleCards?: [CardInstance | null, CardInstance | null];
+  /** notice 產生時所屬回合；由 pushGameNotice 統一補入。 */
+  resolutionTurn?: number;
   /** turnStart 專用。 */
   turn?: number;
   timestamp: number;
@@ -155,6 +277,8 @@ export interface ZutomayoSetupData {
   deck0Version?: string;
   deck1Version?: string;
   rulesVersion?: string;
+  /** Deterministic local/test input. Online creation replaces this value server-side. */
+  rngSeed?: string | number;
   clientVersion?: AppVersionInfo;
   /**
    * 教學模式專用：跳過 setupGame 與 finishMulligan 的洗牌，
@@ -174,16 +298,29 @@ export interface CardDef {
   officialErrataAffectsName?: boolean;
   officialErrataAffectsEffect?: boolean;
   officialErrataUrl?: string;
+  catalogStatus?: CardCatalogStatus;
+  distributionType?: CardDistributionType;
+  publicationStatus?: CardPublicationStatus;
+  playStatus?: CardPlayStatus;
+  playStatusReason?: string;
+  sourceUrl?: string;
+  sourceNote?: string;
+  sourceSha256?: string;
   pack: string;
   song: string;
   illustrator: string;
   rarity: string;
   element: Element;
+  /** Catalog-only provenance flags for display-only cards without printed gameplay fields. */
+  hasElement?: boolean;
   type: CardType;
   clock: number;
+  hasClock?: boolean;
   attack: { night: number; day: number } | null;
   powerCost: number;
+  hasPowerCost?: boolean;
   sendToPower: number;
+  hasSendToPower?: boolean;
   effect: string;
   image: string;
   errata: string;
@@ -202,6 +339,9 @@ export interface PendingEffect {
   player: PlayerIndex;
   cardInstanceId: string;
   cardDefId: string;
+  /** 複製效果的實際發動來源；Power Cost 與效果禁用應檢查此卡，而非被複製卡。 */
+  rulesSourceCardInstanceId?: string;
+  rulesSourceCardDefId?: string;
   rawText: string;
   effect: import('./effects').ParsedEffect;
   source: PendingEffectSource;
@@ -247,6 +387,7 @@ export interface PendingOptionalHandMoveThenDrawPayload {
 export interface PendingAbyssToDeckBottomPayload {
   faceDown: boolean;
   shuffle: boolean;
+  moveAllPowerChargersToAbyss?: boolean;
   followUpChoiceType?: 'reorderOpponentDeckTop';
   followUpCount?: number;
 }
@@ -284,6 +425,27 @@ export interface PendingNameGuessOpponentHandRevealPayload {
   attackBoost: number;
 }
 
+export interface PendingSelectOpponentHandRevealPayload extends PendingNameGuessOpponentHandRevealPayload {
+  guessedCardDefId: string;
+}
+
+export interface PendingRevealAcknowledgementPayload {
+  revealedPlayer: PlayerIndex;
+  sourceZone?: 'hand' | 'deck';
+  revealedCardInstanceIds?: string[];
+  guessedCardDefId?: string;
+  matched?: boolean;
+  attackBoost?: number;
+  boostPerCard?: number;
+  deckComparison?: {
+    stat: 'powerCost' | 'sendToPower';
+    value: number;
+    threshold: number;
+    matched: boolean;
+    attackBoost?: number;
+  };
+}
+
 export interface PendingChoiceBase {
   id: string;
   player: PlayerIndex;
@@ -291,6 +453,7 @@ export interface PendingChoiceBase {
   min: number;
   max: number;
   prompt?: string;
+  sourceCardInstanceId?: string;
   sourceCardDefId?: string;
 }
 
@@ -332,8 +495,12 @@ export type PendingChoice =
       payload: PendingRevealHandAttackBoostPayload;
     })
   | (PendingChoiceBase & {
-      type: 'nameGuessOpponentHandReveal';
+      type: 'declareOpponentHandCardName';
       payload: PendingNameGuessOpponentHandRevealPayload;
+    })
+  | (PendingChoiceBase & {
+      type: 'selectOpponentHandCard';
+      payload: PendingSelectOpponentHandRevealPayload;
     })
   | (PendingChoiceBase & {
       type: 'handAbyssSwap';
@@ -346,11 +513,18 @@ export type PendingChoice =
   | (PendingChoiceBase & {
       type: 'clockAdvance';
       payload: Record<string, never>;
+    })
+  | (PendingChoiceBase & {
+      /** 暫時公開手牌後，由查看方確認已閱讀；不代表選擇任何卡牌。 */
+      type: 'acknowledgeRevealedHand';
+      payload: PendingRevealAcknowledgementPayload;
     });
 
 export interface PlayerState {
   hp: number;
   deck: CardInstance[];
+  /** Owner-only player-view metadata. Definitions are sorted, so deck order remains hidden. */
+  knownDeckDefIds?: string[];
   hand: CardInstance[];
   battleZone: CardInstance | null;
   setZoneA: CardInstance | null;
@@ -374,12 +548,28 @@ export interface LastBattleResult {
   loserAttack: number;
 }
 
+export interface AttackModifierSource {
+  kind: 'boost' | 'reduce' | 'set';
+  player: PlayerIndex;
+  targetPlayer: PlayerIndex;
+  amount: number;
+  /** `set` 專用：直接指定發生前的實際攻擊力。 */
+  from?: number;
+  setTo?: number;
+  cardDefId?: string;
+  cardInstanceId?: string;
+}
+
 export interface CombatModifiers {
   attack: [number, number];
+  /** 攻擊修正逐筆來源；舊對局狀態可能沒有此欄位。 */
+  attackSources?: [AttackModifierSource[], AttackModifierSource[]];
   attackSetTo: [number | null, number | null];
   attackTimeOverride: [ChronosTime | null, ChronosTime | null];
   cardClockSetTo: number | null;
   damageReduction: [number, number];
+  /** 舊對局狀態可能沒有此欄位，讀取端必須容許 undefined。 */
+  damageReductionSources?: [DamageReductionSource[], DamageReductionSource[]];
   elementOverride: [Element | null, Element | null];
   handSize: [number, number];
   clockContributionDisabled: [boolean, boolean];
@@ -394,6 +584,14 @@ export interface CombatModifiers {
 
 export interface GameState {
   players: [PlayerState, PlayerState];
+  /** Server-only deterministic random stream. Optional only for legacy persisted states and redacted player views. */
+  rng?: GameRngState;
+  /** Server-only reconstruction inputs. Optional only for legacy persisted states and redacted player views. */
+  replayManifest?: ReplayManifest;
+  /** Server-only append-only inputs accepted through the authoritative boardgame move boundary. */
+  decisionTrace?: ReplayDecisionRecord[];
+  /** Server-only result attached to states produced by the replay engine. */
+  replayStatus?: ReplayStatus;
   step: GameStep;
   ready: [boolean, boolean];
   chronos: ChronosState;

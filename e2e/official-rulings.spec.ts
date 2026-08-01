@@ -139,7 +139,7 @@ test.describe('官方規則資料庫', () => {
 
   test('可從首頁搜尋 Q&A、查看詳情並切回日文原文', async ({ page }) => {
     await page.goto('/');
-    const rulesChannel = page.getByRole('button', { name: /CH\.05 規則資料庫/ });
+    const rulesChannel = page.getByRole('button', { name: /CH\.07 規則資料庫/ });
     await expect(rulesChannel).toBeVisible({ timeout: 30_000 });
     await rulesChannel.click();
 
@@ -307,8 +307,7 @@ test.describe('官方規則管理', () => {
       });
     });
 
-    await page.goto('/admin');
-    await page.getByRole('button', { name: '官方規則' }).click();
+    await page.goto('/admin/official-rulings');
     await expect(page.getByRole('heading', { name: '官方規則翻譯' })).toBeVisible();
     await expect(page.getByText('Q.74', { exact: true })).toBeVisible();
 

@@ -36,6 +36,7 @@ const executorSupportedActions = new Set([
   'revealOpponentDeckTopBySendToPower',
   'revealOpponentHand',
   'returnAreaEnchantToDeck',
+  'moveOpponentAreaEnchant',
   'moveSelfAreaEnchant',
   'useFromAbyss',
   'handSizeModifier',

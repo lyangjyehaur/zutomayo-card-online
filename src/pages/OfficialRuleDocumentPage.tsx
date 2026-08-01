@@ -1,6 +1,11 @@
 import { BookOpenCheck, CalendarDays, ExternalLink, FileText, Hash, ListTree, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { fetchOfficialRuleDocument, type OfficialRuleDocument, type OfficialRuleDocumentId } from '../api/client';
+import {
+  fetchOfficialRuleDocument,
+  type OfficialRuleDocument,
+  type OfficialRuleDocumentId,
+  type OfficialRuleSection,
+} from '../api/client';
 import { LanguageSwitcher } from '../components/LanguageSwitcher';
 import {
   RulesSearchField,
@@ -10,6 +15,8 @@ import {
   TranslationStatusBadge,
 } from '../components/rules/OfficialRulesComponents';
 import { t, useLocale } from '../i18n';
+import { useDebouncedSearchQuery } from '../hooks/useDebouncedSearchQuery';
+import { useKnowledgeSearchIds } from '../hooks/useKnowledgeSearch';
 import { Alert, AppHeader, Badge, EmptyState, LoadingState, PageShell, cn } from '../ui';
 
 function normalizeSearch(value: string): string {
@@ -22,6 +29,7 @@ function sectionAnchor(id: string): string {
 
 function RuleBody({ text }: { text: string }) {
   const blocks = text.split(/\n{2,}/).filter(Boolean);
+  if (blocks.length === 0) return null;
   return (
     <div className="grid gap-3 text-body leading-relaxed text-content-primary/85">
       {blocks.map((block, index) => (
@@ -33,12 +41,80 @@ function RuleBody({ text }: { text: string }) {
   );
 }
 
+function RuleSectionContent({ section, locale }: { section: OfficialRuleSection; locale: string }) {
+  const Heading = section.level === 1 ? 'h2' : 'h3';
+  return (
+    <article id={sectionAnchor(section.id)} className={cn('scroll-mt-28', section.level > 1 && 'py-6 md:py-7')}>
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          {section.number && <p className="font-mono text-caption text-accent-primary">{section.number}</p>}
+          <Heading
+            className={cn(
+              'mt-1 font-display font-bold text-content-primary',
+              section.level === 1 ? 'text-title-md' : 'text-title-sm',
+            )}
+          >
+            {section.localized.title}
+          </Heading>
+        </div>
+        <Badge>
+          {t('officialRules.sourcePages').replace(
+            '{pages}',
+            section.pages.start === section.pages.end
+              ? String(section.pages.start)
+              : `${section.pages.start}-${section.pages.end}`,
+          )}
+        </Badge>
+      </div>
+      <RuleBody text={section.localized.body} />
+      {locale !== 'ja' && (
+        <div className="mt-5">
+          <SourceTextToggle>
+            {section.source.title}
+            {'\n\n'}
+            {section.source.body}
+          </SourceTextToggle>
+        </div>
+      )}
+    </article>
+  );
+}
+
 export function OfficialRuleDocumentPage({ documentId }: { documentId: OfficialRuleDocumentId }) {
   const locale = useLocale();
   const [document, setDocument] = useState<OfficialRuleDocument | null>(null);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const {
+    draft: searchDraft,
+    setDraft: setSearchDraft,
+    inputBindings,
+  } = useDebouncedSearchQuery({
+    value: query,
+    onCommit: setQuery,
+  });
+  const {
+    ids: ruleSearchIds,
+    loading: ruleSearchLoading,
+    error: ruleSearchError,
+  } = useKnowledgeSearchIds({
+    query,
+    locale,
+    scope: 'rule',
+    limit: 500,
+    filters: { documentId },
+  });
+  const indexedRuleIds = useMemo(
+    () =>
+      new Set(
+        ruleSearchIds.map((sourceId) =>
+          sourceId.startsWith(`${documentId}:`) ? sourceId.slice(documentId.length + 1) : sourceId,
+        ),
+      ),
+    [documentId, ruleSearchIds],
+  );
+  const useIndexedRuleSearch = Boolean(query) && !ruleSearchLoading && !ruleSearchError;
 
   useEffect(() => {
     let active = true;
@@ -64,18 +140,58 @@ export function OfficialRuleDocumentPage({ documentId }: { documentId: OfficialR
     if (!document) return [];
     const needle = normalizeSearch(query);
     if (!needle) return document.sections;
-    return document.sections.filter((section) =>
-      normalizeSearch(
-        [
-          section.number,
-          section.localized.title,
-          section.localized.body,
-          section.source.title,
-          section.source.body,
-        ].join('\n'),
-      ).includes(needle),
+    const byId = new Map(document.sections.map((section) => [section.id, section]));
+    const children = new Map<string, OfficialRuleSection[]>();
+    for (const section of document.sections) {
+      if (!section.parentId) continue;
+      children.set(section.parentId, [...(children.get(section.parentId) ?? []), section]);
+    }
+    const visibleIds = new Set(
+      document.sections
+        .filter((section) =>
+          useIndexedRuleSearch
+            ? indexedRuleIds.has(section.id)
+            : normalizeSearch(
+                [
+                  section.number,
+                  section.localized.title,
+                  section.localized.body,
+                  section.source.title,
+                  section.source.body,
+                ].join('\n'),
+              ).includes(needle),
+        )
+        .map((section) => section.id),
     );
-  }, [document, query]);
+    for (const id of [...visibleIds]) {
+      let parentId = byId.get(id)?.parentId;
+      while (parentId) {
+        visibleIds.add(parentId);
+        parentId = byId.get(parentId)?.parentId;
+      }
+      const includeChildren = (parent: string) => {
+        for (const child of children.get(parent) ?? []) {
+          visibleIds.add(child.id);
+          includeChildren(child.id);
+        }
+      };
+      includeChildren(id);
+    }
+    return document.sections.filter((section) => visibleIds.has(section.id));
+  }, [document, indexedRuleIds, query, useIndexedRuleSearch]);
+
+  const visibleSectionGroups = useMemo(() => {
+    if (!document) return [];
+    const visibleIds = new Set(visibleSections.map((section) => section.id));
+    const byParent = new Map<string, OfficialRuleSection[]>();
+    for (const section of visibleSections) {
+      const parent = section.parentId && visibleIds.has(section.parentId) ? section.parentId : '';
+      byParent.set(parent, [...(byParent.get(parent) ?? []), section]);
+    }
+    const descendants = (parentId: string): OfficialRuleSection[] =>
+      (byParent.get(parentId) ?? []).flatMap((section) => [section, ...descendants(section.id)]);
+    return (byParent.get('') ?? []).map((chapter) => ({ chapter, children: descendants(chapter.id) }));
+  }, [document, visibleSections]);
 
   const title =
     document?.localized.title ??
@@ -142,9 +258,14 @@ export function OfficialRuleDocumentPage({ documentId }: { documentId: OfficialR
             )}
 
             <RulesSearchField
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              onClear={() => setQuery('')}
+              value={searchDraft}
+              onChange={inputBindings.onChange}
+              onCompositionStart={inputBindings.onCompositionStart}
+              onCompositionEnd={inputBindings.onCompositionEnd}
+              onClear={() => {
+                setSearchDraft('');
+                setQuery('');
+              }}
               placeholder={t('officialRules.documentSearchPlaceholder')}
             />
 
@@ -202,47 +323,21 @@ export function OfficialRuleDocumentPage({ documentId }: { documentId: OfficialR
                 {visibleSections.length === 0 ? (
                   <EmptyState title={t('officialRules.empty')} description={t('officialRules.emptyDescription')} />
                 ) : (
-                  <div className="divide-y divide-border-soft border-y border-border-soft">
-                    {visibleSections.map((section) => (
-                      <article
-                        key={section.id}
-                        id={sectionAnchor(section.id)}
-                        className="scroll-mt-28 py-7 first:pt-5 md:py-9"
+                  <div className="grid gap-10 border-y border-border-soft py-5 md:gap-14 md:py-8">
+                    {visibleSectionGroups.map(({ chapter, children }) => (
+                      <section
+                        key={chapter.id}
+                        className="relative border-t-2 border-accent-primary/45 pt-6 first:border-t-0 first:pt-0"
                       >
-                        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            {section.number && (
-                              <p className="font-mono text-caption text-accent-primary">{section.number}</p>
-                            )}
-                            <h2
-                              className={cn(
-                                'mt-1 font-display font-bold text-content-primary',
-                                section.level === 1 ? 'text-title-md' : 'text-title-sm',
-                              )}
-                            >
-                              {section.localized.title}
-                            </h2>
-                          </div>
-                          <Badge>
-                            {t('officialRules.sourcePages').replace(
-                              '{pages}',
-                              section.pages.start === section.pages.end
-                                ? String(section.pages.start)
-                                : `${section.pages.start}-${section.pages.end}`,
-                            )}
-                          </Badge>
-                        </div>
-                        <RuleBody text={section.localized.body} />
-                        {locale !== 'ja' && (
-                          <div className="mt-5">
-                            <SourceTextToggle>
-                              {section.source.title}
-                              {'\n\n'}
-                              {section.source.body}
-                            </SourceTextToggle>
+                        <RuleSectionContent section={chapter} locale={locale} />
+                        {children.length > 0 && (
+                          <div className="mt-6 divide-y divide-border-soft border-l border-border-soft pl-4 md:pl-7">
+                            {children.map((section) => (
+                              <RuleSectionContent key={section.id} section={section} locale={locale} />
+                            ))}
                           </div>
                         )}
-                      </article>
+                      </section>
                     ))}
                   </div>
                 )}

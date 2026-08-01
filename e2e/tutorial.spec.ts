@@ -43,6 +43,88 @@ async function expectDecodedImages(images: import('@playwright/test').Locator) {
     .toBe(true, { timeout: 20_000 });
 }
 
+async function expectChronosAt(page: import('@playwright/test').Page, position: number, time: '夜' | '晝') {
+  const board = page.locator('.bf-root:visible');
+  await expect(board.getByRole('img', { name: `Chronos 時鐘 · ${time}`, exact: true })).toBeVisible();
+  await expect(board.locator('.chronosdial-medal')).toHaveAttribute('data-position', String(position));
+}
+
+async function expectChronosTicksReadable(page: import('@playwright/test').Page) {
+  const dimensions = await page.locator('.bf-root:visible .chronosdial').evaluate((dial) => {
+    const dialWidth = dial.getBoundingClientRect().width;
+    const tickWidths = Array.from(dial.querySelectorAll<HTMLElement>('.chronosdial-slot-inner')).map(
+      (tick) => tick.getBoundingClientRect().width,
+    );
+    return { dialWidth, minimumTickWidth: Math.min(...tickWidths) };
+  });
+
+  expect(dimensions.minimumTickWidth).toBeGreaterThanOrEqual(14);
+  expect(dimensions.minimumTickWidth / dimensions.dialWidth).toBeGreaterThan(0.07);
+}
+
+type TutorialPlaybackRecord = {
+  phases: string[];
+  layerEvents: string[];
+  tooltipText: Record<string, string>;
+  legacySettlementPopupSeen: boolean;
+};
+
+async function startTutorialPlaybackRecorder(page: import('@playwright/test').Page) {
+  await page.evaluate(() => {
+    const playbackWindow = window as typeof window & {
+      __tutorialPlaybackObserver?: MutationObserver;
+      __tutorialPlaybackRecord?: TutorialPlaybackRecord;
+    };
+    playbackWindow.__tutorialPlaybackObserver?.disconnect();
+    const record: TutorialPlaybackRecord = {
+      phases: [],
+      layerEvents: [],
+      tooltipText: {},
+      legacySettlementPopupSeen: false,
+    };
+    playbackWindow.__tutorialPlaybackRecord = record;
+    const visible = (selector: string) =>
+      Array.from(document.querySelectorAll<HTMLElement>(selector)).some(
+        (element) => element.getClientRects().length > 0 && getComputedStyle(element).visibility !== 'hidden',
+      );
+    const capture = () => {
+      const overlay = document.querySelector<HTMLElement>('.tutorial-game-overlay');
+      const phase = overlay?.dataset.tutorialPhase;
+      if (phase && record.phases.at(-1) !== phase) record.phases.push(phase);
+      if (phase && visible('.chronos-resolution-layer')) {
+        const event = `${phase}:chronos`;
+        if (!record.layerEvents.includes(event)) record.layerEvents.push(event);
+      }
+      if (phase && visible('.battle-resolution-layer')) {
+        const event = `${phase}:battle`;
+        if (!record.layerEvents.includes(event)) record.layerEvents.push(event);
+      }
+      if (phase && !record.tooltipText[phase]) {
+        record.tooltipText[phase] = overlay?.querySelector<HTMLElement>('.tutorial-tooltip')?.innerText ?? '';
+      }
+      if (document.querySelector('[data-tut="game-notice-panel"]')) record.legacySettlementPopupSeen = true;
+    };
+    const observer = new MutationObserver(capture);
+    observer.observe(document.body, { attributes: true, childList: true, subtree: true });
+    playbackWindow.__tutorialPlaybackObserver = observer;
+    capture();
+  });
+}
+
+async function readTutorialPlaybackRecord(page: import('@playwright/test').Page): Promise<TutorialPlaybackRecord> {
+  return page.evaluate(() => {
+    const playbackWindow = window as typeof window & { __tutorialPlaybackRecord?: TutorialPlaybackRecord };
+    return (
+      playbackWindow.__tutorialPlaybackRecord ?? {
+        phases: [],
+        layerEvents: [],
+        tooltipText: {},
+        legacySettlementPopupSeen: false,
+      }
+    );
+  });
+}
+
 async function expectTooltipContentUsable(page: import('@playwright/test').Page, requireInstruction = false) {
   const tooltip = page.locator('.tutorial-tooltip');
   const title = tooltip.getByRole('heading');
@@ -80,11 +162,17 @@ async function expectSingleActionHighlight(page: import('@playwright/test').Page
 }
 
 async function expectSingleContextHighlight(page: import('@playwright/test').Page) {
+  await expectContextHighlights(page, 1);
+}
+
+async function expectContextHighlights(page: import('@playwright/test').Page, expectedCount: number) {
   const overlay = page.locator('.tutorial-game-overlay');
-  const highlight = overlay.locator('svg > rect[stroke]:not(.tutorial-interaction-target)');
-  await expect(highlight).toHaveCount(1);
+  const highlights = overlay.locator('svg > rect[stroke]:not(.tutorial-interaction-target)');
+  await expect(highlights).toHaveCount(expectedCount);
   await expect(overlay.locator('.tutorial-interaction-target')).toHaveCount(0);
-  await expectHighlightOutsideTooltip(page, highlight);
+  for (let index = 0; index < expectedCount; index++) {
+    await expectHighlightOutsideTooltip(page, highlights.nth(index));
+  }
 }
 
 async function expectHighlightOutsideTooltip(
@@ -220,6 +308,10 @@ test.describe('教學頁面載入', () => {
     await expect(board.locator('[data-tut="opponent-abyss"]')).toBeVisible();
     await expect(page.getByTestId('tutorial-field-target-hp')).toBeVisible();
     await expect(page.getByTestId('tutorial-field-target-hp-opponent')).toBeVisible();
+    await expect(page.getByTestId('tutorial-field-target-hp').locator('.playerstatus-name')).toBeVisible();
+    await expect(page.getByTestId('tutorial-field-target-hp-opponent').locator('.playerstatus-name')).toBeVisible();
+    await expect(board.locator('.playerstatus-bar-ticks')).toHaveCount(2);
+    await expect(board.locator('[data-tut="chronos-clock"]')).toBeVisible();
     await expect(board.locator('.chronosdial')).toBeVisible();
     await expect(board.locator('img[src*="zutomayocard_1st_34"]')).toBeVisible();
     await expect(board.getByLabel('對手 攻擊力 50')).toBeVisible();
@@ -233,27 +325,26 @@ test.describe('教學頁面載入', () => {
     await expect(page.getByTestId('tutorial-field-target-power-opponent')).toHaveAttribute('data-card-ids', '3rd_58');
     await expect(page.getByTestId('tutorial-field-target-deck-opponent')).toBeVisible();
     await expect(page.getByTestId('tutorial-field-target-abyss-opponent')).toHaveAttribute('data-card-ids', '2nd_40');
-    const viewportWidth = page.viewportSize()?.width ?? 1280;
-    const stackedRows = viewportWidth < 480;
+    const wideBattlefield = (page.viewportSize()?.width ?? 0) >= 480;
     await expect(page.getByTestId('tutorial-field-opponent-upper-row')).toHaveCSS(
       'display',
-      stackedRows ? 'flex' : 'contents',
+      wideBattlefield ? 'contents' : 'flex',
     );
     await expect(page.getByTestId('tutorial-field-opponent-lower-row')).toHaveCSS(
       'display',
-      stackedRows ? 'flex' : 'contents',
+      wideBattlefield ? 'contents' : 'flex',
     );
-    const alignedGroups = stackedRows
-      ? [
-          ['abyss-opponent', 'deck-opponent'],
-          ['set', 'power-opponent'],
-        ]
-      : [['abyss-opponent', 'deck-opponent', 'set', 'power-opponent']];
-    for (const group of alignedGroups) {
-      const boxes = await Promise.all(group.map((id) => page.getByTestId(`tutorial-field-target-${id}`).boundingBox()));
-      expect(boxes.every(Boolean)).toBe(true);
-      const bottoms = boxes.map((box) => box!.y + box!.height);
-      expect(Math.max(...bottoms) - Math.min(...bottoms)).toBeLessThanOrEqual(1);
+    const opponentRowTargetBoxes = await Promise.all(
+      ['abyss-opponent', 'deck-opponent', 'set', 'power-opponent'].map((id) =>
+        page.getByTestId(`tutorial-field-target-${id}`).boundingBox(),
+      ),
+    );
+    expect(opponentRowTargetBoxes.every(Boolean)).toBe(true);
+    const opponentRowBottoms = opponentRowTargetBoxes.map((box) => box!.y + box!.height);
+    if (wideBattlefield) {
+      expect(Math.max(...opponentRowBottoms) - Math.min(...opponentRowBottoms)).toBeLessThanOrEqual(1);
+    } else {
+      await expect.poll(() => board.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
     }
   });
 
@@ -441,6 +532,7 @@ test.describe('教學頁面載入', () => {
     await page.getByRole('button', { name: /戰場介紹/ }).click();
 
     const board = page.getByTestId('tutorial-real-board-preview');
+    await expect(board.locator('.chronospanel-sm')).toBeVisible();
     const opponentResources = [
       page.getByTestId('tutorial-field-target-power-opponent'),
       page.getByTestId('tutorial-field-target-deck-opponent'),
@@ -734,35 +826,36 @@ test.describe('教學覆蓋層與互動 @requires-backend', () => {
     await expect(page.locator('.bf-root:visible .bf-hud-turn-value')).toHaveText('01');
     await expect(page.locator('[data-tut="player-hp"][aria-label="玩家 · HP 100/100"]')).toBeVisible();
     await expect(page.locator('[data-tut="opponent-hp"][aria-label="電腦 · HP 100/100"]')).toBeVisible();
-    await expect(page.getByRole('img', { name: 'Chronos 時鐘 0/18 · 夜', exact: true })).toBeVisible();
+    await expectChronosAt(page, 0, '夜');
+    await expectChronosTicksReadable(page);
     await expectTooltipContentUsable(page);
     await expect(page.getByRole('dialog', { name: '猜拳決定先後手' })).toHaveCount(0);
 
+    await startTutorialPlaybackRecorder(page);
     await overlay.getByRole('button', { name: '下一頁' }).click();
     const clockOverlay = await expectTutorialPhase(page, 'clock-advance');
     await expect(clockOverlay).toHaveAttribute('data-tutorial-step', '2');
     await expect(clockOverlay).toContainText('2 + 1 = 3');
-    await expect(clockOverlay).toContainText('從 0 推進到 3');
-    await expect(page.locator('[data-tut="game-notice-panel"]').first()).toBeVisible();
+    await expect(clockOverlay).toContainText('向前推進 3 格');
+    await expect(page.locator('[data-tut="game-notice-panel"]')).toHaveCount(0);
+    await expect(page.locator('.chronos-resolution-layer:visible')).toBeVisible();
     await expect(page.locator('.bf-root:visible .bf-hud-turn-value')).toHaveText('01');
     await expect(page.locator('[data-tut="player-hp"][aria-label="玩家 · HP 100/100"]')).toBeVisible();
-    await expect(page.getByRole('img', { name: 'Chronos 時鐘 3/18 · 夜', exact: true })).toBeVisible();
-    await expectTooltipContentUsable(page, true);
-    await expectSingleActionHighlight(page);
+    await expectTooltipContentUsable(page);
+    await expect(clockOverlay.getByRole('status')).toContainText('正在播放場上結算動畫');
+    await expect(clockOverlay.getByTestId('tutorial-fixed-instruction')).toHaveCount(0);
+    await expectSingleContextHighlight(page);
 
-    await clockOverlay.getByRole('button', { name: '上一頁', exact: true }).click();
-    await expectTutorialPhase(page, 'flow-recap');
-    await page.getByRole('button', { name: '下一頁', exact: true }).click();
-    await expectTutorialPhase(page, 'clock-advance');
-    await expectSingleActionHighlight(page);
-    await activateWithKeyboard(
-      page.locator('[data-tut="game-notice-panel"]').first().getByRole('button', { name: '確認' }),
-    );
-
-    const hpOverlay = await expectTutorialPhase(page, 'hp-calc');
-    await expect(page.locator('.bf-root:visible .bf-hud-turn-value')).toHaveText('01');
+    const turnEndOverlay = await expectTutorialPhase(page, 'turn-end-draw-t1');
+    const playback = await readTutorialPlaybackRecord(page);
+    expect(playback.phases).toEqual(expect.arrayContaining(['clock-advance', 'hp-calc', 'turn-end-draw-t1']));
+    expect(playback.layerEvents).toEqual(expect.arrayContaining(['clock-advance:chronos', 'hp-calc:battle']));
+    expect(playback.tooltipText['hp-calc']).toContain('50 - 30 = 20');
+    expect(playback.tooltipText['hp-calc']).toContain('100 - 20 = 80');
+    expect(playback.legacySettlementPopupSeen).toBe(false);
+    await expectChronosAt(page, 3, '夜');
     await expect(page.locator('[data-tut="player-hp"][aria-label="玩家 · HP 80/100"]')).toBeVisible();
-    await hpOverlay.getByRole('button', { name: '上一頁', exact: true }).click();
+    await turnEndOverlay.getByRole('button', { name: '上一頁', exact: true }).click();
     await confirmTutorialRewind(page);
     const rebuiltFlow = await expectTutorialPhase(page, 'flow-recap');
     await expect(rebuiltFlow).toContainText('雙方 HP 都是 100');
@@ -854,26 +947,24 @@ test.describe('教學覆蓋層與互動 @requires-backend', () => {
     await expect(flowOverlay).toHaveAttribute('data-tutorial-step', '1');
     await expect(flowOverlay).toHaveAttribute('data-tutorial-total', '18');
     await expect(flowOverlay).toContainText('雙方 HP 都是 100');
-    await activateWithKeyboard(flowOverlay.getByRole('button', { name: '下一頁' }));
+    await startTutorialPlaybackRecorder(page);
+    await flowOverlay.getByRole('button', { name: '下一頁' }).click();
 
     const clockOverlay = await expectTutorialPhase(page, 'clock-advance');
     await expect(clockOverlay).toHaveAttribute('data-tutorial-step', '2');
     await expect(clockOverlay).toContainText('2 + 1 = 3');
-    await expect(clockOverlay).toContainText('從 0 推進到 3');
-    await expectSingleActionHighlight(page);
-    await activateWithKeyboard(
-      page.locator('[data-tut="game-notice-panel"]').first().getByRole('button', { name: '確認' }),
-    );
-
-    await expectTutorialPhase(page, 'hp-calc');
-    await expect(page.locator('.tutorial-tooltip')).toContainText('50 - 30 = 20');
-    await expect(page.locator('.tutorial-tooltip')).toContainText('100 - 20 = 80');
-    await expectSingleActionHighlight(page);
-    await activateWithKeyboard(
-      page.locator('[data-tut="game-notice-panel"]').first().getByRole('button', { name: '確認' }),
-    );
+    await expect(clockOverlay).toContainText('向前推進 3 格');
+    await expect(page.locator('[data-tut="game-notice-panel"]')).toHaveCount(0);
+    await expect(page.locator('.chronos-resolution-layer:visible')).toBeVisible();
+    await expectSingleContextHighlight(page);
 
     await expectTutorialPhase(page, 'turn-end-draw-t1');
+    const firstTurnPlayback = await readTutorialPlaybackRecord(page);
+    expect(firstTurnPlayback.phases).toEqual(expect.arrayContaining(['clock-advance', 'hp-calc', 'turn-end-draw-t1']));
+    expect(firstTurnPlayback.layerEvents).toEqual(expect.arrayContaining(['clock-advance:chronos', 'hp-calc:battle']));
+    expect(firstTurnPlayback.tooltipText['hp-calc']).toContain('50 - 30 = 20');
+    expect(firstTurnPlayback.tooltipText['hp-calc']).toContain('100 - 20 = 80');
+    expect(firstTurnPlayback.legacySettlementPopupSeen).toBe(false);
     await expectSingleContextHighlight(page);
     await activateWithKeyboard(page.getByRole('button', { name: '下一頁' }));
 
@@ -899,7 +990,7 @@ test.describe('教學覆蓋層與互動 @requires-backend', () => {
 
     await expectTutorialPhase(page, 'turnSet-character-select');
     await expect(page.locator('[data-tut="player-hp"][aria-label="玩家 · HP 80/100"]')).toBeVisible();
-    await expect(page.getByRole('img', { name: 'Chronos 時鐘 3/18 · 夜', exact: true })).toBeVisible();
+    await expectChronosAt(page, 3, '夜');
     await expect(page.locator('[data-tut="confirm-set"]').first()).toBeDisabled();
     await activateWithKeyboard(page.locator('[data-tut-card="1st_46"]').first());
 
@@ -924,15 +1015,19 @@ test.describe('教學覆蓋層與互動 @requires-backend', () => {
 
     await expectTutorialPhase(page, 'turnSet-confirm');
     await expectSingleActionHighlight(page);
-    await activateWithKeyboard(page.locator('[data-tut="confirm-set"]').first());
+    await startTutorialPlaybackRecorder(page);
+    await page.locator('[data-tut="confirm-set"]').first().click();
 
     await expectTutorialPhase(page, 'reveal-clock');
-    await expectSingleActionHighlight(page);
-    await activateWithKeyboard(
-      page.locator('[data-tut="game-notice-panel"]').first().getByRole('button', { name: '確認' }),
-    );
+    await expect(page.locator('[data-tut="game-notice-panel"]')).toHaveCount(0);
+    await expect(page.locator('.chronos-resolution-layer:visible')).toBeVisible();
+    await expectSingleContextHighlight(page);
 
     await expectTutorialPhase(page, 'character-replacement');
+    const secondClockPlayback = await readTutorialPlaybackRecord(page);
+    expect(secondClockPlayback.phases).toEqual(expect.arrayContaining(['reveal-clock', 'character-replacement']));
+    expect(secondClockPlayback.layerEvents).toContain('reveal-clock:chronos');
+    expect(secondClockPlayback.legacySettlementPopupSeen).toBe(false);
     await expectSingleContextHighlight(page);
     await expect(page.locator('.effect-order-panel')).toHaveCount(0);
     await activateWithKeyboard(page.getByRole('button', { name: '下一頁' }));
@@ -961,24 +1056,21 @@ test.describe('教學覆蓋層與互動 @requires-backend', () => {
     await expectTutorialPhase(page, 'effectOrder-action');
     await expect(page.locator('[data-tut="player-hp"][aria-label="玩家 · HP 80/100"]')).toBeVisible();
     await expect(page.locator('[data-tut="opponent-hp"][aria-label="電腦 · HP 100/100"]')).toBeVisible();
-    await expect(page.getByRole('img', { name: 'Chronos 時鐘 10/18 · 晝', exact: true })).toBeVisible();
+    await expectChronosAt(page, 10, '晝');
     await expect(page.locator('.effect-order-panel:visible')).toHaveCount(1);
     await activateWithKeyboard(page.locator('[data-tut-effect-card="2nd_98"]').first());
 
     await expectTutorialPhase(page, 'choice-mechanics');
     await expect(page.locator('.bf-root:visible .bf-hud-turn-value')).toHaveText('02');
     await expect(page.locator('[data-tut="opponent-hp"][aria-label="電腦 · HP 100/100"]')).toBeVisible();
-    await activateWithKeyboard(page.getByRole('button', { name: '下一頁' }));
-
-    await expectTutorialPhase(page, 'hp-calc');
-    await expect(page.locator('.bf-root:visible .bf-hud-turn-value')).toHaveText('02');
-    await expect(page.locator('[data-tut="opponent-hp"][aria-label="電腦 · HP 30/100"]')).toBeVisible();
-    await expectSingleActionHighlight(page);
-    await activateWithKeyboard(
-      page.locator('[data-tut="game-notice-panel"]').first().getByRole('button', { name: '確認' }),
-    );
+    await startTutorialPlaybackRecorder(page);
+    await page.getByRole('button', { name: '下一頁' }).click();
 
     await expectTutorialPhase(page, 'turn-end-cleanup');
+    const secondBattlePlayback = await readTutorialPlaybackRecord(page);
+    expect(secondBattlePlayback.phases).toEqual(expect.arrayContaining(['hp-calc', 'turn-end-cleanup']));
+    expect(secondBattlePlayback.layerEvents).toContain('hp-calc:battle');
+    expect(secondBattlePlayback.legacySettlementPopupSeen).toBe(false);
     await expect(page.locator('.bf-root:visible .bf-hud-turn-value')).toHaveText('02');
     await expectSingleContextHighlight(page);
     await expect(page.locator('[data-tut="opponent-hp"][aria-label="電腦 · HP 30/100"]')).toBeVisible();

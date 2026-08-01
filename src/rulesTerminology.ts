@@ -440,7 +440,11 @@ const NON_CANONICAL_PATTERNS: Partial<
     { pattern: /充能成本|PowerCost/gu, expected: 'Power Cost' },
     { pattern: /充能值/gu, expected: 'SEND TO POWER' },
     { pattern: /牌庫/gu, expected: '牌組' },
+    { pattern: /戰場期間/gu, expected: '戰鬥區期間' },
+    { pattern: /電氣/gu, expected: '電' },
     { pattern: /暗屬性|火屬性/gu, expected: '闇屬性／炎屬性' },
+    { pattern: /(?:(?<=HP[^，。；\n]{0,16})恢復|恢復(?=(?:[^，。；\n]{0,16}HP|效果)))/gu, expected: '回復' },
+    { pattern: /克洛諾斯|克洛诺斯/gu, expected: 'Chronos' },
   ],
   'zh-CN': [
     { pattern: /\bCharacter\b/giu, expected: '角色卡' },
@@ -455,7 +459,10 @@ const NON_CANONICAL_PATTERNS: Partial<
     { pattern: /充能成本|PowerCost/gu, expected: 'Power Cost' },
     { pattern: /充能值/gu, expected: 'SEND TO POWER' },
     { pattern: /牌库/gu, expected: '牌组' },
+    { pattern: /战场期间/gu, expected: '战斗区期间' },
+    { pattern: /电气/gu, expected: '电' },
     { pattern: /闇属性|火属性/gu, expected: '暗属性／炎属性' },
+    { pattern: /克洛诺斯|克洛諾斯/gu, expected: 'Chronos' },
   ],
   'zh-HK': [
     { pattern: /\bCharacter\b/giu, expected: '角色卡' },
@@ -470,7 +477,11 @@ const NON_CANONICAL_PATTERNS: Partial<
     { pattern: /充能成本|PowerCost/gu, expected: 'Power Cost' },
     { pattern: /充能值/gu, expected: 'SEND TO POWER' },
     { pattern: /牌庫/gu, expected: '牌組' },
+    { pattern: /戰場期間/gu, expected: '戰鬥區期間' },
+    { pattern: /電氣/gu, expected: '電' },
     { pattern: /暗屬性|火屬性/gu, expected: '闇屬性／炎屬性' },
+    { pattern: /(?:(?<=HP[^，。；\n]{0,16})恢復|恢復(?=(?:[^，。；\n]{0,16}HP|效果)))/gu, expected: '回復' },
+    { pattern: /克洛諾斯|克洛诺斯/gu, expected: 'Chronos' },
   ],
   en: [
     { pattern: /\bEnergy\b/gu, expected: 'Power Cost' },
@@ -489,6 +500,7 @@ const NON_CANONICAL_PATTERNS: Partial<
     { pattern: /파워 코스트|PowerCost/gu, expected: 'Power Cost' },
     { pattern: /충전값/gu, expected: 'SEND TO POWER' },
     { pattern: /핸드/gu, expected: '손패' },
+    { pattern: /배틀필드/gu, expected: '배틀 존' },
     { pattern: /(?:^|[\s(])패(?:를|에|에서|의|가|와|로| 중)/gu, expected: '손패' },
     { pattern: /\b(?:Dark|Flame|Electric|Wind)\b/gu, expected: '현지화된 속성명' },
     { pattern: /암(?:\s*속성|으로)|풍(?:\s*속성|으로)/gu, expected: '어둠／바람' },
@@ -503,6 +515,88 @@ export function rulesTerminologyViolations(locale: RulesTerminologyLocale, value
     const matches = [...value.matchAll(pattern)].map((match) => match[0].trim()).filter(Boolean);
     return [...new Set(matches)].map((match) => `${match} -> ${expected}`);
   });
+}
+
+const SOURCE_TERM_ALIASES: Partial<
+  Record<RulesTerminologyLocale, Partial<Record<keyof (typeof RULES_TERMINOLOGY)['ja'], readonly string[]>>>
+> = {
+  ja: {
+    battleZone: ['バトルフィールド', 'バトルフィールト'],
+    powerCharger: ['バワーチャージャー'],
+  },
+};
+
+const TARGET_TERM_ALIASES: Partial<
+  Record<RulesTerminologyLocale, Partial<Record<keyof (typeof RULES_TERMINOLOGY)['ja'], readonly string[]>>>
+> = {
+  ko: {
+    drawCard: ['카드 뽑'],
+    place: ['놓'],
+    returnToDeck: ['덱으로 되돌리'],
+  },
+};
+
+const SOURCE_TERM_CONTEXT_EXCLUSIONS: Partial<
+  Record<RulesTerminologyLocale, Partial<Record<keyof (typeof RULES_TERMINOLOGY)['ja'], readonly string[]>>>
+> = {
+  ja: {
+    clock: ['時計台'],
+  },
+};
+
+export function rulesTerminologySourceViolations(
+  sourceLocale: RulesTerminologyLocale,
+  targetLocale: RulesTerminologyLocale,
+  sourceText: string,
+  translatedText: string,
+): string[] {
+  const sourceTerms = RULES_TERMINOLOGY[sourceLocale];
+  const targetTerms = RULES_TERMINOLOGY[targetLocale];
+  const aliases = SOURCE_TERM_ALIASES[sourceLocale] ?? {};
+  const targetAliases = TARGET_TERM_ALIASES[targetLocale] ?? {};
+  const contextExclusions = SOURCE_TERM_CONTEXT_EXCLUSIONS[sourceLocale] ?? {};
+  const advancesChronosClock =
+    sourceLocale === 'ja' && /(?:クロノスの)?時計を\s*\d+(?:つ)?\s*進(?:め|ませ)/u.test(sourceText);
+  const variants = Object.entries(sourceTerms).flatMap(([key, value]) => [
+    { key: key as keyof typeof sourceTerms, value },
+    ...((aliases[key as keyof typeof aliases] ?? []).map((alias) => ({
+      key: key as keyof typeof sourceTerms,
+      value: alias,
+    })) as Array<{ key: keyof typeof sourceTerms; value: string }>),
+  ]);
+  const violations: string[] = [];
+
+  for (const [key, sourceTerm] of Object.entries(sourceTerms) as Array<[keyof typeof sourceTerms, string]>) {
+    if (key === 'clock' && advancesChronosClock) continue;
+
+    const keyVariants = [sourceTerm, ...(aliases[key as keyof typeof aliases] ?? [])];
+    const sourceUsesTerm = keyVariants.some((variant) => {
+      let unshadowedSource = sourceText;
+      for (const excluded of contextExclusions[key as keyof typeof contextExclusions] ?? []) {
+        unshadowedSource = unshadowedSource.split(excluded).join('');
+      }
+      for (const longer of variants) {
+        if (longer.key !== key && longer.value.length > variant.length && longer.value.includes(variant)) {
+          unshadowedSource = unshadowedSource.split(longer.value).join('');
+        }
+      }
+      return unshadowedSource.includes(variant);
+    });
+    if (!sourceUsesTerm) continue;
+
+    const expected = targetTerms[key];
+    const acceptedTargets = [expected, ...(targetAliases[key as keyof typeof targetAliases] ?? [])];
+    if (!acceptedTargets.some((target) => translatedText.includes(target))) {
+      violations.push(`${sourceTerm} -> ${expected}`);
+    }
+  }
+
+  if (advancesChronosClock) {
+    const expectedChronos = targetTerms.chronos;
+    if (!translatedText.includes(expectedChronos)) violations.push(`時計を進める -> ${expectedChronos}`);
+  }
+
+  return violations;
 }
 
 export function assertCanonicalRulesTerminology(locale: RulesTerminologyLocale, value: string, label: string): void {

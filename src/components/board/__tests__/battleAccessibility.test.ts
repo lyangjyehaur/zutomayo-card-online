@@ -32,7 +32,7 @@ describe('battle accessibility contracts', () => {
   });
 
   it('names the opponent hand-back composite and keeps battle log text on AA tokens', () => {
-    expect(boardSource).toMatch(/className="bf-opponent-handbacks" role="img" aria-label=/);
+    expect(boardSource).toMatch(/className="bf-opponent-handbacks"\s+role="group"\s+aria-label=/);
 
     const breakdownSource = sourceBetween('function LogBreakdown', 'function jankenMark');
     const logSource = sourceBetween('function BattleLogSidebarPanel', 'function BattleStatusSidebarPanel');

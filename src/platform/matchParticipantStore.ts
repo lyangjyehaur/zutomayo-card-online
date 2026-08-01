@@ -13,6 +13,8 @@ const { acquireAccountMutationLocks } = require('../../api/accountMutationLock.c
 };
 
 export type PlatformMatchParticipantRole = 'player' | 'spectator';
+export type MatchMode = 'quick_match' | 'custom_room' | 'invite' | 'direct' | 'unknown';
+export type MatchTrafficClass = 'production' | 'operator' | 'synthetic' | 'ai' | 'unknown';
 
 export interface PlatformMatchParticipantInput {
   boardgameMatchID: string | undefined;
@@ -31,15 +33,28 @@ export interface PlatformRoomParticipantInput {
   accessVerified?: boolean;
 }
 
+export interface MatchProvenanceInput {
+  boardgameMatchID?: string;
+  matchMode: MatchMode;
+}
+
+export interface MatchConnectionInput {
+  boardgameMatchID?: string;
+  playerID?: string;
+  event: 'join' | 'disconnect' | 'reconnect';
+}
+
 export interface PlatformMatchParticipantStore {
   authorizeMatchParticipant?(input: PlatformMatchParticipantInput): Promise<boolean>;
   recordParticipant(input: PlatformMatchParticipantInput): Promise<void>;
   recordRoomParticipant(input: PlatformRoomParticipantInput): Promise<void>;
+  recordMatchProvenance(input: MatchProvenanceInput): Promise<void>;
+  recordMatchConnection(input: MatchConnectionInput): Promise<void>;
   close?(): Promise<void>;
 }
 
 interface Queryable {
-  query(sql: string, params?: unknown[]): Promise<{ rows: QueryResultRow[] }>;
+  query(sql: string, params?: unknown[]): Promise<{ rows: QueryResultRow[]; rowCount?: number | null }>;
 }
 
 interface TransactionPool extends Queryable {
@@ -85,6 +100,17 @@ function cleanBoardgamePlayerID(value: unknown): string | null {
   return value === '0' || value === '1' ? value : null;
 }
 
+const MATCH_TRAFFIC_CLASSES = new Set<MatchTrafficClass>(['production', 'operator', 'synthetic', 'ai', 'unknown']);
+
+export function resolveMatchTrafficClass(env: NodeJS.ProcessEnv = process.env): MatchTrafficClass {
+  const configured = env.MATCH_ANALYTICS_TRAFFIC_CLASS?.trim().toLowerCase() as MatchTrafficClass | undefined;
+  if (configured && MATCH_TRAFFIC_CLASSES.has(configured)) return configured;
+  const deployment = (env.DEPLOYMENT_ENV || env.NODE_ENV)?.trim().toLowerCase();
+  if (deployment === 'production') return 'production';
+  if (deployment === 'development' || deployment === 'test' || deployment === 'staging') return 'synthetic';
+  return 'unknown';
+}
+
 export function createEmptyPlatformMatchParticipantStore(): PlatformMatchParticipantStore {
   return {
     async recordParticipant() {
@@ -93,12 +119,20 @@ export function createEmptyPlatformMatchParticipantStore(): PlatformMatchPartici
     async recordRoomParticipant() {
       return undefined;
     },
+    async recordMatchProvenance() {
+      return undefined;
+    },
+    async recordMatchConnection() {
+      return undefined;
+    },
   };
 }
 
 export function createPostgresPlatformMatchParticipantStore(
   pool: TransactionPool & { end?: () => Promise<void> },
+  options: { trafficClass?: MatchTrafficClass } = {},
 ): PlatformMatchParticipantStore {
+  const trafficClass = options.trafficClass ?? resolveMatchTrafficClass();
   return {
     async authorizeMatchParticipant(input) {
       const boardgameMatchID = cleanBoardgameMatchID(input.boardgameMatchID);
@@ -181,6 +215,77 @@ export function createPostgresPlatformMatchParticipantStore(
         ),
       );
     },
+    async recordMatchProvenance(input) {
+      const boardgameMatchID = cleanBoardgameMatchID(input.boardgameMatchID);
+      if (!boardgameMatchID) return;
+      const result = await pool.query(
+        `INSERT INTO bjg_match_telemetry (source_match_id, match_mode, traffic_class, observed_at, updated_at)
+         SELECT match_id, $2, $3, NOW(), NOW()
+           FROM bjg_matches
+          WHERE match_id = $1
+         ON CONFLICT (source_match_id)
+         DO UPDATE SET
+           match_mode = CASE
+             WHEN bjg_match_telemetry.match_mode IN ('direct', 'unknown') THEN EXCLUDED.match_mode
+             ELSE bjg_match_telemetry.match_mode
+           END,
+           traffic_class = CASE
+             WHEN bjg_match_telemetry.traffic_class = 'unknown' THEN EXCLUDED.traffic_class
+             ELSE bjg_match_telemetry.traffic_class
+           END,
+           updated_at = NOW()
+         WHERE (
+           bjg_match_telemetry.match_mode = EXCLUDED.match_mode
+           OR bjg_match_telemetry.match_mode IN ('direct', 'unknown')
+           OR EXCLUDED.match_mode IN ('direct', 'unknown')
+         )
+           AND (
+             bjg_match_telemetry.traffic_class = EXCLUDED.traffic_class
+             OR bjg_match_telemetry.traffic_class = 'unknown'
+             OR EXCLUDED.traffic_class = 'unknown'
+           )
+         RETURNING source_match_id`,
+        [boardgameMatchID, input.matchMode, trafficClass],
+      );
+      if (result.rows.length === 0) {
+        throw new Error('Match telemetry provenance conflicts with an existing classification or missing match');
+      }
+    },
+    async recordMatchConnection(input) {
+      const boardgameMatchID = cleanBoardgameMatchID(input.boardgameMatchID);
+      const playerID = cleanBoardgamePlayerID(input.playerID);
+      if (!boardgameMatchID || !playerID) return;
+      await pool.query(
+        `INSERT INTO bjg_match_telemetry (source_match_id, match_mode, traffic_class, observed_at, updated_at)
+         SELECT match_id, 'direct', $2, NOW(), NOW()
+           FROM bjg_matches
+          WHERE match_id = $1
+         ON CONFLICT (source_match_id) DO NOTHING`,
+        [boardgameMatchID, trafficClass],
+      );
+      const disconnectColumn = playerID === '0' ? 'player0_disconnect_count' : 'player1_disconnect_count';
+      const reconnectColumn = playerID === '0' ? 'player0_reconnect_count' : 'player1_reconnect_count';
+      if (input.event === 'disconnect') {
+        await pool.query(
+          `UPDATE bjg_match_telemetry
+              SET ${disconnectColumn} = ${disconnectColumn} + 1,
+                  updated_at = NOW()
+            WHERE source_match_id = $1`,
+          [boardgameMatchID],
+        );
+        return;
+      }
+      await pool.query(
+        `UPDATE bjg_match_telemetry
+            SET ${reconnectColumn} = ${reconnectColumn} + CASE
+                  WHEN $2 = 'reconnect' OR ${disconnectColumn} > ${reconnectColumn} THEN 1
+                  ELSE 0
+                END,
+                updated_at = NOW()
+          WHERE source_match_id = $1`,
+        [boardgameMatchID, input.event],
+      );
+    },
     async close() {
       await pool.end?.();
     },
@@ -200,6 +305,7 @@ export function createPlatformMatchParticipantStoreFromEnv(
       connectionTimeoutMillis: 3_000,
       ssl: postgresSslConfig(env),
     }),
+    { trafficClass: resolveMatchTrafficClass(env) },
   );
 }
 

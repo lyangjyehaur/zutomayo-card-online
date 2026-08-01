@@ -3,7 +3,7 @@ import type { Locale } from './i18n';
 export const LEGAL_OPERATOR = 'ZUTOMAYO CARD ONLINE Community';
 export const LEGAL_CONTACT_EMAIL = 'contact@mail.zutomayocard.online';
 export const OFFICIAL_FAN_GUIDELINE_URL = 'https://zutomayo.net/legal/';
-export const LEGAL_EFFECTIVE_DATE = '2026-07-19';
+export const LEGAL_EFFECTIVE_DATE = '2026-07-30';
 
 export type LegalDocumentId = 'overview' | 'privacy' | 'terms' | 'contact';
 
@@ -98,15 +98,16 @@ const zhTW: LegalLocaleContent = {
         {
           heading: '服務供應與分析',
           paragraphs: [
-            '服務可能使用主機與 CDN、Postgres/Redis、OAuth 或 Logto 登入、Email 寄送、Umami 分析及 Sentry 相容錯誤追蹤。只有玩家選擇或正式環境實際啟用的供應者才會收到必要資料。',
-            '分析事件採允許清單，不包含聊天內容、卡牌內容或不必要的原始玩家識別碼。',
+            '服務可能使用主機與 CDN、Postgres/Redis、OAuth 或 Logto 登入、Email 寄送、Umami、Cloudflare Web Analytics 及 Sentry 相容錯誤追蹤。Cloudflare Web Analytics 用於彙總流量與 Web Vitals；只有玩家選擇或正式環境實際啟用的供應者才會收到必要資料。',
+            '分析事件採允許清單，不包含聊天內容、卡牌文字、帳號資料或不必要的原始玩家識別碼。完成對局另保存去識別的終局、版本、牌組卡牌定義 ID、規則事件、配對來源與每席斷線／重連／座位恢復次數；不保存原始對局、房間、邀請、連線、使用者或 IP 識別、牌庫順序、卡牌 instance ID 或自由文字。',
           ],
         },
         {
           heading: '保存期限',
           bullets: [
             '帳號與牌組：帳號有效期間；刪除請求確認後 30 天內刪除或匿名化。',
-            '完成對局與排名：365 天；操作紀錄與聊天：通常 180 天。',
+            '可連結帳號的完成對局與排名：365 天；可連結帳號的操作紀錄與聊天：通常 180 天。',
+            '去識別的對局終局、牌組組成與允許清單規則事件：無固定到期日，用於版本、平衡、逾時與可靠性分析。',
             '舉報、制裁與管理稽核：通常 365 天；應用日誌 30 天；metrics 90 天；加密備份 35 天。',
           ],
           paragraphs: ['安全事件、爭議或合法保存要求可能暫停特定資料的刪除。'],
@@ -294,15 +295,16 @@ const en: LegalLocaleContent = {
         {
           heading: 'Providers and analytics',
           paragraphs: [
-            'The service may use hosting/CDN, Postgres/Redis, OAuth or Logto, email delivery, Umami analytics, and Sentry-compatible error tracking. Only providers actually enabled or selected receive necessary data.',
-            'Analytics uses an allowlist and excludes chat content, card content, and unnecessary raw player identifiers.',
+            'The service may use hosting/CDN, Postgres/Redis, OAuth or Logto, email delivery, Umami, Cloudflare Web Analytics, and Sentry-compatible error tracking. Cloudflare Web Analytics provides aggregate traffic and Web Vitals; only providers actually enabled or selected receive necessary data.',
+            'Analytics uses an allowlist and excludes chat content, card text, account data, and unnecessary raw player identifiers. Completed matches also produce de-identified outcome, version, deck card-definition IDs, rules events, matchmaking provenance, and per-seat disconnect, reconnect, and seat-resume counts. Raw match, room, invite, session, socket, user, and IP identifiers, deck order, card instance IDs, and free text are excluded.',
           ],
         },
         {
           heading: 'Retention',
           bullets: [
             'Accounts and decks: while active; deletion or anonymization within 30 days after a verified request.',
-            'Completed matches and rating changes: 365 days; action logs and chat: normally 180 days.',
+            'Account-linked completed matches and rating changes: 365 days; account-linked action logs and chat: normally 180 days.',
+            'De-identified match outcomes, deck composition, and allowlisted rules events have no fixed expiry and support version, balance, timeout, and reliability analysis.',
             'Reports, sanctions, and admin audit: normally 365 days; application logs 30 days; metrics 90 days; encrypted backups 35 days.',
           ],
           paragraphs: [

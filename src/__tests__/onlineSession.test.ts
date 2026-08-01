@@ -1,8 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   clearStoredOnlineSession,
+  leaveOnlineSession,
   loadOnlineSession,
   ONLINE_SESSION_STORAGE_KEY,
+  requestOnlineRematch,
+  resolveOnlineRouteSession,
   saveOnlineSession,
   type OnlineSession,
   validateOnlineSession,
@@ -23,6 +26,7 @@ function createStorage() {
 
 describe('online session storage', () => {
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -67,6 +71,23 @@ describe('online session storage', () => {
     clearStoredOnlineSession();
 
     expect(localStorage.removeItem).toHaveBeenCalledWith(ONLINE_SESSION_STORAGE_KEY);
+  });
+
+  it('uses the newly stored rematch session while the parent state still points at the previous match', () => {
+    const previousSession: OnlineSession = {
+      matchID: 'bgio-match-1',
+      playerID: '0',
+      playerCredentials: 'credential-1',
+    };
+    const rematchSession: OnlineSession = {
+      matchID: 'bgio-match-2',
+      playerID: '0',
+      playerCredentials: 'credential-2',
+    };
+
+    expect(resolveOnlineRouteSession(previousSession, rematchSession, 'bgio-match-2', false)).toBe(rematchSession);
+    expect(resolveOnlineRouteSession(previousSession, rematchSession, 'bgio-match-3', false)).toBeNull();
+    expect(resolveOnlineRouteSession(previousSession, rematchSession, 'bgio-match-2', true)).toBeNull();
   });
 
   it('refreshes platform seat tokens without dropping stable platform identity', async () => {
@@ -122,5 +143,98 @@ describe('online session storage', () => {
 
     expect(session.platformUserId).toBe('guest:match:bgio-match-1:reservation:abc');
     expect(loadOnlineSession()).toEqual(session);
+  });
+
+  it('aborts remote leave cleanup after the local timeout', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        (_url: string, init?: RequestInit) =>
+          new Promise((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+          }),
+      ),
+    );
+    const session: OnlineSession = {
+      matchID: 'bgio-match-1',
+      playerID: '0',
+      playerCredentials: 'credential-0',
+    };
+
+    const leaving = leaveOnlineSession(session);
+    await vi.advanceTimersByTimeAsync(3_000);
+
+    await expect(leaving).resolves.toBeUndefined();
+  });
+
+  it('requests the shared next match with the current seat credentials', async () => {
+    const fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ nextMatchID: 'bgio-match-2' }),
+    }));
+    vi.stubGlobal('fetch', fetch);
+    const session: OnlineSession = {
+      matchID: 'bgio-match-1',
+      playerID: '1',
+      playerCredentials: 'credential-1',
+    };
+
+    await expect(requestOnlineRematch(session)).resolves.toBe('bgio-match-2');
+    expect(fetch).toHaveBeenCalledWith(
+      '/games/zutomayo-card/bgio-match-1/playAgain',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ playerID: '1', credentials: 'credential-1', unlisted: true }),
+      }),
+    );
+  });
+
+  it('preserves the rematch server error instead of replacing it with a generic message', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ error: 'Opponent has not requested a rematch' }), {
+            status: 409,
+            headers: { 'x-request-id': 'req_rematch' },
+          }),
+      ),
+    );
+    const session: OnlineSession = {
+      matchID: 'bgio-match-1',
+      playerID: '0',
+      playerCredentials: 'credential-0',
+    };
+
+    await expect(requestOnlineRematch(session)).rejects.toThrow(
+      'Opponent has not requested a rematch (HTTP 409, request req_rematch)',
+    );
+  });
+
+  it.each([
+    [403, 'identity mismatch', 'invalidSession'],
+    [409, 'invalid credentials', 'invalidSession'],
+    [409, 'player not available', 'seatTaken'],
+    [404, 'match not found', 'roomGone'],
+    [426, 'client version mismatch', 'versionMismatch'],
+    [503, 'service unavailable', 'network'],
+  ] as const)('classifies HTTP %s resume errors without discarding their details', async (status, body, reason) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(body, { status, headers: { 'x-request-id': `req_${status}` } })),
+    );
+    const session: OnlineSession = {
+      matchID: 'bgio-match-1',
+      playerID: '0',
+      playerCredentials: 'credential-0',
+    };
+
+    const result = await validateOnlineSession(session);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('Expected resume validation to fail');
+    expect(result.reason).toBe(reason);
+    expect(result.error.message).toBe(`${body} (HTTP ${status}, request req_${status})`);
   });
 });

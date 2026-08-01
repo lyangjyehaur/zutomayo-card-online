@@ -6,6 +6,7 @@ import type {
   JankenChoice,
   PlayerIndex,
   PlayerState,
+  ReplayMoveName,
   SetSlot,
   ZutomayoSetupData,
 } from './types';
@@ -26,6 +27,7 @@ import {
   undoSetCard,
   validateZutomayoSetupData,
 } from './GameLogic';
+import { appendReplayDecision, canonicalizeReplayArgs, createReplayRequestFingerprint } from './decisionTrace';
 
 export type { ZutomayoSetupData } from './types';
 
@@ -57,6 +59,21 @@ function playerIndex(playerID: string | null): PlayerIndex | null {
   return playerID === '0' || playerID === '1' ? (Number(playerID) as PlayerIndex) : null;
 }
 
+function applyTrackedDecision(
+  G: GameState,
+  playerID: string | null,
+  move: ReplayMoveName,
+  args: readonly unknown[],
+  apply: (player: PlayerIndex, canonicalArgs: unknown[]) => boolean,
+): typeof INVALID_MOVE | undefined {
+  const player = playerIndex(playerID);
+  if (player === null) return INVALID_MOVE;
+  const canonicalArgs = canonicalizeReplayArgs(args);
+  const requestFingerprint = createReplayRequestFingerprint(G, player, move, canonicalArgs);
+  if (!apply(player, canonicalArgs)) return INVALID_MOVE;
+  appendReplayDecision(G, player, move, canonicalArgs, requestFingerprint);
+}
+
 function concurrentServerMove(move: MoveFn<GameState>): Move<GameState> {
   return {
     move,
@@ -76,40 +93,95 @@ function hiddenCard(instanceId: string): CardInstance {
   return { instanceId, defId: '__hidden__', faceUp: false };
 }
 
-function redactHiddenCard(card: CardInstance | null, placeholder: string): CardInstance | null {
-  if (!card) return null;
-  return card.faceUp ? { ...card } : hiddenCard(placeholder);
+interface PlayerViewHiddenIds {
+  id(owner: PlayerIndex, card: CardInstance): string;
 }
 
-function redactDeckForViewer(player: PlayerState, owner: PlayerIndex): CardInstance[] {
-  return player.deck.map((card, index) => (card.faceUp ? { ...card } : hiddenCard(`hidden-p${owner}-deck-${index}`)));
-}
-
-function redactPlayerForViewer(G: GameState, owner: PlayerIndex, viewer: PlayerIndex | null) {
-  const player = G.players[owner];
-  const isOwner = viewer === owner;
-  if (isOwner) return { ...player, hand: [...player.hand], deck: redactDeckForViewer(player, owner) };
-  const revealedHandIds = new Set(G.revealedHandCardIds?.[owner] ?? []);
-
+function createPlayerViewHiddenIds(): PlayerViewHiddenIds {
+  const ids: [Map<string, string>, Map<string, string>] = [new Map(), new Map()];
+  const next = [0, 0];
   return {
-    ...player,
-    hand: player.hand.map((card, index) =>
-      revealedHandIds.has(card.instanceId) ? { ...card } : hiddenCard(`hidden-p${owner}-hand-${index}`),
-    ),
-    deck: redactDeckForViewer(player, owner),
-    battleZone: redactHiddenCard(player.battleZone, `hidden-p${owner}-battle`),
-    setZoneA: redactHiddenCard(player.setZoneA, `hidden-p${owner}-set-a`),
-    setZoneB: redactHiddenCard(player.setZoneB, `hidden-p${owner}-set-b`),
-    setZoneC: redactHiddenCard(player.setZoneC, `hidden-p${owner}-set-c`),
-    powerCharger: player.powerCharger.map((card, i) => redactHiddenCard(card, `hidden-p${owner}-power-${i}`)),
-    abyss: player.abyss.map((card, i) => redactHiddenCard(card, `hidden-p${owner}-abyss-${i}`)),
+    id(owner, card) {
+      const existing = ids[owner].get(card.instanceId);
+      if (existing) return existing;
+      const opaque = `hidden-p${owner}-card-${next[owner]++}`;
+      ids[owner].set(card.instanceId, opaque);
+      return opaque;
+    },
   };
 }
 
-function redactPlayedCardsForViewer(G: GameState, owner: PlayerIndex, viewer: PlayerIndex | null): CardInstance[] {
+function redactHiddenCard(
+  card: CardInstance | null,
+  owner: PlayerIndex,
+  hiddenIds: PlayerViewHiddenIds,
+  explicitlyRevealedIds: ReadonlySet<string>,
+): CardInstance | null {
+  if (!card) return null;
+  return card.faceUp || explicitlyRevealedIds.has(card.instanceId)
+    ? { ...card }
+    : hiddenCard(hiddenIds.id(owner, card));
+}
+
+function redactDeckForViewer(
+  player: PlayerState,
+  owner: PlayerIndex,
+  hiddenIds: PlayerViewHiddenIds,
+  explicitlyRevealedIds: ReadonlySet<string>,
+): CardInstance[] {
+  return player.deck.map((card) =>
+    card.faceUp || explicitlyRevealedIds.has(card.instanceId) ? { ...card } : hiddenCard(hiddenIds.id(owner, card)),
+  );
+}
+
+function redactPlayerForViewer(
+  G: GameState,
+  owner: PlayerIndex,
+  viewer: PlayerIndex | null,
+  hiddenIds: PlayerViewHiddenIds,
+  explicitlyRevealedIds: ReadonlySet<string>,
+) {
+  const player = G.players[owner];
+  const isOwner = viewer === owner;
+  if (isOwner) {
+    return {
+      ...player,
+      hand: [...player.hand],
+      deck: redactDeckForViewer(player, owner, hiddenIds, explicitlyRevealedIds),
+      knownDeckDefIds: player.deck.map((card) => card.defId).sort(),
+    };
+  }
+  // 暫時公開屬於對局玩家取得的私密資訊；觀戰者不可藉由 playerView 讀取。
+  const revealedHandIds = new Set(viewer === null ? [] : (G.revealedHandCardIds?.[owner] ?? []));
+
+  return {
+    ...player,
+    knownDeckDefIds: undefined,
+    hand: player.hand.map((card) =>
+      revealedHandIds.has(card.instanceId) || explicitlyRevealedIds.has(card.instanceId)
+        ? { ...card }
+        : hiddenCard(hiddenIds.id(owner, card)),
+    ),
+    deck: redactDeckForViewer(player, owner, hiddenIds, explicitlyRevealedIds),
+    battleZone: redactHiddenCard(player.battleZone, owner, hiddenIds, explicitlyRevealedIds),
+    setZoneA: redactHiddenCard(player.setZoneA, owner, hiddenIds, explicitlyRevealedIds),
+    setZoneB: redactHiddenCard(player.setZoneB, owner, hiddenIds, explicitlyRevealedIds),
+    setZoneC: redactHiddenCard(player.setZoneC, owner, hiddenIds, explicitlyRevealedIds),
+    powerCharger: player.powerCharger.map((card) => redactHiddenCard(card, owner, hiddenIds, explicitlyRevealedIds)),
+    abyss: player.abyss.map((card) => redactHiddenCard(card, owner, hiddenIds, explicitlyRevealedIds)),
+  };
+}
+
+function redactPlayedCardsForViewer(
+  G: GameState,
+  owner: PlayerIndex,
+  viewer: PlayerIndex | null,
+  hiddenIds: PlayerViewHiddenIds,
+  explicitlyRevealedIds: ReadonlySet<string>,
+): CardInstance[] {
   if (viewer === owner) return G.setCardsThisTurn[owner].map((card) => ({ ...card }));
-  return G.setCardsThisTurn[owner].map((card, index) =>
-    card.faceUp ? { ...card } : hiddenCard(`hidden-p${owner}-played-${index}`),
+  return G.setCardsThisTurn[owner].map((card) =>
+    card.faceUp || explicitlyRevealedIds.has(card.instanceId) ? { ...card } : hiddenCard(hiddenIds.id(owner, card)),
   );
 }
 
@@ -140,12 +212,31 @@ function redactActionLogForViewer(G: GameState, viewer: PlayerIndex | null, both
       ) {
         delete (payload as Record<string, unknown>).cardDefId;
       }
+      if (viewer === null && payload && typeof payload === 'object') {
+        const privatePayload = payload as Record<string, unknown>;
+        if (entry.action === 'revealCards' && privatePayload.sourceZone === 'hand') {
+          const cardDefIds = Array.isArray(privatePayload.cardDefIds) ? privatePayload.cardDefIds : [];
+          privatePayload.cardCount = Number(privatePayload.cardCount ?? cardDefIds.length);
+          delete privatePayload.cardDefIds;
+          delete privatePayload.guessedCardDefId;
+          delete privatePayload.matched;
+        }
+        if (entry.action === 'submitPendingChoice' && privatePayload.choiceType === 'selectOpponentHandCard') {
+          delete privatePayload.guessedCardDefId;
+        }
+      }
       return { ...entry, payload };
     });
 }
 
 function playerView({ G, playerID }: { G: GameState; playerID: string | null }): GameState {
   const viewer = playerIndex(playerID);
+  const hiddenIds = createPlayerViewHiddenIds();
+  const explicitlyRevealedIds = new Set(
+    viewer !== null && G.pendingChoice?.player === viewer
+      ? G.pendingChoice.options.flatMap((option) => (option.cardInstanceId ? [option.cardInstanceId] : []))
+      : [],
+  );
   const bothChose = G.jankenChoices[0] !== null && G.jankenChoices[1] !== null;
   // 教學模式（skipShuffle）下 AI 需看到玩家出拳才能出會輸的拳，
   // 且 AI 非真人不存在資訊不公平。非教學模式維持原資訊隱藏邏輯。
@@ -154,16 +245,40 @@ function playerView({ G, playerID }: { G: GameState; playerID: string | null }):
     if (bothChose || viewer === index || revealJankenForAI) return choice;
     return null;
   }) as GameState['jankenChoices'];
-  const pendingChoice =
+  let pendingChoice =
     !G.pendingChoice || G.pendingChoice.player === viewer ? G.pendingChoice : { ...G.pendingChoice, options: [] };
+  if (
+    viewer === null &&
+    pendingChoice?.type === 'acknowledgeRevealedHand' &&
+    (pendingChoice.payload.sourceZone ?? 'hand') === 'hand'
+  ) {
+    pendingChoice = {
+      ...pendingChoice,
+      payload: {
+        revealedPlayer: pendingChoice.payload.revealedPlayer,
+        sourceZone: 'hand',
+      },
+    };
+  }
 
   return {
     ...G,
-    players: [redactPlayerForViewer(G, 0, viewer), redactPlayerForViewer(G, 1, viewer)] as [PlayerState, PlayerState],
-    setCardsThisTurn: [redactPlayedCardsForViewer(G, 0, viewer), redactPlayedCardsForViewer(G, 1, viewer)] as [
-      CardInstance[],
-      CardInstance[],
-    ],
+    // Seed, counter, and pre-shuffle decks are server-only while play is active.
+    rng: undefined,
+    replayManifest: undefined,
+    decisionTrace: undefined,
+    replayStatus: undefined,
+    players: [
+      redactPlayerForViewer(G, 0, viewer, hiddenIds, explicitlyRevealedIds),
+      redactPlayerForViewer(G, 1, viewer, hiddenIds, explicitlyRevealedIds),
+    ] as [PlayerState, PlayerState],
+    setCardsThisTurn: [
+      redactPlayedCardsForViewer(G, 0, viewer, hiddenIds, explicitlyRevealedIds),
+      redactPlayedCardsForViewer(G, 1, viewer, hiddenIds, explicitlyRevealedIds),
+    ] as [CardInstance[], CardInstance[]],
+    // 觀戰者連暫時公開清單中的手牌 instance ID 也不應收到，避免透過
+    // 重連或其他狀態快照將隱藏卡牌跨區域關聯起來。
+    revealedHandCardIds: viewer === null ? [[], []] : G.revealedHandCardIds,
     jankenChoices,
     pendingChoice,
     actionLog: redactActionLogForViewer(G, viewer, bothChose),
@@ -172,67 +287,76 @@ function playerView({ G, playerID }: { G: GameState; playerID: string | null }):
 
 const moves: Record<string, Move<GameState>> = {
   janken: concurrentServerMove(({ G, playerID }, choice: JankenChoice) => {
-    const player = playerIndex(playerID);
-    if (player === null || !chooseJanken(G, player, choice)) return INVALID_MOVE;
+    return applyTrackedDecision(G, playerID, 'janken', [choice], (player, args) =>
+      chooseJanken(G, player, args[0] as JankenChoice),
+    );
   }),
   mulligan: concurrentServerMove(({ G, playerID }, indices: number[]) => {
-    const player = playerIndex(playerID);
-    if (player === null || !Array.isArray(indices) || !finishMulligan(G, player, indices)) return INVALID_MOVE;
+    return applyTrackedDecision(G, playerID, 'mulligan', [indices], (player, args) => {
+      const replayIndices = args[0];
+      return Array.isArray(replayIndices) && finishMulligan(G, player, replayIndices as number[]);
+    });
   }),
   keepHand: concurrentServerMove(({ G, playerID }) => {
-    const player = playerIndex(playerID);
-    if (player === null || !finishMulligan(G, player, [])) return INVALID_MOVE;
+    return applyTrackedDecision(G, playerID, 'keepHand', [], (player) => finishMulligan(G, player, []));
   }),
   setInitialCard: concurrentServerMove(({ G, playerID }, handIndex: number) => {
-    const player = playerIndex(playerID);
-    if (player === null || !setInitialCard(G, player, handIndex)) return INVALID_MOVE;
+    return applyTrackedDecision(G, playerID, 'setInitialCard', [handIndex], (player, args) =>
+      setInitialCard(G, player, args[0] as number),
+    );
   }),
   setTurnCard: concurrentServerMove(({ G, playerID }, handIndex: number, slot: SetSlot) => {
-    const player = playerIndex(playerID);
-    if (player === null || !setTurnCard(G, player, handIndex, slot)) return INVALID_MOVE;
+    return applyTrackedDecision(G, playerID, 'setTurnCard', [handIndex, slot], (player, args) =>
+      setTurnCard(G, player, args[0] as number, args[1] as SetSlot),
+    );
   }),
   undoSetCard: concurrentServerMove(({ G, playerID }, slot: SetSlot) => {
-    const player = playerIndex(playerID);
-    if (player === null || !undoSetCard(G, player, slot)) return INVALID_MOVE;
+    return applyTrackedDecision(G, playerID, 'undoSetCard', [slot], (player, args) =>
+      undoSetCard(G, player, args[0] as SetSlot),
+    );
   }),
   confirmReady: concurrentServerMove(({ G, playerID }) => {
-    const player = playerIndex(playerID);
-    if (player === null || !confirmReady(G, player, getParsedEffects())) return INVALID_MOVE;
+    return applyTrackedDecision(G, playerID, 'confirmReady', [], (player) =>
+      confirmReady(G, player, getParsedEffects()),
+    );
   }),
   // P3-16：線上回合超時由伺服器權威判斷，強制跳過該玩家回合（避免卡死）。
   timeoutSkip: concurrentServerMove(({ G, playerID }, targetPlayer?: PlayerIndex) => {
-    const caller = playerIndex(playerID);
-    if (caller === null) return INVALID_MOVE;
-    // 權威時間到後，允許仍在線的一方代為跳過斷線／無回應的玩家。
-    // timeoutSkip 本身仍會驗證 turnSet、ready 與伺服器時間，不能提前強制對手結束操作。
-    const target = targetPlayer === 0 || targetPlayer === 1 ? targetPlayer : caller;
-    if (!timeoutSkip(G, target, getParsedEffects())) return INVALID_MOVE;
+    const args = targetPlayer === undefined ? [] : [targetPlayer];
+    return applyTrackedDecision(G, playerID, 'timeoutSkip', args, (caller, replayArgs) => {
+      // 權威時間到後，允許仍在線的一方代為跳過斷線／無回應的玩家。
+      // timeoutSkip 本身仍會驗證 turnSet、ready 與伺服器時間，不能提前強制對手結束操作。
+      const target = replayArgs[0] === 0 || replayArgs[0] === 1 ? replayArgs[0] : caller;
+      return timeoutSkip(G, target, getParsedEffects());
+    });
   }),
   timeoutAdvance: concurrentServerMove(({ G, playerID }, targetPlayer?: PlayerIndex) => {
-    const caller = playerIndex(playerID);
-    if (caller === null) return INVALID_MOVE;
-    const target = targetPlayer === 0 || targetPlayer === 1 ? targetPlayer : caller;
-    if (!timeoutAdvance(G, target, getParsedEffects())) return INVALID_MOVE;
+    const args = targetPlayer === undefined ? [] : [targetPlayer];
+    return applyTrackedDecision(G, playerID, 'timeoutAdvance', args, (caller, replayArgs) => {
+      const target = replayArgs[0] === 0 || replayArgs[0] === 1 ? replayArgs[0] : caller;
+      return timeoutAdvance(G, target, getParsedEffects());
+    });
   }),
   surrender: concurrentServerMove(({ G, playerID }) => {
-    const player = playerIndex(playerID);
-    if (player === null || !surrenderGame(G, player)) return INVALID_MOVE;
+    return applyTrackedDecision(G, playerID, 'surrender', [], (player) => surrenderGame(G, player));
   }),
   resolvePendingEffect: authoritativeServerMove(({ G, playerID }, index: number) => {
-    const player = playerIndex(playerID);
-    if (player === null || !resolvePendingEffectChoice(G, player, index, getParsedEffects())) return INVALID_MOVE;
+    return applyTrackedDecision(G, playerID, 'resolvePendingEffect', [index], (player, args) =>
+      resolvePendingEffectChoice(G, player, args[0] as number, getParsedEffects()),
+    );
   }),
   submitPendingChoice: authoritativeServerMove(({ G, playerID }, optionIds: string[]) => {
-    const player = playerIndex(playerID);
-    if (player === null || !submitPendingChoice(G, player, optionIds, getParsedEffects())) return INVALID_MOVE;
+    return applyTrackedDecision(G, playerID, 'submitPendingChoice', [optionIds], (player, args) =>
+      submitPendingChoice(G, player, args[0] as string[], getParsedEffects()),
+    );
   }),
 };
 
 export const ZutomayoCard: Game<GameState, Record<string, unknown>, ZutomayoSetupData> = {
   name: 'zutomayo-card',
   validateSetupData: (setupData) => validateZutomayoSetupData(setupData),
-  // 防禦深度：即使 validate 被繞過，setup 也強制剝離 skipShuffle，
-  // 確保線上對戰牌序必定隨機、無法被惡意客戶端固定。
+  // Online creation sanitizes rngSeed before boardgame.io reaches setup; this
+  // layer still strips skipShuffle so a client cannot choose its draw order.
   setup: (_context, setupData) => setupGame({ ...setupData, skipShuffle: false }),
   playerView,
   moves,
@@ -272,6 +396,7 @@ export function createZutomayoCard(
           deck1Ids: setupData?.deck1Ids ?? defaultSetupData.deck1Ids,
           clientVersion: setupData?.clientVersion ?? defaultSetupData.clientVersion,
           skipShuffle: setupData?.skipShuffle ?? defaultSetupData.skipShuffle,
+          rngSeed: setupData?.rngSeed ?? defaultSetupData.rngSeed,
         },
         { allowBrowserCustomDeckName: true, requireClientVersion: false, allowSkipShuffle: true },
       ),
@@ -284,6 +409,7 @@ export function createZutomayoCard(
           deck1Ids: setupData?.deck1Ids ?? defaultSetupData.deck1Ids,
           clientVersion: setupData?.clientVersion ?? defaultSetupData.clientVersion,
           skipShuffle: setupData?.skipShuffle ?? defaultSetupData.skipShuffle,
+          rngSeed: setupData?.rngSeed ?? defaultSetupData.rngSeed,
         },
         { allowBrowserCustomDeckName: true },
       ),

@@ -7,10 +7,26 @@ import { spawnSync } from 'node:child_process';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const RELEASE_SHA_PATTERN = /^[a-f0-9]{40}$/i;
 const IMAGE_DIGEST_PATTERN = /^\S+@sha256:[a-f0-9]{64}$/i;
+const SHA256_PATTERN = /^[a-f0-9]{64}$/i;
+const MIGRATION_PATTERN = /^\d{6,}_[a-z0-9_]+$/;
 const BETA_REQUIRED_RUNS = 1;
 const HARDENING_REQUIRED_RUNS = 5;
 const AUTH_RATE_LIMIT_COOLDOWN_MS = 65_000;
 const REQUIRED_TEST_TAGS = ['@rr05-core', '@rr05-invite'] as const;
+export const REQUIRED_LS05_EVIDENCE = [
+  'authenticated-sessions',
+  'secure-cookies',
+  'server-backed-decks',
+  'quick-match',
+  'same-origin-websocket',
+  'chat-authorization',
+  'disconnect-reconnect',
+  'spectator-hidden-information',
+  'result-submission',
+  'replay-privacy',
+  'match-history',
+  'friend-invite',
+] as const;
 const IMAGE_NAMES = ['game', 'api', 'platform', 'migrate', 'retention'] as const;
 
 interface StagingTopology {
@@ -37,6 +53,7 @@ export interface PlaywrightRunSummary {
   unexpected: number;
   flaky: number;
   foundTags: string[];
+  foundJourneyEvidence: string[];
   failures: string[];
 }
 
@@ -56,6 +73,17 @@ function collectSpecTitles(value: unknown, titles: string[]): void {
   if (Array.isArray(record.specs)) collectSpecTitles(record.specs, titles);
 }
 
+function collectLs05Annotations(value: unknown, evidence: Set<string>): void {
+  if (!value || typeof value !== 'object') return;
+  if (Array.isArray(value)) {
+    for (const item of value) collectLs05Annotations(item, evidence);
+    return;
+  }
+  const record = value as Record<string, unknown>;
+  if (record.type === 'ls05' && typeof record.description === 'string') evidence.add(record.description);
+  for (const child of Object.values(record)) collectLs05Annotations(child, evidence);
+}
+
 export function summarizePlaywrightReport(report: PlaywrightReport, exitCode = 0): PlaywrightRunSummary {
   const failures: string[] = [];
   const expected = finiteNonNegativeInteger(report.stats?.expected);
@@ -72,6 +100,12 @@ export function summarizePlaywrightReport(report: PlaywrightReport, exitCode = 0
   const foundTags = REQUIRED_TEST_TAGS.filter((tag) => titles.some((title) => title.includes(tag)));
   for (const tag of REQUIRED_TEST_TAGS) {
     if (!foundTags.includes(tag)) failures.push(`required test ${tag} is missing from the report`);
+  }
+  const journeyEvidence = new Set<string>();
+  collectLs05Annotations(report.suites, journeyEvidence);
+  const foundJourneyEvidence = REQUIRED_LS05_EVIDENCE.filter((item) => journeyEvidence.has(item));
+  for (const item of REQUIRED_LS05_EVIDENCE) {
+    if (!journeyEvidence.has(item)) failures.push(`required LS-05 evidence ${item} is missing from the report`);
   }
   if (expected !== REQUIRED_TEST_TAGS.length) {
     failures.push(
@@ -90,6 +124,7 @@ export function summarizePlaywrightReport(report: PlaywrightReport, exitCode = 0
     unexpected: unexpected ?? 0,
     flaky: flaky ?? 0,
     foundTags,
+    foundJourneyEvidence,
     failures,
   };
 }
@@ -148,10 +183,22 @@ export function validateStagingTopology(env: NodeJS.ProcessEnv): StagingTopology
   };
 }
 
-function requiredReleaseMetadata(env: NodeJS.ProcessEnv) {
+export function validateReleaseMetadata(env: NodeJS.ProcessEnv) {
   if (env.RELEASE_ENVIRONMENT !== 'staging') throw new Error('RELEASE_ENVIRONMENT=staging is required');
   const releaseSha = env.RELEASE_SHA?.trim().toLowerCase() || '';
   if (!RELEASE_SHA_PATTERN.test(releaseSha)) throw new Error('RELEASE_SHA must be a full 40-character commit SHA');
+  const migrationName = env.EXPECTED_SCHEMA_MIGRATION?.trim() || '';
+  if (!MIGRATION_PATTERN.test(migrationName)) {
+    throw new Error('EXPECTED_SCHEMA_MIGRATION must be a migration basename');
+  }
+  const migrationSha256 = env.EXPECTED_SCHEMA_CHECKSUM?.trim().toLowerCase() || '';
+  if (!SHA256_PATTERN.test(migrationSha256)) {
+    throw new Error('EXPECTED_SCHEMA_CHECKSUM must be a SHA-256 digest');
+  }
+  const datasetSha256 = env.EXPECTED_CARD_DATASET_SHA256?.trim().toLowerCase() || '';
+  if (!SHA256_PATTERN.test(datasetSha256)) {
+    throw new Error('EXPECTED_CARD_DATASET_SHA256 must be a SHA-256 digest');
+  }
   const imageDigests = Object.fromEntries(
     IMAGE_NAMES.map((name) => {
       const value = env[`${name.toUpperCase()}_IMAGE`]?.trim() || '';
@@ -166,13 +213,26 @@ function requiredReleaseMetadata(env: NodeJS.ProcessEnv) {
   if (runId && repository && serverUrl) {
     const runUrl = `${serverUrl}/${repository}/actions/runs/${runId}`;
     if (new URL(runUrl).protocol !== 'https:') throw new Error('GitHub evidence run URL must use HTTPS');
-    return { releaseSha, imageDigests, provenance: { runId, repository, runUrl }, source: runUrl };
+    return {
+      releaseSha,
+      imageDigests,
+      migration: { name: migrationName, sha256: migrationSha256 },
+      datasetSha256,
+      provenance: { runId, repository, runUrl },
+      source: runUrl,
+    };
   }
   const signer = env.E2E_EVIDENCE_SIGNER_URL?.trim();
   if (!signer || new URL(signer).protocol !== 'https:') {
     throw new Error('GitHub Actions provenance or E2E_EVIDENCE_SIGNER_URL=https://... is required');
   }
-  return { releaseSha, imageDigests, signer };
+  return {
+    releaseSha,
+    imageDigests,
+    migration: { name: migrationName, sha256: migrationSha256 },
+    datasetSha256,
+    signer,
+  };
 }
 
 function redact(value: string): string {
@@ -221,7 +281,7 @@ async function main(): Promise<void> {
   mkdirSync(outputDirectory, { recursive: true });
 
   const topology = validateStagingTopology(process.env);
-  const release = requiredReleaseMetadata(process.env);
+  const release = validateReleaseMetadata(process.env);
   const startedMs = Date.now();
   const runRecords: Array<PlaywrightRunSummary & { run: number; reportPath: string; logPath: string }> = [];
   const artifactPaths: string[] = [];
@@ -282,6 +342,7 @@ async function main(): Promise<void> {
         unexpected: 1,
         flaky: 0,
         foundTags: [],
+        foundJourneyEvidence: [],
         failures: ['Playwright JSON report was not produced', `Playwright exited with status ${exitCode}`],
       };
     } else {
@@ -296,6 +357,7 @@ async function main(): Promise<void> {
           unexpected: 1,
           flaky: 0,
           foundTags: [],
+          foundJourneyEvidence: [],
           failures: [`Playwright JSON report is invalid: ${error instanceof Error ? error.message : String(error)}`],
         };
       }
@@ -320,6 +382,8 @@ async function main(): Promise<void> {
   const failedTests = runRecords.reduce((total, run) => total + run.unexpected + (run.passed ? 0 : 1), 0);
   const flakyTests = runRecords.reduce((total, run) => total + run.flaky, 0);
   const passed = passedRuns === requiredRuns && runRecords.length === requiredRuns;
+  const everyRunContains = (item: (typeof REQUIRED_LS05_EVIDENCE)[number]) =>
+    passed && runRecords.every((run) => run.foundJourneyEvidence.includes(item));
   const finishedMs = Math.max(Date.now(), startedMs + 1);
   const artifacts = artifactPaths.map((artifactPath) => ({
     path: path.relative(evidenceRoot, artifactPath),
@@ -333,6 +397,8 @@ async function main(): Promise<void> {
     evidenceType: 'authenticated-e2e',
     releaseSha: release.releaseSha,
     imageDigests: release.imageDigests,
+    migration: release.migration,
+    datasetSha256: release.datasetSha256,
     startedAt: new Date(startedMs).toISOString(),
     finishedAt: new Date(finishedMs).toISOString(),
     durationMs: finishedMs - startedMs,
@@ -353,11 +419,21 @@ async function main(): Promise<void> {
       maxFlakyTests: 0,
     },
     results: {
-      authenticatedJourneyPassed: passed,
-      historyVerified: passed,
-      friendInviteVerified: passed,
-      spectatorHiddenInformationVerified: passed,
-      secureCookieVerified: passed,
+      authenticatedJourneyPassed:
+        everyRunContains('authenticated-sessions') &&
+        everyRunContains('quick-match') &&
+        everyRunContains('friend-invite'),
+      historyVerified: everyRunContains('match-history'),
+      friendInviteVerified: everyRunContains('friend-invite'),
+      spectatorHiddenInformationVerified: everyRunContains('spectator-hidden-information'),
+      secureCookieVerified: everyRunContains('secure-cookies'),
+      serverBackedDecksVerified: everyRunContains('server-backed-decks'),
+      quickMatchVerified: everyRunContains('quick-match'),
+      sameOriginWebSocketVerified: everyRunContains('same-origin-websocket'),
+      chatAuthorizationVerified: everyRunContains('chat-authorization'),
+      disconnectReconnectVerified: everyRunContains('disconnect-reconnect'),
+      resultSubmissionVerified: everyRunContains('result-submission'),
+      replayPrivacyVerified: everyRunContains('replay-privacy'),
       httpsTopologyVerified: true,
       zeroConditionalSkips: passed && skippedTests === 0,
     },

@@ -468,6 +468,7 @@ async function collectAccountData({
     const [
       identities,
       decks,
+      cardCollection,
       deckShares,
       deckShareLikes,
       deckShareCopies,
@@ -493,6 +494,9 @@ async function collectAccountData({
       ),
       queryCollection(
         'SELECT id, name, card_ids, created_at, updated_at FROM decks WHERE user_id = $1 ORDER BY created_at LIMIT $2',
+      ),
+      queryCollection(
+        'SELECT card_id, acquired_at, updated_at FROM user_card_collection WHERE user_id = $1 ORDER BY card_id LIMIT $2',
       ),
       queryCollection(
         `SELECT id, source_deck_id, name, card_ids, visibility, publication_status,
@@ -600,6 +604,7 @@ async function collectAccountData({
     const collections = {
       identities,
       decks,
+      cardCollection,
       deckShares,
       deckShareLikes,
       deckShareCopies,
@@ -634,6 +639,7 @@ async function collectAccountData({
       account: user,
       identities: identities.rows,
       decks: decks.rows,
+      cardCollection: cardCollection.rows,
       deckShares: deckShares.rows,
       deckShareLikes: deckShareLikes.rows,
       deckShareCopies: deckShareCopies.rows,

@@ -12,6 +12,8 @@ export type FunnelEventName =
   | 'F_Queue_Cancel'
   | 'F_Queue_Match'
   | 'F_Match_Start'
+  | 'F_Match_Connection_Attempt'
+  | 'F_Match_Connection_Success'
   | 'F_Match_Reconnect'
   | 'F_Match_Complete'
   | 'F_First_Win';
@@ -24,6 +26,7 @@ export type FunnelEventData = Partial<{
   elapsed_s: number;
   queue_duration_s: number;
   match_mode: 'quick_match' | 'custom_room' | 'friend_invite' | 'online';
+  connection_phase: 'initial' | 'reconnect';
   outcome: 'win' | 'loss' | 'draw';
 }>;
 

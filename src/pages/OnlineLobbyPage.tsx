@@ -1,5 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Flag, Languages, MessageCircle, Pencil, Plus, Radio, Send, X } from 'lucide-react';
+import {
+  Check,
+  Flag,
+  Languages,
+  MessageCircle,
+  Pencil,
+  Plus,
+  Radio,
+  RefreshCw,
+  Send,
+  Users,
+  X,
+  Zap,
+} from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   ANONYMOUS_PLAYER_DEFAULT_NAME,
@@ -11,6 +24,7 @@ import {
 } from '../anonymousIdentity';
 import {
   fetchChatMessages,
+  fetchUnreadChat,
   getProfile,
   getFriends,
   isLoggedIn,
@@ -29,17 +43,22 @@ import { copyText } from '../clipboard';
 import { buildOnlineRoomUrl } from '../components/OnlineRoomInfo';
 import { useToast } from '../components/ToastProvider';
 import { OnlinePresenceBadge } from '../components/OnlinePresenceBadge';
-import { customRoomRelayErrorKey, resolvePlatformCustomRoomMatchID } from '../platform/customRoomRelay';
+import {
+  CustomRoomRelayError,
+  customRoomRelayErrorKey,
+  resolvePlatformCustomRoomMatchID,
+} from '../platform/customRoomRelay';
 import { AuthSection } from '../components/lobby/AuthSection';
 import { DeckSelector } from '../components/lobby/DeckSelector';
 import { RoomDetails, RoomPanel } from '../components/lobby/RoomPanel';
 import {
   buildDeckOptions,
   buildServerDeckOptions,
+  platformQuickMatchDeckName,
   serverDeckIdFromOption,
   type DeckOptionGroup,
 } from '../components/lobby/shared';
-import { Alert, AppHeader, Button, IconButton, Input, PageShell, Panel } from '../ui';
+import { Alert, AppHeader, Button, IconButton, Input, PageShell } from '../ui';
 import { useOnlinePresence } from '../hooks/useOnlinePresence';
 import {
   buildPlatformFriendInviteId,
@@ -47,12 +66,14 @@ import {
   createPlatformCustomRoom,
   createPlatformInvite,
   discoverPlatformPendingInvite,
+  fetchPlatformAvailableRooms,
   isPlatformBoardgameRelayAcknowledged,
   joinDiscoveredPlatformInvite,
   joinPlatformCustomRoom,
   joinPlatformInvite,
   PLATFORM_PENDING_INVITE_POLL_MS,
   retainDiscoveredPlatformInviteRoom,
+  type PlatformAvailableRoom,
   type PlatformCustomRoom,
   type PlatformInviteSnapshot,
   type PlatformInviteRoom,
@@ -61,9 +82,10 @@ import {
 import { Sentry } from '../sentry';
 import { t, translate, useLocale } from '../i18n';
 import type { OnlineSession } from '../onlineSession';
-import { isOnlineRoomErrorKey } from '../onlineRoomStatus';
+import { isOnlineRoomErrorKey, onlineRoomErrorDetail } from '../onlineRoomStatus';
 import { formatQuickMatchWait, quickMatchWaitSeconds, shouldOfferQuickMatchFallback } from '../matchmakingWait';
 import { trackFunnelEvent } from '../funnelAnalytics';
+import { QUICK_MATCH_ENABLED } from '../featureFlags';
 
 interface OnlineLobbyPageProps {
   deck0Name: string;
@@ -80,6 +102,7 @@ interface OnlineLobbyPageProps {
       playerDeckReservationId?: string;
     },
   ) => Promise<OnlineSession>;
+  onCancelOnlineSession: (session: OnlineSession) => void | Promise<void>;
   onAuthChanged: () => void | Promise<void>;
   serverDeckError?: string;
   cardsReady: boolean;
@@ -104,6 +127,7 @@ type DirectChatTranslationState = {
 type LobbyChatEntry = ChatMessage & { translation?: DirectChatTranslationState };
 type RoomChatEntry = LobbyChatEntry;
 const ANONYMOUS_NAME_PROMPT_STORAGE_KEY = 'zutomayo_anonymous_name_prompt_seen';
+const ROOM_LIST_REFRESH_MS = 8_000;
 
 function resolveDeckLabel(deckId: string, groups: DeckOptionGroup[]): string {
   for (const group of groups) {
@@ -115,13 +139,40 @@ function resolveDeckLabel(deckId: string, groups: DeckOptionGroup[]): string {
 
 function onlineErrorMessage(error: unknown): string {
   const customRoomRelayKey = customRoomRelayErrorKey(error);
-  if (customRoomRelayKey) return t(customRoomRelayKey);
-  if (error instanceof Error && isOnlineRoomErrorKey(error.message)) return t(error.message);
+  if (customRoomRelayKey) {
+    const detail = error instanceof CustomRoomRelayError ? error.detail : undefined;
+    return detail || t(customRoomRelayKey);
+  }
+  if (error instanceof Error && isOnlineRoomErrorKey(error.message)) {
+    const detail = onlineRoomErrorDetail(error);
+    return detail ? `${t(error.message)}: ${detail}` : t(error.message);
+  }
+  if (error instanceof Error && error.message.trim()) return error.message;
   return t('online.connectionFailed');
 }
 
 function canShowChatMessage(message: ChatMessage): boolean {
   return message.moderationStatus === 'visible' || message.moderationStatus === 'pending_review';
+}
+
+function mergeRoomChatEntries(current: RoomChatEntry[], incoming: RoomChatEntry[]): RoomChatEntry[] {
+  const translations = new Map(current.map((message) => [message.id, message.translation]));
+  const merged = incoming.map((message) => ({ ...message, translation: translations.get(message.id) }));
+  const unchanged =
+    current.length === merged.length &&
+    current.every((message, index) => {
+      const next = merged[index];
+      return (
+        next?.id === message.id &&
+        next.content === message.content &&
+        next.authorDisplayName === message.authorDisplayName &&
+        next.moderationStatus === message.moderationStatus &&
+        next.editedAt === message.editedAt &&
+        next.deletedAt === message.deletedAt &&
+        next.translation === message.translation
+      );
+    });
+  return unchanged ? current : merged;
 }
 
 export function OnlineLobbyPage({
@@ -130,6 +181,7 @@ export function OnlineLobbyPage({
   serverDecks,
   setDeck0Name,
   onStartOnline,
+  onCancelOnlineSession,
   onAuthChanged,
   serverDeckError,
   cardsReady,
@@ -152,8 +204,11 @@ export function OnlineLobbyPage({
 
   // 帳號資料：用於 Header 與段位顯示。
   const [profile, setProfile] = useState<ProfileResponse | null>(null);
+  const [profileError, setProfileError] = useState('');
+  const [error, setError] = useState('');
   const [friends, setFriends] = useState<FriendProfile[]>([]);
   const [friendStatus, setFriendStatus] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>('idle');
+  const [friendError, setFriendError] = useState('');
   const [friendInviteActionId, setFriendInviteActionId] = useState<string | null>(null);
   const [friendInvitePeerId, setFriendInvitePeerId] = useState<string | null>(null);
   const [friendInviteMode, setFriendInviteMode] = useState<'incoming' | 'outgoing' | null>(null);
@@ -169,20 +224,37 @@ export function OnlineLobbyPage({
   const [roomChatMessages, setRoomChatMessages] = useState<RoomChatEntry[]>([]);
   const [roomChatDraft, setRoomChatDraft] = useState('');
   const [roomChatStatus, setRoomChatStatus] = useState<DirectChatStatus>('idle');
+  const [roomChatError, setRoomChatError] = useState('');
+  const [roomChatOpen, setRoomChatOpen] = useState(true);
+  const [roomChatUnreadCount, setRoomChatUnreadCount] = useState(0);
+  const [pageVisible, setPageVisible] = useState(() =>
+    typeof document === 'undefined' ? true : document.visibilityState === 'visible',
+  );
   const [reportedRoomMessageIds, setReportedRoomMessageIds] = useState<Set<string>>(() => new Set());
   const quickMatchPanelRef = useRef<HTMLDivElement | null>(null);
   const customRoomPanelRef = useRef<HTMLDivElement | null>(null);
   const platformCustomRoomRef = useRef<PlatformCustomRoom | null>(null);
+  const pendingCustomRoomSessionRef = useRef<OnlineSession | null>(null);
+  const customRoomDisposedRef = useRef(false);
   const roomChatMessagesRef = useRef<HTMLDivElement | null>(null);
+  const roomChatShouldStickToBottomRef = useRef(true);
   const [anonymousIdentity, setAnonymousIdentity] = useState<AnonymousIdentity>(() => loadAnonymousIdentity());
   const [editingAnonymousName, setEditingAnonymousName] = useState(false);
   const [anonymousNameDraft, setAnonymousNameDraft] = useState(() => anonymousIdentity.baseName);
   const [showAnonymousNamePrompt, setShowAnonymousNamePrompt] = useState(false);
+
+  useEffect(() => {
+    const updateVisibility = () => setPageVisible(document.visibilityState === 'visible');
+    document.addEventListener('visibilitychange', updateVisibility);
+    return () => document.removeEventListener('visibilitychange', updateVisibility);
+  }, []);
   const refreshProfile = useCallback(async () => {
     if (!isLoggedIn()) {
       setProfile(null);
+      setProfileError('');
       setFriends([]);
       setFriendStatus('idle');
+      setFriendError('');
       setRoomChatMessages([]);
       setRoomChatStatus('idle');
       setFriendInviteActionId(null);
@@ -196,10 +268,15 @@ export function OnlineLobbyPage({
     }
     try {
       setProfile(await getProfile());
-    } catch {
+      setProfileError('');
+    } catch (err) {
+      const detail = onlineErrorMessage(err);
+      setError(detail);
+      setProfileError(detail);
       setProfile(null);
       setFriends([]);
       setFriendStatus('idle');
+      setFriendError('');
       setRoomChatMessages([]);
       setRoomChatStatus('idle');
       setFriendInviteActionId(null);
@@ -216,9 +293,11 @@ export function OnlineLobbyPage({
     if (!isLoggedIn()) {
       setFriends([]);
       setFriendStatus('idle');
+      setFriendError('');
       return;
     }
     setFriendStatus('loading');
+    setFriendError('');
     try {
       const nextFriends = await getFriends();
       setFriends(nextFriends);
@@ -232,6 +311,7 @@ export function OnlineLobbyPage({
       });
       setFriends([]);
       setFriendStatus('unavailable');
+      setFriendError(onlineErrorMessage(err));
     }
   }, []);
 
@@ -251,10 +331,10 @@ export function OnlineLobbyPage({
   }, [profile, refreshFriends]);
 
   const handleAuthChanged = useCallback(async () => {
+    setError('');
     await onAuthChanged();
     await refreshProfile();
     await refreshFriends();
-    setError('');
   }, [onAuthChanged, refreshFriends, refreshProfile]);
 
   const applyRoomChatTranslation = useCallback((messageId: string, translation: DirectChatTranslationState) => {
@@ -304,12 +384,13 @@ export function OnlineLobbyPage({
     const isFirstSelection = !deck0Name && newDeck;
     setDeck0Name(newDeck);
     if (window.matchMedia('(max-width: 1023px)').matches) {
-      window.requestAnimationFrame(() =>
-        quickMatchPanelRef.current?.scrollIntoView({
+      window.requestAnimationFrame(() => {
+        const nextPanel = QUICK_MATCH_ENABLED ? quickMatchPanelRef.current : customRoomPanelRef.current;
+        nextPanel?.scrollIntoView({
           behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
           block: 'start',
-        }),
-      );
+        });
+      });
     }
 
     if (isFirstSelection) {
@@ -329,18 +410,57 @@ export function OnlineLobbyPage({
   // Matchmaking 狀態（原 OnlinePanel 邏輯移入，以便拆分到左右兩欄）。
   const [matchID, setMatchID] = useState('');
   const [createdMatchID, setCreatedMatchID] = useState('');
-  const [error, setError] = useState('');
   const [matchmakingActive, setMatchmakingActive] = useState(false);
   const [matchmakingCancellable, setMatchmakingCancellable] = useState(false);
   const [matchmakingElapsedSeconds, setMatchmakingElapsedSeconds] = useState(0);
   const [longWaitDismissed, setLongWaitDismissed] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [availableRooms, setAvailableRooms] = useState<PlatformAvailableRoom[]>([]);
+  const [roomListStatus, setRoomListStatus] = useState<'loading' | 'ready' | 'unavailable'>('loading');
+  const [roomListError, setRoomListError] = useState('');
+  const [customRoomStarting, setCustomRoomStarting] = useState(false);
+  const [customRoomCancelling, setCustomRoomCancelling] = useState(false);
+  const roomListRequestRef = useRef<Promise<void> | null>(null);
   const platformQuickMatchRoomRef = useRef<PlatformQuickMatchRoom | null>(null);
   const phaseRef = useRef<MatchmakingPhase>('idle');
   const cancelRef = useRef(false);
   const matchmakingStartedAtRef = useRef<number | null>(null);
   const matchmakingCheckpointTrackedRef = useRef(false);
   const pendingQuickMatchSessionRef = useRef<OnlineSession | null>(null);
+
+  const refreshAvailableRooms = useCallback((showLoading = false): Promise<void> => {
+    if (roomListRequestRef.current) return roomListRequestRef.current;
+    if (showLoading) setRoomListStatus('loading');
+    const request = fetchPlatformAvailableRooms()
+      .then((rooms) => {
+        setAvailableRooms(rooms);
+        setRoomListStatus('ready');
+        setRoomListError('');
+      })
+      .catch((err) => {
+        setRoomListStatus('unavailable');
+        setRoomListError(onlineErrorMessage(err));
+        Sentry.addBreadcrumb({
+          category: 'platform',
+          message: 'public custom room list unavailable',
+          level: 'warning',
+          data: { error: err instanceof Error ? err.message : String(err) },
+        });
+      })
+      .finally(() => {
+        if (roomListRequestRef.current === request) roomListRequestRef.current = null;
+      });
+    roomListRequestRef.current = request;
+    return request;
+  }, []);
+
+  useEffect(() => {
+    void refreshAvailableRooms(true);
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void refreshAvailableRooms();
+    }, ROOM_LIST_REFRESH_MS);
+    return () => window.clearInterval(interval);
+  }, [refreshAvailableRooms]);
 
   useEffect(() => {
     const roomCode = new URLSearchParams(location.search).get('room')?.trim();
@@ -384,16 +504,29 @@ export function OnlineLobbyPage({
     });
   }, [matchmakingActive, matchmakingElapsedSeconds]);
 
-  useEffect(
-    () => () => {
+  const cancelPendingCustomRoomSession = useCallback(
+    async (session: OnlineSession | null = pendingCustomRoomSessionRef.current) => {
+      if (!session) return;
+      if (pendingCustomRoomSessionRef.current?.matchID === session.matchID) {
+        pendingCustomRoomSessionRef.current = null;
+      }
+      await onCancelOnlineSession(session);
+    },
+    [onCancelOnlineSession],
+  );
+
+  useEffect(() => {
+    customRoomDisposedRef.current = false;
+    return () => {
+      customRoomDisposedRef.current = true;
       cancelRef.current = true;
       void platformQuickMatchRoomRef.current?.leave(true).catch(() => {});
       platformQuickMatchRoomRef.current = null;
       void platformCustomRoomRef.current?.leave(true).catch(() => undefined);
       platformCustomRoomRef.current = null;
-    },
-    [],
-  );
+      void cancelPendingCustomRoomSession();
+    };
+  }, [cancelPendingCustomRoomSession]);
 
   useEffect(() => {
     setCopied(false);
@@ -404,32 +537,41 @@ export function OnlineLobbyPage({
   }, [createdMatchID]);
 
   const roomChatSubjectId = roomChatSubjectOverride || createdMatchID || (matchID.length >= 3 ? matchID : '');
+  const latestRoomChatMessageId = roomChatMessages.at(-1)?.id;
+
+  useEffect(() => {
+    setRoomChatOpen(true);
+    setRoomChatUnreadCount(0);
+  }, [roomChatSubjectId]);
+
+  const loadRoomChatMessages = useCallback(async (): Promise<RoomChatEntry[]> => {
+    if (!profile || !roomChatSubjectId) return [];
+    const messages = await fetchChatMessages({
+      conversationType: 'room',
+      subjectId: roomChatSubjectId,
+      limit: 50,
+    });
+    return messages.filter(canShowChatMessage);
+  }, [profile, roomChatSubjectId]);
 
   useEffect(() => {
     if (!profile || !roomChatSubjectId) {
       setRoomChatMessages([]);
       setRoomChatStatus('idle');
+      setRoomChatError('');
       return;
     }
     let cancelled = false;
+    roomChatShouldStickToBottomRef.current = true;
     setRoomChatStatus('loading');
     setReportedRoomMessageIds(new Set());
-    void fetchChatMessages({
-      conversationType: 'room',
-      subjectId: roomChatSubjectId,
-      limit: 50,
-    }).then(
+    void loadRoomChatMessages().then(
       (messages) => {
         if (cancelled) return;
         const visibleMessages = messages.filter(canShowChatMessage);
         setRoomChatMessages(visibleMessages);
         setRoomChatStatus('ready');
-        const latestMessageId = visibleMessages.at(-1)?.id;
-        void markChatRead({
-          conversationType: 'room',
-          subjectId: roomChatSubjectId,
-          lastReadMessageId: latestMessageId,
-        }).catch(() => undefined);
+        setRoomChatError('');
       },
       (err) => {
         if (cancelled) return;
@@ -440,16 +582,77 @@ export function OnlineLobbyPage({
           data: { room_code: roomChatSubjectId, error: err instanceof Error ? err.message : String(err) },
         });
         setRoomChatStatus('unavailable');
+        setRoomChatError(onlineErrorMessage(err));
       },
     );
     return () => {
       cancelled = true;
     };
-  }, [profile, roomChatSubjectId]);
+  }, [loadRoomChatMessages, profile, roomChatSubjectId]);
+
+  useEffect(() => {
+    if (
+      !profile ||
+      !roomChatSubjectId ||
+      roomChatStatus !== 'ready' ||
+      !latestRoomChatMessageId ||
+      !roomChatOpen ||
+      !pageVisible
+    )
+      return;
+    void markChatRead({
+      conversationType: 'room',
+      subjectId: roomChatSubjectId,
+      lastReadMessageId: latestRoomChatMessageId,
+    })
+      .then(() => setRoomChatUnreadCount(0))
+      .catch(() => undefined);
+  }, [latestRoomChatMessageId, pageVisible, profile, roomChatOpen, roomChatStatus, roomChatSubjectId]);
+
+  useEffect(() => {
+    if (!profile || !roomChatSubjectId || roomChatOpen || !pageVisible) return;
+    let cancelled = false;
+    const syncUnread = () => {
+      void fetchUnreadChat(50).then(
+        (conversations) => {
+          if (cancelled) return;
+          const conversation = conversations.find(
+            (entry) => entry.type === 'room' && entry.subjectId === roomChatSubjectId,
+          );
+          setRoomChatUnreadCount(conversation?.unreadCount ?? 0);
+        },
+        () => undefined,
+      );
+    };
+    syncUnread();
+    const interval = window.setInterval(syncUnread, 4_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [pageVisible, profile, roomChatOpen, roomChatSubjectId]);
+
+  useEffect(() => {
+    if (!profile || !roomChatSubjectId || roomChatStatus !== 'ready') return;
+    let cancelled = false;
+    const sync = () => {
+      void loadRoomChatMessages().then(
+        (messages) => {
+          if (!cancelled) setRoomChatMessages((current) => mergeRoomChatEntries(current, messages));
+        },
+        () => undefined,
+      );
+    };
+    const interval = window.setInterval(sync, 4_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [loadRoomChatMessages, profile, roomChatStatus, roomChatSubjectId]);
 
   useEffect(() => {
     const element = roomChatMessagesRef.current;
-    if (!element) return;
+    if (!element || !roomChatShouldStickToBottomRef.current) return;
     element.scrollTop = element.scrollHeight;
   }, [roomChatMessages]);
 
@@ -470,8 +673,14 @@ export function OnlineLobbyPage({
   };
 
   const runOnline = async (id?: string) => {
+    if (createdMatchID || customRoomStarting || customRoomCancelling) return;
+    if (!canStart) {
+      setError(startDisabledReason);
+      return;
+    }
     if (requestAnonymousNameBeforeStart()) return;
     setError('');
+    setCustomRoomStarting(true);
     try {
       if (id) {
         leavePlatformCustomRoom();
@@ -483,6 +692,13 @@ export function OnlineLobbyPage({
 
       leavePlatformCustomRoom();
       const nextSession = await onStartOnline(undefined, effectivePlayerName, { navigate: false });
+      pendingCustomRoomSessionRef.current = nextSession;
+      if (customRoomDisposedRef.current) {
+        if (pendingCustomRoomSessionRef.current?.matchID === nextSession.matchID) {
+          await cancelPendingCustomRoomSession(nextSession);
+        }
+        return;
+      }
       const room = await createPlatformCustomRoom(
         {
           roomCode: nextSession.matchID,
@@ -495,34 +711,57 @@ export function OnlineLobbyPage({
             if (platformCustomRoomRef.current === room) {
               platformCustomRoomRef.current = null;
               setCreatedMatchID('');
+              void cancelPendingCustomRoomSession(nextSession);
             }
           },
-          onDisconnect: () => {
+          onDisconnect: (error) => {
             if (platformCustomRoomRef.current === room) {
               platformCustomRoomRef.current = null;
               setCreatedMatchID('');
+              void cancelPendingCustomRoomSession(nextSession);
             }
+            if (error) setError(error.message);
           },
           onBoardgameMatchReady: (message) => {
             if (!isPlatformBoardgameRelayAcknowledged(nextSession.matchID, message)) return;
             if (platformCustomRoomRef.current === room) {
               platformCustomRoomRef.current = null;
             }
+            pendingCustomRoomSessionRef.current = null;
             setCreatedMatchID('');
             void room.leave(true).catch(() => undefined);
             navigateToOnlineSession(nextSession);
           },
         },
       );
+      if (customRoomDisposedRef.current) {
+        try {
+          room.send('cancelCustomRoom', {});
+        } catch {
+          // The room can disconnect while the page is being removed.
+        }
+        await Promise.allSettled([
+          room.leave(true),
+          pendingCustomRoomSessionRef.current?.matchID === nextSession.matchID
+            ? cancelPendingCustomRoomSession(nextSession)
+            : Promise.resolve(),
+        ]);
+        return;
+      }
       platformCustomRoomRef.current = room;
       setCreatedMatchID(nextSession.matchID);
     } catch (err) {
+      await cancelPendingCustomRoomSession();
+      if (customRoomDisposedRef.current) return;
       Sentry.captureException(err, { tags: { action: 'start-online' } });
       setError(onlineErrorMessage(err));
+    } finally {
+      setCustomRoomStarting(false);
     }
   };
 
   const handleQuickMatch = async () => {
+    if (createdMatchID || customRoomStarting || customRoomCancelling) return;
     if (!isLoggedIn()) {
       setError(t('lobby.loginRequired'));
       return;
@@ -540,13 +779,15 @@ export function OnlineLobbyPage({
     trackFunnelEvent('F_Queue_Start', { match_mode: 'quick_match' });
 
     try {
-      const serverDeckId = serverDeckIdFromOption(deck0Name);
+      const selectedDeckName = deck0Name;
+      const serverDeckId = serverDeckIdFromOption(selectedDeckName);
       const deckReservation = serverDeckId ? await reserveDeck(serverDeckId) : undefined;
+      const platformDeckName = platformQuickMatchDeckName(selectedDeckName);
       const room = await connectPlatformQuickMatch(
         {
           userId: profile?.id || `anon:${anonymousIdentity.suffix}`,
           displayName: effectivePlayerName,
-          deckName: deck0Name,
+          deckName: platformDeckName,
           deckReservationId: deckReservation?.reservationId,
         },
         {
@@ -557,7 +798,7 @@ export function OnlineLobbyPage({
               phaseRef.current = 'host-starting';
               void onStartOnline(undefined, effectivePlayerName, {
                 navigate: false,
-                playerDeckName: match.deckName ?? deck0Name,
+                playerDeckName: selectedDeckName,
                 playerDeckReservationId: match.deckReservationId,
               })
                 .then((session) => {
@@ -604,6 +845,7 @@ export function OnlineLobbyPage({
             phaseRef.current = 'guest-joining';
             void onStartOnline(message.boardgameMatchID, effectivePlayerName, {
               navigate: false,
+              playerDeckName: selectedDeckName,
               playerDeckReservationId: deckReservation?.reservationId,
             })
               .then((session) => {
@@ -631,7 +873,7 @@ export function OnlineLobbyPage({
             resetMatchmaking();
             setError(t('lobby.matchmakingTimeout'));
           },
-          onDisconnect: () => {
+          onDisconnect: (error) => {
             platformQuickMatchRoomRef.current = null;
             if (
               cancelRef.current ||
@@ -643,10 +885,11 @@ export function OnlineLobbyPage({
               return;
             }
             resetMatchmaking();
-            setError(t('lobby.matchmakingFailed'));
+            const detail = onlineErrorMessage(error);
+            setError(detail);
             showToast({
               title: t('error.matchmakingFailed'),
-              body: t('error.checkConnection'),
+              body: detail,
               kind: 'error',
               durationMs: 6000,
               actionLabel: t('common.retry'),
@@ -672,10 +915,11 @@ export function OnlineLobbyPage({
         data: { error: err instanceof Error ? err.message : String(err) },
       });
       resetMatchmaking();
-      setError(t('lobby.matchmakingFailed'));
+      const detail = onlineErrorMessage(err);
+      setError(detail);
       showToast({
         title: t('error.matchmakingFailed'),
-        body: t('error.checkConnection'),
+        body: detail,
         kind: 'error',
         durationMs: 6000,
         actionLabel: t('common.retry'),
@@ -731,8 +975,46 @@ export function OnlineLobbyPage({
     });
   };
 
+  const handleCancelCustomRoom = async () => {
+    if (!createdMatchID || customRoomCancelling) return;
+    setCustomRoomCancelling(true);
+    setError('');
+    const room = platformCustomRoomRef.current;
+    const session = pendingCustomRoomSessionRef.current;
+    platformCustomRoomRef.current = null;
+    pendingCustomRoomSessionRef.current = null;
+    setCreatedMatchID('');
+    setRoomChatSubjectOverride('');
+    try {
+      room?.send('cancelCustomRoom', {});
+    } catch {
+      // The room may already be disconnected; local/session cleanup still has to continue.
+    }
+    const cleanupResults = await Promise.allSettled([
+      room?.leave(true) ?? Promise.resolve(),
+      cancelPendingCustomRoomSession(session),
+    ]);
+    const cleanupError = cleanupResults.find((result) => result.status === 'rejected');
+    if (cleanupError?.status === 'rejected') {
+      Sentry.addBreadcrumb({
+        category: 'platform',
+        message: 'custom room cancellation cleanup failed',
+        level: 'warning',
+        data: {
+          room_code: createdMatchID,
+          error: cleanupError.reason instanceof Error ? cleanupError.reason.message : String(cleanupError.reason),
+        },
+      });
+    }
+    setCustomRoomCancelling(false);
+  };
+
   const canStart = cardsReady && !!deck0Name;
+  const customRoomWaiting = Boolean(createdMatchID);
+  const customRoomBusy = customRoomWaiting || customRoomStarting || customRoomCancelling;
   const startDisabledReason = !cardsReady ? t('game.loading') : !deck0Name ? t('lobby.selectDeckFirst') : '';
+  const canQuickMatch = canStart && !!profile;
+  const quickMatchDisabledReason = !profile ? profileError || t('lobby.loginRequired') : startDisabledReason;
   const draftPreview = formatAnonymousDisplayName({
     baseName: sanitizeAnonymousBaseName(anonymousNameDraft),
     suffix: anonymousIdentity.suffix,
@@ -790,6 +1072,7 @@ export function OnlineLobbyPage({
   );
 
   const handleInviteFriend = async (friend: FriendProfile) => {
+    if (createdMatchID || customRoomStarting || customRoomCancelling) return;
     if (!profile) return;
     if (!canStart) {
       setError(startDisabledReason);
@@ -877,12 +1160,13 @@ export function OnlineLobbyPage({
             setFriendInvitePeerId(null);
             leavePlatformInviteRoom();
           },
-          onDisconnect: () => {
+          onDisconnect: (error) => {
             activeOutgoingInviteIdRef.current = null;
             pendingInviteHostSessionRef.current = null;
             setFriendInvitePeerId(null);
             setFriendInviteActionId(null);
             setFriendInviteMode(null);
+            if (error) showToast({ title: t('friend.inviteFailed'), body: error.message, kind: 'error' });
           },
         },
       );
@@ -907,11 +1191,12 @@ export function OnlineLobbyPage({
       setFriendInviteMode(null);
       activeOutgoingInviteIdRef.current = null;
       pendingInviteHostSessionRef.current = null;
-      showToast({ title: t('friend.inviteFailed'), kind: 'error' });
+      showToast({ title: t('friend.inviteFailed'), body: onlineErrorMessage(err), kind: 'error' });
     }
   };
 
   const handleAcceptFriendInvite = async (friend: FriendProfile) => {
+    if (createdMatchID || customRoomStarting || customRoomCancelling) return;
     if (!profile) return;
     const inviteId = buildPlatformFriendInviteId(friend.userId, profile.id);
     setFriendInviteActionId(`accept:${friend.userId}`);
@@ -974,7 +1259,7 @@ export function OnlineLobbyPage({
       setFriendInviteActionId(null);
       setFriendInvitePeerId(null);
       setFriendInviteMode(null);
-      showToast({ title: t('friend.noInvite'), kind: 'error' });
+      showToast({ title: t('friend.noInvite'), body: onlineErrorMessage(err), kind: 'error' });
     }
   };
 
@@ -1141,12 +1426,8 @@ export function OnlineLobbyPage({
         authorRole: 'player',
       });
       if (canShowChatMessage(result.message)) {
+        roomChatShouldStickToBottomRef.current = true;
         setRoomChatMessages((messages) => [...messages, result.message]);
-        void markChatRead({
-          conversationType: 'room',
-          subjectId: roomChatSubjectId,
-          lastReadMessageId: result.message.id,
-        }).catch(() => undefined);
       }
       setRoomChatDraft('');
       setRoomChatStatus('ready');
@@ -1158,7 +1439,7 @@ export function OnlineLobbyPage({
         data: { room_code: roomChatSubjectId, error: err instanceof Error ? err.message : String(err) },
       });
       setRoomChatStatus('ready');
-      showToast({ title: t('chat.sendFailed'), kind: 'error' });
+      showToast({ title: t('chat.sendFailed'), body: onlineErrorMessage(err), kind: 'error' });
     }
   };
 
@@ -1182,9 +1463,10 @@ export function OnlineLobbyPage({
           level: 'warning',
           data: { message_id: message.id, error: err instanceof Error ? err.message : String(err) },
         });
+        showToast({ title: t('chat.translationOffline'), body: onlineErrorMessage(err), kind: 'error' });
       }
     },
-    [applyRoomChatTranslation, locale],
+    [applyRoomChatTranslation, locale, showToast],
   );
 
   const handleRoomChatReport = useCallback(
@@ -1206,7 +1488,7 @@ export function OnlineLobbyPage({
           level: 'warning',
           data: { message_id: message.id, error: err instanceof Error ? err.message : String(err) },
         });
-        showToast({ title: t('chat.reportFailed'), kind: 'error' });
+        showToast({ title: t('chat.reportFailed'), body: onlineErrorMessage(err), kind: 'error' });
       }
     },
     [profile?.id, reportedRoomMessageIds, showToast],
@@ -1214,545 +1496,662 @@ export function OnlineLobbyPage({
 
   return (
     <PageShell>
-      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
-        <div className="absolute left-1/3 top-1/4 h-[50vh] w-[90vh] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[oklch(from_var(--time-night)_l_c_h_/_0.06)] blur-[var(--ambient-glow-blur-md)]" />
-        <div className="absolute inset-0 opacity-[0.04] [background-image:var(--pattern-dot)] [background-size:var(--pattern-dot-size)]" />
-      </div>
-
       <AppHeader
         title={t('lobby.onlineTitle')}
         subtitle={t('lobby.onlineLobbySubtitle')}
         backTo="/"
         leftMeta={<OnlinePresenceBadge onlineCount={onlineCount} />}
+        actionsClassName="hidden sm:flex"
         actions={
-          <div className="hidden items-center gap-2 px-2 font-mono text-caption uppercase tracking-[var(--tracking-label)] text-content-primary/50 sm:flex">
-            <Radio className="size-3 animate-pulse text-accent-action" aria-hidden="true" />
+          <div className="flex min-w-0 items-center gap-2 px-2 font-mono text-caption text-content-primary/50">
+            <Radio className="size-3 shrink-0 text-accent-action" aria-hidden="true" />
             <span className="max-w-[14rem] truncate">{profile ? profile.nickname : anonymousDisplayName}</span>
           </div>
         }
       />
 
-      <main className="relative z-[var(--z-dropdown)] h-full overflow-y-auto px-4 pb-10 pt-20 md:pt-24">
-        <div className="mx-auto grid w-full max-w-5xl items-start gap-4 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
-          {/* 左：快速配對操作台 */}
-          <div ref={quickMatchPanelRef} className="order-2 min-w-0 scroll-mt-24 lg:order-1 lg:row-span-3">
-            <RoomPanel mode="quick">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">
-                    {t('lobby.quickMatch')}
+      <main className="relative z-[var(--z-dropdown)] h-full overflow-y-auto px-4 pb-8 pt-20 md:px-6 md:pt-24">
+        <div className="mx-auto w-full max-w-7xl">
+          {(serverDeckError || cardsLoadError) && (
+            <div className="mb-4 grid gap-2">
+              {serverDeckError && <Alert tone="danger">{serverDeckError}</Alert>}
+              {cardsLoadError && (
+                <Alert tone="danger">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <span>{t('game.cardsUnavailable')}</span>
+                    <Button type="button" variant="secondary" onClick={() => void onRetryCards?.()}>
+                      {t('common.retry')}
+                    </Button>
                   </div>
-                  <h2 className="mt-1 font-display text-3xl font-bold">{t('lobby.onlineTitle')}</h2>
-                </div>
-                <OnlinePresenceBadge onlineCount={onlineCount} variant="panel" className="w-full sm:w-auto" />
-              </div>
-
-              {/* 匿名身份 */}
-              <Panel variant="ghost">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">
-                      {t('anonymous.identity')}
-                    </div>
-                    <div
-                      className="mt-1 truncate font-mono text-sm text-accent-primary"
-                      data-online-authenticated-user-id={profile?.id}
-                    >
-                      {profile ? profile.nickname : editingAnonymousName ? draftPreview : anonymousDisplayName}
-                    </div>
-                  </div>
-                  {!profile && (
-                    <IconButton
-                      variant="secondary"
-                      type="button"
-                      onClick={startEditingAnonymousName}
-                      label={t('anonymous.editName')}
-                      title={t('anonymous.editName')}
-                      icon={<Pencil strokeWidth={1.25} className="size-3.5" aria-hidden="true" />}
-                    />
-                  )}
-                </div>
-                {!profile && editingAnonymousName && (
-                  <div className="mt-3 flex gap-2">
-                    <Input
-                      className="min-h-11 min-w-0 flex-1"
-                      value={anonymousNameDraft}
-                      maxLength={30}
-                      onChange={(event) => setAnonymousNameDraft(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter') saveAnonymousName();
-                        if (event.key === 'Escape') cancelAnonymousNameEdit();
-                      }}
-                      aria-label={t('anonymous.nameInput')}
-                    />
-                    <IconButton
-                      variant="primary"
-                      type="button"
-                      onClick={saveAnonymousName}
-                      label={t('common.save')}
-                      title={t('common.save')}
-                      icon={<Check strokeWidth={1.25} className="size-4" aria-hidden="true" />}
-                    />
-                    <IconButton
-                      variant="secondary"
-                      type="button"
-                      onClick={cancelAnonymousNameEdit}
-                      label={t('common.cancel')}
-                      title={t('common.cancel')}
-                      icon={<X strokeWidth={1.25} className="size-4" aria-hidden="true" />}
-                    />
-                  </div>
-                )}
-                {!profile && showAnonymousNamePrompt && (
-                  <p className="mt-3 text-caption leading-relaxed text-accent-primary/70">
-                    {t('anonymous.firstStartPrompt')}
-                  </p>
-                )}
-                {!profile && !editingAnonymousName && (
-                  <p className="mt-2 text-caption leading-relaxed text-content-primary/40">
-                    {t('anonymous.registerHint')}
-                  </p>
-                )}
-              </Panel>
-
-              {!profile && (
-                <Panel variant="ghost">
-                  <div className="mb-3 text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">
-                    {t('auth.login')} / {t('auth.register')}
-                  </div>
-                  <AuthSection onAuthChanged={handleAuthChanged} />
-                </Panel>
+                </Alert>
               )}
+            </div>
+          )}
 
-              {/* 當前牌組摘要 */}
-              <Panel variant="ghost">
-                <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">
-                  {t('lobby.currentDeck')}
-                </div>
-                <div className="mt-1 truncate font-display text-lg font-bold">
-                  {deck0Name ? resolveDeckLabel(deck0Name, deckOptions) : t('lobby.noDeckSelected')}
-                </div>
-              </Panel>
-
-              {/* 開始匹配 */}
-              <div className="grid gap-2">
-                <Button
-                  className="w-full bg-gradient-to-r from-accent-action to-accent-primary py-4 font-display text-lg font-bold tracking-normal text-surface-canvas transition hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:brightness-100"
-                  type="button"
-                  onClick={handleQuickMatch}
-                  disabled={matchmakingActive || !canStart}
-                  aria-describedby={!canStart ? 'online-quick-match-helper' : undefined}
-                >
-                  {t('lobby.beginMatch')}
-                </Button>
-
-                {!canStart && (
-                  <p id="online-quick-match-helper" className="text-caption leading-relaxed text-accent-action/70">
-                    {startDisabledReason}
-                  </p>
-                )}
-              </div>
-
-              {matchmakingActive && (
-                <div className="grid gap-3" aria-live="polite">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="flex items-center gap-2 text-caption text-accent-primary/70">
-                      <span className="size-1.5 animate-pulse rounded-full bg-accent-action" />
-                      {t('lobby.matchmakingSearching')} {formatQuickMatchWait(matchmakingElapsedSeconds)}
-                    </span>
-                    {matchmakingCancellable && (
-                      <Button
-                        className="min-h-11"
-                        variant="ghost"
-                        size="sm"
-                        type="button"
-                        onClick={handleCancelMatchmaking}
-                      >
-                        {t('lobby.matchmakingCancel')}
-                      </Button>
-                    )}
-                  </div>
-
-                  {matchmakingCancellable &&
-                    !longWaitDismissed &&
-                    shouldOfferQuickMatchFallback(matchmakingElapsedSeconds) && (
-                      <Alert tone="info" role="status">
-                        <div className="grid gap-3">
-                          <div>
-                            <strong className="block text-sm">{t('lobby.matchmakingLongWaitTitle')}</strong>
-                            <p className="mt-1 text-caption leading-relaxed">{t('lobby.matchmakingLongWaitBody')}</p>
+          <div className="grid items-start gap-4 lg:grid-cols-[20rem_minmax(0,1fr)] lg:grid-rows-[auto_auto_auto] lg:gap-5">
+            <aside className="min-w-0 lg:col-start-1 lg:row-start-1">
+              <RoomPanel
+                mode="deck"
+                className="!rounded-sm !bg-surface-elevated/35 !p-5 !ring-1 !ring-border-soft"
+                aria-label={t('lobby.myDeck')}
+              >
+                <div className="divide-y divide-border-soft">
+                  <div className="grid gap-4 pb-4">
+                    <div className="min-w-0">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/55">
+                            {profile ? t('lobby.rank') : t('anonymous.identity')}
                           </div>
-                          <div className="grid gap-2 sm:grid-cols-2">
-                            <Button variant="secondary" type="button" onClick={handleContinueWaiting}>
-                              {t('lobby.matchmakingKeepWaiting')}
-                            </Button>
-                            <Button variant="primary" type="button" onClick={handleUseCustomRoom}>
-                              {t('lobby.matchmakingUseCustomRoom')}
-                            </Button>
-                            {profile && friends.length > 0 && (
-                              <Button
-                                className="sm:col-span-2"
-                                variant="ghost"
-                                type="button"
-                                onClick={handleUseFriendInvite}
-                              >
-                                {t('lobby.matchmakingUseFriendInvite')}
-                              </Button>
-                            )}
+                          <div className="mt-0.5 truncate font-mono text-sm text-content-primary">
+                            {profile ? profile.nickname : editingAnonymousName ? draftPreview : anonymousDisplayName}
                           </div>
                         </div>
-                      </Alert>
-                    )}
-                </div>
-              )}
-            </RoomPanel>
-          </div>
-
-          {/* 手機先選牌組再顯示配對；桌面維持左側快速配對、右側設定。 */}
-          <>
-            {/* 牌組選擇 */}
-            <RoomPanel mode="deck" className="order-1 min-w-0 lg:order-2">
-              <DeckSelector
-                label={t('lobby.myDeck')}
-                value={deck0Name}
-                options={deckOptions}
-                onChange={handleDeckChange}
-              />
-            </RoomPanel>
-
-            {/* 自訂房間 */}
-            <div ref={customRoomPanelRef} className="order-3 min-w-0 lg:order-3">
-              <RoomPanel mode="custom">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">
-                      {t('lobby.customRooms')}
+                        {!profile && (
+                          <IconButton
+                            variant="ghost"
+                            type="button"
+                            onClick={startEditingAnonymousName}
+                            label={t('anonymous.editName')}
+                            title={t('anonymous.editName')}
+                            icon={<Pencil strokeWidth={1.25} className="size-4" aria-hidden="true" />}
+                          />
+                        )}
+                      </div>
                     </div>
-                    <h2 className="font-display text-2xl font-bold">{t('lobby.createRoom')}</h2>
-                  </div>
-                  <div className="grid gap-2 sm:justify-items-end">
-                    <Button
-                      className="!min-h-11"
-                      size="sm"
-                      variant="secondary"
-                      type="button"
-                      onClick={() => runOnline()}
-                      disabled={matchmakingActive || !canStart}
-                      aria-describedby={!canStart ? 'online-create-room-helper' : undefined}
-                    >
-                      <Plus className="size-3.5 shrink-0" aria-hidden="true" />
-                      {t('lobby.createRoom')}
-                    </Button>
 
-                    {!canStart && (
-                      <p
-                        id="online-create-room-helper"
-                        className="max-w-[18rem] text-left text-caption leading-relaxed text-accent-action/70 sm:text-right"
-                      >
-                        {startDisabledReason}
+                    <div className="min-w-0 rounded-sm bg-surface-canvas/45 px-3 py-3 ring-1 ring-border-soft">
+                      <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/55">
+                        {t('lobby.currentDeck')}
+                      </div>
+                      <div className="mt-0.5 truncate font-display text-lg font-bold">
+                        {deck0Name ? resolveDeckLabel(deck0Name, deckOptions) : t('lobby.noDeckSelected')}
+                      </div>
+                    </div>
+
+                    {!profile && editingAnonymousName && (
+                      <div className="flex w-full gap-2">
+                        <Input
+                          className="min-h-11 min-w-0 flex-1"
+                          value={anonymousNameDraft}
+                          maxLength={30}
+                          onChange={(event) => setAnonymousNameDraft(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') saveAnonymousName();
+                            if (event.key === 'Escape') cancelAnonymousNameEdit();
+                          }}
+                          aria-label={t('anonymous.nameInput')}
+                        />
+                        <IconButton
+                          variant="primary"
+                          type="button"
+                          onClick={saveAnonymousName}
+                          label={t('common.save')}
+                          icon={<Check className="size-4" aria-hidden="true" />}
+                        />
+                        <IconButton
+                          variant="secondary"
+                          type="button"
+                          onClick={cancelAnonymousNameEdit}
+                          label={t('common.cancel')}
+                          icon={<X className="size-4" aria-hidden="true" />}
+                        />
+                      </div>
+                    )}
+
+                    {!profile && showAnonymousNamePrompt && (
+                      <p className="w-full text-caption leading-relaxed text-accent-primary/70">
+                        {t('anonymous.firstStartPrompt')}
                       </p>
                     )}
                   </div>
-                </div>
 
-                {/* 加入房間 */}
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  <Input
-                    className="min-h-11 min-w-0 flex-1"
-                    value={matchID}
-                    onChange={(event) => {
-                      setRoomChatSubjectOverride('');
-                      setMatchID(event.target.value.trim());
-                    }}
-                    placeholder={t('lobby.roomCodePlaceholder')}
-                    aria-label={t('lobby.roomCode')}
-                    disabled={matchmakingActive}
-                  />
-                  <Button
-                    className="min-h-11"
-                    variant="secondary"
-                    type="button"
-                    disabled={!matchID || matchmakingActive}
-                    onClick={() => runOnline(matchID)}
+                  <details className="group" data-deck-options open>
+                    <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium">
+                      <span>
+                        {t('common.select')} · {t('lobby.myDeck')}
+                      </span>
+                      <Plus className="size-4 transition-transform group-open:rotate-45" aria-hidden="true" />
+                    </summary>
+                    <div className="pb-4">
+                      <DeckSelector
+                        label={t('lobby.myDeck')}
+                        value={deck0Name}
+                        options={deckOptions}
+                        onChange={handleDeckChange}
+                        density="compact"
+                        showHeader={false}
+                        scrollable
+                        disabled={customRoomBusy}
+                      />
+                    </div>
+                  </details>
+
+                  {!profile && (
+                    <details className="group">
+                      <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between text-sm font-medium">
+                        <span>
+                          {t('auth.login')} / {t('auth.register')}
+                        </span>
+                        <Plus className="size-4 transition-transform group-open:rotate-45" aria-hidden="true" />
+                      </summary>
+                      <div className="pb-4">
+                        <AuthSection onAuthChanged={handleAuthChanged} />
+                      </div>
+                    </details>
+                  )}
+                </div>
+              </RoomPanel>
+            </aside>
+
+            <section className="contents" aria-label={t('lobby.onlineTitle')}>
+              {QUICK_MATCH_ENABLED && (
+                <div ref={quickMatchPanelRef} className="min-w-0 scroll-mt-24 lg:col-start-1 lg:row-start-2">
+                  <RoomPanel
+                    mode="quick"
+                    className="!rounded-sm !bg-surface-elevated/35 !p-5 !ring-1 !ring-border-soft lg:!overflow-visible"
                   >
-                    {t('lobby.joinRoom')}
-                  </Button>
-                </div>
+                    <div className="grid">
+                      <div className="flex min-h-40 flex-col justify-between py-5">
+                        <div>
+                          <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">
+                            {t('lobby.quickMatch')}
+                          </div>
+                          <h2 className="mt-1 font-display text-2xl font-bold">{t('lobby.beginMatch')}</h2>
+                        </div>
+                        <div className="mt-6">
+                          <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/55">
+                            {t('lobby.currentDeck')}
+                          </div>
+                          <p className="mt-1 truncate font-display text-lg font-bold text-content-primary/80">
+                            {deck0Name ? resolveDeckLabel(deck0Name, deckOptions) : t('lobby.noDeckSelected')}
+                          </p>
+                        </div>
+                      </div>
 
-                {serverDeckError && (
-                  <Alert tone="danger" role="alert">
-                    {serverDeckError}
-                  </Alert>
-                )}
-                {cardsLoadError && (
-                  <Alert tone="danger" role="alert">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <span>{t('game.cardsUnavailable')}</span>
-                      <Button type="button" variant="secondary" onClick={() => void onRetryCards?.()}>
-                        {t('common.retry')}
+                      <div className="flex flex-col justify-center gap-2 border-t border-border-soft pt-5">
+                        <Button
+                          className="min-h-14 w-full font-display text-lg font-bold tracking-normal"
+                          type="button"
+                          onClick={handleQuickMatch}
+                          disabled={matchmakingActive || customRoomBusy || !canQuickMatch}
+                          aria-describedby={!canQuickMatch ? 'online-quick-match-helper' : undefined}
+                        >
+                          <Zap className="size-4" aria-hidden="true" />
+                          {t('lobby.beginMatch')}
+                        </Button>
+                        {!canQuickMatch && (
+                          <p id="online-quick-match-helper" className="text-caption text-accent-action">
+                            {quickMatchDisabledReason}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {matchmakingActive && (
+                      <div className="mt-5 border-y border-border-soft py-4" aria-live="polite">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="flex items-center gap-2 text-sm text-accent-primary/80">
+                            <span className="size-2 animate-pulse rounded-full bg-accent-action" />
+                            {t('lobby.matchmakingSearching')} {formatQuickMatchWait(matchmakingElapsedSeconds)}
+                          </span>
+                          {matchmakingCancellable && (
+                            <Button variant="ghost" size="sm" type="button" onClick={handleCancelMatchmaking}>
+                              {t('lobby.matchmakingCancel')}
+                            </Button>
+                          )}
+                        </div>
+
+                        {matchmakingCancellable &&
+                          !longWaitDismissed &&
+                          shouldOfferQuickMatchFallback(matchmakingElapsedSeconds) && (
+                            <Alert className="mt-4" tone="info" role="status">
+                              <strong className="block text-sm">{t('lobby.matchmakingLongWaitTitle')}</strong>
+                              <p className="mt-1 text-caption leading-relaxed">{t('lobby.matchmakingLongWaitBody')}</p>
+                              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                                <Button variant="secondary" type="button" onClick={handleContinueWaiting}>
+                                  {t('lobby.matchmakingKeepWaiting')}
+                                </Button>
+                                <Button variant="primary" type="button" onClick={handleUseCustomRoom}>
+                                  {t('lobby.matchmakingUseCustomRoom')}
+                                </Button>
+                                {profile && friends.length > 0 && (
+                                  <Button
+                                    className="sm:col-span-2"
+                                    variant="ghost"
+                                    type="button"
+                                    onClick={handleUseFriendInvite}
+                                  >
+                                    {t('lobby.matchmakingUseFriendInvite')}
+                                  </Button>
+                                )}
+                              </div>
+                            </Alert>
+                          )}
+                      </div>
+                    )}
+                  </RoomPanel>
+                </div>
+              )}
+
+              <div
+                ref={customRoomPanelRef}
+                className={`min-w-0 scroll-mt-24 lg:col-start-2 lg:row-start-1 ${
+                  QUICK_MATCH_ENABLED ? 'lg:row-span-3' : 'lg:row-span-2'
+                }`}
+              >
+                <RoomPanel
+                  mode="custom"
+                  className="!rounded-sm !bg-surface-elevated/20 !p-5 !ring-1 !ring-border-soft md:!p-6"
+                >
+                  <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                    <div>
+                      <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">
+                        {t('lobby.onlineTitle')}
+                      </div>
+                      <h2 className="mt-1 font-display text-2xl font-bold">{t('lobby.customRooms')}</h2>
+                    </div>
+                    <Button
+                      className="min-h-11"
+                      size="sm"
+                      variant="primary"
+                      type="button"
+                      onClick={() => void runOnline()}
+                      disabled={matchmakingActive || customRoomBusy || !canStart}
+                    >
+                      <Plus className="size-4" aria-hidden="true" />
+                      {t('lobby.createPublicRoom')}
+                    </Button>
+                  </div>
+
+                  {!canStart && <p className="mb-3 text-caption text-accent-action">{startDisabledReason}</p>}
+
+                  <section aria-labelledby="available-room-list-title" className="border-y border-border-soft">
+                    <div className="flex min-h-12 items-center justify-between gap-3">
+                      <div>
+                        <h3 id="available-room-list-title" className="font-display text-base font-bold">
+                          {t('lobby.availableRooms')}
+                        </h3>
+                        <p className="text-caption text-content-primary/55">{t('lobby.availableRoomsHint')}</p>
+                      </div>
+                      <IconButton
+                        type="button"
+                        variant="ghost"
+                        onClick={() => void refreshAvailableRooms(true)}
+                        disabled={roomListStatus === 'loading'}
+                        label={t('lobby.refreshRooms')}
+                        title={t('lobby.refreshRooms')}
+                        icon={
+                          <RefreshCw
+                            className={`size-4 ${roomListStatus === 'loading' ? 'animate-spin' : ''}`}
+                            aria-hidden="true"
+                          />
+                        }
+                      />
+                    </div>
+
+                    {roomListStatus === 'unavailable' && availableRooms.length === 0 ? (
+                      <Alert className="mb-3" tone="danger" role="status">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span>{roomListError || t('lobby.availableRoomsUnavailable')}</span>
+                          <Button size="sm" variant="ghost" onClick={() => void refreshAvailableRooms(true)}>
+                            {t('common.retry')}
+                          </Button>
+                        </div>
+                      </Alert>
+                    ) : roomListStatus === 'loading' && availableRooms.length === 0 ? (
+                      <p className="py-5 text-center text-caption text-content-primary/55" role="status">
+                        {t('lobby.loadingRooms')}
+                      </p>
+                    ) : availableRooms.filter((room) => room.roomCode !== createdMatchID).length === 0 ? (
+                      <p className="py-5 text-center text-caption text-content-primary/55">
+                        {t('lobby.availableRoomsEmpty')}
+                      </p>
+                    ) : (
+                      <ul className="max-h-[28rem] divide-y divide-border-soft overflow-y-auto lg:max-h-[calc(100dvh-23rem)]">
+                        {availableRooms
+                          .filter((room) => room.roomCode !== createdMatchID)
+                          .map((room) => (
+                            <li key={room.roomCode} className="flex min-h-16 items-center justify-between gap-3 py-2">
+                              <div className="min-w-0">
+                                <div className="truncate text-sm font-medium">{room.hostDisplayName}</div>
+                                <div className="mt-0.5 flex items-center gap-2 text-caption text-content-primary/45">
+                                  <span className="truncate font-mono">{room.roomCode}</span>
+                                  <span className="flex shrink-0 items-center gap-1">
+                                    <Users className="size-3" aria-hidden="true" />
+                                    {room.playerCount}/2
+                                  </span>
+                                </div>
+                              </div>
+                              <Button
+                                className="shrink-0"
+                                size="sm"
+                                variant="secondary"
+                                disabled={matchmakingActive || customRoomBusy || !canStart}
+                                onClick={() => {
+                                  setRoomChatSubjectOverride('');
+                                  setMatchID(room.roomCode);
+                                  void runOnline(room.roomCode);
+                                }}
+                              >
+                                {t('lobby.joinRoom')}
+                              </Button>
+                            </li>
+                          ))}
+                      </ul>
+                    )}
+                  </section>
+
+                  <details className="group mt-1" open>
+                    <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium">
+                      <span>{t('lobby.roomCode')}</span>
+                      <Plus className="size-4 transition-transform group-open:rotate-45" aria-hidden="true" />
+                    </summary>
+                    <div className="grid gap-2 pb-4 sm:grid-cols-[minmax(0,1fr)_auto]">
+                      <Input
+                        className="min-h-11 min-w-0"
+                        value={matchID}
+                        onChange={(event) => {
+                          setRoomChatSubjectOverride('');
+                          setMatchID(event.target.value.trim());
+                        }}
+                        placeholder={t('lobby.roomCodePlaceholder')}
+                        aria-label={t('lobby.roomCode')}
+                        disabled={matchmakingActive || customRoomBusy}
+                      />
+                      <Button
+                        className="min-h-11"
+                        variant="secondary"
+                        type="button"
+                        disabled={!matchID || matchmakingActive || customRoomBusy || !canStart}
+                        onClick={() => void runOnline(matchID)}
+                      >
+                        {t('lobby.joinRoom')}
                       </Button>
                     </div>
-                  </Alert>
-                )}
+                  </details>
 
-                {/* 已建立房間資訊 */}
-                {createdMatchID && (
-                  <RoomDetails>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">
-                        {t('online.roomCode')}
-                      </span>
-                      <span className="font-mono text-xs text-accent-primary">{createdMatchID}</span>
-                    </div>
-                    <label className="flex flex-col gap-1">
-                      <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/40">
-                        {t('online.shareLink')}
-                      </span>
+                  {createdMatchID && (
+                    <RoomDetails className="mt-4 !rounded-none !bg-accent-primary/5 !ring-accent-primary/20">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/55">
+                          {t('online.roomCode')}
+                        </span>
+                        <strong className="font-mono text-sm text-accent-primary">{createdMatchID}</strong>
+                      </div>
                       <Input
                         className="min-h-11 min-w-0 font-mono text-xs text-content-primary/70"
                         value={buildOnlineRoomUrl(createdMatchID)}
                         readOnly
                         aria-label={t('online.shareLink')}
                       />
-                    </label>
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-                      <Button
-                        className="!min-h-11"
-                        size="sm"
-                        variant="secondary"
-                        type="button"
-                        onClick={handleCopyShareLink}
-                      >
-                        {copied ? t('online.copied') : t('online.copyLink')}
-                      </Button>
-                      <span className="text-caption text-content-primary/40">{t('online.hostWaitingHelper')}</span>
-                    </div>
-                  </RoomDetails>
-                )}
-
-                {profile && (
-                  <div
-                    className="grid min-h-72 grid-rows-[auto_minmax(0,1fr)_auto] rounded-sm border border-border-soft bg-surface-canvas/30"
-                    data-chat-surface="room"
-                    data-chat-subject={roomChatSubjectId}
-                  >
-                    <div className="flex min-h-12 items-center justify-between gap-3 border-b border-border-soft px-3">
-                      <div className="min-w-0">
-                        <div className="text-minutia uppercase tracking-[var(--tracking-label)] text-content-primary/35">
-                          {t('chat.roomEyebrow')}
-                        </div>
-                        <div className="truncate font-mono text-xs text-accent-primary">
-                          {roomChatSubjectId || t('chat.roomSubjectEmpty')}
-                        </div>
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                        <Button size="sm" variant="secondary" type="button" onClick={handleCopyShareLink}>
+                          {copied ? t('online.copied') : t('online.copyLink')}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          type="button"
+                          onClick={() => void handleCancelCustomRoom()}
+                          disabled={customRoomCancelling}
+                        >
+                          {customRoomCancelling ? t('online.leaving') : t('online.cancelRoom')}
+                        </Button>
+                        <span className="text-caption text-content-primary/50">{t('online.hostWaitingHelper')}</span>
                       </div>
-                      <MessageCircle className="size-4 shrink-0 text-content-primary/35" strokeWidth={1.25} />
-                    </div>
+                    </RoomDetails>
+                  )}
 
-                    <div ref={roomChatMessagesRef} className="flex min-h-0 flex-col gap-2 overflow-y-auto p-3">
-                      {!roomChatSubjectId && (
-                        <div className="grid min-h-full place-items-center px-4 text-center font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/35">
-                          {t('chat.roomSubjectEmpty')}
-                        </div>
-                      )}
-                      {roomChatSubjectId && roomChatStatus === 'loading' && (
-                        <div className="grid min-h-full place-items-center font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/35">
-                          {t('presence.syncing')}
-                        </div>
-                      )}
-                      {roomChatSubjectId && roomChatStatus === 'unavailable' && (
-                        <div className="grid min-h-full place-items-center px-4 text-center text-caption text-accent-action/70">
-                          {t('chat.historyUnavailable')}
-                        </div>
-                      )}
-                      {roomChatSubjectId &&
-                        roomChatStatus !== 'loading' &&
-                        roomChatStatus !== 'unavailable' &&
-                        roomChatMessages.length === 0 && (
-                          <div className="grid min-h-full place-items-center text-center font-mono text-caption uppercase tracking-[var(--tracking-kicker)] text-content-primary/35">
-                            {t('chat.empty')}
-                          </div>
-                        )}
-                      {roomChatMessages.map((message) => {
-                        const self = message.authorUserId === profile.id;
-                        return (
-                          <div
-                            key={message.id}
-                            data-chat-message="room"
-                            className={`max-w-[86%] ${self ? 'self-end text-right' : 'self-start text-left'}`}
-                          >
-                            <div className="px-1 pb-1 font-mono text-minutia uppercase tracking-[var(--tracking-label)] text-content-primary/35">
-                              <span>{message.authorDisplayName || message.authorUserId || t('auth.guest')}</span>
-                              <span className="ml-2 inline-flex items-center gap-1">
-                                <IconButton
-                                  className="!size-7"
-                                  variant="ghost"
-                                  type="button"
-                                  onClick={() => void handleRoomChatTranslate(message)}
-                                  disabled={message.translation?.status === 'loading'}
-                                  label={t('chat.translate')}
-                                  title={t('chat.translate')}
-                                  icon={<Languages className="size-3" strokeWidth={1.25} aria-hidden="true" />}
-                                />
-                                {!self && (
+                  {profile && roomChatSubjectId && (
+                    <details
+                      className="group mt-4 border-y border-border-soft"
+                      open={roomChatOpen}
+                      onToggle={(event) => setRoomChatOpen(event.currentTarget.open)}
+                    >
+                      <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3">
+                        <span className="flex min-w-0 items-center gap-2 text-sm font-medium">
+                          <MessageCircle className="size-4 shrink-0" aria-hidden="true" />
+                          <span className="truncate">
+                            {t('chat.roomEyebrow')} · {roomChatSubjectId}
+                          </span>
+                          {roomChatUnreadCount > 0 && !roomChatOpen && (
+                            <span
+                              className="grid min-h-5 min-w-5 shrink-0 place-items-center rounded-full bg-accent-action px-1 font-mono text-minutia text-surface-canvas"
+                              data-room-chat-unread-count={roomChatUnreadCount}
+                              aria-label={t('chat.unreadCount').replace('{count}', String(roomChatUnreadCount))}
+                            >
+                              {roomChatUnreadCount > 99 ? '99+' : roomChatUnreadCount}
+                            </span>
+                          )}
+                        </span>
+                        <Plus
+                          className="size-4 shrink-0 transition-transform group-open:rotate-45"
+                          aria-hidden="true"
+                        />
+                      </summary>
+                      <div
+                        className="mb-4 grid h-72 grid-rows-[minmax(0,1fr)_auto] border border-border-soft bg-surface-canvas/30"
+                        data-chat-surface="room"
+                        data-chat-subject={roomChatSubjectId}
+                      >
+                        <div
+                          ref={roomChatMessagesRef}
+                          className="flex min-h-0 flex-col gap-2 overflow-y-auto p-3"
+                          onScroll={(event) => {
+                            const element = event.currentTarget;
+                            roomChatShouldStickToBottomRef.current =
+                              element.scrollHeight - element.scrollTop - element.clientHeight <= 48;
+                          }}
+                        >
+                          {roomChatStatus === 'loading' && (
+                            <div className="grid min-h-full place-items-center text-caption text-content-primary/35">
+                              {t('presence.syncing')}
+                            </div>
+                          )}
+                          {roomChatStatus === 'unavailable' && (
+                            <div className="grid min-h-full place-items-center text-caption text-accent-action">
+                              {roomChatError || t('chat.historyUnavailable')}
+                            </div>
+                          )}
+                          {roomChatStatus === 'ready' && roomChatMessages.length === 0 && (
+                            <div className="grid min-h-full place-items-center text-caption text-content-primary/35">
+                              {t('chat.empty')}
+                            </div>
+                          )}
+                          {roomChatMessages.map((message) => {
+                            const self = message.authorUserId === profile.id;
+                            return (
+                              <div
+                                key={message.id}
+                                data-chat-message="room"
+                                className={`max-w-[86%] ${self ? 'self-end text-right' : 'self-start text-left'}`}
+                              >
+                                <div className="flex items-center gap-1 px-1 pb-1 text-minutia text-content-primary/55">
+                                  <span className="min-w-0 flex-1 truncate">
+                                    {message.authorDisplayName || message.authorUserId}
+                                  </span>
                                   <IconButton
                                     className="!size-7"
                                     variant="ghost"
                                     type="button"
-                                    onClick={() => void handleRoomChatReport(message)}
-                                    disabled={reportedRoomMessageIds.has(message.id)}
-                                    label={
-                                      reportedRoomMessageIds.has(message.id) ? t('chat.reported') : t('chat.report')
-                                    }
-                                    title={
-                                      reportedRoomMessageIds.has(message.id) ? t('chat.reported') : t('chat.report')
-                                    }
-                                    icon={<Flag className="size-3" strokeWidth={1.25} aria-hidden="true" />}
+                                    onClick={() => void handleRoomChatTranslate(message)}
+                                    disabled={message.translation?.status === 'loading'}
+                                    label={t('chat.translate')}
+                                    icon={<Languages className="size-3" aria-hidden="true" />}
                                   />
+                                  {!self && (
+                                    <IconButton
+                                      className="!size-7"
+                                      variant="ghost"
+                                      type="button"
+                                      onClick={() => void handleRoomChatReport(message)}
+                                      disabled={reportedRoomMessageIds.has(message.id)}
+                                      label={
+                                        reportedRoomMessageIds.has(message.id) ? t('chat.reported') : t('chat.report')
+                                      }
+                                      icon={<Flag className="size-3" aria-hidden="true" />}
+                                    />
+                                  )}
+                                </div>
+                                <div
+                                  className={`rounded-sm border px-3 py-2 text-caption leading-relaxed [overflow-wrap:anywhere] ${
+                                    self
+                                      ? 'border-accent-primary/25 bg-accent-primary/10'
+                                      : 'border-border-soft bg-surface-elevated/50'
+                                  }`}
+                                >
+                                  {message.content}
+                                </div>
+                                {message.translation && (
+                                  <div className="mt-1 rounded-sm border border-border-soft px-3 py-2 text-caption leading-relaxed text-content-muted">
+                                    {message.translation.status === 'ready' && message.translation.content
+                                      ? message.translation.content
+                                      : message.translation.status === 'loading'
+                                        ? t('chat.translationTranslating')
+                                        : message.translation.status === 'unavailable'
+                                          ? t('chat.translationOffline')
+                                          : t('chat.translationPending')}
+                                  </div>
                                 )}
-                              </span>
-                            </div>
-                            <div
-                              className={`rounded-sm border px-3 py-2 text-caption leading-relaxed [overflow-wrap:anywhere] ${
-                                self
-                                  ? 'border-accent-primary/25 bg-accent-primary/10 text-content-primary'
-                                  : 'border-border-soft bg-surface-elevated/50 text-content-primary'
-                              }`}
-                            >
-                              {message.content}
-                            </div>
-                            {message.translation && (
-                              <div
-                                className={`mt-1 rounded-sm border px-3 py-2 text-caption leading-relaxed [overflow-wrap:anywhere] ${
-                                  message.translation.status === 'ready' && message.translation.content
-                                    ? 'border-accent-primary/20 bg-accent-primary/10 text-content-muted'
-                                    : 'border-border-soft bg-surface-canvas/40 font-mono uppercase tracking-[var(--tracking-kicker)] text-content-primary/35'
-                                }`}
-                              >
-                                {message.translation.status === 'ready' && message.translation.content
-                                  ? message.translation.content
-                                  : message.translation.status === 'loading'
-                                    ? t('chat.translationTranslating')
-                                    : message.translation.status === 'unavailable'
-                                      ? t('chat.translationOffline')
-                                      : t('chat.translationPending')}
                               </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    <form
-                      className="grid grid-cols-[minmax(0,1fr)_var(--touch-target-min)] gap-2 border-t border-border-soft p-2"
-                      onSubmit={(event) => {
-                        event.preventDefault();
-                        void handleRoomChatSubmit();
-                      }}
-                    >
-                      <Input
-                        className="min-h-11 min-w-0"
-                        value={roomChatDraft}
-                        onChange={(event) => setRoomChatDraft(event.target.value.slice(0, 500))}
-                        placeholder={t('chat.messagePlaceholder')}
-                        aria-label={t('chat.messagePlaceholder')}
-                        disabled={
-                          !roomChatSubjectId || roomChatStatus === 'sending' || roomChatStatus === 'unavailable'
-                        }
-                      />
-                      <IconButton
-                        variant="primary"
-                        type="submit"
-                        disabled={
-                          !roomChatSubjectId ||
-                          !roomChatDraft.trim() ||
-                          roomChatStatus === 'sending' ||
-                          roomChatStatus === 'unavailable'
-                        }
-                        label={t('chat.send')}
-                        title={t('chat.send')}
-                        icon={<Send className="size-4" strokeWidth={1.25} aria-hidden="true" />}
-                      />
-                    </form>
-                  </div>
-                )}
-
-                {error && (
-                  <Alert tone="danger" role="alert">
-                    {error}
-                  </Alert>
-                )}
-              </RoomPanel>
-            </div>
-
-            {profile && (
-              <RoomPanel mode="custom" className="order-4 min-w-0 lg:order-4" data-friend-invites>
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">
-                      {t('friend.title')}
-                    </div>
-                    <h2 className="font-display text-2xl font-bold">{t('friend.invite')}</h2>
-                  </div>
-                  <IconButton
-                    variant="ghost"
-                    type="button"
-                    onClick={refreshFriends}
-                    label={t('friend.refresh')}
-                    icon={<Radio className="size-3.5" strokeWidth={1.25} aria-hidden="true" />}
-                  />
-                </div>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {friends.map((friend) => (
-                    <div
-                      key={friend.userId}
-                      data-friend-user-id={friend.userId}
-                      className="grid min-h-14 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 rounded-sm border border-border-soft bg-surface-canvas/30 px-3 py-2"
-                    >
-                      <div className="min-w-0">
-                        <strong className="block truncate text-body">{friend.nickname || friend.userId}</strong>
-                        <span className="block truncate text-minutia text-content-dim">{friend.userId}</span>
+                            );
+                          })}
+                        </div>
+                        <form
+                          className="grid grid-cols-[minmax(0,1fr)_var(--touch-target-min)] gap-2 border-t border-border-soft p-2"
+                          onSubmit={(event) => {
+                            event.preventDefault();
+                            void handleRoomChatSubmit();
+                          }}
+                        >
+                          <Input
+                            className="min-h-11 min-w-0"
+                            value={roomChatDraft}
+                            onChange={(event) => setRoomChatDraft(event.target.value.slice(0, 500))}
+                            placeholder={t('chat.messagePlaceholder')}
+                            aria-label={t('chat.messagePlaceholder')}
+                            disabled={roomChatStatus === 'sending' || roomChatStatus === 'unavailable'}
+                          />
+                          <IconButton
+                            variant="primary"
+                            type="submit"
+                            disabled={
+                              !roomChatDraft.trim() || roomChatStatus === 'sending' || roomChatStatus === 'unavailable'
+                            }
+                            label={t('chat.send')}
+                            icon={<Send className="size-4" aria-hidden="true" />}
+                          />
+                        </form>
                       </div>
-                      <IconButton
-                        variant="ghost"
-                        type="button"
-                        data-friend-invite-action="send"
-                        data-friend-user-id={friend.userId}
-                        onClick={() => void handleInviteFriend(friend)}
-                        disabled={
-                          friendInviteActionId !== null || friendInvitePeerId !== null || matchmakingActive || !canStart
-                        }
-                        label={t('friend.invite')}
-                        title={friendInvitePeerId === friend.userId ? t('friend.inviteWaiting') : t('friend.invite')}
-                        icon={<Send className="size-3.5" strokeWidth={1.25} aria-hidden="true" />}
-                      />
-                      <IconButton
-                        variant="ghost"
-                        type="button"
-                        data-friend-invite-action="accept"
-                        data-friend-user-id={friend.userId}
-                        onClick={() => void handleAcceptFriendInvite(friend)}
-                        disabled={
-                          friendInviteActionId !== null ||
-                          matchmakingActive ||
-                          (friendInvitePeerId !== null && friendInvitePeerId !== friend.userId)
-                        }
-                        label={t('friend.acceptInvite')}
-                        title={
-                          friendInviteMode === 'incoming' && friendInvitePeerId === friend.userId
-                            ? t('friend.inviteIncoming')
-                            : t('friend.acceptInvite')
-                        }
-                        icon={<Check className="size-3.5" strokeWidth={1.25} aria-hidden="true" />}
-                      />
-                    </div>
-                  ))}
-                  {friendStatus !== 'loading' && friends.length === 0 && (
-                    <p className="text-caption text-content-dim">{t('friend.empty')}</p>
+                    </details>
                   )}
-                </div>
-              </RoomPanel>
-            )}
-          </>
+                </RoomPanel>
+              </div>
+
+              <div className={`min-w-0 lg:col-start-1 ${QUICK_MATCH_ENABLED ? 'lg:row-start-3' : 'lg:row-start-2'}`}>
+                <RoomPanel
+                  mode="custom"
+                  className="!rounded-sm !bg-surface-elevated/20 !p-0 !ring-1 !ring-border-soft"
+                  data-friend-invites
+                >
+                  <details className="group px-5">
+                    <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3">
+                      <span className="min-w-0">
+                        <span className="block text-caption uppercase tracking-[var(--tracking-kicker)] text-accent-primary/70">
+                          {t('friend.title')}
+                        </span>
+                        <span className="block truncate font-display text-lg font-bold">{t('friend.invite')}</span>
+                      </span>
+                      <span className="flex shrink-0 items-center gap-1">
+                        {profile && (
+                          <IconButton
+                            variant="ghost"
+                            type="button"
+                            onClick={(event) => {
+                              event.preventDefault();
+                              refreshFriends();
+                            }}
+                            label={t('friend.refresh')}
+                            icon={<RefreshCw className="size-4" aria-hidden="true" />}
+                          />
+                        )}
+                        <Plus className="size-4 transition-transform group-open:rotate-45" aria-hidden="true" />
+                      </span>
+                    </summary>
+
+                    {!profile ? (
+                      <Alert className="mb-5" tone="info">
+                        {t('lobby.loginRequired')}
+                      </Alert>
+                    ) : (
+                      <div className="divide-y divide-border-soft border-t border-border-soft pb-4">
+                        {friends.map((friend) => (
+                          <div
+                            key={friend.userId}
+                            data-friend-user-id={friend.userId}
+                            className="grid min-h-16 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 py-2"
+                          >
+                            <div className="min-w-0">
+                              <strong className="block truncate text-body">{friend.nickname || friend.userId}</strong>
+                              <span className="block truncate text-minutia text-content-dim">{friend.userId}</span>
+                            </div>
+                            <IconButton
+                              variant="ghost"
+                              type="button"
+                              data-friend-invite-action="send"
+                              data-friend-user-id={friend.userId}
+                              onClick={() => void handleInviteFriend(friend)}
+                              disabled={
+                                friendInviteActionId !== null ||
+                                friendInvitePeerId !== null ||
+                                matchmakingActive ||
+                                customRoomBusy ||
+                                !canStart
+                              }
+                              label={
+                                friendInvitePeerId === friend.userId ? t('friend.inviteWaiting') : t('friend.invite')
+                              }
+                              icon={<Send className="size-4" aria-hidden="true" />}
+                            />
+                            <IconButton
+                              variant="ghost"
+                              type="button"
+                              data-friend-invite-action="accept"
+                              data-friend-user-id={friend.userId}
+                              onClick={() => void handleAcceptFriendInvite(friend)}
+                              disabled={
+                                friendInviteActionId !== null ||
+                                matchmakingActive ||
+                                customRoomBusy ||
+                                !(friendInviteMode === 'incoming' && friendInvitePeerId === friend.userId)
+                              }
+                              label={t('friend.acceptInvite')}
+                              icon={<Check className="size-4" aria-hidden="true" />}
+                            />
+                          </div>
+                        ))}
+                        {friendStatus === 'unavailable' && (
+                          <Alert className="my-3" tone="danger" role="alert">
+                            {friendError || t('friend.unavailable')}
+                          </Alert>
+                        )}
+                        {friendStatus !== 'loading' && friendStatus !== 'unavailable' && friends.length === 0 && (
+                          <p className="py-5 text-center text-caption text-content-dim">{t('friend.empty')}</p>
+                        )}
+                      </div>
+                    )}
+                  </details>
+                </RoomPanel>
+              </div>
+
+              {error && (
+                <Alert className="mt-4 lg:col-span-2" tone="danger" role="alert">
+                  {error}
+                </Alert>
+              )}
+            </section>
+          </div>
         </div>
       </main>
     </PageShell>

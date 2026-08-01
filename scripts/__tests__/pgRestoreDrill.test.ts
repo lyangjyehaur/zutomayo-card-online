@@ -24,8 +24,7 @@ type GateModule = {
       releaseSha: string;
       nowMs: number;
       imageDigests: Record<string, string>;
-      expectedSchemaMigration: string;
-      expectedSchemaChecksum: string;
+      migration: { name: string; sha256: string };
       evidenceRunId: string;
     },
   ): Array<{ id: string; status: string; reason: string }>;
@@ -156,6 +155,7 @@ cards=422
 deleted_social_violations=0
 deletion_hold_violations=${options.legalHoldFailure ? '1' : '0'}
 invalid_outbox_status=${options.coreDataFailure ? '1' : '0'}
+invalid_bjg_match_payload=0
 legal_holds=1
 matches=12
 missing_official_english_effects=0
@@ -278,12 +278,14 @@ describe('encrypted off-site logical restore producer', { timeout: 20_000 }, () 
           legalHolds: 1,
           unvalidatedConstraints: 0,
           invalidOutboxStatus: 0,
+          invalidBjgMatchPayload: 0,
           deletionHoldViolations: 0,
           deletedSocialViolations: 0,
         },
         schemaGatePassed: true,
         coreDataInvariantPassed: true,
         legalHoldInvariantPassed: true,
+        boardgameStateInvariantPassed: true,
       },
     });
     expect(artifact.restore).not.toHaveProperty('fixtureRoundTripPassed');
@@ -333,6 +335,7 @@ describe('encrypted off-site logical restore producer', { timeout: 20_000 }, () 
         schemaGatePassed: true,
         fixtureRoundTripPassed: true,
         legalHoldInvariantPassed: true,
+        boardgameStateInvariantPassed: true,
         expectedMigration,
         expectedSchemaChecksum,
         migrateImage,
@@ -340,6 +343,7 @@ describe('encrypted off-site logical restore producer', { timeout: 20_000 }, () 
         requiredTableCount: 8,
         unvalidatedConstraints: 0,
         invalidOutboxStatus: 0,
+        invalidBjgMatchPayload: 0,
         markerBeforeCount: 1,
         walReplayProbeCount: 1,
         markerAfterCount: 0,
@@ -384,6 +388,7 @@ describe('encrypted off-site logical restore producer', { timeout: 20_000 }, () 
           schemaGatePassed: true,
           fixtureRoundTripPassed: true,
           legalHoldInvariantPassed: true,
+          boardgameStateInvariantPassed: true,
         },
         rawArtifact: rawReference,
         offsiteArtifact: offsiteReference,
@@ -399,8 +404,7 @@ describe('encrypted off-site logical restore producer', { timeout: 20_000 }, () 
     const restoreGate = inspectStagingGates(run.directory, {
       releaseSha,
       imageDigests,
-      expectedSchemaMigration: expectedMigration,
-      expectedSchemaChecksum,
+      migration: { name: expectedMigration, sha256: expectedSchemaChecksum },
       evidenceRunId: '123',
       nowMs: Date.parse(checkedAt),
     }).find((check) => check.id === 'staging-restore');

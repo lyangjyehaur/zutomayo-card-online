@@ -20,7 +20,7 @@ export interface PlatformLobbyJoinOptions {
 export interface PlatformLobbyHandlers {
   onOnlineCount: (onlineCount: number) => void;
   onFriendPresence?: (presence: PlatformFriendPresence) => void;
-  onDisconnect?: () => void;
+  onDisconnect?: (error?: Error) => void;
 }
 
 export interface PlatformMatchShellJoinOptions {
@@ -133,11 +133,18 @@ export interface PlatformCustomRoomSnapshot {
   boardgameMatchID?: string;
 }
 
+export interface PlatformAvailableRoom {
+  roomCode: string;
+  hostDisplayName: string;
+  playerCount: number;
+  createdAt: number;
+}
+
 export interface PlatformCustomRoomHandlers {
   onSnapshot?: (snapshot: PlatformCustomRoomSnapshot) => void;
   onBoardgameMatchReady?: (message: PlatformBoardgameMatchReady) => void;
   onCancelled?: (reason: string) => void;
-  onDisconnect?: () => void;
+  onDisconnect?: (error?: Error) => void;
 }
 
 export interface PlatformInviteSnapshot {
@@ -176,7 +183,7 @@ export interface PlatformInviteHandlers {
   onBoardgameMatchReady?: (message: PlatformBoardgameMatchReady) => void;
   onDeclined?: (message: PlatformInviteDeclined) => void;
   onCancelled?: (message: PlatformInviteCancelled) => void;
-  onDisconnect?: () => void;
+  onDisconnect?: (error?: Error) => void;
 }
 
 export interface PlatformInviteJoinOptions {
@@ -198,14 +205,14 @@ export interface PlatformQuickMatchHandlers {
   onMatched?: (match: PlatformQuickMatchMatched) => void;
   onBoardgameMatchReady?: (message: PlatformBoardgameMatchReady) => void;
   onCancelled?: (reason: string) => void;
-  onDisconnect?: () => void;
+  onDisconnect?: (error?: Error) => void;
 }
 
 export interface PlatformMatchShellHandlers {
   onSnapshot?: (snapshot: PlatformMatchShellSnapshot) => void;
   onPresence?: (presence: PlatformMatchShellPresence) => void;
   onChatPreview?: (message: PlatformChatPreview) => void;
-  onDisconnect?: () => void;
+  onDisconnect?: (error?: Error) => void;
 }
 
 interface LocationLike {
@@ -220,6 +227,106 @@ export type PlatformInviteRoom = Room<unknown>;
 export type PlatformMatchShellRoom = Room<unknown>;
 export type PlatformQuickMatchRoom = Room<unknown>;
 
+export class PlatformConnectionError extends Error {
+  readonly code: number;
+  readonly status?: number;
+  readonly requestId?: string;
+
+  constructor(
+    message: string,
+    code: number,
+    metadata: { status?: number; requestId?: string; preformatted?: boolean } = {},
+  ) {
+    super(metadata.preformatted ? message : `${message} (code ${code})`);
+    this.name = 'PlatformConnectionError';
+    this.code = code;
+    this.status = metadata.status;
+    this.requestId = metadata.requestId;
+  }
+}
+
+function embeddedPlatformErrorMetadata(message: string): {
+  code: number;
+  status?: number;
+  requestId?: string;
+} | null {
+  const code = message.match(/platform code (\d+)/i);
+  if (!code) return null;
+  const status = message.match(/HTTP (\d+)/i);
+  const requestId = message.match(/request ([A-Za-z0-9._:-]+)/i);
+  return {
+    code: Number(code[1]),
+    ...(status ? { status: Number(status[1]) } : {}),
+    ...(requestId ? { requestId: requestId[1] } : {}),
+  };
+}
+
+function platformErrorCode(error: unknown): number | undefined {
+  if (!error || typeof error !== 'object') return undefined;
+  const candidate = error as { code?: unknown; status?: unknown; statusCode?: unknown };
+  for (const value of [candidate.code, candidate.status, candidate.statusCode]) {
+    if (typeof value === 'number' && Number.isFinite(value)) return Math.trunc(value);
+  }
+  return undefined;
+}
+
+export function normalizePlatformRequestError(error: unknown): Error {
+  const transportCode = platformErrorCode(error);
+  const objectMessage =
+    error && typeof error === 'object' && typeof (error as { message?: unknown }).message === 'string'
+      ? (error as { message: string }).message.trim()
+      : '';
+  const rawMessage =
+    error instanceof Error ? error.message.trim() : typeof error === 'string' ? error.trim() : objectMessage;
+  const message = rawMessage === '<none>' ? '' : rawMessage;
+  const embedded = embeddedPlatformErrorMetadata(message);
+  if (embedded) {
+    return new PlatformConnectionError(message, embedded.code, {
+      status: embedded.status ?? transportCode,
+      requestId: embedded.requestId,
+      preformatted: true,
+    });
+  }
+  const code = transportCode;
+  if (code !== undefined) {
+    const detail =
+      message || (code === 521 || code === 4211 ? 'no rooms found with provided criteria' : 'Platform request failed');
+    return new PlatformConnectionError(detail, code);
+  }
+  if (error instanceof Error && message) return error;
+  return new Error(message || 'Platform request failed');
+}
+
+export function isMissingPlatformRoomError(error: unknown): boolean {
+  const code = platformErrorCode(error);
+  return (
+    code === 521 ||
+    code === 4211 ||
+    (error instanceof Error && /no rooms found with provided criteria/i.test(error.message))
+  );
+}
+
+function retryMissingPlatformRoom<T>(error: unknown, retry: () => Promise<T>): Promise<T> {
+  if (!isMissingPlatformRoomError(error)) throw error;
+  return retry();
+}
+
+function bindPlatformDisconnect(room: Room<unknown>, onDisconnect?: (error?: Error) => void): void {
+  let errorReported = false;
+  room.onError?.((code, message) => {
+    errorReported = true;
+    onDisconnect?.(new PlatformConnectionError(message?.trim() || 'Platform room error', code));
+  });
+  room.onLeave((code, reason) => {
+    if (errorReported) return;
+    const error =
+      typeof code === 'number' && code !== 4000
+        ? new PlatformConnectionError(reason?.trim() || 'Platform connection closed', code)
+        : undefined;
+    onDisconnect?.(error);
+  });
+}
+
 interface FlatSeatReservation {
   name: string;
   roomId: string;
@@ -232,13 +339,18 @@ interface FlatSeatReservation {
 }
 
 function readConfiguredPlatformUrl(): string | undefined {
-  const viteEnv = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env;
+  const viteEnv = (import.meta as ImportMeta & { env?: { VITE_PLATFORM_URL?: string } }).env;
   return viteEnv?.VITE_PLATFORM_URL ?? (typeof process === 'undefined' ? undefined : process.env.VITE_PLATFORM_URL);
+}
+
+function readDevelopmentMode(): boolean {
+  return Boolean((import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV);
 }
 
 export function resolvePlatformEndpoint(
   configuredUrl = readConfiguredPlatformUrl(),
   location: LocationLike | undefined = typeof window === 'undefined' ? undefined : window.location,
+  developmentMode = readDevelopmentMode(),
 ): string {
   const trimmed = configuredUrl?.trim();
   if (trimmed) return trimmed;
@@ -246,7 +358,7 @@ export function resolvePlatformEndpoint(
   if (!location) return 'ws://127.0.0.1:3002';
 
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const port = location.port === '3000' || location.port === '5173' ? '3002' : location.port;
+  const port = location.port === '3000' || (developmentMode && location.port) ? '3002' : location.port;
   return `${protocol}//${location.hostname}${port ? `:${port}` : ''}`;
 }
 
@@ -399,13 +511,17 @@ async function joinPlatformRoom(
 ): Promise<Room<unknown>> {
   const { Client } = await import('colyseus.js');
   const client = new Client(resolvePlatformEndpoint());
-  const response = await client.http.post(`matchmake/${method}/${encodeURIComponent(roomName)}`, {
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(options),
-  });
+  const response = await client.http
+    .post(`matchmake/${method}/${roomName}`, {
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(options),
+    })
+    .catch((error: unknown) => {
+      throw normalizePlatformRequestError(error);
+    });
   return client.consumeSeatReservation(normalizeSeatReservation(response.data as FlatSeatReservation));
 }
 
@@ -438,7 +554,7 @@ export async function connectPlatformLobby(
     const presence = platformFriendPresenceFromMessage(message);
     if (presence) handlers.onFriendPresence?.(presence);
   });
-  room.onLeave(() => handlers.onDisconnect?.());
+  bindPlatformDisconnect(room, handlers.onDisconnect);
 
   return room;
 }
@@ -658,6 +774,49 @@ export function platformCustomRoomSnapshotFromMessage(message: unknown): Platfor
   };
 }
 
+export function platformAvailableRoomsFromMessage(message: unknown): PlatformAvailableRoom[] | null {
+  if (!message || typeof message !== 'object') return null;
+  const rooms = (message as { rooms?: unknown }).rooms;
+  if (!Array.isArray(rooms)) return null;
+  return rooms
+    .map((room): PlatformAvailableRoom | null => {
+      if (!room || typeof room !== 'object') return null;
+      const data = room as Partial<PlatformAvailableRoom>;
+      if (
+        typeof data.roomCode !== 'string' ||
+        !data.roomCode.trim() ||
+        typeof data.hostDisplayName !== 'string' ||
+        !data.hostDisplayName.trim() ||
+        !Number.isFinite(data.playerCount) ||
+        !Number.isFinite(data.createdAt)
+      ) {
+        return null;
+      }
+      return {
+        roomCode: data.roomCode.trim().slice(0, 128),
+        hostDisplayName: data.hostDisplayName.trim().slice(0, 60),
+        playerCount: Math.max(0, Math.trunc(data.playerCount as number)),
+        createdAt: Math.max(0, Math.trunc(data.createdAt as number)),
+      };
+    })
+    .filter((room): room is PlatformAvailableRoom => Boolean(room));
+}
+
+export async function fetchPlatformAvailableRooms(): Promise<PlatformAvailableRoom[]> {
+  const { Client } = await import('colyseus.js');
+  const client = new Client(resolvePlatformEndpoint());
+  const response = await client.http
+    .get('api/rooms', {
+      headers: { Accept: 'application/json' },
+    })
+    .catch((error: unknown) => {
+      throw normalizePlatformRequestError(error);
+    });
+  const rooms = platformAvailableRoomsFromMessage(response.data);
+  if (!rooms) throw new Error('Invalid platform room list');
+  return rooms;
+}
+
 function bindPlatformCustomRoomHandlers(room: Room<unknown>, handlers: PlatformCustomRoomHandlers): PlatformCustomRoom {
   room.onMessage('customRoomSnapshot', (message) => {
     const snapshot = platformCustomRoomSnapshotFromMessage(message);
@@ -678,7 +837,7 @@ function bindPlatformCustomRoomHandlers(room: Room<unknown>, handlers: PlatformC
         : 'cancelled';
     handlers.onCancelled?.(reason);
   });
-  room.onLeave(() => handlers.onDisconnect?.());
+  bindPlatformDisconnect(room, handlers.onDisconnect);
   return room;
 }
 
@@ -694,8 +853,8 @@ export async function createPlatformCustomRoom(
     role: 'player',
     status,
   });
-  const room = await joinPlatformRoom('custom_room', roomOptions('ready'), 'join').catch(() =>
-    joinPlatformRoom('custom_room', roomOptions('waiting'), 'joinOrCreate'),
+  const room = await joinPlatformRoom('custom_room', roomOptions('ready'), 'join').catch((error) =>
+    retryMissingPlatformRoom(error, () => joinPlatformRoom('custom_room', roomOptions('waiting'), 'joinOrCreate')),
   );
   return bindPlatformCustomRoomHandlers(room, handlers);
 }
@@ -716,7 +875,9 @@ export async function joinPlatformCustomRoom(
       },
       'join',
     );
-  const room = await joinWithStatus('waiting').catch(() => joinWithStatus('ready'));
+  const room = await joinWithStatus('waiting').catch((error) =>
+    retryMissingPlatformRoom(error, () => joinWithStatus('ready')),
+  );
   return bindPlatformCustomRoomHandlers(room, handlers);
 }
 
@@ -812,7 +973,7 @@ function bindPlatformInviteHandlers(room: Room<unknown>, handlers: PlatformInvit
     const ready = platformBoardgameMatchReadyFromMessage(message);
     if (ready) handlers.onBoardgameMatchReady?.(ready);
   });
-  room.onLeave(() => handlers.onDisconnect?.());
+  bindPlatformDisconnect(room, handlers.onDisconnect);
   return room;
 }
 
@@ -835,8 +996,12 @@ export async function createPlatformInvite(
     status,
   });
   const room = await joinPlatformRoom('invite', roomOptions('pending'), 'join')
-    .catch(() => joinPlatformRoom('invite', roomOptions('accepted'), 'join'))
-    .catch(() => joinPlatformRoom('invite', roomOptions('pending'), 'create'));
+    .catch((error) =>
+      retryMissingPlatformRoom(error, () => joinPlatformRoom('invite', roomOptions('accepted'), 'join')),
+    )
+    .catch((error) =>
+      retryMissingPlatformRoom(error, () => joinPlatformRoom('invite', roomOptions('pending'), 'create')),
+    );
   return bindPlatformInviteHandlers(room, handlers);
 }
 
@@ -859,10 +1024,12 @@ export async function joinPlatformInvite(
       'join',
     );
   const room = await joinWithStatus('pending')
-    .catch(() => joinWithStatus('accepted'))
-    .catch((err) => {
-      if (joinOptions.includeFinished) return joinWithStatus('finished');
-      throw err;
+    .catch((error) => retryMissingPlatformRoom(error, () => joinWithStatus('accepted')))
+    .catch((error) => {
+      if (joinOptions.includeFinished) {
+        return retryMissingPlatformRoom(error, () => joinWithStatus('finished'));
+      }
+      throw error;
     });
   return bindPlatformInviteHandlers(room, handlers);
 }
@@ -931,7 +1098,7 @@ export async function connectPlatformQuickMatch(
         : 'cancelled';
     handlers.onCancelled?.(reason);
   });
-  room.onLeave(() => handlers.onDisconnect?.());
+  bindPlatformDisconnect(room, handlers.onDisconnect);
   room.send('requestQuickMatchSnapshot', {});
 
   return room;
@@ -970,7 +1137,7 @@ export async function connectPlatformMatchShell(
     if (preview) handlers.onChatPreview?.(preview);
   });
   room.onMessage('boardgameMatchLinked', () => undefined);
-  room.onLeave(() => handlers.onDisconnect?.());
+  bindPlatformDisconnect(room, handlers.onDisconnect);
   if (shouldLinkPlatformMatchShell(options)) {
     room.send('linkBoardgameMatch', { boardgameMatchID: options.boardgameMatchID });
   }

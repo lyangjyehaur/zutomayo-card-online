@@ -59,6 +59,12 @@ describe('tutorial presentation timeline', () => {
       phase: 'hp-calc',
       secondHpCalculation: false,
     });
+    const firstTurnEnd = buildTutorialPresentationState({
+      authoritative,
+      snapshots,
+      phase: 'turn-end-draw-t1',
+      secondHpCalculation: false,
+    });
     const choice = buildTutorialPresentationState({
       authoritative,
       snapshots,
@@ -75,10 +81,69 @@ describe('tutorial presentation timeline', () => {
     expect(recap).toMatchObject({ turnNumber: 1, chronos: { position: 0 } });
     expect(recap?.players.map((player) => player.hp)).toEqual([100, 100]);
     expect(firstHp?.players[0].hp).toBe(80);
+    expect(firstTurnEnd?.players[0].hp).toBe(80);
     expect(choice).toMatchObject({ turnNumber: 2, step: 'effectOrder' });
     expect(choice?.players[1].hp).toBe(100);
     expect(secondHp?.turnNumber).toBe(2);
     expect(secondHp?.players[1].hp).toBe(30);
     expect(authoritative).toMatchObject({ turnNumber: 3, players: [{ hp: 80 }, { hp: 30 }] });
+  });
+
+  it('replays only the spatial resolution notice owned by the active tutorial phase', () => {
+    const authoritative = state(3, 'turnSet', 80, 30);
+    authoritative.recentGameNotices = [
+      {
+        id: 1,
+        kind: 'chronosChange',
+        tone: 'phase',
+        titleKey: 'clock-1',
+        resolutionTurn: 1,
+        chronosSourceKind: 'turnAdvance',
+        timestamp: 1,
+      },
+      {
+        id: 2,
+        kind: 'hpChange',
+        tone: 'danger',
+        titleKey: 'battle-1',
+        resolutionTurn: 1,
+        reason: 'battle',
+        timestamp: 2,
+      },
+      {
+        id: 3,
+        kind: 'chronosChange',
+        tone: 'phase',
+        titleKey: 'clock-2',
+        resolutionTurn: 2,
+        chronosSourceKind: 'turnAdvance',
+        timestamp: 3,
+      },
+      {
+        id: 4,
+        kind: 'hpChange',
+        tone: 'danger',
+        titleKey: 'battle-2',
+        resolutionTurn: 2,
+        reason: 'battle',
+        timestamp: 4,
+      },
+    ];
+    const snapshots = {
+      turn2Entry: authoritative,
+      effectOrder: authoritative,
+      postTurn2: authoritative,
+    };
+    const noticesFor = (phase: string, secondHpCalculation = false) =>
+      buildTutorialPresentationState({ authoritative, snapshots, phase, secondHpCalculation })?.recentGameNotices.map(
+        (notice) => notice.id,
+      );
+
+    expect(noticesFor('flow-recap')).toEqual([]);
+    expect(noticesFor('clock-advance')).toEqual([1]);
+    expect(noticesFor('hp-calc')).toEqual([2]);
+    expect(noticesFor('reveal-clock')).toEqual([3]);
+    expect(noticesFor('hp-calc', true)).toEqual([4]);
+    expect(noticesFor('turn-end-cleanup')).toEqual([]);
   });
 });

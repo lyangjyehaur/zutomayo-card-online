@@ -79,6 +79,7 @@ export function moveCardForChoice(G: GameState, payload: PendingCardMovePayload,
     return true;
   }
   if (payload.destinationZone === 'deck' && payload.destinationPosition === 'bottom') {
+    card.faceUp = false;
     destination.deck.push(card);
     return true;
   }

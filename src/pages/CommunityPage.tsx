@@ -25,6 +25,7 @@ import { AuthSection } from '../components/lobby/AuthSection';
 import { useToast } from '../components/ToastProvider';
 import { t, useLocale } from '../i18n';
 import { Alert, AppHeader, IconButton, Input, LoadingState, PageShell, Panel, SegmentedControl } from '../ui';
+import { onlineErrorDetail } from '../onlineHttpError';
 
 const GLOBAL_LOBBY_CHAT_SUBJECT_ID = 'online-lobby';
 type CommunityView = 'global' | 'direct';
@@ -71,10 +72,12 @@ export function CommunityPage({ onAuthChanged }: { onAuthChanged: () => void | P
       setProfile(nextProfile);
       setFriends(nextFriends);
       setUnreadChats(nextUnread);
-    } catch {
+      setError('');
+    } catch (err) {
       setProfile(null);
       setFriends([]);
       setUnreadChats([]);
+      setError(onlineErrorDetail(err, t('friend.unavailable')));
     } finally {
       setLoading(false);
     }
@@ -134,8 +137,8 @@ export function CommunityPage({ onAuthChanged }: { onAuthChanged: () => void | P
       setFriendDraft('');
       setFriends(await getFriends());
       showToast({ title: t('friend.added'), kind: 'success' });
-    } catch {
-      showToast({ title: t('friend.addFailed'), kind: 'error' });
+    } catch (err) {
+      showToast({ title: t('friend.addFailed'), body: onlineErrorDetail(err, t('friend.addFailed')), kind: 'error' });
     }
   };
 
@@ -145,8 +148,12 @@ export function CommunityPage({ onAuthChanged }: { onAuthChanged: () => void | P
       if (selectedFriend?.userId === friend.userId) setSelectedFriend(null);
       setFriends(await getFriends());
       showToast({ title: t('friend.removed'), kind: 'success' });
-    } catch {
-      showToast({ title: t('friend.removeFailed'), kind: 'error' });
+    } catch (err) {
+      showToast({
+        title: t('friend.removeFailed'),
+        body: onlineErrorDetail(err, t('friend.removeFailed')),
+        kind: 'error',
+      });
     }
   };
 
@@ -186,8 +193,8 @@ export function CommunityPage({ onAuthChanged }: { onAuthChanged: () => void | P
       });
       if (visibleMessage(result.message)) setMessages((current) => [...current, result.message]);
       setDraft('');
-    } catch {
-      showToast({ title: t('chat.sendFailed'), kind: 'error' });
+    } catch (err) {
+      showToast({ title: t('chat.sendFailed'), body: onlineErrorDetail(err, t('chat.sendFailed')), kind: 'error' });
     } finally {
       setSending(false);
     }
@@ -213,10 +220,15 @@ export function CommunityPage({ onAuthChanged }: { onAuthChanged: () => void | P
             : item,
         ),
       );
-    } catch {
+    } catch (err) {
       setMessages((current) =>
         current.map((item) => (item.id === message.id ? { ...item, translation: { status: 'unavailable' } } : item)),
       );
+      showToast({
+        title: t('chat.translationOffline'),
+        body: onlineErrorDetail(err, t('chat.translationOffline')),
+        kind: 'error',
+      });
     }
   };
 
@@ -226,13 +238,17 @@ export function CommunityPage({ onAuthChanged }: { onAuthChanged: () => void | P
     try {
       await reportChatMessage(message.id, { reason: 'inappropriate' });
       showToast({ title: t('chat.reported'), kind: 'success' });
-    } catch {
+    } catch (err) {
       setReportedIds((current) => {
         const next = new Set(current);
         next.delete(message.id);
         return next;
       });
-      showToast({ title: t('chat.reportFailed'), kind: 'error' });
+      showToast({
+        title: t('chat.reportFailed'),
+        body: onlineErrorDetail(err, t('chat.reportFailed')),
+        kind: 'error',
+      });
     }
   };
 
@@ -251,8 +267,10 @@ export function CommunityPage({ onAuthChanged }: { onAuthChanged: () => void | P
             <LoadingState label={t('presence.syncing')} />
           ) : (
             <Panel className="grid w-full max-w-md gap-4 text-center" size="lg">
-              <h1 className="font-display text-title-md font-bold">{t('community.loginRequiredTitle')}</h1>
-              <p className="text-body-sm leading-relaxed text-content-muted">{t('community.loginRequired')}</p>
+              <h1 className="font-display text-title-md font-bold">
+                {error ? t('friend.unavailable') : t('community.loginRequiredTitle')}
+              </h1>
+              <p className="text-body-sm leading-relaxed text-content-muted">{error || t('community.loginRequired')}</p>
               <AuthSection onAuthChanged={handleAuthChanged} />
             </Panel>
           )

@@ -3,6 +3,7 @@
 ZUTOMAYO CARD Online 的系統架構文檔。本文說明前端 SPA、boardgame.io 遊戲伺服器、獨立 API 伺服器、Colyseus platform 伺服器之間的職責劃分與互動方式，並涵蓋遊戲邏輯、資料層、線上對戰流程、可觀測性與部署。
 
 > 部署細節請參見 [DEPLOYMENT.md](./DEPLOYMENT.md)，REST API 端點請參見 [API.md](./API.md)，遊戲規則請參見 [rules.md](../rules.md)。
+> 線上拓撲的成本評估與暫緩合併決策請參見 [ADR 0001](./adr/0001-defer-live-runtime-consolidation.md)。
 
 ---
 
@@ -22,7 +23,7 @@ ZUTOMAYO CARD Online 的系統架構文檔。本文說明前端 SPA、boardgame.
 
 ## 1. 系統概觀
 
-系統由四個執行面組成：前端 SPA、boardgame.io 遊戲伺服器（game）、獨立 API 伺服器（api）、Colyseus platform 伺服器（platform）。game、api、platform 共用同一個 PostgreSQL 與 Redis 實例，並以 table 前綴 / Redis DB index 隔離資料。
+系統由四個應用執行面組成：前端 SPA、boardgame.io 遊戲伺服器（game）、獨立 API 伺服器（api）、Colyseus platform 伺服器（platform）。game、api、platform 共用同一個 PostgreSQL 與 Redis 實例，搜尋由內網 Meilisearch 提供衍生索引；PostgreSQL 仍是所有內容的唯一真實來源。
 
 ```text
 ┌──────────────────────────────────────────────────────────┐
@@ -97,6 +98,7 @@ flowchart LR
     Api <-->|Pool| PG
     Platform -->|friend lookup| PG
     Api <-->|佇列 / 限流| Redis
+    Api -->|公開知識搜尋 / 原子重建| Search[(Meilisearch)]
 ```
 
 ---
@@ -106,9 +108,17 @@ flowchart LR
 ### React + Vite SPA
 
 - **入口**：`src/main.tsx` → `src/App.tsx`（路由 + NavBar + 教學 overlay + 重連提示）。
-- **路由**：React Router 7，路徑定義於 `src/pages/`（大廳、AI/線上/教學對戰、牌組編輯／分享、官方 Q&A／勘誤、對戰紀錄、排行榜、反饋、個人頁、管理後台）。
+- **路由**：React Router 7；公開頁面主要位於 `src/pages/`，管理後台位於 `src/admin/` 並由 Refine 5 headless 管理 `/admin/*` 的資源、認證、存取控制與 CRUD data provider。
 - **建構**：Vite 7，Strict TypeScript。`npm run build` 會先跑 `typecheck` + `typecheck:scripts` 再 `vite build`。
 - **Design System v1**：`src/ui/` 提供 `primitives/`、`layout/`、`game/`、`feedback/`、`forms/`、`tokens/`（colors / spacing / typography / z-index / motion）。
+
+### Refine 管理後台
+
+- `src/admin/RefineAdminApp.tsx` 宣告資源與 `/admin/*` 子路由；`AdminLayout.tsx` 提供桌面側欄及手機抽屜。
+- `src/admin/providers.ts` 連接既有管理員 session、角色權限及 PostgreSQL API。Refine 不取代 API 的權限檢查，前後端會同時依角色限制資源。
+- 卡牌是標準 Refine resource，支援 list/create/edit；官方裁定、聊天審核、營運及公告等專用流程以 custom resource page 掛入同一殼層。
+- 新卡預設 `unlisted + draft + disabled`。卡圖只接受來源 URL 並顯示預覽，不提供 R2 上傳動作。
+- 完整資源與角色矩陣見 [admin-console.md](admin-console.md)。
 
 ### boardgame.io Client
 
@@ -150,6 +160,7 @@ flowchart LR
 - 核心 `t()` / `translate()` 在 `src/i18n/index.ts`，語言偏好存 localStorage。
 - 卡牌名稱與效果由 API `/api/cards/texts` 一次載入；日英投影自 `cards`，衍生語言來自 `card_texts_i18n`，顯示統一經 `game/cards/i18n.ts` 處理。
 - UI、卡牌文本與官方裁定共用 `src/rulesTerminology.ts` 的規則術語契約；`Power Cost`、`SEND TO POWER` 等保留標記與本地化卡種／區域由測試及發布閘門共同檢查。Q&A API 以官方日文 `tagIds` 維持跨語言篩選，本地化 `tags` 僅用於顯示，兩者對齊由 API 契約測試與 E2E 檢查。
+- 正式裁定仍由 immutable release snapshots 與 active pointer 控制公開版本；candidate Q&A、勘誤及 canonical 卡牌則由 PostgreSQL revision triggers 保存完整資料列歷史。runtime API 對 revision tables 只有讀取權限，內容版本不連續或歷史表改寫會 fail closed。
 
 ---
 
@@ -157,7 +168,7 @@ flowchart LR
 
 入口：`src/server.ts`。以 boardgame.io 的 `Server({ games, db, transport, origins, authenticateCredentials })` 為核心，外層包 Koa 中間件。
 
-前端分析固定使用同源 `/analytics/script.js` 與 `/analytics/api/send`。Game Server 僅將這兩個端點代理至 runtime `UMAMI_UPSTREAM_URL`，並套用獨立 Redis/IP 限流、請求與回應大小上限及上游逾時；瀏覽器不取得上游地址，Helmet CSP 亦無須放行第三方腳本來源。
+應用漏斗分析固定使用同源 `/analytics/script.js` 與 `/analytics/api/send`。Game Server 僅將這兩個端點代理至 runtime `UMAMI_UPSTREAM_URL`，並套用獨立 Redis/IP 限流、請求與回應大小上限及上游逾時；瀏覽器不取得 Umami 上游地址。Cloudflare 可在 CDN 邊緣注入 Web Analytics beacon 以提供彙總流量與 Web Vitals，Helmet CSP 僅額外放行其固定腳本來源 `https://static.cloudflareinsights.com`。
 
 ### boardgame.io Server 配置
 
@@ -180,7 +191,7 @@ Server({
 2. `loadCardsFromPG()` — 從 PG `cards` / `card_texts_i18n` 載入卡牌定義（boardgame.io setup 需要卡牌才能初始化牌組），失敗重試 5 次。
 3. `server.run(PORT)` — 啟動 Koa + Socket.IO。
 4. 附加 Socket.IO per-IP connection limiter（`MAX_CONN_PER_IP`，預設 10）。
-5. 啟動 stale match 清理排程（預設每 5 分鐘清除 30 分鐘以上未更新的對戰）。
+5. 啟動 stale match 清理排程（預設每 5 分鐘掃描 30 分鐘以上未更新的對戰；完成對局須先通過分析封存對帳）。
 
 ### PostgresAdapter（`src/server/db/postgres-adapter.ts`）
 
@@ -197,7 +208,27 @@ bjg_matches(
   log            JSONB NOT NULL DEFAULT '[]'::jsonb,
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 )
+
+bjg_match_telemetry(source_match_id FK, match_mode, traffic_class,
+                    player_disconnect_counts, player_reconnect_counts, timestamps)
+
+match_analytics(source_match_digest PK, versions, outcome, final_hp,
+                seat_classes, disconnect_counts, reconnect_counts,
+                seat_resume_counts, integrity_sha256)
+match_analytics_decks(source_match_digest, seat, sorted_card_ids, deck_hash)
+match_analytics_events(source_match_digest, sequence, typed_allowlisted_event)
 ```
+
+`bjg_matches` 是短期可恢復 runtime state；`bjg_match_telemetry` 由 Colyseus server relay 與經驗證的
+match-shell 座位生命週期寫入，只保留可信的配對來源、traffic class 與每席 disconnect／reconnect
+次數，隨來源 match `ON DELETE CASCADE`。它不接受 client 自稱的 mode/test flag，也不保存 room、session、
+socket、user ID 或 IP。`/resume` 另在 `bjg_match_seats.resume_count` 計數，避免與 WebSocket reconnect 混淆。
+
+三張 `match_analytics*` 表是不依附 `bjg_matches` foreign key
+的去識別永久分析層。原始 match ID 先做 SHA-256 digest，兩副牌只保存排序後的卡牌定義 ID，事件由
+`matchAnalytics.ts` typed projector 逐欄允許，不複製 `G`、隱藏牌序、instance ID 或任意文字。終局與
+abandoned capture 在刪除 operational row 前，把 telemetry 壓成固定兩席計數陣列；缺少來源時明確標示
+`direct` 與 `missing-provenance`，不從瀏覽器內容猜測。
 
 **並發控制三層機制**（避免多實例同時處理 move 造成覆蓋）：
 
@@ -284,6 +315,8 @@ boardgame.io 多實例需要**兩個獨立的跨節點層**，兩者職責不同
 | `officialRulingsService.cjs`      | 從 active release snapshot 讀取官方 Q&A／勘誤、公開 release 狀態與翻譯維護     |
 | `officialRulingsAdminService.cjs` | 翻譯覆蓋率、人工複核、來源同步狀態與 audit log                                 |
 | `officialRulingsSource.cjs`       | 官方來源抓取、解析與 fail-closed 差異比較                                      |
+| `knowledgeSearchDocuments.cjs`    | 從 PostgreSQL 建立卡牌、裁定、規則、勘誤與公開牌組的多語公開文件               |
+| `knowledgeSearchService.cjs`      | Meilisearch 查詢、原子索引交換、Redis 重建鎖、快取 fallback 與同步排程         |
 | `observability.cjs`               | pino log、Prometheus metrics、request tracing                                  |
 
 ### 卡牌圖片交付規範
@@ -415,7 +448,7 @@ gameOver（endIf 回傳 { winner } 或 { draw: true }）
 
 ```mermaid
 flowchart LR
-    JP[日文效果文字\n267 行] -->|parseEffect\nregex + 條件分詞| Parsed[ParsedEffect\ntrigger/conditions/action]
+    JP[日文效果文字\n322 行] -->|parseEffect\nregex + 條件分詞| Parsed[ParsedEffect\ntrigger/conditions/action]
     Parsed -->|executeEffect\nhandler registry| State[GameState 變更]
     State -->|requestChoice handler| Pending[PendingChoice\n待玩家選擇]
     Pending -->|submitPendingChoice\nresolvePendingEffect| State
@@ -426,7 +459,7 @@ flowchart LR
 - `parseEffect(rawText)` 將日文效果文字轉成 `{ trigger, conditions[], action, priority?, expiry? }`。
 - 步驟：正規化（去 `<br>`/`<a>`/`※`）→ 偵測 trigger（`onUse`/`onTurnStart`/`onTurnEnd`/`onBattle`/`onDamageReceived`/`onChronosChanged`/`onZoneEntered`）→ 拆出條件（chronos / element / HP / powerCost / zoneCount / namedCard ...）→ `parseAction` 對應到 `ActionType`。
 - `parseAllEffects()` 批次解析所有卡牌，並合併 `expiry`（Area Enchant 自動失效條件）與 secondary effects。
-- 覆蓋率：422 張卡 / 250 張效果卡 / 267 行效果 100% 解析。
+- 覆蓋率：479 張 playable 卡 / 305 張效果卡 / 322 行效果 100% 解析；另有 7 張 display-only 卡只進圖鑑。增量卡由 reviewed-unlisted manifest v2 交易式發布。
 
 **`effects/executor.ts`（handler registry）**：
 
@@ -440,15 +473,17 @@ flowchart LR
 
 ### AI 決策（`src/game/ai.ts`）
 
-三種難度：
+`src/game/ai.ts` 是相容入口，純策略位於 `src/game/ai/`。所有入口先建立 `AIKnowledgeState`，再次遮蔽雙方牌庫順序、對手手牌與伏牌；策略只接收此知識狀態、seeded RNG 與時間預算。
 
-| 難度   | 策略                                                                                                                                                      |
-| ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| easy   | 依 `scoreCard`（攻擊力 / power cost / clock）排序後取最高分卡                                                                                             |
-| normal | 同 easy，但會避開 power cost 不足的卡                                                                                                                     |
-| hard   | `hardLookahead()`：枚舉所有手牌組合 × slot 分配，`simulateBattle()` 模擬戰鬥，以 `(damageDealt - damageReceived, damageDealt, heuristicScore)` 比較選最佳 |
+| 難度   | 策略                                                                                                                                                   |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| easy   | seeded 地從合理候選中選擇，會避開明顯有害卡牌、效果與目標，但保留可見失誤                                                                              |
+| normal | 確定性評估有效攻擊、Power、Chronos、解析效果、資源、卡位、效果順序與所有合法指定選擇                                                                   |
+| hard   | 以 heuristic 選出最多 12 個完整卡牌 + A/B 卡位計畫，在三個共用 seeded 世界中建立合法對手計畫，以正式規則模擬完整回合與有限下回合，並受 300 ms 預算限制 |
 
-`simulateBattle` 用 `structuredClone(G)` 複製狀態後跑 `revealCards` → `advanceChronos` → `placeRevealedCards` → `resolveBattle`，計算 HP 差分。`useAIMoves.ts` 是 React hook，自動驅動 AI 出牌。
+`useAIMoves.ts` 只負責統一的 UX delay 與 move 派發。它以 card instance id、slot 和 decision token 保存完整回合計畫，因此可在每次 boardgame.io state 更新後繼續執行第二張牌。困難模擬呼叫正式 `confirmReady`、`resolvePendingEffect` 與 `submitPendingChoice`；對手尚未設置時，會從同一 sampled world 的未知手牌產生合法 heuristic 計畫，避免停在未結算的半回合。Hard 效果順序與指定選擇會把首選候選繼續結算至下一個穩定回合，搜尋超時或無法模擬時回傳已記錄原因的普通難度合法 fallback。開發環境會發出 `zutomayo:ai-decision` event，`AIDecisionInspector` 在非教學 AI 對戰保留最新 25 筆 score、reason、factor、duration 與 fallback；production 不掛載此 UI。全部 13 種 `PendingChoice` 都有獨立的戰術結果 fixture，並由候選測試覆蓋合法 default fallback。
+
+`playerView` 向牌組擁有者提供排序後的剩餘牌組定義，讓 AI 知道合法組成但不知道牌序；對手看不到這份 metadata。`AIKnowledgeState` 會把暗牌轉成跨 zone 一致的 opaque id。`sampling.ts` 以自身剩餘牌組和 published/playable 公開牌池產生可重播未知狀態；同一決策的所有候選共用 sample index 對應的未知世界，避免因各自抽到不同對手牌而產生比較偏差。`transposition.ts` 的 128-entry LRU 只快取由可見狀態衍生的數值評估。`scripts/aiBenchmark.ts` 是 soak 與矩陣共用的規則驅動對局 runner，雙方會先從同一個 pre-commit 狀態決策，再一起派發計畫；`npm run smoke:ai` 用 seeded 隨機牌組做穩定性回歸，`npm run benchmark:ai` 則用四個固定元素 profile、雙邊座位與難度配對輸出勝負、HP 差、回合、重抽、決策覆蓋與延遲 JSON。完整進度、歷史基準與目前限制見 [AI 難度現況與改造路線](ai-difficulty-roadmap.md)。
 
 ### Chronos 時鐘系統（`src/game/chronos.ts`）
 
@@ -481,6 +516,17 @@ Redis 同時扮演五種角色，全部透過 `REDIS_DB` 切到獨立 DB index�
 | Presence                   | presence 相關 key              | 線上人數 heartbeat                                |
 
 > **為什麼用 DB index 而非 key prefix**：boardgame.io 內部 channel `MATCH-{matchID}` 與 `@socket.io/redis-adapter` 內部 key 無法從應用碼 prefix，唯有 DB index 能完整隔離。`duplicate()` 出的連線會繼承 `db` 選項。
+
+### Meilisearch（公開衍生索引）
+
+- 單一邏輯索引 `zutomayo_knowledge` 依來源與語言分文件，涵蓋 `card`、`qa`、`rule`、`errata`、`deck`。
+- 瀏覽器只呼叫 `/api/search`、`/api/search/ids` 與 `/api/search/suggest`；Meilisearch 不發布 host port，master key 只注入 API、migration indexer 與服務本身。
+- 完整重建先建立臨時索引、寫入文件與設定，最後用 `swap-indexes` 原子交換；查詢不會看到空索引或半套資料。
+- 卡牌／翻譯／官方內容／牌組發布與審核寫入後會合併觸發重建，另有五分鐘背景對帳；Redis lock 防止多個 API replica 同時重建。
+- 搜尋服務失敗時 `/api/search` 使用短期快取的 PostgreSQL 衍生文件降級。`/health`、`/ready` 不把 Meilisearch 當核心依賴。
+- Meilisearch 命中標記在 API 轉為純文字 UTF-16 區間；前端以 React text node 與 `mark` 渲染，不接收或插入 HTML。
+- 公開索引只補強管理端跨語命中與排序；草稿、待複核翻譯和管理備註仍由授權後台資料搜尋，不寫入公開索引，後台的 ID 搜尋以 `analytics=0` 排除零結果聚合。
+- 零結果查詢經敏感內容過濾後才匿名聚合到 PostgreSQL，保留 90 天；Prometheus label 僅使用 engine、scope 與是否落庫，不含原始查詢。
 
 ### Schema migration（node-pg-migrate）
 
@@ -551,13 +597,14 @@ flowchart TB
 - 偵測到 `stateID-regressed`（stateID 倒退）或 `stateID-collision`（同 stateID 但 fingerprint 不同）時，`Sentry.captureException` 上報並重建 client，丟棄本地 state 改用 server 權威 state。
 - 啟動時 `App.tsx` 用 `loadOnlineSession()` + `validateOnlineSession()`（呼叫 `/resume`）判斷是否可恢復座位，依回應分類 `versionMismatch` / `roomGone` / `seatTaken` / `network`。
 
-### 對戰結束（結果驗證 + ELO 計算）
+### 對戰結束（權威封存 + ELO 計算）
 
-1. boardgame.io `endIf` 回傳 `{ winner }` 或 `{ draw: true }`，state 寫入 `bjg_matches`。
-2. 贏家客戶端 `POST /api/matches` 帶 `sourceMatchId` + `winnerPlayer`。
-3. `matchVerification.verifyBoardgameMatchResult()` 跑五步驗證鏈（§4）。
-4. `matchSubmission.submitMatchResult()` 在 PG transaction 內：檢查 `source_match_id` 唯一 → `calculateElo` → `UPDATE users` ELO/wins/match_count → `INSERT matches`。
-5. action log 經 `sanitizeActionLog` 清理後存入，`GET /api/matches/:id/log` 公開讀取（不含敏感資訊）。
+1. boardgame.io `endIf` 回傳 `{ winner }` 或 `{ draw: true }`。
+2. `PostgresAdapter.writeState()` 在同一個 PG transaction 寫入 terminal state、result outbox，以及去識別的 match fact、兩副牌快照與 allowlisted events；任一寫入失敗會整筆 rollback。
+3. `source_match_digest` primary key 與 integrity SHA-256 使重複 terminal callback 冪等；相同 digest 若內容不同則 fail closed。
+4. ranked outbox worker 驗證權威座位後執行 `calculateElo`、更新 users 並寫入 `matches`；ranked 關閉、guest 或 draw 仍會保存匿名分析，不受計分資格影響。
+5. 可連結帳號的 action log 經 `sanitizeActionLog` 清理後供玩家歷史使用；永久分析事件使用更嚴格的獨立 projector，一般 API role 無法讀取。
+6. stale cleanup 先鎖定 runtime row。terminal row 只有在 integrity digest 合法且 fact 宣告的兩副牌與事件數量和 child tables 完全相符時才刪除；未完成房間則在同一 transaction 先寫入 `abandoned` fact 並對帳。終局缺 outbox、封存失敗或對帳不符時一律保留來源。
 
 ---
 
@@ -577,13 +624,18 @@ flowchart TB
 
 `/metrics` 端點（兩個服務皆暴露，可設 `METRICS_TOKEN` Bearer 保護）：
 
-| Metric                          | 類型      | 服務 | 說明                                                                   |
-| ------------------------------- | --------- | ---- | ---------------------------------------------------------------------- |
-| `http_request_duration_seconds` | Histogram | 兩者 | labels: `method`/`path`/`status`，path 正規化（`:id`）限制 cardinality |
-| `http_requests_total`           | Counter   | 兩者 | 同上 labels                                                            |
-| `rate_limited_requests_total`   | Counter   | api  | label: `pathname`                                                      |
-| `active_socket_connections`     | Gauge     | game | 當前 Socket.IO 連線數                                                  |
-| Node.js default metrics         | -         | 兩者 | event loop / GC / heap（`collectDefaultMetrics`）                      |
+| Metric                                      | 類型      | 服務 | 說明                                                                   |
+| ------------------------------------------- | --------- | ---- | ---------------------------------------------------------------------- |
+| `http_request_duration_seconds`             | Histogram | 兩者 | labels: `method`/`path`/`status`，path 正規化（`:id`）限制 cardinality |
+| `http_requests_total`                       | Counter   | 兩者 | 同上 labels                                                            |
+| `rate_limited_requests_total`               | Counter   | api  | label: `pathname`                                                      |
+| `active_socket_connections`                 | Gauge     | game | 當前 Socket.IO 連線數                                                  |
+| `match_analytics_capture_total`             | Counter   | game | 新增的匿名終局封存，按 outcome／traffic class 分組                     |
+| `match_analytics_capture_failures_total`    | Counter   | game | projector 或 persistence 階段的封存失敗                                |
+| `match_analytics_cleanup_blocked_total`     | Counter   | game | pending delivery 或封存不完整而阻擋 runtime cleanup                    |
+| `match_analytics_unarchived_terminal`       | Gauge     | game | 尚未與匿名 archive 完成 reconciliation 的 terminal runtime row 數量    |
+| `match_analytics_oldest_unarchived_seconds` | Gauge     | game | 最老未封存 terminal runtime row 的秒數                                 |
+| Node.js default metrics                     | -         | 兩者 | event loop / GC / heap（`collectDefaultMetrics`）                      |
 
 ### Sentry 錯誤追蹤
 
@@ -607,7 +659,7 @@ flowchart TB
 
 - 任一相依服務 down → `503` + `status: degraded`。
 - `Cache-Control: no-store`，供 Docker healthcheck 與 load balancer 使用。
-- 定期 `cleanupStaleMatches()` 清除逾時對戰（預設 30 分鐘 TTL，每 5 分鐘掃描）。
+- 定期 `cleanupStaleMatches()` 每 5 分鐘分別掃描 terminal 與 inactive room；兩類 TTL 由 `TERMINAL_MATCH_TTL_MS`、`INACTIVE_MATCH_TTL_MS` 控制，未設定時相容回退到 `STALE_MATCH_TTL_MS`。terminal 執行 archive-before-delete，inactive room 寫入 `abandoned` 後才刪除；未封存或 reconciliation 失敗時保留。
 
 ---
 
@@ -690,7 +742,7 @@ checkout → setup-node → npm ci
 | 核心規則          | `src/game/GameLogic.ts`                                                            |
 | 效果解析          | `src/game/effects/parser.ts`                                                       |
 | 效果執行          | `src/game/effects/executor.ts`                                                     |
-| AI 決策           | `src/game/ai.ts`                                                                   |
+| AI 決策           | `src/game/ai.ts`、`src/game/ai/*`、`scripts/aiBenchmark.ts`                        |
 | Chronos 時鐘      | `src/game/chronos.ts`                                                              |
 | PG Adapter        | `src/server/db/postgres-adapter.ts`                                                |
 | Redis PubSub      | `src/server/transport/redis-pubsub.ts`                                             |

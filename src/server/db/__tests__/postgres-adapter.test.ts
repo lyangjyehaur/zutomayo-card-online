@@ -35,6 +35,14 @@ function stateWithID(_stateID: number): State {
   return { _stateID, G: {}, ctx: {} } as State;
 }
 
+function initialStateForAnalytics(): State {
+  const player = (seat: number) => ({
+    deck: Array.from({ length: 15 }, (_, index) => ({ defId: `card-${seat}-${index}` })),
+    hand: Array.from({ length: 5 }, (_, index) => ({ defId: `card-${seat}-${index + 15}` })),
+  });
+  return { G: { players: [player(0), player(1)] } } as never;
+}
+
 function deferred<T = void>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((done) => {
@@ -50,8 +58,9 @@ const SEAT_ACCOUNT_IDS_SQL = `SELECT player_id, user_id
          FROM bjg_match_seats
         WHERE match_id = $1
         ORDER BY user_id, player_id`;
-const STATE_MATCH_LOCK_SQL = 'SELECT match_id, state, metadata FROM bjg_matches WHERE match_id = $1 FOR UPDATE';
-const STATE_AUTHORITATIVE_SEATS_SQL = `SELECT match_id, player_id, user_id, ranked_eligible, credential_hash
+const STATE_MATCH_LOCK_SQL =
+  'SELECT match_id, state, initial_state, metadata FROM bjg_matches WHERE match_id = $1 FOR UPDATE';
+const STATE_AUTHORITATIVE_SEATS_SQL = `SELECT match_id, player_id, user_id, ranked_eligible, credential_hash, resume_count
          FROM bjg_match_seats
         WHERE match_id = $1
         ORDER BY player_id`;
@@ -397,6 +406,7 @@ describe('PostgresAdapter state constraints', () => {
         user_id: 'u_alice',
         ranked_eligible: true,
         credential_hash: 'alice-hash',
+        resume_count: 0,
       },
       {
         match_id: 'match_1',
@@ -404,6 +414,7 @@ describe('PostgresAdapter state constraints', () => {
         user_id: 'u_bob',
         ranked_eligible: true,
         credential_hash: 'bob-hash',
+        resume_count: 0,
       },
     ];
     const client = mockClient(async (sql: string, params?: unknown[]) => {
@@ -422,6 +433,7 @@ describe('PostgresAdapter state constraints', () => {
             {
               match_id: 'match_1',
               state: stateWithID(0),
+              initial_state: initialStateForAnalytics(),
               metadata: { players: {}, setupData: { rulesVersion: 'test-rules' } },
             },
           ],
@@ -431,12 +443,23 @@ describe('PostgresAdapter state constraints', () => {
       if (sql === STATE_AUTHORITATIVE_SEATS_SQL) return { rows: seats, rowCount: 2 };
       if (sql.startsWith('UPDATE bjg_matches')) return { rows: [], rowCount: 1 };
       if (sql.includes('INSERT INTO bjg_match_result_outbox')) return { rows: [], rowCount: 1 };
+      if (sql.startsWith('INSERT INTO match_analytics (')) {
+        return { rows: [{ integrity_sha256: params?.[29] }], rowCount: 1 };
+      }
       return { rows: [], rowCount: 0 };
     });
     const adapter = new PostgresAdapter({ pool: mockPool([schemaClient, client]) as never, createIndexes: false });
     const terminalState = {
       _stateID: 1,
-      G: { step: 'gameOver', winner: 0, turnNumber: 4, actionLog: [{ type: 'end' }] },
+      G: {
+        step: 'gameOver',
+        winner: 0,
+        turnNumber: 4,
+        matchStartedAt: 1_000,
+        matchEndedAt: 6_000,
+        players: [{ hp: 80 }, { hp: 0 }],
+        actionLog: [{ type: 'end' }],
+      },
       ctx: { gameover: { winner: '0' } },
     } as unknown as State;
 

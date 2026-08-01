@@ -3,6 +3,7 @@ import type { AuthContext } from '@colyseus/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createEmptyPlatformBlockStore, type PlatformBlockStore } from '../../blockStore';
 import { createEmptyPlatformFriendStore } from '../../friendStore';
+import { createEmptyPlatformMatchParticipantStore } from '../../matchParticipantStore';
 import { InviteRoom } from '../InviteRoom';
 import type { BoardgameMatchReadyMessage, InviteResponseMessage, PlatformAuth, PlatformClient } from '../types';
 
@@ -151,10 +152,16 @@ describe('invite room lifecycle', () => {
     process.env.JWT_SECRET = originalJwtSecret;
     InviteRoom.configureBlockStore(createEmptyPlatformBlockStore());
     InviteRoom.configureFriendStore(createEmptyPlatformFriendStore());
+    InviteRoom.configureParticipantStore(createEmptyPlatformMatchParticipantStore());
     InviteRoom.clearActiveRoomsForTests();
   });
 
   it('lets the target accept and then lets the inviter relay the boardgame match id once', async () => {
+    const recordMatchProvenance = vi.fn(async () => undefined);
+    InviteRoom.configureParticipantStore({
+      ...createEmptyPlatformMatchParticipantStore(),
+      recordMatchProvenance,
+    });
     const { inviteHandlers, boardgameHandlers, setMatchmaking, broadcast, inviter, target, observer } =
       await setupInviteRoom();
 
@@ -176,13 +183,15 @@ describe('invite room lifecycle', () => {
       }),
     });
 
-    boardgameHandlers.get('boardgameMatchReady')?.(target, { boardgameMatchID: 'bgio-ignored' });
+    await boardgameHandlers.get('boardgameMatchReady')?.(target, { boardgameMatchID: 'bgio-ignored' });
     expect(broadcast).not.toHaveBeenCalledWith('boardgameMatchReady', { boardgameMatchID: 'bgio-ignored' });
 
-    boardgameHandlers.get('boardgameMatchReady')?.(inviter, { boardgameMatchID: ' bgio-match-1 ' });
-    await vi.waitFor(() =>
-      expect(broadcast).toHaveBeenCalledWith('boardgameMatchReady', { boardgameMatchID: 'bgio-match-1' }),
-    );
+    await boardgameHandlers.get('boardgameMatchReady')?.(inviter, { boardgameMatchID: ' bgio-match-1 ' });
+    expect(broadcast).toHaveBeenCalledWith('boardgameMatchReady', { boardgameMatchID: 'bgio-match-1' });
+    expect(recordMatchProvenance).toHaveBeenCalledWith({
+      boardgameMatchID: 'bgio-match-1',
+      matchMode: 'invite',
+    });
     expect(setMatchmaking).toHaveBeenLastCalledWith({
       metadata: expect.objectContaining({
         status: 'finished',
@@ -193,7 +202,7 @@ describe('invite room lifecycle', () => {
 
     broadcast.mockClear();
     setMatchmaking.mockClear();
-    boardgameHandlers.get('boardgameMatchReady')?.(inviter, { boardgameMatchID: 'bgio-match-2' });
+    await boardgameHandlers.get('boardgameMatchReady')?.(inviter, { boardgameMatchID: 'bgio-match-2' });
     expect(broadcast).not.toHaveBeenCalledWith('boardgameMatchReady', expect.anything());
     expect(setMatchmaking).not.toHaveBeenCalled();
   });
@@ -426,13 +435,12 @@ describe('invite room lifecycle', () => {
     broadcast.mockClear();
     setMatchmaking.mockClear();
 
-    boardgameHandlers.get('boardgameMatchReady')?.(inviter, { boardgameMatchID: 'bgio-old-session-ignored' });
+    await boardgameHandlers.get('boardgameMatchReady')?.(inviter, { boardgameMatchID: 'bgio-old-session-ignored' });
     expect(broadcast).not.toHaveBeenCalledWith('boardgameMatchReady', expect.anything());
 
-    boardgameHandlers.get('boardgameMatchReady')?.(reconnectingInviter, { boardgameMatchID: ' bgio-match-1 ' });
-    await vi.waitFor(() =>
-      expect(broadcast).toHaveBeenCalledWith('boardgameMatchReady', { boardgameMatchID: 'bgio-match-1' }),
-    );
+    await boardgameHandlers.get('boardgameMatchReady')?.(reconnectingInviter, { boardgameMatchID: ' bgio-match-1 ' });
+
+    expect(broadcast).toHaveBeenCalledWith('boardgameMatchReady', { boardgameMatchID: 'bgio-match-1' });
     expect(setMatchmaking).toHaveBeenLastCalledWith({
       metadata: expect.objectContaining({
         status: 'finished',
@@ -455,8 +463,7 @@ describe('invite room lifecycle', () => {
       ),
     ).resolves.toMatchObject({ userId: 'u_inviter', authenticated: true, role: 'player' });
 
-    boardgameHandlers.get('boardgameMatchReady')?.(inviter, { boardgameMatchID: 'bgio-match-1' });
-    await vi.waitFor(() => expect(room['status']).toBe('finished'));
+    await boardgameHandlers.get('boardgameMatchReady')?.(inviter, { boardgameMatchID: 'bgio-match-1' });
 
     await expect(
       room.onAuth(

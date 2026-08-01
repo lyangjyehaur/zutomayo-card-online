@@ -1,5 +1,5 @@
 import { BookMarked, BookOpenText, ExternalLink, Languages, Scale, Search, TriangleAlert, X } from 'lucide-react';
-import type { ChangeEvent, ReactNode } from 'react';
+import type { ChangeEvent, CompositionEventHandler, ReactNode } from 'react';
 import { NavLink } from 'react-router-dom';
 import type { OfficialTranslationStatus } from '../../api/client';
 import { getCardDef } from '../../game/cards/loader';
@@ -49,17 +49,23 @@ export function RulesSearchField({
   onChange,
   onClear,
   placeholder,
+  onCompositionStart,
+  onCompositionEnd,
 }: {
   value: string;
   onChange: (event: ChangeEvent<HTMLInputElement>) => void;
   onClear: () => void;
   placeholder: string;
+  onCompositionStart?: CompositionEventHandler<HTMLInputElement>;
+  onCompositionEnd?: CompositionEventHandler<HTMLInputElement>;
 }) {
   return (
     <div className="relative w-full">
       <SearchInput
         value={value}
         onChange={onChange}
+        onCompositionStart={onCompositionStart}
+        onCompositionEnd={onCompositionEnd}
         placeholder={placeholder}
         aria-label={placeholder}
         icon={<Search className="size-4 text-content-dim" aria-hidden="true" />}

@@ -10,6 +10,7 @@ const {
   cardRowToDef,
   getAllCardTextsI18n,
   getCardOfficialErrata,
+  getCardRecommendations,
   getCardTextsI18n,
   getGameConfig,
   getOfficialCardDataVersion,
@@ -22,6 +23,11 @@ const {
   cardRowToDef: (row: Record<string, unknown>) => Record<string, unknown>;
   getAllCardTextsI18n: (pool: Queryable) => Promise<Record<string, unknown>>;
   getCardOfficialErrata: (pool: Queryable, cardId: string) => Promise<Record<string, unknown> | null>;
+  getCardRecommendations: (
+    pool: Queryable,
+    cardId: string,
+    limit?: number,
+  ) => Promise<{ ok: boolean; body?: Array<Record<string, unknown>> }>;
   getCardTextsI18n: (pool: Queryable, cardId: string) => Promise<Record<string, unknown>>;
   getGameConfig: (pool: Queryable) => Promise<Record<string, unknown>>;
   getOfficialCardDataVersion: (pool: Queryable) => Promise<Record<string, unknown> | null>;
@@ -99,11 +105,15 @@ describe('card data service', () => {
       illustrator: '',
       rarity: '',
       element: '闇',
+      hasElement: true,
       type: 'Character',
       clock: 2,
+      hasClock: true,
       attack: { night: 10, day: 20 },
       powerCost: 1,
+      hasPowerCost: true,
       sendToPower: 2,
+      hasSendToPower: true,
       effect: '',
       enEffectOfficial: 'Effect',
       image: '',
@@ -113,13 +123,47 @@ describe('card data service', () => {
       officialErrataAffectsName: false,
       officialErrataAffectsEffect: true,
       officialErrataUrl: 'https://zutomayocard.net/errata/009/',
+      catalogStatus: 'listed',
+      distributionType: 'standard',
+      publicationStatus: 'published',
+      playStatus: 'playable',
+      playStatusReason: '',
+      sourceUrl: '',
+      sourceNote: '',
+      sourceSha256: '',
+    });
+  });
+
+  it('marks absent display-only gameplay fields without inventing values', () => {
+    expect(
+      cardRowToDef({
+        ...dbCard,
+        id: 'collaboration_007',
+        element: '',
+        power_cost: null,
+        send_to_power: null,
+        play_status: 'display_only',
+      }),
+    ).toMatchObject({
+      element: '',
+      hasElement: false,
+      powerCost: 0,
+      hasPowerCost: false,
+      sendToPower: 0,
+      hasSendToPower: false,
+      playStatus: 'display_only',
     });
   });
 
   it('filters cards by structured official errata status', async () => {
     const pool = poolWithRows([dbCard]);
     await expect(getPublicCards(pool, new URLSearchParams('errata=true'))).resolves.toEqual([cardRowToDef(dbCard)]);
-    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('WHERE has_official_errata = $1'), [true]);
+    expect(pool.query).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "WHERE publication_status = 'published' AND play_status = 'playable' AND has_official_errata = $1",
+      ),
+      [true],
+    );
   });
 
   it('returns PG cards and preserves public query params', async () => {
@@ -127,10 +171,12 @@ describe('card data service', () => {
     await expect(getPublicCards(pool, new URLSearchParams('pack=pack-a&element=%E9%97%87'))).resolves.toEqual([
       cardRowToDef(dbCard),
     ]);
-    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('WHERE pack = $1 AND element = $2'), [
-      'pack-a',
-      '闇',
-    ]);
+    expect(pool.query).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "WHERE publication_status = 'published' AND play_status = 'playable' AND pack = $1 AND element = $2",
+      ),
+      ['pack-a', '闇'],
+    );
   });
 
   it('normalizes supported language aliases', () => {
@@ -174,7 +220,7 @@ describe('card data service', () => {
       {
         card_id: '4th_76',
         lang: 'ja',
-        name_text: 'グレくまくん (形)',
+        name_text: 'グレくまくん（形）',
         effect_text: '',
         name_source: 'official_errata_notice',
         effect_source: 'official_card_print',
@@ -195,7 +241,7 @@ describe('card data service', () => {
     const pool = poolWithRows(rows);
 
     await expect(getCardTextsI18n(pool, '4th_76')).resolves.toMatchObject({
-      ja: { name: 'グレくまくん (形)' },
+      ja: { name: 'グレくまくん（形）' },
       en: { name: 'GUREKUMA-KUN (Pain Give Form)' },
     });
     expect(pool.query).toHaveBeenCalledWith(expect.stringContaining("SELECT id, 'en', en_name_official"), ['4th_76']);
@@ -255,5 +301,57 @@ describe('card data service', () => {
     await expect(getPresetDecks(poolWithRows([{ id: 'p1', name: 'Preset', card_ids: ['a', 'b'] }]))).resolves.toEqual([
       { id: 'p1', name: 'Preset', cardIds: ['a', 'b'] },
     ]);
+  });
+
+  it('prefers approved PostgreSQL synergy relations over heuristic recommendations', async () => {
+    const target = { ...dbCard, id: 'c_2', name: 'Target', element: '炎' };
+    const relation = {
+      target_card_id: 'c_2',
+      primary_category: 'chronos',
+      categories: ['chronos'],
+      score: 95,
+      rationale_ja: 'クロノス条件を満たす。',
+      rationale_i18n: { 'zh-TW': '直接滿足 Chronos 條件。' },
+    };
+    const result = await getCardRecommendations(poolWithRows([dbCard, target], [relation]), 'c_1', 12);
+    expect(result).toMatchObject({
+      ok: true,
+      body: [
+        {
+          card: { id: 'c_2' },
+          score: 95,
+          reasons: ['synergy_chronos'],
+          source: 'approved',
+          recommendationType: 'synergy',
+          rationaleI18n: { 'zh-TW': '直接滿足 Chronos 條件。' },
+        },
+      ],
+    });
+  });
+
+  it('does not recommend cards from ordinary shared type, element, or pack metadata', async () => {
+    const target = { ...dbCard, id: 'c_2', name: 'Other Character' };
+    const result = await getCardRecommendations(poolWithRows([dbCard, target], []), 'c_1', 12);
+
+    expect(result).toMatchObject({ ok: true, body: [] });
+  });
+
+  it('classifies cards from the same song separately from effect synergies', async () => {
+    const source = { ...dbCard, song: '同じ歌' };
+    const target = {
+      ...dbCard,
+      id: 'c_2',
+      name: 'Other Card',
+      pack: 'pack-b',
+      element: '炎',
+      type: 'Enchant',
+      song: '同じ歌',
+    };
+    const result = await getCardRecommendations(poolWithRows([source, target], []), 'c_1', 12);
+
+    expect(result).toMatchObject({
+      ok: true,
+      body: [{ card: { id: 'c_2' }, reasons: ['same_song'], recommendationType: 'same_song' }],
+    });
   });
 });

@@ -17,8 +17,16 @@ COPY api/schemaGate.cjs ./api/schemaGate.cjs
 COPY api/deckSharingConfig.cjs ./api/deckSharingConfig.cjs
 COPY api/runtimeSecurityConfig.cjs ./api/runtimeSecurityConfig.cjs
 COPY api/officialRulingsSource.cjs ./api/officialRulingsSource.cjs
-COPY api/relationshipEvents.cjs ./api/relationshipEvents.cjs
+COPY api/knowledgeSearchDocuments.cjs ./api/knowledgeSearchDocuments.cjs
+COPY api/knowledgeSearchService.cjs ./api/knowledgeSearchService.cjs
+COPY api/knowledgeSearchSynonyms.cjs ./api/knowledgeSearchSynonyms.cjs
+COPY api/cardDataService.cjs ./api/cardDataService.cjs
+COPY api/cardOrder.cjs ./api/cardOrder.cjs
+COPY api/officialRulingsService.cjs ./api/officialRulingsService.cjs
+COPY api/officialRuleDocumentsService.cjs ./api/officialRuleDocumentsService.cjs
+COPY api/adminService.cjs ./api/adminService.cjs
 COPY api/observability.cjs ./api/observability.cjs
+COPY api/relationshipEvents.cjs ./api/relationshipEvents.cjs
 COPY api/accountMutationLock.cjs ./api/accountMutationLock.cjs
 COPY api/accountLifecycleService.cjs ./api/accountLifecycleService.cjs
 COPY api/accountExportService.cjs ./api/accountExportService.cjs
@@ -46,12 +54,21 @@ COPY scripts/create-admin.cjs ./scripts/create-admin.cjs
 COPY scripts/relationship-outbox-pg-smoke.cjs ./scripts/relationship-outbox-pg-smoke.cjs
 COPY scripts/admin-credential-pg-smoke.cjs ./scripts/admin-credential-pg-smoke.cjs
 COPY scripts/redrive-relationship-outbox.cjs ./scripts/redrive-relationship-outbox.cjs
+COPY scripts/reindex-knowledge-search.cjs ./scripts/reindex-knowledge-search.cjs
 COPY scripts/officialRulingsData.ts ./scripts/officialRulingsData.ts
 COPY scripts/release-official-content.sh ./scripts/release-official-content.sh
 COPY scripts/release-official-rulings.ts ./scripts/release-official-rulings.ts
 COPY scripts/release-official-rule-documents.ts ./scripts/release-official-rule-documents.ts
+COPY scripts/cardNameTranslations.ts ./scripts/cardNameTranslations.ts
+COPY scripts/audit-card-derived-names.ts ./scripts/audit-card-derived-names.ts
+COPY scripts/import-card-derived-names-pg.ts ./scripts/import-card-derived-names-pg.ts
 COPY scripts/cardDerivedEffects.ts ./scripts/cardDerivedEffects.ts
 COPY scripts/import-card-derived-effects-pg.ts ./scripts/import-card-derived-effects-pg.ts
+COPY scripts/reviewedUnlistedCardRelease.ts ./scripts/reviewedUnlistedCardRelease.ts
+COPY scripts/release-reviewed-unlisted-cards.ts ./scripts/release-reviewed-unlisted-cards.ts
+COPY src/game/effects/parser.ts ./src/game/effects/parser.ts
+COPY src/game/effects/types.ts ./src/game/effects/types.ts
+COPY src/game/types.ts ./src/game/types.ts
 COPY src/rulesTerminology.ts ./src/rulesTerminology.ts
 
 USER node

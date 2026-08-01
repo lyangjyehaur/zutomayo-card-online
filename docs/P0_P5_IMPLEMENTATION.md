@@ -4,13 +4,20 @@
 >
 > 原則：只有程式、測試與實際 gate 都能證明行為時才標記完成。既有 roadmap 的「已完成」不自動沿用。
 >
-> 狀態：隔離整合。Draft PR #28 的 code head `37c3d234` 已通過 remote CI；此分支包含九角色、HA／canary、PITR、供應鏈證據與完整營運演練，在 signed-image staging 與外部 evidence gates 完成前仍不得合併或部署到 server4。
+> 狀態：隔離整合。`master@d75b3250` 的 `0.2.6` 已整合至 Draft PR #28 的工作分支；此分支包含九角色、HA／canary、PITR、供應鏈證據與完整營運演練，在新 code head 通過 remote CI、signed-image staging 與外部 evidence gates 前仍不得合併或部署到 server4。
 
 ## 2026-07-13 重新基線
 
 目前判定為「可進 controlled beta／內部測試」，不可宣稱成熟 production，也不建議直接開放 public beta。核心規則與 authoritative match 約 7/10；工程化與供應鏈約 6/10；資料復原、HA 與營運證據約 3-4/10；玩家主流程與無障礙約 5-6/10。
 
 後續每一項分開記錄四層證據：`code`、`automated test`、`staging evidence`、`production evidence`。只有必要層級全數完成才可勾選；舊版 [`release-review.md`](./release-review.md) 只作歷史快照，其中 auth、Feedback semantics、modal focus 與 E2E 等部分 finding 已有新實作，必須以當前分支重新跑視覺／service-backed E2E 後判定。
+
+## 2026-08-01 0.2.6 integration evidence
+
+- 已把 `master@d75b3250` 的 `0.2.6` 遊戲、卡牌 i18n、私有 battle asset 部署契約與產品功能整合進隔離 worktree；原始卡牌、翻譯與裁定 JSON，以及未追蹤的 `public/battle` PNG/SVG，仍不進 Git 或 image，只透過部署時的私有唯讀掛載提供。
+- 合併後已重新對齊 retention、schema/role gate、PITR/off-site restore evidence、match analytics transaction、Invite reconnect/final relay、大廳邀請狀態與 Battle accessibility 契約。Restore evidence 現在同時綁定 migration/checksum/migrate image，並以 raw counts 重算 schema、core data、legal hold 與 boardgame state 四項不變量。
+- Legacy server4、parallel slot 與 staging Compose 都要求 verified dataset identity、私有 card-data/battle mount、明確的 Meilisearch runtime inputs，以及 production/synthetic match analytics traffic class；release config 會 fail closed 阻擋缺漏。這些是 code/config evidence，不代表外部服務已完成演練。
+- Current implementation tree 以 `npm run verify` 作為本次 merge commit/push 的必要本地 gate；Public Beta 與 production-hardening release gate 在沒有 signed-image staging artifacts 時必須維持 `blocked`，不得用本機測試代替 off-site restore、HA/chaos、2x/2h soak、alert delivery、canary/rollback 或 provider lifecycle 證據。
 
 ## 2026-07-26 local completion evidence
 
@@ -159,7 +166,7 @@
 
 ## 最終驗收
 
-- [x] `npm run verify`：2026-07-26 的 current implementation tree 通過，Vitest 200 test files／1637 tests／coverage／production-PWA build；分支已推送至 Draft PR #28，code head `37c3d234` 的 GitHub CI run `30191174780` 四個 jobs 全部通過。
+- [x] `npm run verify`：2026-08-01 的 `0.2.6` integration tree 重新執行 tracked-file format、資料／圖片／版本政策、release／ops config、ESLint、app/script typecheck、i18n、coverage 與 production build；remote CI 仍須在本次 merge commit 推送後重新取得證據。2026-07-26 的 `37c3d234`／run `30191174780` 僅保留為先前 code head 的歷史證據。
 - [x] `npm run test:coverage`：200 test files／1637 tests，repository coverage thresholds 通過。
 - [x] Compose-backed Chromium E2E：current-tree migration/seed 後完整 suite 93 passed／2 conditional skips／0 failed，含自然完成 authenticated 對局與獨立重新登入跨裝置 history。
 - [x] `npm run rule:audit`：422 cards／250 effect cards／267 effect lines，unsupported/partial/false-draw 全為 0。
@@ -177,7 +184,7 @@ Gate 狀態嚴格區分：`passed` 代表所有必要檢查通過，`failed` 代
 
 `restore-drill`、`chaos-reconnect`、`load-soak` 與 `alertmanager-delivery` 不採信 evidence 自填政策。它們維持 `schemaVersion: 1`，但 `thresholds` 必須精確等於 repository policy：PITR RPO 15 分鐘、RTO 30 分鐘；failover/reconnect 最長 300 秒且 duplicate delivery 為 0；2x peak 至少 30 分鐘、soak 至少 120 分鐘、每一階段 HTTP p95 嚴格小於 500 ms 且 error rate 嚴格小於 1%；firing/resolved alert 都必須在 300 秒內送達。只把 summary threshold 放寬，即使 summary 比較會通過，仍會被阻擋。
 
-這四種 evidence 都必須增加 `rawArtifact: { path, sha256 }`，且 reference 必須逐項等於已通過 path containment、檔案存在與 SHA-256 驗證的 `artifacts[]` entry。Raw JSON 共用 `schemaVersion: 1`、對應的 `artifactType`、`releaseSha`、`startedAt` 與 `finishedAt`。Chaos/load/alert 的 raw interval 必須和外層 evidence 完全一致；restore 外層 interval 則必須涵蓋下述兩份獨立 artifact。Gate 會解析內容並重算 summary，而不是只檢查 hash：restore 的 `rawArtifact` 只負責 physical PITR mechanics，由 target/recovered-through 與實際起訖重算 RPO/RTO，並要求 verified base backup、至少一個 WAL segment、target reached/promoted 與三項 integrity checks；它不能單獨取得 release approval。Restore 另須提供 hash-verified `offsiteArtifact`，由 `pg-restore-drill.sh` 從明確的 artifact/checksum S3 version IDs 產生 `zutomayo-encrypted-offsite-restore-raw`，綁定同一 release SHA，並實證 age checksum/decrypt、expected migration/checksum、core-data 與 legal-hold invariants。Physical PITR raw 單獨負責 marker `fixtureRoundTripPassed`，off-site logical restore 不重複聲稱。Chaos 由 PostgreSQL/Redis outage probes 的三個連續 healthy samples、WebSocket timeline 及 outbox message IDs 重算 recovery/duplicate；load 由 peak/soak 的 target RPS、status counts 與 latency distribution 重算兩階段中最差的 p95/error，要求零 dropped iteration 且 request samples 足以覆蓋 target RPS 乘實測時長；alert 則由同一 alert ID 的 firing/resolved emitted/delivered pair 重算最慢 delivery。修改 artifact 後即使同步更新 hash，語義、樣本或 summary 不一致仍會 fail closed。
+這四種 evidence 都必須增加 `rawArtifact: { path, sha256 }`，且 reference 必須逐項等於已通過 path containment、檔案存在與 SHA-256 驗證的 `artifacts[]` entry。Raw JSON 共用 `schemaVersion: 1`、對應的 `artifactType`、`releaseSha`、`startedAt` 與 `finishedAt`。Chaos/load/alert 的 raw interval 必須和外層 evidence 完全一致；restore 外層 interval 則必須涵蓋下述兩份獨立 artifact。Gate 會解析內容並重算 summary，而不是只檢查 hash：restore 的 `rawArtifact` 只負責 physical PITR mechanics，由 target/recovered-through 與實際起訖重算 RPO/RTO，並要求 verified base backup、至少一個 WAL segment、target reached/promoted，以及 schema、fixture round-trip、legal hold 與 boardgame state 四項 integrity checks；它不能單獨取得 release approval。Restore 另須提供 hash-verified `offsiteArtifact`，由 `pg-restore-drill.sh` 從明確的 artifact/checksum S3 version IDs 產生 `zutomayo-encrypted-offsite-restore-raw`，綁定同一 release SHA，並實證 age checksum/decrypt、expected migration/checksum、core-data、legal-hold 與 boardgame-state invariants。Physical PITR raw 單獨負責 marker `fixtureRoundTripPassed`，off-site logical restore 不重複聲稱。Chaos 由 PostgreSQL/Redis outage probes 的三個連續 healthy samples、WebSocket timeline 及 outbox message IDs 重算 recovery/duplicate；load 由 peak/soak 的 target RPS、status counts 與 latency distribution 重算兩階段中最差的 p95/error，要求零 dropped iteration 且 request samples 足以覆蓋 target RPS 乘實測時長；alert 則由同一 alert ID 的 firing/resolved emitted/delivered pair 重算最慢 delivery。修改 artifact 後即使同步更新 hash，語義、樣本或 summary 不一致仍會 fail closed。
 
 `canary-rollback` 另有不可由 evidence 降級的 repository policy：必須依序完成且只完成 10%、50%、100% 三階段，任何跳階都會阻擋；每階段至少觀察 300 秒、1,000 個 HTTP samples、100 個 WebSocket samples，且 candidate 至少有 2 個 ready replicas。`rollout.stableReleaseSet` 與 `rollout.candidateReleaseSet` 至少都要完整列出 game/api/platform immutable `@sha256` references；candidate 三項必須逐一等於本次 `imageDigests`，stable 每一服務都必須使用相同 image repository、但 digest 必須與 candidate 不同，禁止跨 service 混槽。Stable 另外必須提供不同於 candidate 的完整 `stableReleaseSha`，以及 hash-verified `stableManifestArtifact`；Gate 會解析 manifest 中唯一且未加引號的 `RELEASE_SHA`、`GAME_IMAGE`、`API_IMAGE`、`PLATFORM_IMAGE`，並逐項綁定 stable SHA/release set，不能用任意 digest 自稱可回滾版本。每階段要提供 ISO 起訖時間、`gatewayConfigSha256`、對應的 gateway config artifact 與 raw metrics artifact；rollout raw metrics 另須包含和外層 stage 完全一致的 `observation` 起訖、repository policy snapshot 與 `policyPassed: true`，避免用 non-enforcing collector 輸出冒充已通過 dwell gate。Artifact reference 必須和經 hash 驗證的 `artifacts[]` 相符，三個 traffic weight 的 gateway config hash 也必須不同。
 

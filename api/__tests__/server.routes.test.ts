@@ -419,6 +419,72 @@ describe('server routes', () => {
     mockRedisMget.mockResolvedValue([]);
   });
 
+  describe('knowledge search', () => {
+    it('serves compact public suggestions without exposing the search backend', async () => {
+      const res = await sendRequest('GET', '/api/search/suggest?q=Chronos&scope=card&lang=zh-TW&limit=8');
+      expect(res.statusCode).toBe(200);
+      expect(res.headers['cache-control']).toBe('private, max-age=15');
+      expect(parseBody(res)).toMatchObject({ suggestions: [], engine: 'postgres-fallback' });
+    });
+
+    it('lets authorized internal screens opt out of zero-result aggregation', async () => {
+      const res = await sendRequest('GET', '/api/search/ids?q=review-note&scope=card&analytics=0');
+      expect(res.statusCode).toBe(200);
+      expect(parseBody(res)).toMatchObject({ ids: [], estimatedTotalHits: 0, engine: 'postgres-fallback' });
+      expect(mockQuery).not.toHaveBeenCalledWith(
+        expect.stringContaining('INSERT INTO knowledge_search_zero_results'),
+        expect.anything(),
+      );
+    });
+
+    it('aggregates privacy-filtered public zero-result searches', async () => {
+      const res = await sendRequest('GET', '/api/search/ids?q=missing-card&scope=card');
+      expect(res.statusCode).toBe(200);
+      await vi.waitFor(() =>
+        expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO knowledge_search_zero_results'), [
+          expect.stringMatching(/^[a-f0-9]{64}$/),
+          'missing-card',
+          'zh-TW',
+          'card',
+        ]),
+      );
+    });
+
+    it('protects and serves the administrator zero-result report', async () => {
+      const unauthorized = await sendRequest('GET', '/api/admin/search/zero-results');
+      expect(unauthorized.statusCode).toBe(401);
+
+      mockQuery.mockImplementation(async (sql: string) => {
+        if (sql.includes('FROM knowledge_search_zero_results')) {
+          return {
+            rows: [
+              {
+                normalized_query: 'chronos',
+                locale: 'zh-TW',
+                scope: 'all',
+                occurrence_count: '3',
+                first_seen_at: '2026-07-01T00:00:00.000Z',
+                last_seen_at: '2026-07-30T00:00:00.000Z',
+              },
+            ],
+            rowCount: 1,
+          };
+        }
+        return { rows: [], rowCount: 0 };
+      });
+      const authorized = await sendRequest(
+        'GET',
+        '/api/admin/search/zero-results?limit=12&days=30',
+        undefined,
+        adminHeaders(),
+      );
+      expect(authorized.statusCode).toBe(200);
+      expect(parseBody(authorized)).toMatchObject({
+        items: [{ query: 'chronos', locale: 'zh-TW', scope: 'all', count: 3 }],
+      });
+    });
+  });
+
   describe('official rulings', () => {
     it('serves the localized public Q&A list with cache headers', async () => {
       mockQuery.mockImplementation(async (sql: string, params?: unknown[]) => {
@@ -461,7 +527,8 @@ describe('server routes', () => {
           },
         ],
       });
-      expect(res.headers['cache-control']).toContain('max-age=300');
+      expect(res.headers['cache-control']).toContain('max-age=0');
+      expect(res.headers['cache-control']).toContain('s-maxage=300');
       expect(res.headers.etag).toMatch(/^"[A-Za-z0-9_-]+"$/);
 
       const cached = await sendRequest('GET', '/api/official/qa?lang=zh-TW', undefined, {
@@ -587,7 +654,8 @@ describe('server routes', () => {
           sections: [{ localized: { title: '遊戲概要' } }],
         },
       });
-      expect(res.headers['cache-control']).toContain('max-age=300');
+      expect(res.headers['cache-control']).toContain('max-age=0');
+      expect(res.headers['cache-control']).toContain('s-maxage=300');
     });
 
     it('reports the active official-rulings release bound to its build', async () => {
@@ -902,6 +970,7 @@ describe('server routes', () => {
       mockRedisPing.mockResolvedValue('PONG');
       const res = await sendRequest('GET', '/health');
       expect(res.statusCode).toBe(200);
+      expect(res.headers['cache-control']).toContain('no-store');
       const body = parseBody(res) as Record<string, unknown>;
       expect(body.status).toBe('ok');
       expect(body.checks).toEqual({ postgres: 'up', redis: 'up' });
@@ -1213,6 +1282,7 @@ describe('server routes', () => {
     it('returns 404 for unknown API path', async () => {
       const res = await sendRequest('GET', '/api/nonexistent');
       expect(res.statusCode).toBe(404);
+      expect(res.headers['cache-control']).toBe('private, no-store');
     });
 
     it.each([
@@ -1353,6 +1423,40 @@ describe('server routes', () => {
       expect(mockQuery).toHaveBeenCalledWith('SELECT * FROM users WHERE id = $1', ['u_test']);
     });
 
+    it('reads and updates the authenticated user card collection', async () => {
+      mockQuery.mockImplementation(async (sql: string) => {
+        if (sql.startsWith('SELECT card_id FROM user_card_collection')) {
+          return { rows: [{ card_id: '1st_1' }], rowCount: 1 };
+        }
+        if (sql.includes('SELECT id FROM cards')) return { rows: [{ id: '1st_1' }], rowCount: 1 };
+        return { rows: [], rowCount: 1 };
+      });
+
+      const listResponse = await sendRequest('GET', '/api/profile/card-collection', null, {
+        authorization: `Bearer ${createUserJwt()}`,
+      });
+      expect(listResponse.statusCode).toBe(200);
+      expect(parseBody(listResponse)).toEqual({ cardIds: ['1st_1'] });
+
+      const updateResponse = await sendRequest(
+        'PUT',
+        '/api/profile/card-collection/1st_1',
+        { owned: true },
+        userUnsafeHeaders(),
+      );
+      expect(updateResponse.statusCode).toBe(200);
+      expect(parseBody(updateResponse)).toEqual({ cardId: '1st_1', owned: true });
+      expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO user_card_collection'), [
+        'u_test',
+        '1st_1',
+      ]);
+    });
+
+    it('rejects anonymous card collection access', async () => {
+      const response = await sendRequest('GET', '/api/profile/card-collection');
+      expect(response.statusCode).toBe(401);
+    });
+
     it('rejects access tokens when the blacklist lookup is unavailable', async () => {
       mockRedisGet.mockRejectedValueOnce(new Error('Redis unavailable'));
 
@@ -1457,6 +1561,24 @@ describe('server routes', () => {
     it('GET /api/matches returns 401 without auth', async () => {
       const res = await sendRequest('GET', '/api/matches');
       expect(res.statusCode).toBe(401);
+    });
+
+    it('GET /api/matches/:id/replay requires auth and returns an authorized completed summary', async () => {
+      const unauthorized = await sendRequest('GET', '/api/matches/m_1/replay');
+      expect(unauthorized.statusCode).toBe(401);
+
+      const replay = { schemaVersion: 1, traceComplete: true, decisions: [], effects: [], timeline: [] };
+      mockQuery.mockResolvedValueOnce({
+        rows: [{ id: 'm_1', rules_version: 'rules-1', replay_summary: replay }],
+        rowCount: 1,
+      });
+      const authorized = await sendRequest('GET', '/api/matches/m_1/replay', null, userUnsafeHeaders('u_test'));
+      expect(authorized.statusCode).toBe(200);
+      expect(parseBody(authorized)).toEqual({ matchId: 'm_1', rulesVersion: 'rules-1', replay });
+      expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('player0_id = $2 OR player1_id = $2'), [
+        'm_1',
+        'u_test',
+      ]);
     });
 
     it('GET /api/chat/messages returns 401 without auth', async () => {
@@ -1668,6 +1790,58 @@ describe('server routes', () => {
     beforeEach(() => {
       mockAccountMutationLease = true;
     });
+
+    it('GET /api/chat/messages accepts a verified guest match seat', async () => {
+      const credentials = 'guest-seat-credentials';
+      const guestUserId = 'guest:match:bgio-match-1:reservation:abc123';
+      const expectedCredentialHash = crypto.createHash('sha256').update(credentials).digest('hex');
+      mockQuery.mockImplementation(async (sql: string, params?: unknown[]) => {
+        if (sql.includes('WHERE match_id = $1 AND player_id = $2 AND credential_hash = $3')) {
+          expect(params).toEqual(['bgio-match-1', '1', expectedCredentialHash]);
+          return { rows: [{ user_id: guestUserId }], rowCount: 1 };
+        }
+        if (sql.includes('FROM platform_match_participants') && sql.includes('SELECT 1')) {
+          expect(params).toEqual(['bgio-match-1', guestUserId]);
+          return { rows: [{ exists: 1 }], rowCount: 1 };
+        }
+        if (sql.includes('FROM chat_messages')) {
+          expect(params).toEqual(['match:bgio-match-1', 10, guestUserId]);
+          return {
+            rows: [
+              {
+                id: 'chat_msg_guest_history',
+                conversation_id: 'match:bgio-match-1',
+                author_user_id: null,
+                author_display_name: 'Guest',
+                author_role: 'player',
+                content: 'guest history',
+                source_language: '',
+                moderation_status: 'visible',
+                moderation_reason: '',
+                metadata: { guestSeatUserId: guestUserId },
+                created_at: '2026-07-28T00:00:00.000Z',
+                edited_at: null,
+                deleted_at: null,
+              },
+            ],
+            rowCount: 1,
+          };
+        }
+        return { rows: [], rowCount: 0 };
+      });
+
+      const res = await sendRequest('GET', '/api/chat/messages?type=match&subjectId=bgio-match-1&limit=10', null, {
+        'x-match-id': 'bgio-match-1',
+        'x-match-player-id': '1',
+        'x-match-credentials': credentials,
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(parseBody(res)).toMatchObject({
+        messages: [{ id: 'chat_msg_guest_history', content: 'guest history' }],
+      });
+    });
+
     it('GET /api/chat/messages syncs every durable conversation type through the same route', async () => {
       const cases = [
         {
@@ -3425,6 +3599,7 @@ describe('server routes', () => {
       mockRedisZcount.mockResolvedValue(5);
       const res = await sendRequest('GET', '/api/presence');
       expect(res.statusCode).toBe(200);
+      expect(res.headers['cache-control']).toBe('private, no-store');
       const body = parseBody(res) as Record<string, unknown>;
       expect(body.onlineCount).toBe(5);
     });

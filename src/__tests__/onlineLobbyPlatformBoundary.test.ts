@@ -41,6 +41,15 @@ describe('online lobby platform boundary', () => {
     expect(apiClientSource).not.toContain('/matchmaking/');
   });
 
+  it('uses an opaque marker for local decks while starting the match with the browser-local selection', () => {
+    const lobbySource = readRepoFile('src/pages/OnlineLobbyPage.tsx');
+
+    expect(lobbySource).toContain('platformQuickMatchDeckName(selectedDeckName)');
+    expect(lobbySource).toContain('deckName: platformDeckName');
+    expect(lobbySource).toContain('playerDeckName: selectedDeckName');
+    expect(lobbySource).not.toContain('playerDeckName: match.deckName');
+  });
+
   it('registers hosted custom rooms in Colyseus before exposing a shareable room code', () => {
     const lobbySource = readRepoFile('src/pages/OnlineLobbyPage.tsx');
     const roomInfoSource = readRepoFile('src/components/OnlineRoomInfo.tsx');
@@ -61,6 +70,13 @@ describe('online lobby platform boundary', () => {
     expect(roomInfoSource).toContain('return `/online?room=${encodeURIComponent(matchID)}`');
   });
 
+  it('shows platform relay details without replacing them with a generic connection error', () => {
+    const lobbySource = readRepoFile('src/pages/OnlineLobbyPage.tsx');
+
+    expect(lobbySource).toContain('return detail || t(customRoomRelayKey);');
+    expect(lobbySource).not.toContain('`${t(customRoomRelayKey)}: ${detail}`');
+  });
+
   it('redirects legacy player room links back through the Colyseus custom-room relay', () => {
     const appSource = readRepoFile('src/App.tsx');
     const onlineGamePageSource = readRepoFile('src/pages/OnlineGamePage.tsx');
@@ -70,6 +86,19 @@ describe('online lobby platform boundary', () => {
     );
     expect(onlineGamePageSource).not.toContain('onJoinSharedRoom(matchID)');
     expect(appSource).not.toContain('joinSharedOnlineRoom');
+  });
+
+  it('keeps local decks available for both custom-room hosts and joining players', () => {
+    const appSource = readRepoFile('src/App.tsx');
+    const gameServerSource = readRepoFile('src/server.ts');
+
+    expect(appSource).toContain('onlineDeckName(existingID ? 1 : 0, selectedPlayerDeck, serverDecks)');
+    expect(appSource).toContain('selectedDeckSetup.deck1Ids');
+    expect(appSource).toContain('selectedDeckSetup.deck1Name');
+    expect(appSource).toContain('...(localDeckIds ? { localDeckIds } : {})');
+    expect(appSource).toContain('...(localDeckName ? { localDeckName } : {})');
+    expect(gameServerSource).toContain('validateConstructedDeckIds(localDeckIds)');
+    expect(gameServerSource).not.toContain('Custom online decks require a server reservation');
   });
 
   it('does not expose game-page waiting room share links before Colyseus registration succeeds', () => {
@@ -106,6 +135,24 @@ describe('online lobby platform boundary', () => {
     const onlineGameSource = readRepoFile('src/components/OnlineGame.tsx');
 
     expect(onlineGameSource).toContain('chatAccount && message.persisted && !message.self');
+  });
+
+  it('keeps guest match chat available when the optional match shell is reconnecting', () => {
+    const onlineGameSource = readRepoFile('src/components/OnlineGame.tsx');
+
+    expect(onlineGameSource).not.toContain('platformShellEvidenceReady');
+    expect(onlineGameSource).not.toContain('platformShellUnavailable');
+    expect(onlineGameSource).toContain('data-chat-status={chatStatus}');
+  });
+
+  it('forwards guest match seat proof through the game API proxy', () => {
+    const gameServerSource = readRepoFile('src/server.ts');
+
+    expect(gameServerSource).toContain('MATCH_CHAT_ACCESS_PROXY_FORWARD_HEADERS');
+    expect(gameServerSource).toContain("'x-match-id'");
+    expect(gameServerSource).toContain("'x-match-player-id'");
+    expect(gameServerSource).toContain("'x-match-credentials'");
+    expect(gameServerSource).toContain('forwardOptionalRequestHeader(requestHeaders, ctx.request.headers, name)');
   });
 
   it('opens unread match chats through durable history chat instead of live spectator fallback', () => {

@@ -5,6 +5,7 @@ import {
   DERIVED_NAME_LANGS,
   loadCardNamesAuditInput,
 } from './cardNameTranslations';
+import { REVIEWED_UNLISTED_SOURCE_NOTE } from './reviewedUnlistedCardRelease';
 
 const require = createRequire(import.meta.url);
 const { Pool } = require('pg') as typeof import('pg');
@@ -17,7 +18,14 @@ const { assertPostgresExpectedRole, postgresConnectionString, postgresSslConfig 
 
 const sourcePath = process.argv[2] || process.env.CARD_NAME_I18N_SOURCE || 'data/card-names-i18n.json';
 const songTitlesPath = process.env.CARD_SONG_I18N_SOURCE || 'data/card-song-titles-i18n.json';
-const input = loadCardNamesAuditInput(sourcePath, songTitlesPath);
+const input = loadCardNamesAuditInput(
+  sourcePath,
+  songTitlesPath,
+  process.env.CARD_ENGLISH_EXTRACTION_SOURCE || 'data/card-english-extraction.json',
+  process.env.CARD_SEED_SOURCE || 'data/e2e-card-seed.json',
+  process.env.CARD_OFFICIAL_ERRATA_SOURCE || 'data/card-official-errata.json',
+  process.env.CARD_DERIVED_NAMES_REVIEW_SOURCE || 'data/card-derived-names-review.json',
+);
 const problems = auditCardNames(input);
 if (problems.length > 0) {
   throw new Error(`Refusing derived-name import:\n${problems.join('\n')}`);
@@ -72,7 +80,7 @@ async function main(): Promise<void> {
     await client.query('BEGIN');
     await client.query("SELECT pg_advisory_xact_lock(hashtext('card-derived-names-import'))");
 
-    const existing = await client.query('SELECT id, name, en_name_official FROM cards ORDER BY id');
+    const existing = await client.query('SELECT id, name, en_name_official, source_note FROM cards ORDER BY id');
     const existingById = new Map(existing.rows.map((row) => [String(row.id), row]));
     const mismatches: string[] = [];
     for (const card of input.extraction.cards) {
@@ -88,10 +96,15 @@ async function main(): Promise<void> {
         mismatches.push(`${card.id}: PostgreSQL English name differs from the effective official text`);
       }
     }
-    if (existingById.size !== input.extraction.cards.length) {
-      mismatches.push(
-        `PostgreSQL has ${existingById.size} cards; reviewed source has ${input.extraction.cards.length}`,
-      );
+    const coreCardIds = new Set(input.extraction.cards.map((card) => card.id));
+    const reviewedExtraIds: string[] = [];
+    for (const [cardId, dbCard] of existingById) {
+      if (coreCardIds.has(cardId)) continue;
+      if (String(dbCard.source_note || '') !== REVIEWED_UNLISTED_SOURCE_NOTE) {
+        mismatches.push(`${cardId}: extra card lacks approved reviewed-release provenance`);
+      } else {
+        reviewedExtraIds.push(cardId);
+      }
     }
     if (mismatches.length > 0) {
       throw new Error(`Refusing import due to official-source mismatch:\n${mismatches.join('\n')}`);
@@ -151,8 +164,11 @@ async function main(): Promise<void> {
       [[...DERIVED_NAME_LANGS]],
     );
     const counts = new Map(importedCounts.rows.map((row) => [String(row.lang), Number(row.count)]));
+    const expectedVerifiedNames = input.extraction.cards.length + reviewedExtraIds.length;
     for (const lang of DERIVED_NAME_LANGS) {
-      if (counts.get(lang) !== 422) throw new Error(`${lang}: expected 422 verified card names after import`);
+      if (counts.get(lang) !== expectedVerifiedNames) {
+        throw new Error(`${lang}: expected ${expectedVerifiedNames} verified card names after import`);
+      }
     }
 
     await client.query(

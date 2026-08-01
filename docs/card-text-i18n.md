@@ -11,11 +11,21 @@
 3. `card_texts_i18n` 只保存衍生語言的名稱與效果、來源及複核狀態，禁止寫入 `ja` 或 `en`。
 4. `game_config.card_song_titles_i18n` 保存歌曲日文原題對應的多語歌名。卡名或效果包含歌名時，玩家端以這份設定產生有效顯示值；這是明確的顯示層覆寫規則，不是第二份卡牌效果資料。
 5. 衍生翻譯必須同時參考官方有效日文和英文；兩者有歧義時，以官方修正後日文語義為準。
-6. `pending_review` 的衍生翻譯不得進入玩家顯示鏈路。`/cards/texts` 會保留狀態供管理頁編輯；瀏覽器與 game server 的顯示函式只使用 `verified`（或官方投影使用的 `official`）。
-7. 勘誤影響的衍生翻譯必須使用已複核的勘誤文本；尚未複核時回退到 `cards` 的有效英文，再回退官方日文。
-8. 本機受控來源 `data/card-english-extraction.json` 中的英文必須先完成人工卡面複核，才能批量匯入 PostgreSQL；該檔及其他卡牌文本來源不得提交到 Git 或進入容器映像。
-9. 舊表與相容 view `card_effects_i18n`、效果專用 API `/cards/i18n` 均已移除。名稱與效果只透過 `/cards/texts` 從 `cards` 與 `card_texts_i18n` 投影，不得建立第二份效果資料。
-10. 瀏覽器與 game server 的執行時卡牌來源只有 PostgreSQL；`/api/cards` 失敗時不得回退 `/cards.json` 或任何本機快照。
+6. 卡牌角色與其他專有名稱必須沿用既有 canonical 譯名，不得從官方英文直接音譯或保留英文。例如日文 `うにぐり` 在 `zh-TW`／`zh-HK` 統一為「海膽栗子」，在 `zh-CN` 統一為「海胆栗子」；複數與敬稱應在 canonical 名稱後依語義處理。
+7. `pending_review` 的衍生翻譯不得進入玩家顯示鏈路。`/cards/texts` 會保留狀態供管理頁編輯；瀏覽器與 game server 的顯示函式只使用 `verified`（或官方投影使用的 `official`）。
+8. 勘誤影響的衍生翻譯必須使用已複核的勘誤文本；尚未複核時回退到 `cards` 的有效英文，再回退官方日文。
+9. 本機受控來源 `data/card-english-extraction.json` 中的英文必須先完成人工卡面複核，才能批量匯入 PostgreSQL；該檔及其他卡牌文本來源不得提交到 Git 或進入容器映像。
+10. 舊表與相容 view `card_effects_i18n`、效果專用 API `/cards/i18n` 均已移除。名稱與效果只透過 `/cards/texts` 從 `cards` 與 `card_texts_i18n` 投影，不得建立第二份效果資料。
+11. 瀏覽器與 game server 的執行時卡牌來源只有 PostgreSQL；`/api/cards` 失敗時不得回退 `/cards.json` 或任何本機快照。
+
+目前增量發布會自動核對下列已建立的角色／專有名稱；名稱與效果都必須沿用相同譯法：
+
+| 日文           | zh-TW    | zh-CN    | zh-HK    | ko                |
+| -------------- | -------- | -------- | -------- | ----------------- |
+| `うにぐり`     | 海膽栗子 | 海胆栗子 | 海膽栗子 | `우니구리`        |
+| `にらちゃん`   | NIRA醬   | NIRA酱   | NIRA醬   | `니라짱`          |
+| `愛のペガサス` | 愛之飛馬 | 爱之飞马 | 愛之飛馬 | `사랑의 페가수스` |
+| `スナネコ`     | 砂貓     | 砂猫     | 砂貓     | `스나네코`        |
 
 ## 資料模型
 
@@ -59,7 +69,7 @@
 
 ### `card_official_errata`
 
-保存 12 條官方勘誤的歷史資訊，包括錯誤文本、日期、受影響欄位、英文複核狀態、英文來源類型和官方網址。修正後日文與英文不在此表重複保存，管理 API 會依受影響欄位從 canonical `cards` 即時回傳。
+目前的 12 條官方勘誤保存在 `card_official_errata`，包括錯誤文本、日期、受影響欄位、英文複核狀態、英文來源類型和官方網址。修正後日文與英文不在目前資料表重複保存，管理 API 會依受影響欄位從 canonical `cards` 即時回傳；每次變更的完整資料列與當時修正後日文則追加至不可變的 `card_official_errata_revisions`。
 
 `corrected_english_source` 只能是：
 
@@ -147,7 +157,8 @@
 4. 人工確認語義、術語、數值、卡牌數量及作用範圍後，名稱和效果一起改為 `verified`；有效果卡不得只驗證空效果。
 5. 若卡牌有勘誤，受影響欄位必須以官方修正後日文為準。管理頁會將其來源寫成 `official_japanese_errata_translation`。
 6. 若只是修改歌名，先在「歌名翻譯」維護 canonical 歌名，不要逐張卡重複改寫同一個歌名 token。
-7. 驗證實際 UI，不要只檢查資料庫 raw 值，因為玩家端還會套用複核、fallback 與歌名覆寫規則。
+7. 卡名包含既有角色或專有名稱時，先搜尋已發布卡牌確認 canonical 譯名；增量發布稽核會拒絕已知專有名稱缺漏、使用錯誤地區字形或殘留英文的中文名稱。
+8. 驗證實際 UI，不要只檢查資料庫 raw 值，因為玩家端還會套用複核、fallback 與歌名覆寫規則。
 
 ### 歌名翻譯
 
@@ -162,7 +173,7 @@
 
 目前 250 張有效果卡的 `zh-TW`、`zh-CN`、`zh-HK`、`ko` 效果已同時依官方修正後日文及人工校對的英文複核。複核來源檔 `data/card-effects-i18n.json` 與本機 review manifest 以 SHA-256 鎖定確切版本，兩者都不進 Git。來源檔不得含 `en`，英文只維護於 `cards`。
 
-422 張卡名與 42 首歌名使用相同的本機複核流程。`data/card-names-i18n.json`、`data/card-song-titles-i18n.json` 與 `data/card-derived-names-review.json` 均不得提交到 Git；review manifest 會以 SHA-256 鎖定卡名、歌名、官方日英來源及卡牌 seed。批量匯入前執行 `npm run audit:card-derived-names`，確認卡片數量、語言完整性、重複卡名一致性及卡名內歌名均符合 canonical 表，再以 `npm run import:card-derived-names` 寫入 PostgreSQL。匯入只更新衍生卡名與 `game_config.card_song_titles_i18n`，不得改動既有效果翻譯。
+核心 422 張卡名與 42 首歌名使用相同的本機複核流程。`data/card-names-i18n.json`、`data/card-song-titles-i18n.json` 與 `data/card-derived-names-review.json` 均不得提交到 Git；review manifest 會以 SHA-256 鎖定卡名、歌名、官方日英來源及卡牌 seed。批量匯入前執行 `npm run audit:card-derived-names`，確認卡片數量、語言完整性、重複卡名一致性及卡名內歌名均符合 canonical 表，再以 `npm run import:card-derived-names` 寫入 PostgreSQL。匯入只更新衍生卡名與 `game_config.card_song_titles_i18n`，不得改動既有效果翻譯。增量卡由 reviewed-unlisted manifest v2 保存已核對的官方日英資料；所有已發布卡牌（包含 `display_only`）都必須提供完整 `zh-TW`、`zh-CN`、`zh-HK`、`ko` 名稱與適用效果，效果還必須通過 `src/rulesTerminology.ts` 的標準術語檢查，只有真正完成複核的譯文才可寫入 `card_texts_i18n` 並標記為 `verified`。所有增量卡必須帶已複核 provenance 才可與核心資料並存。
 
 CI/E2E 不使用線上卡牌快照；`scripts/create-e2e-card-seed.ts` 會在測試容器內生成無正式卡名、效果及翻譯的合成卡牌資料。
 
@@ -258,11 +269,11 @@ npm run import:card-official-texts
 
 生產匯入前必須備份資料庫。匯入後至少驗證：
 
-- `/api/cards` 返回 422 張卡。
-- 422 張卡均有 `enNameOfficial`。
-- 250 張有效果卡均有 `enEffectOfficial`。
+- `/api/cards` 返回 425 張卡。
+- 425 張卡均有 `enNameOfficial`。
+- 253 張有效果卡均有 `enEffectOfficial`。
 - `hasOfficialErrata` 共 12 張。
-- `/api/cards/texts` 返回 422 張卡的文本資料。
+- `/api/cards/texts` 返回 425 張卡的文本資料，四個衍生語言共 1700 列已複核文本。
 - 英文、日文和至少一個衍生語言實際 UI 的名稱、效果與勘誤 fallback。
 - `card_texts_i18n` 的 `ja`、`en` 列均為 0；資料庫中不存在 `card_effects_i18n` relation。
 

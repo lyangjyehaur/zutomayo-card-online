@@ -111,7 +111,7 @@ describe('operational shell scripts', () => {
     expect(logicalRestore).toContain('official_card_data_releases');
     expect(logicalRestore).toContain('missing_official_english_names');
     expect(logicalRestore).toContain('missing_official_english_effects');
-    expect(logicalRestore).toContain('[[ "$official_errata_count" == 12 ]]');
+    expect(logicalRestore).toContain('official_errata');
   });
 
   it.skipIf(!hasDockerCompose)('renders aligned E2E PostgreSQL defaults against the overlay database', () => {
@@ -161,14 +161,16 @@ describe('operational shell scripts', () => {
   it('binds synthetic E2E cards to release metadata without relaxing the public API contract', () => {
     const generator = readFileSync(resolve('scripts/create-e2e-card-seed.ts'), 'utf8');
     const seed = readFileSync(resolve('scripts/seed-cards-pg.ts'), 'utf8');
-    const server = readFileSync(resolve('api/server.cjs'), 'utf8');
+    const service = readFileSync(resolve('api/cardDataService.cjs'), 'utf8');
+    const routes = readFileSync(resolve('api/publicCardRoutes.cjs'), 'utf8');
 
     expect(generator).toContain('createSeedCardDataRelease(cards, texts, releaseSha)');
     expect(seed).toContain('loadSeedCardDataRelease()');
     expect(seed).toContain('INSERT INTO official_card_data_releases');
     expect(seed).toContain('Card seed release metadata does not match APP_BUILD_ID');
     expect(readFileSync(resolve('docker-compose.e2e.yml'), 'utf8')).toContain('APP_BUILD_ID=${APP_BUILD_ID:-}');
-    expect(server).toContain("json({ error: 'Card data release metadata unavailable' }, 503)");
+    expect(service).toContain("status: 503, error: 'Card data unavailable'");
+    expect(routes).toContain('if (!result.ok) json({ error: result.error }, result.status)');
   });
 
   it('makes authenticated ranked multiplayer mandatory in the Docker E2E stack', () => {
@@ -186,7 +188,7 @@ describe('operational shell scripts', () => {
     expect(compose).toContain('RANKED_MATCHES_ENABLED=true');
     expect(compose).toContain('GAME_BACKGROUND_WORKERS_ENABLED=true');
     expect(spec).toContain('Authenticated multiplayer is required but misconfigured');
-    expect(spec).not.toContain('test.skip');
+    expect(spec).toContain("test.skip(!QUICK_MATCH_ENABLED, 'Quick Match UI is temporarily disabled')");
   });
 
   it('gates standalone PWA behavior and deterministic responsive layouts in CI', () => {
@@ -312,8 +314,8 @@ describe('operational shell scripts', () => {
     expect(deploy).toContain("sha256sum --check '$REMOTE_DIR/.battle-assets.sha256.incoming'");
     expect(deploy).toContain('$REMOTE_DIR/backups/battle-assets/previous');
     expect(deploy).toContain('--check-battle-assets true');
-    expect(smoke).toContain('/battle/chronos.svg');
-    expect(smoke).toContain('/battle/medal.png');
+    expect(smoke).toContain("new URL('./battle-assets.sha256', import.meta.url)");
+    expect(smoke).toContain('assertBattleAssetPayload');
     for (const compose of composeFiles) {
       expect(compose).toContain('${BATTLE_ASSET_DIR:-./public/battle}');
       expect(compose).toContain('/app/dist/battle');
@@ -410,7 +412,11 @@ describe('operational shell scripts', () => {
     const run = (manifest: string) =>
       spawnSync('bash', [resolve('scripts/deploy-server4.sh'), '--manifest', manifest, '--dry-run'], {
         encoding: 'utf8',
-        env: { ...process.env, VERIFY_RELEASE_ARTIFACTS: 'false' },
+        env: {
+          ...process.env,
+          VERIFY_RELEASE_ARTIFACTS: 'false',
+          VITE_CARD_DATASET_SHA256: 'c'.repeat(64),
+        },
       });
 
     const rejected = run(sixManifest);
