@@ -1387,6 +1387,7 @@ function PendingChoicePanel({
   playerID,
   selected,
   onSelectionChange,
+  onFocusCard,
   onInspectCard,
 }: {
   G: GameState;
@@ -1394,6 +1395,7 @@ function PendingChoicePanel({
   playerID: Props['playerID'];
   selected: string[];
   onSelectionChange: (selected: string[]) => void;
+  onFocusCard: (card: CardInstance, owner: PlayerIndex) => void;
   onInspectCard: (card: CardInstance, owner: PlayerIndex) => void;
 }) {
   const locale = useLocale();
@@ -1540,7 +1542,7 @@ function PendingChoicePanel({
                           state={isSelected ? 'selected' : 'targetable'}
                           onActivate={() => toggle(option.id)}
                           onInspect={
-                            found.card.defId !== '__hidden__' ? () => onInspectCard(found.card, found.owner) : undefined
+                            found.card.defId !== '__hidden__' ? () => onFocusCard(found.card, found.owner) : undefined
                           }
                           ariaLabel={label}
                         />
@@ -2913,6 +2915,9 @@ function BattleBoard({
                 playerID={playerID}
                 selected={selectedPendingChoiceOptions}
                 onSelectionChange={setSelectedPendingChoiceOptions}
+                onFocusCard={(card, owner) => {
+                  inspect(card, owner, t('board.pendingChoice'));
+                }}
                 onInspectCard={(card, owner) => {
                   inspect(card, owner, t('board.pendingChoice'));
                   if (touchLike) setDetailSheetOpen(true);

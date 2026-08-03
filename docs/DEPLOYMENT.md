@@ -145,7 +145,7 @@ Frontend build-time variables (baked into the bundle at `vite build`):
 | `ADMIN_TOTP_ENCRYPTION_KEY`             | empty                               | 只供舊式獨立 TOTP 管理員使用的加密金鑰；使用 linked user 管理員時不需要。                                                                                                                                      |
 | `RESEND_API_KEY`                        | empty                               | Resend server-side API key used to list/retrieve received contact mail and send replies. Never expose it through a `VITE_*` variable.                                                                          |
 | `RESEND_WEBHOOK_SECRET`                 | empty                               | `whsec_...` signing secret for the Resend webhook registered at `/api/webhooks/resend` with the `email.received` event. The API verifies the raw request body before ingesting mail metadata.                  |
-| `RESEND_CONTACT_FROM`                   | contact mailbox                     | Verified sender used for admin inbox replies. Defaults to `ZUTOMAYO CARD <contact@mail.zutomayocard.online>` and must belong to a sending domain verified in the same Resend account.                          |
+| `RESEND_CONTACT_FROM`                   | contact mailbox                     | Verified sender used for admin inbox replies. Defaults to `ZTMYCardOnline <contact@mail.zutomayocard.online>` and must belong to a sending domain verified in the same Resend account.                         |
 | `ALLOWED_ORIGINS`                       | empty                               | Comma-separated CORS allowlist. When empty, the server falls back to localhost dev origins only.                                                                                                               |
 | `TRUSTED_PROXY`                         | empty                               | Comma-separated trusted proxy IP/CIDR allowlist. `X-Forwarded-For` is honored only when the TCP peer matches this list; keep empty for direct traffic.                                                         |
 | `APP_VERSION`                           | `package.json` version              | App release version returned by `/api/version` and `/api/app-version`. Leave empty to use the package version.                                                                                                 |
@@ -179,6 +179,12 @@ After deploying migration `000050_support_inbox`, create a Resend webhook for `e
 The admin **聯絡信箱** page also calls Resend's received-email list API when refreshed, so messages received before
 the webhook was registered are imported. The webhook endpoint requires the original raw body and must not pass
 through a proxy transformation that rewrites JSON.
+
+Administrator notification channels are configured at `/admin/notifications` and stored under
+`service_integrations.key = 'admin_notifications'`. Bark device keys, Telegram bot tokens, and optional custom
+Webhook signing secrets use `SERVICE_CONFIG_ENCRYPTION_KEY` and are never returned to the browser. Saving settings
+takes effect immediately without restarting the API. Use the page's test action after configuring a channel; live
+`email.received` delivery failures are isolated per channel and logged without rejecting the verified Resend event.
 
 Cloudflare Web Analytics may inject its browser beacon for aggregate traffic and Web Vitals reporting. Production CSP allows only its documented script origin, `https://static.cloudflareinsights.com`; do not broaden this to a wildcard or enable unrelated script injection products without a separate security review. Umami remains the source of application funnel events through the same-origin `/analytics` proxy. Browser QA must treat any remaining analytics CSP violation as a failure.
 

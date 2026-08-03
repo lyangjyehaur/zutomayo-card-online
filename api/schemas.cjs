@@ -311,6 +311,43 @@ const adminTranslationTestSchema = z
   })
   .strict();
 
+const notificationCredentialActionSchema = z.enum(['keep', 'replace', 'clear']);
+const adminNotificationSettingsSchema = z
+  .object({
+    timeoutMs: z.number().int().min(1000).max(30_000),
+    channels: z
+      .object({
+        bark: z
+          .object({
+            enabled: z.boolean(),
+            serverUrl: z.string().trim().max(1000),
+            deviceKeyAction: notificationCredentialActionSchema,
+            deviceKey: z.string().max(1000).optional().default(''),
+          })
+          .strict(),
+        telegram: z
+          .object({
+            enabled: z.boolean(),
+            chatId: z.string().trim().max(200),
+            botTokenAction: notificationCredentialActionSchema,
+            botToken: z.string().max(1000).optional().default(''),
+          })
+          .strict(),
+        webhook: z
+          .object({
+            enabled: z.boolean(),
+            url: z.string().trim().max(1000),
+            signingSecretAction: notificationCredentialActionSchema,
+            signingSecret: z.string().max(1000).optional().default(''),
+          })
+          .strict(),
+      })
+      .strict(),
+  })
+  .strict();
+
+const adminNotificationTestSchema = z.object({}).strict();
+
 const officialTranslationStatusSchema = z.enum(['pending_review', 'machine', 'verified', 'failed']);
 
 const officialQaTranslationWriteSchema = z.object({
@@ -559,6 +596,8 @@ module.exports = {
   announcementWriteSchema,
   adminTranslationSettingsSchema,
   adminTranslationTestSchema,
+  adminNotificationSettingsSchema,
+  adminNotificationTestSchema,
   officialQaTranslationWriteSchema,
   officialErrataTranslationWriteSchema,
   officialTranslationListQuerySchema,

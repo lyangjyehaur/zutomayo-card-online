@@ -131,6 +131,25 @@ test.describe('首次造訪流程回歸', () => {
 });
 
 test.describe('對戰操作辨識度回歸', () => {
+  test('手機待選卡牌點擊會選取，詳情只由資訊按鈕開啟', async ({ page }) => {
+    await prepareGuest(page);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/qa/battle?state=pending-choice&controls=0');
+
+    const choiceRegion = page.getByRole('region', { name: '待選卡牌', exact: true });
+    await expect(choiceRegion).toBeVisible({ timeout: 30_000 });
+    await choiceRegion.locator('.cardview').first().click();
+
+    await expect(choiceRegion.getByText('已選 1/2', { exact: true })).toBeVisible();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+
+    await choiceRegion
+      .getByRole('button', { name: /查看詳情/ })
+      .first()
+      .click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+  });
+
   test('晝側選牌後的出牌與檢視按鈕符合文字對比標準', async ({ page }) => {
     await prepareGuest(page);
     for (const viewport of [

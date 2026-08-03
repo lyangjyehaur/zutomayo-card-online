@@ -137,8 +137,10 @@ async function syncSupportInbox({ pool, apiKey, fetchImpl = fetch }) {
 
 async function ingestReceivedWebhook({ pool, event }) {
   if (!event || event.type !== 'email.received') return { accepted: true, ignored: true };
+  const normalized = normalizeReceivedEmail(event.data);
+  const existing = await pool.query('SELECT 1 FROM support_emails WHERE id = $1', [normalized.id]);
   await upsertSupportEmail(pool, event.data);
-  return { accepted: true, emailId: String(event.data?.email_id || '') };
+  return { accepted: true, emailId: normalized.id, isNew: existing.rows.length === 0, email: normalized };
 }
 
 function rowSummary(row) {

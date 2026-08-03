@@ -5,6 +5,7 @@ const require = createRequire(import.meta.url);
 const { Webhook } = require('svix') as typeof import('svix');
 const {
   normalizeReceivedEmail,
+  ingestReceivedWebhook,
   plainTextFromHtml,
   replyToSupportEmail,
   syncSupportInbox,
@@ -12,6 +13,7 @@ const {
   verifyResendWebhook,
 } = require('../supportInboxService.cjs') as {
   normalizeReceivedEmail: (input: unknown) => Record<string, unknown>;
+  ingestReceivedWebhook: (input: Record<string, unknown>) => Promise<Record<string, unknown>>;
   plainTextFromHtml: (input: string) => string;
   replyToSupportEmail: (input: Record<string, unknown>) => Promise<Record<string, unknown>>;
   syncSupportInbox: (input: Record<string, unknown>) => Promise<Record<string, unknown>>;
@@ -94,6 +96,27 @@ describe('support inbox service', () => {
     expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO support_emails'), expect.any(Array));
   });
 
+  it('marks only a previously unseen webhook email as new', async () => {
+    const newPool = {
+      query: vi.fn(async (sql: string) =>
+        sql.includes('SELECT 1 FROM support_emails') ? { rows: [] } : { rows: [], rowCount: 1 },
+      ),
+    };
+    const existingPool = {
+      query: vi.fn(async (sql: string) =>
+        sql.includes('SELECT 1 FROM support_emails') ? { rows: [{ '?column?': 1 }] } : { rows: [], rowCount: 1 },
+      ),
+    };
+    const event = { type: 'email.received', data: receivedEmail };
+
+    await expect(ingestReceivedWebhook({ pool: newPool, event })).resolves.toMatchObject({
+      accepted: true,
+      emailId: 'received_1',
+      isNew: true,
+    });
+    await expect(ingestReceivedWebhook({ pool: existingPool, event })).resolves.toMatchObject({ isNew: false });
+  });
+
   it('sends replies to Reply-To with RFC thread headers and records an audit trail', async () => {
     const databaseRow = {
       id: 'received_1',
@@ -130,13 +153,14 @@ describe('support inbox service', () => {
         text: '您好，請先建立帳號後進入線上大廳。',
         adminUserId: 'admin_1',
         apiKey: 're_test',
-        from: 'ZUTOMAYO CARD <contact@mail.zutomayocard.online>',
+        from: 'ZTMYCardOnline <contact@mail.zutomayocard.online>',
         fetchImpl,
       }),
     ).resolves.toMatchObject({ resendEmailId: 'sent_1', recipients: ['reply@example.com'], subject: 'Re: 網站詢問' });
 
     const sendBody = JSON.parse(String(fetchImpl.mock.calls[0]?.[1]?.body)) as Record<string, unknown>;
     expect(sendBody).toMatchObject({
+      from: 'ZTMYCardOnline <contact@mail.zutomayocard.online>',
       to: ['reply@example.com'],
       subject: 'Re: 網站詢問',
       headers: {
