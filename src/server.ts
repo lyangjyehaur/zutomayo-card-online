@@ -869,6 +869,7 @@ const HOP_BY_HOP_PROXY_HEADERS = new Set([
 
 const IMGPROXY_PROXY_FORWARD_HEADERS = ['accept', 'if-none-match', 'if-modified-since', 'if-range', 'range'];
 const MATCH_CHAT_ACCESS_PROXY_FORWARD_HEADERS = ['x-match-id', 'x-match-player-id', 'x-match-credentials'];
+const RESEND_WEBHOOK_PROXY_FORWARD_HEADERS = ['svix-id', 'svix-timestamp', 'svix-signature'];
 
 function setProxyResponseHeaders(ctx: KoaContext, responseHeaders: IncomingHttpHeaders): void {
   for (const [name, value] of Object.entries(responseHeaders)) {
@@ -945,6 +946,9 @@ server.app.use(async (ctx: KoaContext, next: Next) => {
   forwardOptionalRequestHeader(requestHeaders, ctx.request.headers, 'x-csrf-token');
   forwardOptionalRequestHeader(requestHeaders, ctx.request.headers, 'origin');
   for (const name of MATCH_CHAT_ACCESS_PROXY_FORWARD_HEADERS) {
+    forwardOptionalRequestHeader(requestHeaders, ctx.request.headers, name);
+  }
+  for (const name of RESEND_WEBHOOK_PROXY_FORWARD_HEADERS) {
     forwardOptionalRequestHeader(requestHeaders, ctx.request.headers, name);
   }
   if (shouldStreamImageProxy) {
