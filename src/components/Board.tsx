@@ -2172,7 +2172,7 @@ function BattleBoard({
       const wasActive = resolutionWasActiveRef.current;
       resolutionWasActiveRef.current = active;
       setResolutionTimelineActive(active);
-      if (!active) {
+      if (wasActive && !active) {
         setPresentationHp((current) => (current[0] === undefined && current[1] === undefined ? current : {}));
       }
       onNoticeActivityChange?.(active);

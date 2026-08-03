@@ -151,6 +151,16 @@ describe('online lobby platform boundary', () => {
     expect(gameServerSource).toContain('forwardOptionalRequestHeader(requestHeaders, ctx.request.headers, name)');
   });
 
+  it('forwards Resend signature headers through the game API proxy', () => {
+    const gameServerSource = readRepoFile('src/server.ts');
+
+    expect(gameServerSource).toContain('RESEND_WEBHOOK_PROXY_FORWARD_HEADERS');
+    expect(gameServerSource).toContain("'svix-id'");
+    expect(gameServerSource).toContain("'svix-timestamp'");
+    expect(gameServerSource).toContain("'svix-signature'");
+    expect(gameServerSource).toContain('for (const name of RESEND_WEBHOOK_PROXY_FORWARD_HEADERS)');
+  });
+
   it('opens unread match chats through durable history chat instead of live spectator fallback', () => {
     const communitySource = readRepoFile('src/pages/CommunityPage.tsx');
     const historyPageSource = readRepoFile('src/pages/MatchHistoryPage.tsx');
