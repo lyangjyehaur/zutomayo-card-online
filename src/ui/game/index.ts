@@ -13,9 +13,12 @@ export { BattleResolutionLayer } from './BattleResolutionLayer';
 export { EffectHpResolutionLayer } from './EffectHpResolutionLayer';
 export { ChronosResolutionLayer } from './ChronosResolutionLayer';
 export {
+  beginHpPresentation,
+  finishHpPresentation,
   initialResolutionNotices,
   resolutionNoticeChannel,
   unseenResolutionNotices,
+  type PresentationHpState,
   type ResolutionNoticeChannel,
 } from './resolutionTimeline';
 export { AbyssZone, ChargeZone, DeckZone, SetZone } from './zones';
