@@ -106,6 +106,9 @@ describe('Refine admin providers', () => {
     await expect(
       adminAccessControlProvider.can({ resource: 'official-rulings', action: 'list', params: {} }),
     ).resolves.toMatchObject({ can: true });
+    await expect(
+      adminAccessControlProvider.can({ resource: 'notifications', action: 'list', params: {} }),
+    ).resolves.toMatchObject({ can: true });
   });
 
   it('uses the PostgreSQL-backed card endpoint for list, create and update', async () => {

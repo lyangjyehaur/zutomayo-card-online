@@ -18,12 +18,14 @@
 | official-rulings | `/admin/official-rulings` | operator / `config:write`       | Q&A／勘誤同步、生成與人工複核               |
 | users            | `/admin/users`            | viewer / `users:read`           | 查詢帳號；只有 admin 可管理角色             |
 | matches          | `/admin/matches`          | viewer / `matches:read`         | 最近對戰紀錄，只讀                          |
+| support-inbox    | `/admin/support-inbox`    | moderator / `support:read`      | Resend 收件、討論串回覆與處理狀態           |
 | chat             | `/admin/chat`             | moderator / `chat:moderate`     | 檢舉、上下文、訊息處置與禁言                |
 | deck-shares      | `/admin/deck-shares`      | moderator / `feedback:moderate` | 牌組分享檢舉與可見性                        |
 | operations       | `/admin/operations`       | operator                        | 賽季及 legal hold；高風險寫入仍只允許 admin |
 | about            | `/admin/about`            | operator / `config:write`       | About 多語內容                              |
 | announcements    | `/admin/announcements`    | operator / `config:write`       | 公告生命週期                                |
 | translation      | `/admin/translation`      | operator / `config:write`       | 翻譯服務設定與測試                          |
+| notifications    | `/admin/notifications`    | operator / `config:write`       | Bark、Telegram、Webhook 管理員通知與測試    |
 | i18n             | `/admin/i18n`             | viewer                          | 程式碼 UI 字典完整度稽核，只讀              |
 
 Refine access control 用來隱藏無權限入口及按鈕，但不視為安全邊界；API 仍會逐一驗證 token、角色、權限與 CSRF。

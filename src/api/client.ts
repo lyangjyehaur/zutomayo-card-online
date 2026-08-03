@@ -171,6 +171,37 @@ export interface AdminTranslationTestResult {
   latencyMs: number;
 }
 
+export interface AdminNotificationCredential {
+  configured: boolean;
+  suffix: string;
+}
+
+export interface AdminNotificationSettings {
+  timeoutMs: number;
+  updatedAt: string | null;
+  channels: {
+    bark: {
+      enabled: boolean;
+      serverUrl: string;
+      deviceKey: AdminNotificationCredential;
+    };
+    telegram: {
+      enabled: boolean;
+      chatId: string;
+      botToken: AdminNotificationCredential;
+    };
+    webhook: {
+      enabled: boolean;
+      url: string;
+      signingSecret: AdminNotificationCredential;
+    };
+  };
+}
+
+export interface AdminNotificationTestResult {
+  results: Array<{ channel: 'bark' | 'telegram' | 'webhook'; ok: boolean; error?: string }>;
+}
+
 export interface SeasonRating {
   seasonId: string;
   name: string;
@@ -2477,6 +2508,55 @@ export async function adminTestTranslationSettings(
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
     body: JSON.stringify(input),
+  });
+}
+
+export async function adminGetNotificationSettings(token: string): Promise<AdminNotificationSettings> {
+  const result = await request<{ settings: AdminNotificationSettings }>('/admin/notification-settings', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return result.settings;
+}
+
+export async function adminUpdateNotificationSettings(
+  token: string,
+  input: {
+    timeoutMs: number;
+    channels: {
+      bark: {
+        enabled: boolean;
+        serverUrl: string;
+        deviceKeyAction: 'keep' | 'replace' | 'clear';
+        deviceKey?: string;
+      };
+      telegram: {
+        enabled: boolean;
+        chatId: string;
+        botTokenAction: 'keep' | 'replace' | 'clear';
+        botToken?: string;
+      };
+      webhook: {
+        enabled: boolean;
+        url: string;
+        signingSecretAction: 'keep' | 'replace' | 'clear';
+        signingSecret?: string;
+      };
+    };
+  },
+): Promise<AdminNotificationSettings> {
+  const result = await request<{ settings: AdminNotificationSettings }>('/admin/notification-settings', {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}` },
+    body: JSON.stringify(input),
+  });
+  return result.settings;
+}
+
+export async function adminTestNotificationSettings(token: string): Promise<AdminNotificationTestResult> {
+  return request<AdminNotificationTestResult>('/admin/notification-settings/test', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: '{}',
   });
 }
 

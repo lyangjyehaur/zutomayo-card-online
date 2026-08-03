@@ -301,6 +301,7 @@ boardgame.io 多實例需要**兩個獨立的跨節點層**，兩者職責不同
 | --------------------------------- | ------------------------------------------------------------------------------ |
 | `accountService.cjs`              | 本地帳號註冊/登入、OAuth 身份連結/查詢/解除、密碼變更                          |
 | `adminService.cjs`                | Admin 登入、使用者列表、ELO 重設                                               |
+| `adminNotificationService.cjs`    | 加密保存管理員通知設定，並分派 Bark、Telegram 與簽名 Webhook                   |
 | `adminCardService.cjs`            | 卡牌資料與效果翻譯寫入（`upsertCard` / `upsertCardI18n` / `upsertGameConfig`） |
 | `cardDataService.cjs`             | 卡牌列表、單卡、i18n、動態設定、預設牌組（公開唯讀）                           |
 | `chatService.cjs`                 | 持久化聊天、歷史同步、未讀、翻譯、檢舉、證據快照、審核與禁言制裁               |

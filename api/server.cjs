@@ -58,6 +58,13 @@ const {
   verifyResendWebhook,
 } = require('./supportInboxService.cjs');
 const {
+  AdminNotificationError,
+  createAdminNotificationRuntime,
+  getAdminNotificationSettings,
+  testAdminNotificationSettings,
+  updateAdminNotificationSettings,
+} = require('./adminNotificationService.cjs');
+const {
   authenticateAdmin,
   createLinkedAdminSession,
   revokeAdminSession,
@@ -440,6 +447,11 @@ const pool = new Pool({
 const translationRuntime = createRuntimeTranslationService({
   pool,
   env: process.env,
+  decryptSecret: decryptSecretEnvelope,
+  encryptionKey: SERVICE_CONFIG_ENCRYPTION_KEY,
+});
+const adminNotificationRuntime = createAdminNotificationRuntime({
+  pool,
   decryptSecret: decryptSecretEnvelope,
   encryptionKey: SERVICE_CONFIG_ENCRYPTION_KEY,
 });
@@ -4112,7 +4124,28 @@ function handleRequest(req, res) {
           },
           webhookSecret: RESEND_WEBHOOK_SECRET,
         });
-        json(await ingestReceivedWebhook({ pool, event }));
+        const ingested = await ingestReceivedWebhook({ pool, event });
+        if (ingested.isNew && ingested.email) {
+          const publicBaseUrl = String(process.env.PUBLIC_BASE_URL || OAUTH_PUBLIC_BASE_URL || '').replace(/\/$/, '');
+          const results = await adminNotificationRuntime.notify({
+            id: ingested.emailId,
+            type: 'support.email.received',
+            occurredAt: ingested.email.receivedAt,
+            title: '收到新的聯絡郵件',
+            message: `${ingested.email.sender}\n${ingested.email.subject || '(no subject)'}`,
+            actionUrl: publicBaseUrl ? `${publicBaseUrl}/admin/support-inbox` : '',
+            data: {
+              emailId: ingested.emailId,
+              sender: ingested.email.sender,
+              subject: ingested.email.subject,
+            },
+          });
+          const failures = results.filter((result) => !result.ok);
+          if (failures.length) {
+            reqLog.warn({ emailId: ingested.emailId, failures }, 'admin notification delivery failed');
+          }
+        }
+        json({ accepted: ingested.accepted, ignored: ingested.ignored, emailId: ingested.emailId });
       } catch (error) {
         if (error instanceof SupportInboxError) return json({ error: error.message }, error.status);
         throw error;
@@ -5822,6 +5855,57 @@ function handleRequest(req, res) {
         await testAdminTranslationSettings({
           translateText: await translationRuntime.getTranslateText(),
           body: parsed.data,
+        }),
+      );
+      return;
+    }
+
+    if (pathname === '/api/admin/notification-settings' && method === 'GET') {
+      if (!(await authorizeAdmin(req, 'config:write'))) return json({ error: 'Unauthorized' }, 401);
+      res.setHeader('Cache-Control', 'no-store');
+      serviceJson(
+        await getAdminNotificationSettings({
+          pool,
+          decryptSecret: decryptSecretEnvelope,
+          encryptionKey: SERVICE_CONFIG_ENCRYPTION_KEY,
+        }),
+      );
+      return;
+    }
+
+    if (pathname === '/api/admin/notification-settings' && method === 'PUT') {
+      const admin = await authorizeAdmin(req, 'config:write');
+      if (!admin) return json({ error: 'Unauthorized' }, 401);
+      const body = await readBody(32 * 1024);
+      const parsed = validateBody(S.adminNotificationSettingsSchema, body);
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      try {
+        serviceJson(
+          await updateAdminNotificationSettings({
+            pool,
+            body: parsed.data,
+            adminUserId: admin.adminUserId,
+            encryptSecret: encryptSecretEnvelope,
+            decryptSecret: decryptSecretEnvelope,
+            encryptionKey: SERVICE_CONFIG_ENCRYPTION_KEY,
+          }),
+        );
+      } catch (error) {
+        if (error instanceof AdminNotificationError) return json({ error: error.message }, error.status);
+        throw error;
+      }
+      return;
+    }
+
+    if (pathname === '/api/admin/notification-settings/test' && method === 'POST') {
+      if (!(await authorizeAdmin(req, 'config:write'))) return json({ error: 'Unauthorized' }, 401);
+      const body = await readBody(1024);
+      const parsed = validateBody(S.adminNotificationTestSchema, body);
+      if (!parsed.ok) return json({ error: 'Validation failed', details: parsed.errors }, 400);
+      serviceJson(
+        await testAdminNotificationSettings({
+          runtime: adminNotificationRuntime,
+          publicBaseUrl: String(process.env.PUBLIC_BASE_URL || OAUTH_PUBLIC_BASE_URL || ''),
         }),
       );
       return;

@@ -83,6 +83,7 @@ const OPERATOR_RESOURCES = new Set([
   'about',
   'announcements',
   'translation',
+  'notifications',
   'operations',
   'i18n',
 ]);

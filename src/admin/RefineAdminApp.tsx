@@ -2,6 +2,7 @@ import { Authenticated, CanAccess, Refine, useGetIdentity } from '@refinedev/cor
 import routerProvider from '@refinedev/react-router';
 import {
   Activity,
+  BellRing,
   BookOpenText,
   Info,
   Languages,
@@ -28,6 +29,7 @@ import {
   ChatPage,
   DeckSharesPage,
   MatchesPage,
+  NotificationsPage,
   OfficialRulingsPage,
   OperationsPage,
   SongsPage,
@@ -78,6 +80,11 @@ const resources = [
     name: 'translation',
     list: '/admin/translation',
     meta: { label: '翻譯服務', icon: <Settings2 className="size-4" /> },
+  },
+  {
+    name: 'notifications',
+    list: '/admin/notifications',
+    meta: { label: '管理員通知', icon: <BellRing className="size-4" /> },
   },
   { name: 'i18n', list: '/admin/i18n', meta: { label: '介面翻譯稽核', icon: <Languages className="size-4" /> } },
 ];
@@ -255,6 +262,14 @@ export function RefineAdminApp() {
               element={
                 <AccessRoute resource="translation">
                   <TranslationPage />
+                </AccessRoute>
+              }
+            />
+            <Route
+              path="notifications"
+              element={
+                <AccessRoute resource="notifications">
+                  <NotificationsPage />
                 </AccessRoute>
               }
             />

@@ -5,6 +5,7 @@ const require = createRequire(import.meta.url);
 const { Webhook } = require('svix') as typeof import('svix');
 const {
   normalizeReceivedEmail,
+  ingestReceivedWebhook,
   plainTextFromHtml,
   replyToSupportEmail,
   syncSupportInbox,
@@ -12,6 +13,7 @@ const {
   verifyResendWebhook,
 } = require('../supportInboxService.cjs') as {
   normalizeReceivedEmail: (input: unknown) => Record<string, unknown>;
+  ingestReceivedWebhook: (input: Record<string, unknown>) => Promise<Record<string, unknown>>;
   plainTextFromHtml: (input: string) => string;
   replyToSupportEmail: (input: Record<string, unknown>) => Promise<Record<string, unknown>>;
   syncSupportInbox: (input: Record<string, unknown>) => Promise<Record<string, unknown>>;
@@ -92,6 +94,27 @@ describe('support inbox service', () => {
       expect.objectContaining({ method: 'GET' }),
     );
     expect(pool.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO support_emails'), expect.any(Array));
+  });
+
+  it('marks only a previously unseen webhook email as new', async () => {
+    const newPool = {
+      query: vi.fn(async (sql: string) =>
+        sql.includes('SELECT 1 FROM support_emails') ? { rows: [] } : { rows: [], rowCount: 1 },
+      ),
+    };
+    const existingPool = {
+      query: vi.fn(async (sql: string) =>
+        sql.includes('SELECT 1 FROM support_emails') ? { rows: [{ '?column?': 1 }] } : { rows: [], rowCount: 1 },
+      ),
+    };
+    const event = { type: 'email.received', data: receivedEmail };
+
+    await expect(ingestReceivedWebhook({ pool: newPool, event })).resolves.toMatchObject({
+      accepted: true,
+      emailId: 'received_1',
+      isNew: true,
+    });
+    await expect(ingestReceivedWebhook({ pool: existingPool, event })).resolves.toMatchObject({ isNew: false });
   });
 
   it('sends replies to Reply-To with RFC thread headers and records an audit trail', async () => {

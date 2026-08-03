@@ -602,6 +602,27 @@ npm run admin:link -- --email=user@example.com --role=admin
 Supported roles are `viewer`, `moderator`, `operator`, and `admin`.
 The Refine 5 console under `/admin/*` maps navigation resources to these backend permissions and hides unavailable resources. The CLI is the bootstrap path for the first full administrator. After that, an `admin` can search registered users and manage linked roles from `/admin/users`; lower roles cannot see or call the role-management controls. Frontend access control is only a UX boundary; every endpoint continues to enforce its own permission.
 
+### Support inbox and administrator notifications
+
+| Method | Path                                    | Permission      | Description                                                         |
+| ------ | --------------------------------------- | --------------- | ------------------------------------------------------------------- |
+| `GET`  | `/api/admin/support/emails`             | `support:read`  | List and optionally sync received Resend messages.                  |
+| `GET`  | `/api/admin/support/emails/:id`         | `support:read`  | Load one message and its reply history.                             |
+| `POST` | `/api/admin/support/emails/:id/reply`   | `support:reply` | Reply through Resend with RFC thread headers.                       |
+| `GET`  | `/api/admin/notification-settings`      | `config:write`  | Read redacted Bark, Telegram, and custom Webhook settings.          |
+| `PUT`  | `/api/admin/notification-settings`      | `config:write`  | Atomically update channel states, endpoints, and encrypted secrets. |
+| `POST` | `/api/admin/notification-settings/test` | `config:write`  | Send a test event to every currently enabled channel.               |
+
+`POST /api/webhooks/resend` verifies the raw Svix signature, upserts the received email, and dispatches a
+`support.email.received` event only when the email was not already stored. Runtime notification settings are read
+from PostgreSQL for every event, so saving or disabling a channel takes effect without restarting the API.
+
+Custom Webhooks receive JSON with `version`, `id`, `type`, `occurredAt`, `title`, `message`, `actionUrl`, and `data`.
+When a signing secret is configured, `X-ZTMY-Notification-Signature` contains
+`sha256=<HMAC-SHA256(raw JSON)>`; the event type and ID are also sent as `X-ZTMY-Notification-Event` and
+`X-ZTMY-Notification-Id`. One channel failure is returned by the test endpoint and logged during live dispatch, but
+does not prevent the other enabled channels from receiving the event.
+
 ### Deck sharing and official-content administration
 
 | Method | Path                                                                  | Permission          | Description                                        |

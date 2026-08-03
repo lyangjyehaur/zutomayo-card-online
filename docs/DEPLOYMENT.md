@@ -180,6 +180,12 @@ The admin **聯絡信箱** page also calls Resend's received-email list API when
 the webhook was registered are imported. The webhook endpoint requires the original raw body and must not pass
 through a proxy transformation that rewrites JSON.
 
+Administrator notification channels are configured at `/admin/notifications` and stored under
+`service_integrations.key = 'admin_notifications'`. Bark device keys, Telegram bot tokens, and optional custom
+Webhook signing secrets use `SERVICE_CONFIG_ENCRYPTION_KEY` and are never returned to the browser. Saving settings
+takes effect immediately without restarting the API. Use the page's test action after configuring a channel; live
+`email.received` delivery failures are isolated per channel and logged without rejecting the verified Resend event.
+
 Cloudflare Web Analytics may inject its browser beacon for aggregate traffic and Web Vitals reporting. Production CSP allows only its documented script origin, `https://static.cloudflareinsights.com`; do not broaden this to a wildcard or enable unrelated script injection products without a separate security review. Umami remains the source of application funnel events through the same-origin `/analytics` proxy. Browser QA must treat any remaining analytics CSP violation as a failure.
 
 正式網域使用 GeoDNS：中國大陸直接解析到香港入口，其他地區經 Cloudflare。兩條路共用源站

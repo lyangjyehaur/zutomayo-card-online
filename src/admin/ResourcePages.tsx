@@ -25,6 +25,7 @@ import { AdminDeckShareReportsPanel } from '../components/AdminDeckShareReportsP
 import { AdminOfficialRulingsPanel } from '../components/AdminOfficialRulingsPanel';
 import { AdminOperationsPanel } from '../components/AdminOperationsPanel';
 import { AdminTranslationSettingsPanel } from '../components/AdminTranslationSettingsPanel';
+import { AdminNotificationSettingsPanel } from '../components/AdminNotificationSettingsPanel';
 import { AdminSupportInboxPanel } from '../components/AdminSupportInboxPanel';
 import {
   Alert,
@@ -127,6 +128,13 @@ export function TranslationPage() {
   return (
     <ResourceFrame title="翻譯服務" description="設定自動翻譯端點、模型與連線測試。">
       <AdminTranslationSettingsPanel token={token()} />
+    </ResourceFrame>
+  );
+}
+export function NotificationsPage() {
+  return (
+    <ResourceFrame title="管理員通知" description="設定新郵件等營運事件的 Bark、Telegram 與 Webhook 通知。">
+      <AdminNotificationSettingsPanel token={token()} />
     </ResourceFrame>
   );
 }

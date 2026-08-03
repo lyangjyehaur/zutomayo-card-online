@@ -44,7 +44,7 @@
 - 全站與頁面內的多語全文搜尋，涵蓋卡牌名稱／效果／歌名、官方 Q&A、規則章節、勘誤與公開牌組；IME 組字期間不送請求。
 - 官方 Grand Rules／基本 Floor Rules、日文 Q&A／勘誤、在地化閱讀頁面，以及人工校訂與來源同步後台。
 - PWA 安裝／更新提示與 app、build、rules 三層版本相容檢查。
-- Refine 5 管理後台，統一維護卡牌／限定卡、翻譯、使用者、ELO、聊天證據、處分、公告與官方裁定。
+- Refine 5 管理後台，統一維護卡牌／限定卡、翻譯、使用者、ELO、聊天證據、處分、公告、聯絡信箱、管理員通知與官方裁定。
 - Playwright 核心 E2E、k6 API／WebSocket／認證／配對負載測試，以及 staging／production CD pipeline。
 
 ## 架構
