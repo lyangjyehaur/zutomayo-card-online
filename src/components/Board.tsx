@@ -40,6 +40,8 @@ import {
   HandZone,
   PhaseIndicator,
   PlayerStatus,
+  beginHpPresentation,
+  finishHpPresentation,
   initialResolutionNotices,
   resolutionNoticeChannel,
   SetZone,
@@ -48,6 +50,7 @@ import {
   useViewportMode,
   type BattleZoneAttack,
   type FocusedCard,
+  type PresentationHpState,
 } from '../ui/game';
 import {
   getChronosTime,
@@ -665,12 +668,16 @@ function ResolutionTimeline({
   onActivityChange,
   onSpatialAnimatingChange,
   onIngestion,
+  onHpNoticesIngested,
+  onHpNoticeResolved,
   suppress = false,
 }: {
   G: GameState;
   onActivityChange?: (active: boolean) => void;
   onSpatialAnimatingChange?: (channel: 'battle' | 'effectHp', active: boolean) => void;
   onIngestion?: (maxNoticeId: number, hasPlayback: boolean) => void;
+  onHpNoticesIngested?: (notices: GameNotice[], authoritativeHp: readonly [number, number]) => void;
+  onHpNoticeResolved?: (notice: GameNotice) => void;
   suppress?: boolean;
 }) {
   const lastSeenIdRef = useRef(-1);
@@ -685,7 +692,7 @@ function ResolutionTimeline({
       ? initialResolutionNotices(notices).length > 0
       : !suppress && notices.some((notice) => notice.id > lastSeenIdRef.current);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const ordered = G.recentGameNotices ?? [];
     const maxId = ordered.reduce((max, notice) => Math.max(max, notice.id), 0);
     const resumed = suppressedRef.current && !suppress;
@@ -702,6 +709,9 @@ function ResolutionTimeline({
       lastSeenIdRef.current = maxId;
       const initial = initialResolutionNotices(ordered);
       onIngestion?.(maxId, initial.length > 0);
+      if (initial.length > 0) {
+        onHpNoticesIngested?.(initial, [G.players[0].hp, G.players[1].hp]);
+      }
       setQueue(initial);
       return;
     }
@@ -709,6 +719,7 @@ function ResolutionTimeline({
     lastSeenIdRef.current = maxId;
     onIngestion?.(maxId, unseen.length > 0);
     if (unseen.length === 0) return;
+    onHpNoticesIngested?.(unseen, [G.players[0].hp, G.players[1].hp]);
     setQueue((existing) => {
       const known = new Set(existing.map((notice) => notice.id));
       if (current) known.add(current.id);
@@ -716,7 +727,7 @@ function ResolutionTimeline({
     });
     // current is intentionally excluded: notice IDs and queue state provide de-duplication.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [G.recentGameNotices, lastNoticeId, noticeCount, onIngestion, suppress]);
+  }, [G.players, G.recentGameNotices, lastNoticeId, noticeCount, onHpNoticesIngested, onIngestion, suppress]);
 
   useEffect(() => {
     if (current || queue.length === 0) return;
@@ -728,9 +739,17 @@ function ResolutionTimeline({
     onActivityChange?.(Boolean(current || queue.length > 0 || hasPendingIngestion));
   }, [current, hasPendingIngestion, onActivityChange, queue.length]);
 
-  const resolveCurrent = useCallback((noticeId: number) => {
-    setCurrent((active) => (active?.id === noticeId ? null : active));
-  }, []);
+  const currentRef = useRef<GameNotice | null>(null);
+  currentRef.current = current;
+  const resolveCurrent = useCallback(
+    (noticeId: number) => {
+      const active = currentRef.current;
+      if (!active || active.id !== noticeId) return;
+      onHpNoticeResolved?.(active);
+      setCurrent(null);
+    },
+    [onHpNoticeResolved],
+  );
   const channel = current ? resolutionNoticeChannel(current) : null;
 
   return (
@@ -1870,7 +1889,7 @@ function BattleLogSidebarPanel({ G, compact = false }: { G: GameState; compact?:
   );
 }
 
-function BattleStatusSidebarPanel({ G }: { G: GameState }) {
+function BattleStatusSidebarPanel({ G, presentationHp = {} }: { G: GameState; presentationHp?: PresentationHpState }) {
   const chronosTime = getChronosTime(G);
   const statusRows = [
     { label: t('board.panel.status'), value: G.step },
@@ -1900,7 +1919,9 @@ function BattleStatusSidebarPanel({ G }: { G: GameState }) {
               <div className="font-mono text-minutia uppercase tracking-[var(--tracking-meta)] text-content-primary/35">
                 {playerName(index as PlayerIndex)}
               </div>
-              <div className="mt-2 font-display text-2xl font-bold text-accent-primary">{player.hp}</div>
+              <div className="mt-2 font-display text-2xl font-bold text-accent-primary">
+                {presentationHp[index as PlayerIndex] ?? player.hp}
+              </div>
               <div className="mt-2 grid grid-cols-2 gap-x-2 gap-y-1 font-mono text-caption text-content-primary/45">
                 <span>
                   {t('board.deck')} {player.deck.length}
@@ -2036,12 +2057,14 @@ function BattleSideSheet({
   activePanel,
   focusedCard,
   G,
+  presentationHp,
   onClose,
   onPanelChange,
 }: {
   activePanel: BattleSidePanel | null;
   focusedCard: FocusedCard;
   G: GameState;
+  presentationHp: PresentationHpState;
   onClose: () => void;
   onPanelChange: (panel: BattleSidePanel) => void;
 }) {
@@ -2100,7 +2123,7 @@ function BattleSideSheet({
               />
             </div>
           )}
-          {activePanel === 'status' && <BattleStatusSidebarPanel G={G} />}
+          {activePanel === 'status' && <BattleStatusSidebarPanel G={G} presentationHp={presentationHp} />}
           {activePanel === 'log' && <BattleLogSidebarPanel G={G} />}
         </div>
       </section>
@@ -2141,6 +2164,7 @@ function BattleBoard({
   const me = G.players[meIndex];
   const opponent = G.players[opponentIndex];
   const [resolutionTimelineActive, setResolutionTimelineActive] = useState(false);
+  const [presentationHp, setPresentationHp] = useState<PresentationHpState>({});
   const resolutionWasActiveRef = useRef(false);
   const animationActivityRef = useRef({ board: false, battleResolution: false, effectHpResolution: false });
   const handleResolutionTimelineActivity = useCallback(
@@ -2148,11 +2172,20 @@ function BattleBoard({
       const wasActive = resolutionWasActiveRef.current;
       resolutionWasActiveRef.current = active;
       setResolutionTimelineActive(active);
+      if (!active) {
+        setPresentationHp((current) => (current[0] === undefined && current[1] === undefined ? current : {}));
+      }
       onNoticeActivityChange?.(active);
       if (wasActive && !active) onResolutionComplete?.();
     },
     [onNoticeActivityChange, onResolutionComplete],
   );
+  const handleHpNoticesIngested = useCallback((notices: GameNotice[], authoritativeHp: readonly [number, number]) => {
+    setPresentationHp((current) => beginHpPresentation(current, notices, authoritativeHp));
+  }, []);
+  const handleHpNoticeResolved = useCallback((notice: GameNotice) => {
+    setPresentationHp((current) => finishHpPresentation(current, notice));
+  }, []);
   const reportAnimationActivity = useCallback(
     (kind: keyof typeof animationActivityRef.current, active: boolean) => {
       animationActivityRef.current[kind] = active;
@@ -2621,7 +2654,7 @@ function BattleBoard({
               <PlayerStatus
                 side="opponent"
                 name={playerName(opponentIndex)}
-                hp={opponent.hp}
+                hp={presentationHp[opponentIndex] ?? opponent.hp}
                 meta={opponentMeta}
                 tutId="opponent-hp"
                 animationZone={`p${opponentIndex}:status`}
@@ -2824,7 +2857,7 @@ function BattleBoard({
                 <PlayerStatus
                   side="me"
                   name={playerName(meIndex)}
-                  hp={me.hp}
+                  hp={presentationHp[meIndex] ?? me.hp}
                   meta={meMeta}
                   tutId="player-hp"
                   animationZone={`p${meIndex}:status`}
@@ -2933,6 +2966,7 @@ function BattleBoard({
         activePanel={activeSidePanel}
         focusedCard={focusedCard}
         G={G}
+        presentationHp={presentationHp}
         onClose={() => setActiveSidePanel(null)}
         onPanelChange={setActiveSidePanel}
       />
@@ -2971,6 +3005,8 @@ function BattleBoard({
         onActivityChange={handleResolutionTimelineActivity}
         onSpatialAnimatingChange={handleSpatialResolutionChange}
         onIngestion={onResolutionIngestion}
+        onHpNoticesIngested={handleHpNoticesIngested}
+        onHpNoticeResolved={handleHpNoticeResolved}
         suppress={tutorialSuppressNotices}
       />
       <BattleAnimationLayer G={G} me={meIndex} onAnimatingChange={handleBoardAnimationChange} />
